@@ -1,0 +1,34 @@
+This is Refresh, an XNA-inspired 3D graphics library with modern capabilities.
+
+License
+-------
+Refresh is licensed under the zlib license. See LICENSE for details.
+
+About Refresh
+-------------
+Refresh is directly inspired by FNA3D and intended to be a replacement for XNA's Graphics namespace.
+XNA 4.0 is a powerful API, but its shader system is outdated and certain restrictions are awkward to handle in a modern context.
+Refresh intends to provide an ergonomic high-level API that maps nicely to modern graphics pipelines.
+Refresh will have a Vulkan runtime implementation. Support for other APIs like DX12 may come later.
+For shaders, we plan to consume SPIR-V bytecode.
+
+Dependencies
+------------
+Refresh depends solely on SDL2. Refresh never explicitly uses the C runtime.
+
+Building Refresh
+----------------
+For *nix platforms, use CMake:
+
+    $ mkdir build/
+    $ cd build/
+    $ cmake ../
+    $ make
+
+Other platforms coming soon.
+
+Want to contribute?
+-------------------
+Issues and pathces can be reported via Github:
+
+*Put link here*
