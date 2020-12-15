@@ -13,3 +13,5 @@ Release/
 xcuserdata/
 *.xcworkspace/
 build/
+CMakeCache.text
+cmake.check_cache

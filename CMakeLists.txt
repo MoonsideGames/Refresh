@@ -58,8 +58,6 @@ if(NOT MSVC)
 	set_property(TARGET Refresh PROPERTY COMPILE_FLAGS "-std=gnu99 -Wall -Wno-strict-aliasing -pedantic")
 endif()
 
-add_subdirectory(FNA3D)
-
 # Refresh folders as includes, for other targets to consume
 target_include_directories(Refresh PUBLIC
 	$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
@@ -77,6 +75,8 @@ set_target_properties(Refresh PROPERTIES OUTPUT_NAME "Refresh"
 	VERSION ${LIB_VERSION}
 	SOVERSION ${LIB_MAJOR_VERSION}
 )
+
+target_include_directories(Refresh PUBLIC ../FNA3D/include)
 
 # SDL2 Dependency
 if (DEFINED SDL2_INCLUDE_DIRS AND DEFINED SDL2_LIBRARIES)
