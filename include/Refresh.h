@@ -264,14 +264,6 @@ typedef enum REFRESH_ColorComponentFlagBits
 
 typedef uint32_t REFRESH_ColorComponentFlags;
 
-typedef enum REFRESH_ShaderParamType
-{
-	REFRESH_SHADERPARAMTYPE_SAMPLER,
-	REFRESH_SHADERPARAMTYPE_SAMPLED_IMAGE,
-	REFRESH_SHADERPARAMTYPE_COMBINED_IMAGE_SAMPLER,
-	REFRESH_SHADERPARAMTYPE_UNIFORM
-} REFRESH_ShaderParamType;
-
 typedef enum REFRESH_ShaderStage
 {
 	REFRESH_SHADERSTAGE_VERTEX,
@@ -362,10 +354,21 @@ typedef struct REFRESH_RenderTargetBlendState
 	REFRESH_ColorComponentFlags colorWriteMask;
 } REFRESH_RenderTargetBlendState;
 
+typedef struct REFRESH_ShaderTextureSamplerLayoutBinding
+{
+	uint32_t binding;
+	REFRESH_ShaderStage shaderStage;
+} REFRESH_ShaderSampleLayoutBinding;
+
+typedef struct REFRESH_ShaderTextureSamplerLayout
+{
+	uint32_t bindingCount;
+	const REFRESH_ShaderSampleLayoutBinding *bindings;
+} REFRESH_ShaderTextureSamplerLayout;
+
 typedef struct REFRESH_ShaderParamLayoutBinding
 {
 	uint32_t binding;
-	REFRESH_ShaderParamType shaderParamType;
 	REFRESH_ShaderStage shaderStage;
 } REFRESH_ShaderParamLayoutBinding;
 
@@ -374,6 +377,14 @@ typedef struct REFRESH_ShaderParamLayout
 	uint32_t bindingCount;
 	const REFRESH_ShaderParamLayoutBinding *bindings;
 } REFRESH_ShaderParamLayout;
+
+typedef struct REFRESH_PipelineLayoutCreateInfo
+{
+	uint32_t shaderParamsLayoutCount;
+	REFRESH_ShaderParamLayout *shaderParamLayouts;
+	uint32_t shaderTextureSamplerLayoutCount;
+	const REFRESH_ShaderTextureSamplerLayout *shaderTextureSamplerLayouts;
+} REFRESH_PipelineLayoutCreateInfo;
 
 typedef struct REFRESH_RenderTargetDescription
 {
@@ -390,12 +401,6 @@ typedef struct REFRESH_RenderPassCreateInfo
 	uint32_t renderTargetCount;
 	const REFRESH_RenderTargetDescription *renderTargetDescriptions;
 } REFRESH_RenderPassCreateInfo;
-
-typedef struct REFRESH_PipelineLayoutCreateInfo
-{
-	uint32_t shaderParamsLayoutCount;
-	REFRESH_ShaderParamLayout *shaderParamLayouts;
-} REFRESH_PipelineLayoutCreateInfo;
 
 /* Pipeline state structures */
 
