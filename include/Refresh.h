@@ -54,6 +54,8 @@ extern "C" {
 
 typedef struct REFRESH_Device REFRESH_Device;
 typedef struct REFRESH_Texture REFRESH_Texture;
+typedef struct REFRESH_Sampler REFRESH_Sampler;
+typedef struct REFRESH_ShaderParamBuffer REFRESH_ShaderParamBuffer;
 typedef struct REFRESH_Buffer REFRESH_Buffer;
 typedef struct REFRESH_ColorTarget REFRESH_ColorTarget;
 typedef struct REFRESH_DepthTarget REFRESH_DepthTarget;
@@ -270,6 +272,36 @@ typedef enum REFRESH_ShaderStage
 	REFRESH_SHADERSTAGE_FRAGMENT
 } REFRESH_ShaderStage;
 
+typedef enum REFRESH_SamplerFilter
+{
+	REFRESH_SAMPLERFILTER_NEAREST,
+	REFRESH_SAMPLERFILTER_LINEAR
+} REFRESH_SamplerFilter;
+
+typedef enum REFRESH_SamplerMipmapMode
+{
+	REFRESH_SAMPLERMIPMAPMODE_NEAREST,
+	REFRESH_SAMPLERMIPMAPMODE_LINEAR
+} REFRESH_SamplerMipmapMode;
+
+typedef enum REFRESH_SamplerAddressMode
+{
+	REFRESH_SAMPLERADDRESSMODE_REPEAT,
+	REFRESH_SAMPLERADDRESSMODE_MIRRORED_REPEAT,
+	REFRESH_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
+	REFRESH_SAMPLERADDRESSMODE_CLAMP_TO_BORDER
+} REFRESH_SamplerAddressMode;
+
+typedef enum REFRESH_BorderColor
+{
+    REFRESH_BORDERCOLOR_FLOAT_TRANSPARENT_BLACK = 0,
+    REFRESH_BORDERCOLOR_INT_TRANSPARENT_BLACK = 1,
+    REFRESH_BORDERCOLOR_FLOAT_OPAQUE_BLACK = 2,
+    REFRESH_BORDERCOLOR_INT_OPAQUE_BLACK = 3,
+    REFRESH_BORDERCOLOR_FLOAT_OPAQUE_WHITE = 4,
+    REFRESH_BORDERCOLOR_INT_OPAQUE_WHITE = 5
+} REFRESH_BorderColor;
+
 /* Structures */
 
 typedef struct REFRESH_Color
@@ -307,6 +339,24 @@ typedef struct REFRESH_Viewport
 } REFRESH_Viewport;
 
 /* State structures */
+
+typedef struct REFRESH_SamplerStateCreateInfo
+{
+	REFRESH_SamplerFilter minFilter;
+	REFRESH_SamplerFilter magFilter;
+	REFRESH_SamplerMipmapMode mipmapMode;
+	REFRESH_SamplerAddressMode addressModeU;
+	REFRESH_SamplerAddressMode addressModeV;
+	REFRESH_SamplerAddressMode addressModeW;
+	float mipLodBias;
+	uint8_t anisotropyEnable;
+	float maxAnisotropy;
+	uint8_t compareEnable;
+	REFRESH_CompareOp compareOp;
+	float minLod;
+	float maxLod;
+	REFRESH_BorderColor borderColor;
+} REFRESH_SamplerStateCreateInfo;
 
 typedef struct REFRESH_VertexBinding
 {
@@ -567,17 +617,44 @@ REFRESHAPI void REFRESH_DrawPrimitives(
 	int32_t primitiveCount
 );
 
-/* Render State */
+/* State Creation */
 
-REFRESHAPI REFRESH_RenderPass CreateRenderPass(
+REFRESHAPI REFRESH_RenderPass REFRESH_CreateRenderPass(
 	REFRESH_Device *device,
 	REFRESH_RenderPassCreateInfo *renderPassCreateInfo
 );
 
-REFRESHAPI REFRESH_Pipeline CreatePipeline(
+REFRESHAPI REFRESH_Pipeline REFRESH_CreatePipeline(
 	REFRESH_Device *device,
 	REFRESH_PipelineCreateInfo *pipelineCreateInfo
 );
+
+REFRESHAPI REFRESH_Sampler REFRESH_CreateSampler(
+	REFRESH_Device *device,
+	REFRESH_SamplerStateCreateInfo *samplerStateCreateInfo
+);
+
+/* Shader State */
+
+REFRESHAPI void REFRESH_SetSamplers(
+	REFRESH_Device *device,
+	uint32_t startIndex,
+	REFRESH_Texture **textures,
+	REFRESH_Sampler **samplers
+);
+
+REFRESHAPI void REFRESH_SetShaderParamData(
+	REFRESH_Device *device,
+	REFRESH_ShaderParamBuffer *shaderParamBuffer,
+	uint32_t offsetInBytes,
+	void *data,
+	uint32_t elementCount,
+	uint32_t elementSizeInBytes
+);
+
+/* Render Targets */
+
+
 
 #ifdef __cplusplus
 }
