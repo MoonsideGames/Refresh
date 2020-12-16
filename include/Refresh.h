@@ -573,7 +573,7 @@ REFRESHAPI uint32_t REFRESH_LinkedVersion(void);
 
 /* Drawing */
 
-/* Clears the active draw buffers of any previous contents.
+/* Clears the targets of the currently bound framebuffer.
  * NOTE:
  * 		It is generally recommended to clear in BeginRenderPass
  * 		rather than by calling this function.
@@ -655,21 +655,25 @@ REFRESHAPI void REFRESH_DrawPrimitives(
 
 /* State Creation */
 
+/* Creates a new RenderPass object. */
 REFRESHAPI REFRESH_RenderPass REFRESH_CreateRenderPass(
 	REFRESH_Device *device,
 	REFRESH_RenderPassCreateInfo *renderPassCreateInfo
 );
 
+/* Creates a new Pipeline object. */
 REFRESHAPI REFRESH_Pipeline REFRESH_CreatePipeline(
 	REFRESH_Device *device,
 	REFRESH_PipelineCreateInfo *pipelineCreateInfo
 );
 
+/* Creates a new Sampler object. */
 REFRESHAPI REFRESH_Sampler REFRESH_CreateSampler(
 	REFRESH_Device *device,
 	REFRESH_SamplerStateCreateInfo *samplerStateCreateInfo
 );
 
+/* Creates a new Framebuffer object. */
 REFRESHAPI REFRESH_Framebuffer REFRESH_CreateFramebuffer(
 	REFRESH_Device *device,
 	REFRESH_FramebufferCreateInfo *framebufferCreateInfo
@@ -677,15 +681,51 @@ REFRESHAPI REFRESH_Framebuffer REFRESH_CreateFramebuffer(
 
 /* Shader State */
 
-REFRESHAPI void REFRESH_SetSamplers(
+/* Sets textures/samplers for use with the currently bound vertex shader.
+ *
+ * startIndex: The index at which to begin replacing sampler references.
+ * textures: A pointer to an array of textures.
+ * samplers: A pointer to an array of samplers.
+ * count: The length of the above arrays.
+ */
+REFRESHAPI void REFRESH_SetVertexSamplers(
 	REFRESH_Device *device,
 	uint32_t startIndex,
-	REFRESH_Texture **textures,
-	REFRESH_Sampler **samplers
+	REFRESH_Texture *pTextures,
+	REFRESH_Sampler *pSamplers,
+	uint32_t count
 );
 
-/* TODO: Do we need to give the user this much control over UBOs? */
-REFRESHAPI void REFRESH_SetShaderParamData(
+/* Sets textures/samplers for use with the currently bound fragment shader.
+ *
+ * startIndex: The index at which to begin replacing sampler references.
+ * textures: A pointer to an array of textures.
+ * samplers: A pointer to an array of samplers.
+ * count: The length of the above arrays.
+ */
+REFRESHAPI void REFRESH_SetFragmentSamplers(
+	REFRESH_Device *device,
+	uint32_t startIndex,
+	REFRESH_Texture *pTextures,
+	REFRESH_Sampler *pSamplers,
+	uint32_t count
+);
+
+/* Sets shader params for use with the currently bound vertex shader.
+ *
+ * TODO: Do we need to give the user this much control over UBOs?
+ */
+REFRESHAPI void REFRESH_SetVertexShaderParamData(
+	REFRESH_Device *device,
+	REFRESH_ShaderParamBuffer *shaderParamBuffer,
+	uint32_t offsetInBytes,
+	void *data,
+	uint32_t elementCount,
+	uint32_t elementSizeInBytes
+);
+
+/* Sets shader params for use with the currently bound fragment shader. */
+REFRESHAPI void REFRESH_SetFragmentShaderParamData(
 	REFRESH_Device *device,
 	REFRESH_ShaderParamBuffer *shaderParamBuffer,
 	uint32_t offsetInBytes,
