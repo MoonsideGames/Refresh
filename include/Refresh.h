@@ -141,6 +141,37 @@ typedef struct REFRESH_VertexBufferBinding
 	int32_t instanceFrequency;
 } REFRESH_VertexBufferBinding;
 
+typedef struct REFRESH_RenderTargetBinding
+{
+    #define REFRESH_RENDERTARGET_TYPE_2D 0
+    #define REFRESH_RENDERTARGET_TYPE_3D 1
+    #define REFRESH_RENDERTARGET_TYPE_CUBE 2
+    uint8_t type;
+    REFRESHNAMELESS union
+    {
+        struct
+        {
+            uint32_t width;
+            uint32_t height;
+        } twod;
+        struct
+        {
+            uint32_t width;
+            uint32_t height;
+            uint32_t layer;
+        } threed;
+        struct
+        {
+            uint32_t size;
+            REFRESH_CubeMapFace face;
+        } cube;
+    };
+    uint32_t levelCount;
+    uint32_t multiSampleCount;
+    REFRESH_RenderBuffer *renderBuffer;
+    REFRESH_Texture *texture;
+} REFRESH_RenderTargetBinding;
+
 /* Version API */
 
 #define REFRESH_ABI_VERSION	 0
