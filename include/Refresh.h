@@ -25,6 +25,7 @@
  */
 
 #include <stddef.h>
+#include <FNA3D.h>
 
 #ifndef REFRESH_H
 #define REFRESH_H
@@ -579,6 +580,21 @@ typedef struct REFRESH_FramebufferCreateInfo
 REFRESHAPI uint32_t REFRESH_LinkedVersion(void);
 
 /* Functions */
+
+/* Device */
+
+/* Create a rendering context for use on the calling thread.
+ * This creation method takes an existing FNA3D_Device
+ * to ease interoperability with existing FNA graphics code.
+ *
+ * fnaDevice: An allocated FNA3D_Device structure.
+ */
+REFRESHAPI REFRESH_Device* REFRESH_CreateDevice(
+	FNA3D_Device *fnaDevice
+);
+
+/* Destroys a rendering context previously returned by REFRESH_CreateDevice. */
+REFRESHAPI void REFRESH_DestroyDevice(REFRESH_Device *device);
 
 /* Drawing */
 
