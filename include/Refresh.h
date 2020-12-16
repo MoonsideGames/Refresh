@@ -24,6 +24,8 @@
  *
  */
 
+#include <stddef.h>
+
 #ifndef REFRESH_H
 #define REFRESH_H
 
@@ -468,6 +470,12 @@ typedef struct REFRESH_RenderPassCreateInfo
 	const REFRESH_DepthTargetDescription *depthTargetDescription; /* can be NULL */
 } REFRESH_RenderPassCreateInfo;
 
+typedef struct REFRESH_ShaderModuleCreateInfo
+{
+	size_t codeSize;
+	const uint32_t *byteCode;
+} REFRESH_ShaderModuleCreateInfo;
+
 /* Pipeline state structures */
 
 typedef struct REFRESH_ShaderStageState
@@ -680,6 +688,12 @@ REFRESHAPI REFRESH_Sampler* REFRESH_CreateSampler(
 REFRESHAPI REFRESH_Framebuffer* REFRESH_CreateFramebuffer(
 	REFRESH_Device *device,
 	REFRESH_FramebufferCreateInfo *framebufferCreateInfo
+);
+
+/* Returns an allocated ShaderModule* object. */
+REFRESHAPI REFRESH_ShaderModule* REFRESH_CreateShaderModule(
+	REFRESH_Device *device,
+	REFRESH_ShaderModuleCreateInfo *shaderModuleCreateInfo
 );
 
 /* Creates a 2D texture.
@@ -1088,6 +1102,18 @@ REFRESHAPI void REFRESH_AddDisposeVertexBuffer(
 REFRESHAPI void REFRESH_AddDisposeIndexBuffer(
 	REFRESH_Device *device,
 	REFRESH_Buffer *buffer
+);
+
+/* Sends an shader module to be destroyed by the renderer. Note that we call it
+ * "AddDispose" because it may not be immediately destroyed by the renderer if
+ * this is not called from the main thread (for example, if a garbage collector
+ * deletes the resource instead of the programmer).
+ *
+ * shaderModule: The REFRESH_ShaderModule to be destroyed.
+ */
+REFRESHAPI void REFRESH_AddDisposeShaderModule(
+	REFRESH_Device *device,
+	REFRESH_ShaderModule *shaderModule
 );
 
 /* Graphics State */
