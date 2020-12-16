@@ -60,8 +60,10 @@ typedef struct REFRESH_Buffer REFRESH_Buffer;
 typedef struct REFRESH_ColorTarget REFRESH_ColorTarget;
 typedef struct REFRESH_DepthStencilTarget REFRESH_DepthStencilTarget;
 typedef struct REFRESH_Framebuffer REFRESH_Framebuffer;
+typedef struct REFRESH_ShaderModule REFRESH_ShaderModule;
 typedef struct REFRESH_RenderPass REFRESH_RenderPass;
-typedef struct REFRESH_Pipeline REFRESH_Pipeline;
+typedef struct REFRESH_ComputePipeline REFRESH_ComputePipeline;
+typedef struct REFRESH_GraphicsPipeline REFRESH_GraphicsPipeline;
 
 typedef enum REFRESH_PrimitiveType
 {
@@ -138,12 +140,6 @@ typedef enum REFRESH_CubeMapFace
     REFRESH_CUBEMAPFACE_POSITIVEZ,
     REFRESH_CUBEMAPFACE_NEGATIVEZ
 } REFRESH_CubeMapFace;
-
-typedef enum REFRESH_BufferUsage
-{
-    REFRESH_BUFFERUSAGE_STATIC,
-    REFRESH_BUFFERUSAGE_DYNAMIC
-} REFRESH_BufferUsage;
 
 typedef enum REFRESH_VertexElementFormat
 {
@@ -266,11 +262,11 @@ typedef enum REFRESH_ColorComponentFlagBits
 
 typedef uint32_t REFRESH_ColorComponentFlags;
 
-typedef enum REFRESH_ShaderStage
+typedef enum REFRESH_ShaderStageType
 {
 	REFRESH_SHADERSTAGE_VERTEX,
 	REFRESH_SHADERSTAGE_FRAGMENT
-} REFRESH_ShaderStage;
+} REFRESH_ShaderStageType;
 
 typedef enum REFRESH_SamplerFilter
 {
@@ -419,7 +415,7 @@ typedef struct REFRESH_RenderTargetBlendState
 typedef struct REFRESH_ShaderTextureSamplerLayoutBinding
 {
 	uint32_t binding;
-	REFRESH_ShaderStage shaderStage;
+	REFRESH_ShaderStageType shaderStage;
 } REFRESH_ShaderSampleLayoutBinding;
 
 typedef struct REFRESH_ShaderTextureSamplerLayout
@@ -431,7 +427,7 @@ typedef struct REFRESH_ShaderTextureSamplerLayout
 typedef struct REFRESH_ShaderParamLayoutBinding
 {
 	uint32_t binding;
-	REFRESH_ShaderStage shaderStage;
+	REFRESH_ShaderStageType shaderStage;
 } REFRESH_ShaderParamLayoutBinding;
 
 typedef struct REFRESH_ShaderParamLayout
@@ -474,9 +470,15 @@ typedef struct REFRESH_RenderPassCreateInfo
 
 /* Pipeline state structures */
 
+typedef struct REFRESH_ShaderStageState
+{
+	REFRESH_ShaderModule *shaderModule;
+	const char* entryPointName;
+} REFRESH_ShaderStageState;
+
 typedef struct REFRESH_TopologyState
 {
-	REFRESH_TopologyState topology;
+	REFRESH_PrimitiveType topology;
 } REFRESH_TopologyState;
 
 typedef struct REFRESH_ViewportState
@@ -528,19 +530,20 @@ typedef struct REFRESH_ColorBlendState
 	float blendConstants[4];
 } REFRESH_ColorBlendState;
 
-typedef struct REFRESH_PipelineCreateInfo
+typedef struct REFRESH_GraphicsPipelineCreateInfo
 {
-	const REFRESH_ShaderStage *shaderStages;
-	const REFRESH_VertexInputState *vertexInputState;
-	const REFRESH_TopologyState *topologyState;
-	const REFRESH_ViewportState *viewportState;
-	const REFRESH_RasterizerState *rasterizerState;
-	const REFRESH_MultisampleState *multisampleState;
-	const REFRESH_DepthStencilState *depthStencilState;
-	const REFRESH_ColorBlendState *colorBlendState;
-	REFRESH_PipelineLayoutCreateInfo *layoutCreateInfo;
+	const REFRESH_ShaderStageState vertexShaderState;
+	const REFRESH_ShaderStageState fragmentShaderState;
+	const REFRESH_VertexInputState vertexInputState;
+	const REFRESH_TopologyState topologyState;
+	const REFRESH_ViewportState viewportState;
+	const REFRESH_RasterizerState rasterizerState;
+	const REFRESH_MultisampleState multisampleState;
+	const REFRESH_DepthStencilState depthStencilState;
+	const REFRESH_ColorBlendState colorBlendState;
+	REFRESH_PipelineLayoutCreateInfo layoutCreateInfo;
 	REFRESH_RenderPass *renderPass;
-} REFRESH_PipelineCreateInfo;
+} REFRESH_GraphicsPipelineCreateInfo;
 
 typedef struct REFRESH_FramebufferCreateInfo
 {
@@ -662,9 +665,9 @@ REFRESHAPI REFRESH_RenderPass* REFRESH_CreateRenderPass(
 );
 
 /* Returns an allocated Pipeline* object. */
-REFRESHAPI REFRESH_Pipeline* REFRESH_CreatePipeline(
+REFRESHAPI REFRESH_GraphicsPipeline* REFRESH_CreateGraphicsPipeline(
 	REFRESH_Device *device,
-	REFRESH_PipelineCreateInfo *pipelineCreateInfo
+	REFRESH_GraphicsPipelineCreateInfo *pipelineCreateInfo
 );
 
 /* Returns an allocated Sampler* object. */
@@ -765,45 +768,157 @@ REFRESHAPI REFRESH_DepthStencilTarget* REFRESH_GenDepthStencilTarget(
 	REFRESH_Texture *texture
 );
 
-/* Disposal */
-
-/* Sends a texture to be destroyed by the renderer. Note that we call it
- * "AddDispose" because it may not be immediately destroyed by the renderer if
- * this is not called from the main thread (for example, if a garbage collector
- * deletes the resource instead of the programmer).
+/* Creates a vertex buffer to be used by Draw commands.
  *
- * texture: The REFRESH_Texture to be destroyed.
+ * sizeInBytes: The length of the vertex buffer.
  */
-REFRESHAPI void REFRESH_AddDisposeTexture(
+REFRESHAPI REFRESH_Buffer* REFRESH_GenVertexBuffer(
 	REFRESH_Device *device,
-	REFRESH_Texture *texture
+	uint32_t sizeInBytes
 );
 
-/* Sends a color target to be destroyed by the renderer. Note that we call it
- * "AddDispose" because it may not be immediately destroyed by the renderer if
- * this is not called from the main thread (for example, if a garbage collector
- * deletes the resource instead of the programmer).
+/* Creates an index buffer to be used by Draw commands.
  *
- * colorTarget: The REFRESH_ColorTarget to be destroyed.
+ * sizeInBytes: The length of the index buffer.
  */
-REFRESHAPI void REFRESH_AddDisposeColorTarget(
+REFRESHAPI REFRESH_Buffer* REFRESH_GenIndexBuffer(
 	REFRESH_Device *device,
-	REFRESH_ColorTarget *colorTarget
+	uint32_t sizeInBytes
 );
 
-/* Sends a depth/stencil target to be destroyed by the renderer. Note that we call it
- * "AddDispose" because it may not be immediately destroyed by the renderer if
- * this is not called from the main thread (for example, if a garbage collector
- * deletes the resource instead of the programmer).
+/* Setters */
+
+/* Uploads image data to a 2D texture object.
  *
- * depthStencilTarget: The REFRESH_DepthStencilTarget to be destroyed.
+ * texture:	The texture to be updated.
+ * x:		The x offset of the subregion being updated.
+ * y:		The y offset of the subregion being updated.
+ * w:		The width of the subregion being updated.
+ * h:		The height of the subregion being updated.
+ * level:	The mipmap level being updated.
+ * data:	A pointer to the image data.
+ * dataLength:	The size of the image data in bytes.
  */
-REFRESHAPI void REFRESH_AddDisposeDepthStencilTarget(
+REFRESHAPI void REFRESH_SetTextureData2D(
 	REFRESH_Device *device,
-	REFRESH_DepthStencilTarget *depthStencilTarget
+	REFRESH_Texture *texture,
+	uint32_t x,
+	uint32_t y,
+	uint32_t w,
+	uint32_t h,
+	uint32_t level,
+	void *data,
+	uint32_t dataLengthInBytes
 );
 
-/* Shader State */
+/* Uploads image data to a 3D texture object.
+ *
+ * texture:	The texture to be updated.
+ * x:		The x offset of the subregion being updated.
+ * y:		The y offset of the subregion being updated.
+ * z:		The z offset of the subregion being updated.
+ * w:		The width of the subregion being updated.
+ * h:		The height of the subregion being updated.
+ * d:		The depth of the subregion being updated.
+ * level:	The mipmap level being updated.
+ * data:	A pointer to the image data.
+ * dataLength:	The size of the image data in bytes.
+ */
+REFRESHAPI void REFRESH_SetTextureData3D(
+	REFRESH_Device *device,
+	REFRESH_Texture *texture,
+	uint32_t x,
+	uint32_t y,
+	uint32_t z,
+	uint32_t w,
+	uint32_t h,
+	uint32_t d,
+	uint32_t level,
+	void* data,
+	uint32_t dataLength
+);
+
+/* Uploads image data to a single face of a texture cube object.
+ *
+ * texture:	The texture to be updated.
+ * x:		The x offset of the subregion being updated.
+ * y:		The y offset of the subregion being updated.
+ * w:		The width of the subregion being updated.
+ * h:		The height of the subregion being updated.
+ * cubeMapFace:	The face of the cube being updated.
+ * level:	The mipmap level being updated.
+ * data:	A pointer to the image data.
+ * dataLength:	The size of the image data in bytes.
+ */
+REFRESHAPI void REFRESH_SetTextureDataCube(
+	REFRESH_Device *device,
+	REFRESH_Texture *texture,
+	uint32_t x,
+	uint32_t y,
+	uint32_t w,
+	uint32_t h,
+	REFRESH_CubeMapFace cubeMapFace,
+	uint32_t level,
+	void* data,
+	uint32_t dataLength
+);
+
+/* Uploads YUV image data to three ALPHA8 texture objects.
+ *
+ * y:		The texture storing the Y data.
+ * u:		The texture storing the U (Cb) data.
+ * v:		The texture storing the V (Cr) data.
+ * yWidth:	The width of the Y plane.
+ * yHeight:	The height of the Y plane.
+ * uvWidth:	The width of the U/V planes.
+ * uvHeight:	The height of the U/V planes.
+ * data:	A pointer to the raw YUV image data.
+ * dataLength:	The size of the image data in bytes.
+ */
+REFRESHAPI void REFRESH_SetTextureDataYUV(
+	REFRESH_Device *device,
+	REFRESH_Texture *y,
+	REFRESH_Texture *u,
+	REFRESH_Texture *v,
+	uint32_t yWidth,
+	uint32_t yHeight,
+	uint32_t uvWidth,
+	uint32_t uvHeight,
+	void* data,
+	uint32_t dataLength
+);
+
+/* Sets a region of the vertex buffer with client data.
+ *
+ * buffer:		The vertex buffer to be updated.
+ * offsetInBytes:	The starting offset of the buffer to write into.
+ * data:		The client data to write into the buffer.
+ * elementCount:	The number of elements from the client buffer to write.
+ * elementSizeInBytes:	The size of each element in the client buffer.
+ */
+REFRESHAPI void REFRESH_SetVertexBufferData(
+	REFRESH_Device *device,
+	REFRESH_Buffer *buffer,
+	uint32_t offsetInBytes,
+	void* data,
+	uint32_t elementCount,
+	uint32_t elementSizeInBytes
+);
+
+/* Sets a region of the index buffer with client data.
+ *
+ * buffer:		The index buffer to be updated.
+ * offsetInBytes:	The starting offset of the buffer to write into.
+ * data:		The client data to write into the buffer.
+ * dataLength:		The size (in bytes) of the client data.
+ */
+REFRESHAPI void REFRESH_SetIndexBufferData(
+	REFRESH_Device *device,
+	REFRESH_Buffer *buffer,
+	uint32_t offsetInBytes,
+	void* data,
+	uint32_t dataLength
+);
 
 /* Sets textures/samplers for use with the currently bound vertex shader.
  *
@@ -858,7 +973,124 @@ REFRESHAPI void REFRESH_SetFragmentShaderParamData(
 	uint32_t elementSizeInBytes
 );
 
-/* Render Pass */
+/* Getters */
+
+/* Pulls image data from a 2D texture into client memory. Like any GetData,
+ * this is generally asking for a massive CPU/GPU sync point, don't call this
+ * unless there's absolutely no other way to use the image data!
+ *
+ * texture:	The texture object being read.
+ * x:		The x offset of the subregion being read.
+ * y:		The y offset of the subregion being read.
+ * w:		The width of the subregion being read.
+ * h:		The height of the subregion being read.
+ * level:	The mipmap level being read.
+ * data:	The pointer being filled with the image data.
+ * dataLength:	The size of the image data in bytes.
+ */
+REFRESHAPI void REFRESH_GetTextureData2D(
+	REFRESH_Device *device,
+	REFRESH_Texture *texture,
+	uint32_t x,
+	uint32_t y,
+	uint32_t w,
+	uint32_t h,
+	uint32_t level,
+	void* data,
+	uint32_t dataLength
+);
+
+/* Pulls image data from a single face of a texture cube object into client
+ * memory. Like any GetData, this is generally asking for a massive CPU/GPU sync
+ * point, don't call this unless there's absolutely no other way to use the
+ * image data!
+ *
+ * texture:	The texture object being read.
+ * x:		The x offset of the subregion being read.
+ * y:		The y offset of the subregion being read.
+ * w:		The width of the subregion being read.
+ * h:		The height of the subregion being read.
+ * cubeMapFace:	The face of the cube being read.
+ * level:	The mipmap level being read.
+ * data:	The pointer being filled with the image data.
+ * dataLength:	The size of the image data in bytes.
+ */
+REFRESHAPI void REFRESH_GetTextureDataCube(
+	REFRESH_Device *device,
+	REFRESH_Texture *texture,
+	uint32_t x,
+	uint32_t y,
+	uint32_t w,
+	uint32_t h,
+	REFRESH_CubeMapFace cubeMapFace,
+	uint32_t level,
+	void* data,
+	uint32_t dataLength
+);
+
+/* Disposal */
+
+/* Sends a texture to be destroyed by the renderer. Note that we call it
+ * "AddDispose" because it may not be immediately destroyed by the renderer if
+ * this is not called from the main thread (for example, if a garbage collector
+ * deletes the resource instead of the programmer).
+ *
+ * texture: The REFRESH_Texture to be destroyed.
+ */
+REFRESHAPI void REFRESH_AddDisposeTexture(
+	REFRESH_Device *device,
+	REFRESH_Texture *texture
+);
+
+/* Sends a color target to be destroyed by the renderer. Note that we call it
+ * "AddDispose" because it may not be immediately destroyed by the renderer if
+ * this is not called from the main thread (for example, if a garbage collector
+ * deletes the resource instead of the programmer).
+ *
+ * colorTarget: The REFRESH_ColorTarget to be destroyed.
+ */
+REFRESHAPI void REFRESH_AddDisposeColorTarget(
+	REFRESH_Device *device,
+	REFRESH_ColorTarget *colorTarget
+);
+
+/* Sends a depth/stencil target to be destroyed by the renderer. Note that we call it
+ * "AddDispose" because it may not be immediately destroyed by the renderer if
+ * this is not called from the main thread (for example, if a garbage collector
+ * deletes the resource instead of the programmer).
+ *
+ * depthStencilTarget: The REFRESH_DepthStencilTarget to be destroyed.
+ */
+REFRESHAPI void REFRESH_AddDisposeDepthStencilTarget(
+	REFRESH_Device *device,
+	REFRESH_DepthStencilTarget *depthStencilTarget
+);
+
+/* Sends a vertex buffer to be destroyed by the renderer. Note that we call it
+ * "AddDispose" because it may not be immediately destroyed by the renderer if
+ * this is not called from the main thread (for example, if a garbage collector
+ * deletes the resource instead of the programmer).
+ *
+ * buffer: The REFRESH_Buffer to be destroyed.
+ */
+REFRESHAPI void REFRESH_AddDisposeVertexBuffer(
+	REFRESH_Device *device,
+	REFRESH_Buffer *buffer
+);
+
+/* Sends an index buffer to be destroyed by the renderer. Note that we call it
+ * "AddDispose" because it may not be immediately destroyed by the renderer if
+ * this is not called from the main thread (for example, if a garbage collector
+ * deletes the resource instead of the programmer).
+ *
+ * buffer: The REFRESH_Buffer to be destroyed.
+ */
+REFRESHAPI void REFRESH_AddDisposeIndexBuffer(
+	REFRESH_Device *device,
+	REFRESH_Buffer *buffer
+);
+
+/* Graphics State */
 
 /* Begins a render pass.
  *
@@ -886,6 +1118,12 @@ REFRESHAPI void REFRESH_BeginRenderPass(
 /* Ends the current render pass. */
 REFRESHAPI void REFRESH_EndRenderPass(
 	REFRESH_Device *device
+);
+
+/* Binds a pipeline to the graphics bind point. */
+REFRESHAPI void REFRESH_BindGraphicsPipeline(
+	REFRESH_Device *device,
+	REFRESH_GraphicsPipeline *graphicsPipeline
 );
 
 #ifdef __cplusplus
