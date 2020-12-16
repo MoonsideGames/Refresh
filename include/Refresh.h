@@ -312,6 +312,18 @@ typedef struct REFRESH_Color
 	uint8_t a;
 } REFRESH_Color;
 
+typedef struct REFRESH_DepthStencilValue
+{
+	float depth;
+	uint32_t stencil;
+} REFRESH_DepthStencilValue;
+
+typedef struct REFRESH_ClearValue
+{
+	REFRESH_Color color;
+	REFRESH_DepthStencilValue depthStencil;
+} REFRESH_ClearValue;
+
 typedef struct REFRESH_Rect
 {
 	int32_t x;
@@ -436,20 +448,28 @@ typedef struct REFRESH_PipelineLayoutCreateInfo
 	const REFRESH_ShaderTextureSamplerLayout *shaderTextureSamplerLayouts;
 } REFRESH_PipelineLayoutCreateInfo;
 
-typedef struct REFRESH_RenderTargetDescription
+typedef struct REFRESH_ColorTargetDescription
 {
 	REFRESH_SurfaceFormat format;
 	uint32_t multisampleCount;
 	REFRESH_LoadOp loadOp;
 	REFRESH_StoreOp storeOp;
+} REFRESH_ColorTargetDescription;
+
+typedef struct REFRESH_DepthTargetDescription
+{
+	REFRESH_DepthFormat depthFormat;
+	REFRESH_LoadOp loadOp;
+	REFRESH_StoreOp storeOp;
 	REFRESH_LoadOp stencilLoadOp;
 	REFRESH_StoreOp stencilStoreOp;
-} REFRESH_RenderTargetDescription;
+} REFRESH_DepthTargetDescription;
 
 typedef struct REFRESH_RenderPassCreateInfo
 {
-	uint32_t renderTargetCount;
-	const REFRESH_RenderTargetDescription *renderTargetDescriptions;
+	const REFRESH_ColorTargetDescription *colorTargetDescriptions;
+	uint32_t colorTargetCount;
+	const REFRESH_DepthTargetDescription *depthTargetDescription; /* can be NULL */
 } REFRESH_RenderPassCreateInfo;
 
 /* Pipeline state structures */
@@ -522,6 +542,17 @@ typedef struct REFRESH_PipelineCreateInfo
 	REFRESH_RenderPass *renderPass;
 } REFRESH_PipelineCreateInfo;
 
+typedef struct REFRESH_FramebufferCreateInfo
+{
+	REFRESH_RenderPass *renderPass;
+	const REFRESH_ColorTarget **pColorTargets;
+	uint32_t colorTargetCount;
+	const REFRESH_DepthTarget *pDepthTarget;
+	uint32_t width;
+	uint32_t height;
+	uint32_t layers;
+} REFRESH_FramebufferCreateInfo;
+
 /* Version API */
 
 #define REFRESH_ABI_VERSION	 0
@@ -543,14 +574,19 @@ REFRESHAPI uint32_t REFRESH_LinkedVersion(void);
 /* Drawing */
 
 /* Clears the active draw buffers of any previous contents.
+ * NOTE:
+ * 		It is generally recommended to clear in BeginRenderPass
+ * 		rather than by calling this function.
  *
- * options:	Bitflags to specify color/depth/stencil buffers for clearing.
- * color:	The new value of the cleared color buffer.
- * depth:	The new value of the cleared depth buffer.
- * stencil:	The new value of the cleared stencil buffer.
+ * options:	   Bitflags to specify color/depth/stencil buffers for clearing.
+ * colors:	   The new values of the cleared color buffers.
+ * colorCount: The amount of cleared color buffers.
+ * depth:	   The new value of the cleared depth buffer.
+ * stencil:	   The new value of the cleared stencil buffer.
  */
 REFRESHAPI void REFRESH_Clear(
 	REFRESH_Device *device,
+	REFRESH_ClearOptions options,
 	REFRESH_Vec4 **colors,
     uint32_t colorCount,
 	float depth,
@@ -634,6 +670,11 @@ REFRESHAPI REFRESH_Sampler REFRESH_CreateSampler(
 	REFRESH_SamplerStateCreateInfo *samplerStateCreateInfo
 );
 
+REFRESHAPI REFRESH_Framebuffer REFRESH_CreateFramebuffer(
+	REFRESH_Device *device,
+	REFRESH_FramebufferCreateInfo *framebufferCreateInfo
+);
+
 /* Shader State */
 
 REFRESHAPI void REFRESH_SetSamplers(
@@ -643,6 +684,7 @@ REFRESHAPI void REFRESH_SetSamplers(
 	REFRESH_Sampler **samplers
 );
 
+/* TODO: Do we need to give the user this much control over UBOs? */
 REFRESHAPI void REFRESH_SetShaderParamData(
 	REFRESH_Device *device,
 	REFRESH_ShaderParamBuffer *shaderParamBuffer,
@@ -652,9 +694,35 @@ REFRESHAPI void REFRESH_SetShaderParamData(
 	uint32_t elementSizeInBytes
 );
 
-/* Render Targets */
+/* Render Pass */
 
+/* Begins a render pass.
+ *
+ * renderPass: The renderpass to begin.
+ * framebuffer: The framebuffer to bind for the render pass.
+ * renderArea:
+ * 		The area affected by the render pass.
+ * 		All load, store and resolve operations are restricted
+ * 		to the given rectangle.
+ * clearValues:
+ * 		A pointer to an array of REFRESH_ClearValue structures
+ * 		that contains clear values for each render target in the
+ * 		framebuffer.
+ * clearCount: The amount of clearValue structs in the above array.
+ */
+REFRESHAPI void REFRESH_BeginRenderPass(
+	REFRESH_Device *device,
+	REFRESH_RenderPass *renderPass,
+	REFRESH_Framebuffer *framebuffer,
+	REFRESH_Rect renderArea,
+	REFRESH_ClearValue *pClearValues,
+	uint32_t clearCount
+);
 
+/* Ends the current render pass. */
+REFRESHAPI void REFRESH_EndRenderPass(
+	REFRESH_Device *device
+);
 
 #ifdef __cplusplus
 }
