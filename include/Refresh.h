@@ -55,16 +55,14 @@ extern "C" {
 /* Type Declarations */
 
 typedef struct REFRESH_Device REFRESH_Device;
+typedef struct REFRESH_Buffer REFRESH_Buffer;
 typedef struct REFRESH_Texture REFRESH_Texture;
 typedef struct REFRESH_Sampler REFRESH_Sampler;
-typedef struct REFRESH_ShaderParamBuffer REFRESH_ShaderParamBuffer;
-typedef struct REFRESH_Buffer REFRESH_Buffer;
 typedef struct REFRESH_ColorTarget REFRESH_ColorTarget;
 typedef struct REFRESH_DepthStencilTarget REFRESH_DepthStencilTarget;
 typedef struct REFRESH_Framebuffer REFRESH_Framebuffer;
 typedef struct REFRESH_ShaderModule REFRESH_ShaderModule;
 typedef struct REFRESH_RenderPass REFRESH_RenderPass;
-typedef struct REFRESH_ComputePipeline REFRESH_ComputePipeline;
 typedef struct REFRESH_GraphicsPipeline REFRESH_GraphicsPipeline;
 
 typedef enum REFRESH_PrimitiveType
@@ -800,6 +798,15 @@ REFRESHAPI REFRESH_Buffer* REFRESH_GenIndexBuffer(
 	uint32_t sizeInBytes
 );
 
+/* Creates a shader param buffer to be used by shaders.
+ *
+ * sizeInBytes: The length of the shader param buffer.
+ */
+REFRESHAPI REFRESH_Buffer* REFRESH_GenShaderParamBuffer(
+	REFRESH_Device *device,
+	uint32_t sizeInBytes
+);
+
 /* Setters */
 
 /* Uploads image data to a 2D texture object.
@@ -964,23 +971,17 @@ REFRESHAPI void REFRESH_SetFragmentSamplers(
 	uint32_t count
 );
 
-/* Sets shader params for use with the currently bound vertex shader.
+/* Pushes shader param data to a buffer.
  *
- * TODO: Do we need to give the user this much control over UBOs?
+ * shaderParamBuffer: 	The buffer to be updated.
+ * offsetInBytes: 		The starting offset of the buffer to write into.
+ * data: 				The client data to write into the buffer.
+ * elementCount: 		The number of elements from the client buffer to write.
+ * elementSizeInBytes:	The size of each element in the client buffer.
  */
-REFRESHAPI void REFRESH_SetVertexShaderParamData(
+REFRESHAPI void REFRESH_SetShaderParamData(
 	REFRESH_Device *device,
-	REFRESH_ShaderParamBuffer *shaderParamBuffer,
-	uint32_t offsetInBytes,
-	void *data,
-	uint32_t elementCount,
-	uint32_t elementSizeInBytes
-);
-
-/* Sets shader params for use with the currently bound fragment shader. */
-REFRESHAPI void REFRESH_SetFragmentShaderParamData(
-	REFRESH_Device *device,
-	REFRESH_ShaderParamBuffer *shaderParamBuffer,
+	REFRESH_Buffer *shaderParamBuffer,
 	uint32_t offsetInBytes,
 	void *data,
 	uint32_t elementCount,
@@ -1056,28 +1057,16 @@ REFRESHAPI void REFRESH_AddDisposeTexture(
 	REFRESH_Texture *texture
 );
 
-/* Sends a color target to be destroyed by the renderer. Note that we call it
+/* Sends a sampler to be destroyed by the renderer. Note that we call it
  * "AddDispose" because it may not be immediately destroyed by the renderer if
  * this is not called from the main thread (for example, if a garbage collector
  * deletes the resource instead of the programmer).
  *
- * colorTarget: The REFRESH_ColorTarget to be destroyed.
+ * texture: The REFRESH_Sampler to be destroyed.
  */
-REFRESHAPI void REFRESH_AddDisposeColorTarget(
+REFRESHAPI void REFRESH_AddDisposeSampler(
 	REFRESH_Device *device,
-	REFRESH_ColorTarget *colorTarget
-);
-
-/* Sends a depth/stencil target to be destroyed by the renderer. Note that we call it
- * "AddDispose" because it may not be immediately destroyed by the renderer if
- * this is not called from the main thread (for example, if a garbage collector
- * deletes the resource instead of the programmer).
- *
- * depthStencilTarget: The REFRESH_DepthStencilTarget to be destroyed.
- */
-REFRESHAPI void REFRESH_AddDisposeDepthStencilTarget(
-	REFRESH_Device *device,
-	REFRESH_DepthStencilTarget *depthStencilTarget
+	REFRESH_Sampler *sampler
 );
 
 /* Sends a vertex buffer to be destroyed by the renderer. Note that we call it
@@ -1104,7 +1093,55 @@ REFRESHAPI void REFRESH_AddDisposeIndexBuffer(
 	REFRESH_Buffer *buffer
 );
 
-/* Sends an shader module to be destroyed by the renderer. Note that we call it
+/* Sends an shader param buffer to be destroyed by the renderer. Note that we call it
+ * "AddDispose" because it may not be immediately destroyed by the renderer if
+ * this is not called from the main thread (for example, if a garbage collector
+ * deletes the resource instead of the programmer).
+ *
+ * buffer: The REFRESH_Buffer to be destroyed.
+ */
+REFRESHAPI void REFRESH_AddDisposeShaderParamBuffer(
+	REFRESH_Device *device,
+	REFRESH_Buffer *buffer
+);
+
+/* Sends a color target to be destroyed by the renderer. Note that we call it
+ * "AddDispose" because it may not be immediately destroyed by the renderer if
+ * this is not called from the main thread (for example, if a garbage collector
+ * deletes the resource instead of the programmer).
+ *
+ * colorTarget: The REFRESH_ColorTarget to be destroyed.
+ */
+REFRESHAPI void REFRESH_AddDisposeColorTarget(
+	REFRESH_Device *device,
+	REFRESH_ColorTarget *colorTarget
+);
+
+/* Sends a depth/stencil target to be destroyed by the renderer. Note that we call it
+ * "AddDispose" because it may not be immediately destroyed by the renderer if
+ * this is not called from the main thread (for example, if a garbage collector
+ * deletes the resource instead of the programmer).
+ *
+ * depthStencilTarget: The REFRESH_DepthStencilTarget to be destroyed.
+ */
+REFRESHAPI void REFRESH_AddDisposeDepthStencilTarget(
+	REFRESH_Device *device,
+	REFRESH_DepthStencilTarget *depthStencilTarget
+);
+
+/* Sends a framebuffer to be destroyed by the renderer. Note that we call it
+ * "AddDispose" because it may not be immediately destroyed by the renderer if
+ * this is not called from the main thread (for example, if a garbage collector
+ * deletes the resource instead of the programmer).
+ *
+ * framebuffer: The REFRESH_Framebuffer to be destroyed.
+ */
+REFRESHAPI void REFRESH_AddDisposeFramebuffer(
+	REFRESH_Device *device,
+	REFRESH_Framebuffer *frameBuffer
+);
+
+/* Sends a shader module to be destroyed by the renderer. Note that we call it
  * "AddDispose" because it may not be immediately destroyed by the renderer if
  * this is not called from the main thread (for example, if a garbage collector
  * deletes the resource instead of the programmer).
@@ -1114,6 +1151,30 @@ REFRESHAPI void REFRESH_AddDisposeIndexBuffer(
 REFRESHAPI void REFRESH_AddDisposeShaderModule(
 	REFRESH_Device *device,
 	REFRESH_ShaderModule *shaderModule
+);
+
+/* Sends a render pass to be destroyed by the renderer. Note that we call it
+ * "AddDispose" because it may not be immediately destroyed by the renderer if
+ * this is not called from the main thread (for example, if a garbage collector
+ * deletes the resource instead of the programmer).
+ *
+ * renderPass: The REFRESH_RenderPass to be destroyed.
+ */
+REFRESHAPI void REFRESH_AddDisposeRenderPass(
+	REFRESH_Device *device,
+	REFRESH_RenderPass *renderPass
+);
+
+/* Sends a graphics pipeline to be destroyed by the renderer. Note that we call it
+ * "AddDispose" because it may not be immediately destroyed by the renderer if
+ * this is not called from the main thread (for example, if a garbage collector
+ * deletes the resource instead of the programmer).
+ *
+ * graphicsPipeline: The REFRESH_GraphicsPipeline to be destroyed.
+ */
+REFRESHAPI void REFRESH_AddDisposeGraphicsPipeline(
+	REFRESH_Device *device,
+	REFRESH_GraphicsPipeline *graphicsPipeline
 );
 
 /* Graphics State */
