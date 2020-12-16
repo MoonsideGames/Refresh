@@ -655,28 +655,82 @@ REFRESHAPI void REFRESH_DrawPrimitives(
 
 /* State Creation */
 
-/* Creates a new RenderPass object. */
-REFRESHAPI REFRESH_RenderPass REFRESH_CreateRenderPass(
+/* Returns an allocated RenderPass* object. */
+REFRESHAPI REFRESH_RenderPass* REFRESH_CreateRenderPass(
 	REFRESH_Device *device,
 	REFRESH_RenderPassCreateInfo *renderPassCreateInfo
 );
 
-/* Creates a new Pipeline object. */
-REFRESHAPI REFRESH_Pipeline REFRESH_CreatePipeline(
+/* Returns an allocated Pipeline* object. */
+REFRESHAPI REFRESH_Pipeline* REFRESH_CreatePipeline(
 	REFRESH_Device *device,
 	REFRESH_PipelineCreateInfo *pipelineCreateInfo
 );
 
-/* Creates a new Sampler object. */
-REFRESHAPI REFRESH_Sampler REFRESH_CreateSampler(
+/* Returns an allocated Sampler* object. */
+REFRESHAPI REFRESH_Sampler* REFRESH_CreateSampler(
 	REFRESH_Device *device,
 	REFRESH_SamplerStateCreateInfo *samplerStateCreateInfo
 );
 
-/* Creates a new Framebuffer object. */
-REFRESHAPI REFRESH_Framebuffer REFRESH_CreateFramebuffer(
+/* Returns an allocated Framebuffer* object. */
+REFRESHAPI REFRESH_Framebuffer* REFRESH_CreateFramebuffer(
 	REFRESH_Device *device,
 	REFRESH_FramebufferCreateInfo *framebufferCreateInfo
+);
+
+/* Creates a 2D texture.
+ *
+ * format:		The pixel format of the texture data.
+ * width:		The width of the texture image.
+ * height: 		The height of the texture image.
+ * levelCount: 	The number of mipmap levels to allocate.
+ *
+ * Returns an allocated REFRESH_Texture* object. Note that the contents of
+ * the texture are undefined until SetData is called.
+ */
+REFRESHAPI REFRESH_Texture* REFRESH_CreateTexture2D(
+	REFRESH_Device *device,
+	REFRESH_SurfaceFormat format,
+	uint32_t width,
+	uint32_t height,
+	uint32_t levelCount
+);
+
+/* Creates a 3D texture.
+ *
+ * format:		The pixel format of the texture data.
+ * width:		The width of the texture image.
+ * height: 		The height of the texture image.
+ * depth: 		The depth of the texture image.
+ * levelCount: 	The number of mipmap levels to allocate.
+ *
+ * Returns an allocated REFRESH_Texture* object. Note that the contents of
+ * the texture are undefined until SetData is called.
+ */
+REFRESHAPI REFRESH_Texture* REFRESH_CreateTexture3D(
+	REFRESH_Device *device,
+	REFRESH_SurfaceFormat format,
+	uint32_t width,
+	uint32_t height,
+	uint32_t depth,
+	uint32_t levelCount
+);
+
+/* Creates a texture cube.
+ *
+ * format:		The pixel format of the texture data.
+ * size: 		The length of the cube side.
+ * levelCount: 	The number of mipmap levels to allocate.
+ *
+ * Returns an allocated REFRESH_Texture* object. Note that the contents of
+ * the texture are undefined until SetData is called.
+ */
+REFRESHAPI REFRESH_Texture* REFRESH_CreateTextureCube(
+	REFRESH_Device *device,
+	REFRESH_SurfaceFormat format,
+	uint32_t size,
+	uint32_t levelCount
 );
 
 /* Shader State */
