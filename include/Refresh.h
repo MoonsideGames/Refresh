@@ -143,6 +143,141 @@ typedef enum REFRESH_BufferUsage
     REFRESH_BUFFERUSAGE_DYNAMIC
 } REFRESH_BufferUsage;
 
+typedef enum REFRESH_VertexElementFormat
+{
+	REFRESH_VERTEXELEMENTFORMAT_SINGLE,
+	REFRESH_VERTEXELEMENTFORMAT_VECTOR2,
+	REFRESH_VERTEXELEMENTFORMAT_VECTOR3,
+	REFRESH_VERTEXELEMENTFORMAT_VECTOR4,
+	REFRESH_VERTEXELEMENTFORMAT_COLOR,
+	REFRESH_VERTEXELEMENTFORMAT_BYTE4,
+	REFRESH_VERTEXELEMENTFORMAT_SHORT2,
+	REFRESH_VERTEXELEMENTFORMAT_SHORT4,
+	REFRESH_VERTEXELEMENTFORMAT_NORMALIZEDSHORT2,
+	REFRESH_VERTEXELEMENTFORMAT_NORMALIZEDSHORT4,
+	REFRESH_VERTEXELEMENTFORMAT_HALFVECTOR2,
+	REFRESH_VERTEXELEMENTFORMAT_HALFVECTOR4
+} REFRESH_VertexElementFormat;
+
+typedef enum REFRESH_VertexInputRate
+{
+	REFRESH_VERTEXINPUTRATE_VERTEX = 0,
+	REFRESH_VERTEXINPUTRATE_INSTANCE = 1
+} REFRESH_VertexInputRate;
+
+typedef enum REFRESH_FillMode
+{
+	REFRESH_FILLMODE_FILL,
+	REFRESH_FILLMODE_LINE,
+	REFRESH_FILLMODE_POINT
+} REFRESH_FillMode;
+
+typedef enum REFRESH_CullMode
+{
+	REFRESH_CULLMODE_NONE,
+	REFRESH_CULLMODE_FRONT,
+	REFRESH_CULLMODE_BACK,
+	REFRESH_CULLMODE_FRONT_AND_BACK
+} REFRESH_CullMode;
+
+typedef enum REFRESH_FrontFace
+{
+	REFRESH_FRONTFACE_COUNTER_CLOCKWISE,
+	REFRESH_FRONTFACE_CLOCKWISE
+} REFRESH_FrontFace;
+
+typedef enum REFRESH_CompareOp
+{
+	REFRESH_COMPAREOP_NEVER,
+	REFRESH_COMPAREOP_LESS,
+	REFRESH_COMPAREOP_EQUAL,
+	REFRESH_COMPAREOP_LESS_OR_EQUAL,
+	REFRESH_COMPAREOP_GREATER,
+	REFRESH_COMPAREOP_NOT_EQUAL,
+	REFRESH_COMPAREOP_GREATER_OR_EQUAL,
+	REFRESH_COMPAREOP_ALWAYS
+} REFRESH_CompareOp;
+
+typedef enum REFRESH_StencilOp
+{
+	REFRESH_STENCILOP_KEEP,
+	REFRESH_STENCILOP_ZERO,
+	REFRESH_STENCILOP_REPLACE,
+	REFRESH_STENCILOP_INCREMENT_AND_CLAMP,
+	REFRESH_STENCILOP_DECREMENT_AND_CLAMP,
+	REFRESH_STENCILOP_INVERT,
+	REFRESH_STENCILOP_INCREMENT_AND_WRAP,
+	REFRESH_STENCILOP_DECREMENT_AND_WRAP
+} REFRESH_StencilOp;
+
+typedef enum REFRESH_BlendOp
+{
+	REFRESH_BLENDOP_CLEAR = 0,
+    REFRESH_BLENDOP_AND = 1,
+    REFRESH_BLENDOP_AND_REVERSE = 2,
+    REFRESH_BLENDOP_COPY = 3,
+    REFRESH_BLENDOP_AND_INVERTED = 4,
+    REFRESH_BLENDOP_NO_OP = 5,
+    REFRESH_BLENDOP_XOR = 6,
+    REFRESH_BLENDOP_OR = 7,
+    REFRESH_BLENDOP_NOR = 8,
+    REFRESH_BLENDOP_EQUIVALENT = 9,
+    REFRESH_BLENDOP_INVERT = 10,
+    REFRESH_BLENDOP_OR_REVERSE = 11,
+    REFRESH_BLENDOP_COPY_INVERTED = 12,
+    REFRESH_BLENDOP_OR_INVERTED = 13,
+    REFRESH_BLENDOP_NAND = 14,
+    REFRESH_BLENDOP_SET = 15
+} REFRESH_BlendOp;
+
+typedef enum REFRESH_BlendFactor
+{
+    REFRESH_BLENDFACTOR_ZERO = 0,
+    REFRESH_BLENDFACTOR_ONE = 1,
+    REFRESH_BLENDFACTOR_SRC_COLOR = 2,
+    REFRESH_BLENDFACTOR_ONE_MINUS_SRC_COLOR = 3,
+    REFRESH_BLENDFACTOR_DST_COLOR = 4,
+    REFRESH_BLENDFACTOR_ONE_MINUS_DST_COLOR = 5,
+    REFRESH_BLENDFACTOR_SRC_ALPHA = 6,
+    REFRESH_BLENDFACTOR_ONE_MINUS_SRC_ALPHA = 7,
+    REFRESH_BLENDFACTOR_DST_ALPHA = 8,
+    REFRESH_BLENDFACTOR_ONE_MINUS_DST_ALPHA = 9,
+    REFRESH_BLENDFACTOR_CONSTANT_COLOR = 10,
+    REFRESH_BLENDFACTOR_ONE_MINUS_CONSTANT_COLOR = 11,
+    REFRESH_BLENDFACTOR_CONSTANT_ALPHA = 12,
+    REFRESH_BLENDFACTOR_ONE_MINUS_CONSTANT_ALPHA = 13,
+    REFRESH_BLENDFACTOR_SRC_ALPHA_SATURATE = 14,
+    REFRESH_BLENDFACTOR_SRC1_COLOR = 15,
+    REFRESH_BLENDFACTOR_ONE_MINUS_SRC1_COLOR = 16,
+    REFRESH_BLENDFACTOR_SRC1_ALPHA = 17,
+    REFRESH_BLENDFACTOR_ONE_MINUS_SRC1_ALPHA = 18
+} REFRESH_BlendFactor;
+
+typedef enum REFRESH_ColorComponentFlagBits
+{
+    REFRESH_COLORCOMPONENT_R_BIT = 0x00000001,
+    REFRESH_COLORCOMPONENT_G_BIT = 0x00000002,
+    REFRESH_COLORCOMPONENT_B_BIT = 0x00000004,
+    REFRESH_COLORCOMPONENT_A_BIT = 0x00000008,
+    REFRESH_COLORCOMPONENT_FLAG_BITS_MAX_ENUM = 0x7FFFFFFF
+} REFRESH_ColorComponentFlagBits;
+
+typedef uint32_t REFRESH_ColorComponentFlags;
+
+typedef enum REFRESH_ShaderParamType
+{
+	REFRESH_SHADERPARAMTYPE_SAMPLER,
+	REFRESH_SHADERPARAMTYPE_SAMPLED_IMAGE,
+	REFRESH_SHADERPARAMTYPE_COMBINED_IMAGE_SAMPLER,
+	REFRESH_SHADERPARAMTYPE_UNIFORM
+} REFRESH_ShaderParamType;
+
+typedef enum REFRESH_ShaderStage
+{
+	REFRESH_SHADERSTAGE_VERTEX,
+	REFRESH_SHADERSTAGE_FRAGMENT
+} REFRESH_ShaderStage;
+
 /* Structures */
 
 typedef struct REFRESH_Color
@@ -179,43 +314,158 @@ typedef struct REFRESH_Viewport
 	float maxDepth;
 } REFRESH_Viewport;
 
-typedef enum REFRESH_VertexElementFormat
-{
-	REFRESH_VERTEXELEMENTFORMAT_SINGLE,
-	REFRESH_VERTEXELEMENTFORMAT_VECTOR2,
-	REFRESH_VERTEXELEMENTFORMAT_VECTOR3,
-	REFRESH_VERTEXELEMENTFORMAT_VECTOR4,
-	REFRESH_VERTEXELEMENTFORMAT_COLOR,
-	REFRESH_VERTEXELEMENTFORMAT_BYTE4,
-	REFRESH_VERTEXELEMENTFORMAT_SHORT2,
-	REFRESH_VERTEXELEMENTFORMAT_SHORT4,
-	REFRESH_VERTEXELEMENTFORMAT_NORMALIZEDSHORT2,
-	REFRESH_VERTEXELEMENTFORMAT_NORMALIZEDSHORT4,
-	REFRESH_VERTEXELEMENTFORMAT_HALFVECTOR2,
-	REFRESH_VERTEXELEMENTFORMAT_HALFVECTOR4
-} REFRESH_VertexElementFormat;
+/* State structures */
 
-typedef struct REFRESH_VertexElement
+typedef struct REFRESH_VertexBinding
 {
-	int32_t offset;
-	REFRESH_VertexElementFormat vertexElementFormat;
-	int32_t usageIndex;
-} REFRESH_VertexElement;
+	uint32_t binding;
+	uint32_t stride;
+	REFRESH_VertexInputRate inputRate;
+} REFRESH_VertexBinding;
 
-typedef struct REFRESH_VertexDeclaration
+typedef struct REFRESH_VertexAttribute
 {
-	int32_t vertexStride;
-	int32_t elementCount;
-	REFRESH_VertexElement *elements;
-} REFRESH_VertexDeclaration;
+	uint32_t location;
+	uint32_t binding;
+	REFRESH_VertexElementFormat format;
+	uint32_t offset;
+} REFRESH_VertexAttribute;
 
-typedef struct REFRESH_VertexBufferBinding
+typedef struct REFRESH_VertexInputState
 {
-	REFRESH_Buffer *vertexBuffer;
-	REFRESH_VertexDeclaration vertexDeclaration;
-	int32_t vertexOffset;
-	int32_t instanceFrequency;
-} REFRESH_VertexBufferBinding;
+	const REFRESH_VertexBinding *vertexBindings;
+	uint32_t vertexBindingCount;
+	const REFRESH_VertexAttribute *vertexAttributes;
+	uint32_t vertexAttributeCount;
+} REFRESH_VertexInputState;
+
+typedef struct REFRESH_StencilOpState
+{
+	REFRESH_StencilOp failOp;
+	REFRESH_StencilOp passOp;
+	REFRESH_StencilOp depthFailOp;
+	REFRESH_StencilOp compareOp;
+	uint32_t compareMask;
+	uint32_t writeMask;
+	uint32_t reference;
+} REFRESH_StencilOpState;
+
+typedef struct REFRESH_RenderTargetBlendState
+{
+	uint8_t blendEnable;
+	REFRESH_BlendFactor srcColorBlendFactor;
+	REFRESH_BlendFactor dstColorBlendFactor;
+	REFRESH_BlendOp colorBlendOp;
+	REFRESH_BlendFactor srcAlphaBlendFactor;
+	REFRESH_BlendFactor dstAlphaBlendFactor;
+	REFRESH_BlendOp alphaBlendOp;
+	REFRESH_ColorComponentFlags colorWriteMask;
+} REFRESH_RenderTargetBlendState;
+
+typedef struct REFRESH_ShaderParamLayoutBinding
+{
+	uint32_t binding;
+	REFRESH_ShaderParamType shaderParamType;
+	REFRESH_ShaderStage shaderStage;
+} REFRESH_ShaderParamLayoutBinding;
+
+typedef struct REFRESH_ShaderParamLayout
+{
+	uint32_t bindingCount;
+	const REFRESH_ShaderParamLayoutBinding *bindings;
+} REFRESH_ShaderParamLayout;
+
+typedef struct REFRESH_RenderTargetDescription
+{
+	REFRESH_SurfaceFormat format;
+	uint32_t multisampleCount;
+	REFRESH_LoadOp loadOp;
+	REFRESH_StoreOp storeOp;
+	REFRESH_LoadOp stencilLoadOp;
+	REFRESH_StoreOp stencilStoreOp;
+} REFRESH_RenderTargetDescription;
+
+typedef struct REFRESH_RenderPassCreateInfo
+{
+	uint32_t renderTargetCount;
+	const REFRESH_RenderTargetDescription *renderTargetDescriptions;
+} REFRESH_RenderPassCreateInfo;
+
+typedef struct REFRESH_PipelineLayoutCreateInfo
+{
+	uint32_t shaderParamsLayoutCount;
+	REFRESH_ShaderParamLayout *shaderParamLayouts;
+} REFRESH_PipelineLayoutCreateInfo;
+
+/* Pipeline state structures */
+
+typedef struct REFRESH_TopologyState
+{
+	REFRESH_TopologyState topology;
+} REFRESH_TopologyState;
+
+typedef struct REFRESH_ViewportState
+{
+	const REFRESH_Viewport *viewPorts;
+	uint32_t viewportCount;
+	const REFRESH_Rect *scissors;
+	uint32_t scissorCount;
+} REFRESH_ViewportState;
+
+typedef struct REFRESH_RasterizerState
+{
+	uint8_t depthClampEnable;
+	REFRESH_FillMode fillMode;
+	REFRESH_CullMode cullMode;
+	REFRESH_FrontFace frontFace;
+	uint8_t depthBiasEnable;
+	float depthBiasConstantFactor;
+	float depthBiasClamp;
+	float depthBiasSlopeFactor;
+	float lineWidth;
+} REFRESH_RasterizerState;
+
+typedef struct REFRESH_MultisampleState
+{
+	uint8_t multisampleCount;
+	const uint32_t *sampleMask;
+} REFRESH_MultisampleState;
+
+typedef struct REFRESH_DepthStencilState
+{
+	uint8_t depthTestEnable;
+	uint8_t depthWriteEnable;
+	REFRESH_CompareOp compareOp;
+	uint8_t depthBoundsTestEnable;
+	uint8_t stencilTestEnable;
+	REFRESH_StencilOpState frontStencilState;
+	REFRESH_StencilOpState backStencilState;
+	float minDepthBounds;
+	float maxDepthBounds;
+} REFRESH_DepthStencilState;
+
+typedef struct REFRESH_ColorBlendState
+{
+	uint8_t blendOpEnable;
+	REFRESH_BlendOp blendOp;
+	const REFRESH_RenderTargetBlendState *blendStates;
+	uint32_t blendStateCount;
+	float blendConstants[4];
+} REFRESH_ColorBlendState;
+
+typedef struct REFRESH_PipelineCreateInfo
+{
+	const REFRESH_ShaderStage *shaderStages;
+	const REFRESH_VertexInputState *vertexInputState;
+	const REFRESH_TopologyState *topologyState;
+	const REFRESH_ViewportState *viewportState;
+	const REFRESH_RasterizerState *rasterizerState;
+	const REFRESH_MultisampleState *multisampleState;
+	const REFRESH_DepthStencilState *depthStencilState;
+	const REFRESH_ColorBlendState *colorBlendState;
+	REFRESH_PipelineLayoutCreateInfo *layoutCreateInfo;
+	REFRESH_RenderPass *renderPass;
+} REFRESH_PipelineCreateInfo;
 
 /* Version API */
 
@@ -310,6 +560,18 @@ REFRESHAPI void REFRESH_DrawPrimitives(
 	REFRESH_PrimitiveType primitiveType,
 	int32_t vertexStart,
 	int32_t primitiveCount
+);
+
+/* Render State */
+
+REFRESHAPI REFRESH_RenderPass CreateRenderPass(
+	REFRESH_Device *device,
+	REFRESH_RenderPassCreateInfo *renderPassCreateInfo
+);
+
+REFRESHAPI REFRESH_Pipeline CreatePipeline(
+	REFRESH_Device *device,
+	REFRESH_PipelineCreateInfo *pipelineCreateInfo
 );
 
 #ifdef __cplusplus
