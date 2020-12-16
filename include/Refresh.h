@@ -58,7 +58,7 @@ typedef struct REFRESH_Sampler REFRESH_Sampler;
 typedef struct REFRESH_ShaderParamBuffer REFRESH_ShaderParamBuffer;
 typedef struct REFRESH_Buffer REFRESH_Buffer;
 typedef struct REFRESH_ColorTarget REFRESH_ColorTarget;
-typedef struct REFRESH_DepthTarget REFRESH_DepthTarget;
+typedef struct REFRESH_DepthStencilTarget REFRESH_DepthStencilTarget;
 typedef struct REFRESH_Framebuffer REFRESH_Framebuffer;
 typedef struct REFRESH_RenderPass REFRESH_RenderPass;
 typedef struct REFRESH_Pipeline REFRESH_Pipeline;
@@ -547,7 +547,7 @@ typedef struct REFRESH_FramebufferCreateInfo
 	REFRESH_RenderPass *renderPass;
 	const REFRESH_ColorTarget **pColorTargets;
 	uint32_t colorTargetCount;
-	const REFRESH_DepthTarget *pDepthTarget;
+	const REFRESH_DepthStencilTarget *pDepthTarget;
 	uint32_t width;
 	uint32_t height;
 	uint32_t layers;
@@ -731,6 +731,76 @@ REFRESHAPI REFRESH_Texture* REFRESH_CreateTextureCube(
 	REFRESH_SurfaceFormat format,
 	uint32_t size,
 	uint32_t levelCount
+);
+
+/* Creates a color target.
+ *
+ * width: 				The width of the color target.
+ * height: 				The height of the color target.
+ * format: 				The pixel format of the color target.
+ * multisampleCount:	The MSAA value for the color target.
+ * texture: 			The texture that the color target will resolve to.
+ */
+REFRESHAPI REFRESH_ColorTarget* REFRESH_GenColorTarget(
+	REFRESH_Device *device,
+	uint32_t width,
+	uint32_t height,
+	REFRESH_SurfaceFormat format,
+	uint32_t multisampleCount,
+	REFRESH_Texture *texture
+);
+
+/* Creates a depth/stencil target.
+ *
+ * width:	The width of the depth/stencil target.
+ * height: 	The height of the depth/stencil target.
+ * format:	The storage format of the depth/stencil target.
+ * texture: The texture that the depth/stencil target will resolve to.
+ */
+REFRESHAPI REFRESH_DepthStencilTarget* REFRESH_GenDepthStencilTarget(
+	REFRESH_Device *device,
+	uint32_t width,
+	uint32_t height,
+	REFRESH_DepthFormat format,
+	REFRESH_Texture *texture
+);
+
+/* Disposal */
+
+/* Sends a texture to be destroyed by the renderer. Note that we call it
+ * "AddDispose" because it may not be immediately destroyed by the renderer if
+ * this is not called from the main thread (for example, if a garbage collector
+ * deletes the resource instead of the programmer).
+ *
+ * texture: The REFRESH_Texture to be destroyed.
+ */
+REFRESHAPI void REFRESH_AddDisposeTexture(
+	REFRESH_Device *device,
+	REFRESH_Texture *texture
+);
+
+/* Sends a color target to be destroyed by the renderer. Note that we call it
+ * "AddDispose" because it may not be immediately destroyed by the renderer if
+ * this is not called from the main thread (for example, if a garbage collector
+ * deletes the resource instead of the programmer).
+ *
+ * colorTarget: The REFRESH_ColorTarget to be destroyed.
+ */
+REFRESHAPI void REFRESH_AddDisposeColorTarget(
+	REFRESH_Device *device,
+	REFRESH_ColorTarget *colorTarget
+);
+
+/* Sends a depth/stencil target to be destroyed by the renderer. Note that we call it
+ * "AddDispose" because it may not be immediately destroyed by the renderer if
+ * this is not called from the main thread (for example, if a garbage collector
+ * deletes the resource instead of the programmer).
+ *
+ * depthStencilTarget: The REFRESH_DepthStencilTarget to be destroyed.
+ */
+REFRESHAPI void REFRESH_AddDisposeDepthStencilTarget(
+	REFRESH_Device *device,
+	REFRESH_DepthStencilTarget *depthStencilTarget
 );
 
 /* Shader State */
