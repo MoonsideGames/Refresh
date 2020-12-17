@@ -72,8 +72,7 @@ typedef enum REFRESH_PrimitiveType
 	REFRESH_PRIMITIVETYPE_LINELIST,
 	REFRESH_PRIMITIVETYPE_LINESTRIP,
 	REFRESH_PRIMITIVETYPE_TRIANGLELIST,
-	REFRESH_PRIMITIVETYPE_TRIANGLESTRIP,
-    REFRESH_PRIMITIVETYPE_TRIANGLEFAN
+	REFRESH_PRIMITIVETYPE_TRIANGLESTRIP
 } REFRESH_PrimitiveType;
 
 typedef enum REFRESH_LoadOp
@@ -900,7 +899,7 @@ REFRESHAPI void REFRESH_SetTextureDataCube(
 	uint32_t dataLength
 );
 
-/* Uploads YUV image data to three ALPHA8 texture objects.
+/* Uploads YUV image data to three R8 texture objects.
  *
  * y:		The texture storing the Y data.
  * u:		The texture storing the U (Cb) data.
@@ -957,6 +956,23 @@ REFRESHAPI void REFRESH_SetIndexBufferData(
 	uint32_t dataLength
 );
 
+/* Pushes shader param data to a buffer.
+ *
+ * shaderParamBuffer: 	The buffer to be updated.
+ * offsetInBytes: 		The starting offset of the buffer to write into.
+ * data: 				The client data to write into the buffer.
+ * elementCount: 		The number of elements from the client buffer to write.
+ * elementSizeInBytes:	The size of each element in the client buffer.
+ */
+REFRESHAPI void REFRESH_SetShaderParamData(
+	REFRESH_Device *device,
+	REFRESH_Buffer *shaderParamBuffer,
+	uint32_t offsetInBytes,
+	void *data,
+	uint32_t elementCount,
+	uint32_t elementSizeInBytes
+);
+
 /* Sets textures/samplers for use with the currently bound vertex shader.
  *
  * startIndex: The index at which to begin replacing sampler references.
@@ -985,23 +1001,6 @@ REFRESHAPI void REFRESH_SetFragmentSamplers(
 	REFRESH_Texture *pTextures,
 	REFRESH_Sampler *pSamplers,
 	uint32_t count
-);
-
-/* Pushes shader param data to a buffer.
- *
- * shaderParamBuffer: 	The buffer to be updated.
- * offsetInBytes: 		The starting offset of the buffer to write into.
- * data: 				The client data to write into the buffer.
- * elementCount: 		The number of elements from the client buffer to write.
- * elementSizeInBytes:	The size of each element in the client buffer.
- */
-REFRESHAPI void REFRESH_SetShaderParamData(
-	REFRESH_Device *device,
-	REFRESH_Buffer *shaderParamBuffer,
-	uint32_t offsetInBytes,
-	void *data,
-	uint32_t elementCount,
-	uint32_t elementSizeInBytes
 );
 
 /* Getters */

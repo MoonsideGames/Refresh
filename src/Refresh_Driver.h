@@ -1,0 +1,551 @@
+/* Refresh - XNA-inspired 3D Graphics Library with modern capabilities
+ *
+ * Copyright (c) 2020 Evan Hemsley
+ *
+ * This software is provided 'as-is', without any express or implied warranty.
+ * In no event will the authors be held liable for any damages arising from
+ * the use of this software.
+ *
+ * Permission is granted to anyone to use this software for any purpose,
+ * including commercial applications, and to alter it and redistribute it
+ * freely, subject to the following restrictions:
+ *
+ * 1. The origin of this software must not be misrepresented; you must not
+ * claim that you wrote the original software. If you use this software in a
+ * product, an acknowledgment in the product documentation would be
+ * appreciated but is not required.
+ *
+ * 2. Altered source versions must be plainly marked as such, and must not be
+ * misrepresented as being the original software.
+ *
+ * 3. This notice may not be removed or altered from any source distribution.
+ *
+ * Evan "cosmonaut" Hemsley <evan@moonside.games>
+ *
+ */
+
+#ifndef REFRESH_DRIVER_H
+#define REFRESH_DRIVER_H
+
+#include "Refresh.h"
+
+/* Windows/Visual Studio cruft */
+#ifdef _WIN32
+#define inline __inline
+#endif
+
+/* Internal Helper Utilities */
+
+static inline uint32_t Texture_GetFormatSize(
+	REFRESH_SurfaceFormat format
+) {
+	switch (format)
+	{
+		case REFRESH_SURFACEFORMAT_BC1:
+			return 8;
+		case REFRESH_SURFACEFORMAT_BC2:
+		case REFRESH_SURFACEFORMAT_BC3:
+			return 16;
+		case REFRESH_SURFACEFORMAT_R8:
+			return 1;
+		case REFRESH_SURFACEFORMAT_R5G6B5:
+		case REFRESH_SURFACEFORMAT_B4G4R4A4:
+		case REFRESH_SURFACEFORMAT_A1R5G5B5:
+		case REFRESH_SURFACEFORMAT_R16_SFLOAT:
+		case REFRESH_SURFACEFORMAT_R8G8_SNORM:
+			return 2;
+		case REFRESH_SURFACEFORMAT_R8G8B8A8:
+		case REFRESH_SURFACEFORMAT_R32_SFLOAT:
+		case FNA3D_SURFACEFORMAT_RG32:
+		case REFRESH_SURFACEFORMAT_R16G16_SFLOAT:
+		case REFRESH_SURFACEFORMAT_R8G8B8A8_SNORM:
+		case REFRESH_SURFACEFORMAT_A2R10G10B10:
+			return 4;
+		case REFRESH_SURFACEFORMAT_R16G16B16A16_SFLOAT:
+		case REFRESH_SURFACEFORMAT_R16G16B16A16:
+		case REFRESH_SURFACEFORMAT_R32G32_SFLOAT:
+			return 8;
+		case REFRESH_SURFACEFORMAT_R32G32B32A32_SFLOAT:
+			return 16;
+		default:
+			FNA3D_LogError(
+				"Unrecognized SurfaceFormat!"
+			);
+			return 0;
+	}
+}
+
+static inline uint32_t PrimitiveVerts(
+	REFRESH_PrimitiveType primitiveType,
+	uint32_t primitiveCount
+) {
+	switch (primitiveType)
+	{
+		case REFRESH_PRIMITIVETYPE_TRIANGLELIST:
+			return primitiveCount * 3;
+		case REFRESH_PRIMITIVETYPE_TRIANGLESTRIP:
+			return primitiveCount + 2;
+		case REFRESH_PRIMITIVETYPE_LINELIST:
+			return primitiveCount * 2;
+		case REFRESH_PRIMITIVETYPE_LINESTRIP:
+			return primitiveCount + 1;
+		case REFRESH_PRIMITIVETYPE_POINTLIST:
+			return primitiveCount;
+		default:
+			REFRESH_LogError(
+				"Unrecognized primitive type!"
+			);
+			return 0;
+	}
+}
+
+static inline uint32_t IndexSize(REFRESH_IndexElementSize size)
+{
+	return (size == FNA3D_INDEXELEMENTSIZE_16BIT) ? 2 : 4;
+}
+
+static inline uint32_t BytesPerRow(
+	int32_t width,
+	REFRESH_SurfaceFormat format
+) {
+	uint32_t blocksPerRow = width;
+
+	if (	format == REFRESH_SURFACEFORMAT_BC1 ||
+		format == REFRESH_SURFACEFORMAT_BC2 ||
+		format == REFRESH_SURFACEFORMAT_BC3	)
+	{
+		blocksPerRow = (width + 3) / 4;
+	}
+
+	return blocksPerRow * Texture_GetFormatSize(format);
+}
+
+static inline int32_t BytesPerImage(
+	uint32_t width,
+	uint32_t height,
+	REFRESH_SurfaceFormat format
+) {
+	uint32_t blocksPerRow = width;
+	uint32_t blocksPerColumn = height;
+
+	if (	format == REFRESH_SURFACEFORMAT_BC1 ||
+		format == REFRESH_SURFACEFORMAT_BC2 ||
+		format == REFRESH_SURFACEFORMAT_BC3	)
+	{
+		blocksPerRow = (width + 3) / 4;
+		blocksPerColumn = (height + 3) / 4;
+	}
+
+	return blocksPerRow * blocksPerColumn * Texture_GetFormatSize(format);
+}
+
+/* XNA GraphicsDevice Limits */
+/* TODO: can these be adjusted for modern low-end? */
+
+#define MAX_TEXTURE_SAMPLERS		16
+#define MAX_VERTEXTEXTURE_SAMPLERS	4
+#define MAX_TOTAL_SAMPLERS		(MAX_TEXTURE_SAMPLERS + MAX_VERTEXTEXTURE_SAMPLERS)
+
+#define MAX_VERTEX_ATTRIBUTES		16
+#define MAX_BOUND_VERTEX_BUFFERS	16
+
+#define MAX_RENDERTARGET_BINDINGS	4
+
+/* REFRESH_Device Definition */
+
+typedef struct REFRESH_Renderer REFRESH_Renderer;
+
+struct REFRESH_Device
+{
+	/* Quit */
+
+	void (*DestroyDevice)(REFRESH_Device *device);
+
+	/* Drawing */
+
+	void (*Clear)(
+        REFRESH_Renderer *driverData,
+        REFRESH_ClearOptions options,
+        REFRESH_Vec4 **colors,
+        uint32_t colorCount,
+        float depth,
+        int32_t stencil
+	);
+
+	void (*DrawIndexedPrimitives)(
+        REFRESH_Renderer *driverData,
+        REFRESH_PrimitiveType primitiveType,
+        int32_t baseVertex,
+        int32_t minVertexIndex,
+        int32_t numVertices,
+        int32_t startIndex,
+        int32_t primitiveCount,
+        REFRESH_Buffer *indices,
+        REFRESH_IndexElementSize indexElementSize
+	);
+	void (*DrawInstancedPrimitives)(
+        REFRESH_Renderer *driverData,
+        REFRESH_PrimitiveType primitiveType,
+        int32_t baseVertex,
+        int32_t minVertexIndex,
+        int32_t numVertices,
+        int32_t startIndex,
+        int32_t primitiveCount,
+        int32_t instanceCount,
+        REFRESH_Buffer *indices,
+        REFRESH_IndexElementSize indexElementSize
+	);
+	void (*DrawPrimitives)(
+	    REFRESH_Renderer *driverData,
+        REFRESH_PrimitiveType primitiveType,
+        int32_t vertexStart,
+        int32_t primitiveCount
+	);
+
+    /* State Creation */
+
+    void (*CreateRenderPass)(
+        REFRESH_Renderer *driverData,
+        REFRESH_RenderPassCreateInfo *renderPassCreateInfo
+    );
+
+    void (*CreateGraphicsPipeline)(
+        REFRESH_Renderer *driverData,
+        REFRESH_GraphicsPipelineCreateInfo *pipelineCreateInfo
+    );
+
+    void (*CreateSampler)(
+        REFRESH_Renderer *driverData,
+	    REFRESH_SamplerStateCreateInfo *samplerStateCreateInfo
+    );
+
+    void (*CreateFramebuffer)(
+        REFRESH_Renderer *driverData,
+        REFRESH_FramebufferCreateInfo *framebufferCreateInfo
+    );
+
+    void (*CreateShaderModule)(
+        REFRESH_Renderer *driverData,
+	    REFRESH_ShaderModuleCreateInfo *shaderModuleCreateInfo
+    );
+
+    void (*CreateTexture2D)(
+        REFRESH_Renderer *driverData,
+        REFRESH_SurfaceFormat format,
+        uint32_t width,
+        uint32_t height,
+        uint32_t levelCount
+    );
+
+    void (*CreateTexture3D)(
+        REFRESH_Renderer *driverData,
+        REFRESH_SurfaceFormat format,
+        uint32_t width,
+        uint32_t height,
+        uint32_t depth,
+        uint32_t levelCount
+    );
+
+    void (*CreateTextureCube)(
+        REFRESH_Renderer *driverData,
+        REFRESH_SurfaceFormat format,
+        uint32_t size,
+        uint32_t levelCount
+    );
+
+    void (*GenColorTarget)(
+        REFRESH_Renderer *driverData,
+        uint32_t width,
+        uint32_t height,
+        REFRESH_SurfaceFormat format,
+        uint32_t multisampleCount,
+        REFRESH_Texture *texture
+    );
+
+    void(*GenDepthStencilTarget)(
+        REFRESH_Renderer *driverData,
+        uint32_t width,
+        uint32_t height,
+        REFRESH_DepthFormat format,
+        REFRESH_Texture *texture
+    );
+
+    void(*GenVertexBuffer)(
+        REFRESH_Renderer *driverData,
+        uint32_t sizeInBytes
+    );
+
+    void(*GenIndexBuffer)(
+        REFRESH_Renderer *driverData,
+        uint32_t sizeInBytes
+    );
+
+    void(*GenShaderParamBuffer)(
+        REFRESH_Renderer *driverData,
+        uint32_t sizeInBytes
+    );
+
+    /* Setters */
+
+    void(*SetTextureData2D)(
+        REFRESH_Renderer *driverData,
+        REFRESH_Texture *texture,
+        uint32_t x,
+        uint32_t y,
+        uint32_t w,
+        uint32_t h,
+        uint32_t level,
+        void *data,
+        uint32_t dataLengthInBytes
+    );
+
+    void(*SetTextureData3D)(
+        REFRESH_Renderer *driverData,
+        REFRESH_Texture *texture,
+        uint32_t x,
+        uint32_t y,
+        uint32_t z,
+        uint32_t w,
+        uint32_t h,
+        uint32_t d,
+        uint32_t level,
+        void* data,
+        uint32_t dataLength
+    );
+
+    void(*SetTextureDataCube)(
+        REFRESH_Renderer *driverData,
+        REFRESH_Texture *texture,
+        uint32_t x,
+        uint32_t y,
+        uint32_t w,
+        uint32_t h,
+        REFRESH_CubeMapFace cubeMapFace,
+        uint32_t level,
+        void* data,
+        uint32_t dataLength
+    );
+
+    void(*SetTextureDataYUV)(
+        REFRESH_Renderer *driverData,
+        REFRESH_Texture *y,
+        REFRESH_Texture *u,
+        REFRESH_Texture *v,
+        uint32_t yWidth,
+        uint32_t yHeight,
+        uint32_t uvWidth,
+        uint32_t uvHeight,
+        void* data,
+        uint32_t dataLength
+    );
+
+    void(*SetVertexBufferData)(
+        REFRESH_Renderer *driverData,
+        REFRESH_Buffer *buffer,
+        uint32_t offsetInBytes,
+        void* data,
+        uint32_t elementCount,
+        uint32_t elementSizeInBytes
+    );
+
+    void(*SetIndexBufferData)(
+        REFRESH_Renderer *driverData,
+        REFRESH_Buffer *buffer,
+        uint32_t offsetInBytes,
+        void* data,
+        uint32_t dataLength
+    );
+
+    void(*SetShaderParamData)(
+        REFRESH_Renderer *driverData,
+        REFRESH_Buffer *shaderParamBuffer,
+        uint32_t offsetInBytes,
+        void *data,
+        uint32_t elementCount,
+        uint32_t elementSizeInBytes
+    );
+
+    void(*SetVertexSamplers)(
+        REFRESH_Renderer *driverData,
+        uint32_t startIndex,
+        REFRESH_Texture *pTextures,
+        REFRESH_Sampler *pSamplers,
+        uint32_t count
+    );
+
+    void(*SetFragmentSamplers)(
+        REFRESH_Renderer *driverData,
+        uint32_t startIndex,
+        REFRESH_Texture *pTextures,
+        REFRESH_Sampler *pSamplers,
+        uint32_t count
+    );
+
+    /* Getters */
+
+    void(*GetTextureData2D)(
+        REFRESH_Renderer *driverData,
+        REFRESH_Texture *texture,
+        uint32_t x,
+        uint32_t y,
+        uint32_t w,
+        uint32_t h,
+        uint32_t level,
+        void* data,
+        uint32_t dataLength
+    );
+
+    void(*GetTextureDataCube)(
+        REFRESH_Renderer *driverData,
+        REFRESH_Texture *texture,
+        uint32_t x,
+        uint32_t y,
+        uint32_t w,
+        uint32_t h,
+        REFRESH_CubeMapFace cubeMapFace,
+        uint32_t level,
+        void* data,
+        uint32_t dataLength
+    );
+
+    /* Disposal */
+
+    void(*AddDisposeTexture)(
+        REFRESH_Renderer *driverData,
+        REFRESH_Texture *texture
+    );
+
+    void(*AddDisposeSampler)(
+        REFRESH_Renderer *driverData,
+        REFRESH_Sampler *sampler
+    );
+
+    void(*AddDisposeVertexBuffer)(
+        REFRESH_Renderer *driverData,
+        REFRESH_Buffer *buffer
+    );
+
+    void(*AddDisposeIndexBuffer)(
+        REFRESH_Renderer *driverData,
+        REFRESH_Buffer *buffer
+    );
+
+    void(*AddDisposeShaderParamBuffer)(
+        REFRESH_Renderer *driverData,
+        REFRESH_Buffer *buffer
+    );
+
+    void(*AddDisposeColorTarget)(
+        REFRESH_Renderer *driverData,
+	    REFRESH_ColorTarget *colorTarget
+    );
+
+    void(*AddDisposeDepthStencilTarget)(
+        REFRESH_Renderer *driverData,
+	    REFRESH_DepthStencilTarget *depthStencilTarget
+    );
+
+    void(*AddDisposeFramebuffer)(
+        REFRESH_Renderer *driverData,
+        REFRESH_Framebuffer *frameBuffer
+    );
+
+    void(*AddDisposeShaderModule)(
+        REFRESH_Renderer *driverData,
+        REFRESH_ShaderModule *shaderModule
+    );
+
+    void(*AddDisposeRenderPass)(
+        REFRESH_Renderer *driverData,
+        REFRESH_RenderPass *renderPass
+    );
+
+    void(*AddDisposeGraphicsPipeline)(
+        REFRESH_Renderer *driverData,
+        REFRESH_GraphicsPipeline *graphicsPipeline
+    );
+
+    /* Graphics State */
+
+    void(*BeginRenderPass)(
+        REFRESH_Renderer *driverData,
+        REFRESH_RenderPass *renderPass,
+        REFRESH_Framebuffer *framebuffer,
+        REFRESH_Rect renderArea,
+        REFRESH_ClearValue *pClearValues,
+        uint32_t clearCount
+    );
+
+    void(*EndRenderPass)(
+        REFRESH_Renderer *driverData
+    );
+
+    void(*BindGraphicsPipeline)(
+        REFRESH_Renderer *driverData,
+        REFRESH_GraphicsPipeline *graphicsPipeline
+    );
+
+	/* Opaque pointer for the Driver */
+	REFRESH_Renderer *driverData;
+};
+
+#define ASSIGN_DRIVER_FUNC(func, name) \
+	result->func = name##_##func;
+#define ASSIGN_DRIVER(name) \
+	ASSIGN_DRIVER_FUNC(DestroyDevice, name) \
+	ASSIGN_DRIVER_FUNC(Clear, name) \
+	ASSIGN_DRIVER_FUNC(DrawIndexedPrimitives, name) \
+	ASSIGN_DRIVER_FUNC(DrawInstancedPrimitives, name) \
+	ASSIGN_DRIVER_FUNC(DrawPrimitives, name) \
+    ASSIGN_DRIVER_FUNC(CreateRenderPass, name) \
+    ASSIGN_DRIVER_FUNC(CreateGraphicsPipeline, name) \
+    ASSIGN_DRIVER_FUNC(CreateSampler, name) \
+    ASSIGN_DRIVER_FUNC(CreateFramebuffer, name) \
+    ASSIGN_DRIVER_FUNC(CreateShaderModule, name) \
+    ASSIGN_DRIVER_FUNC(CreateTexture2D, name) \
+    ASSIGN_DRIVER_FUNC(CreateTexture3D, name) \
+    ASSIGN_DRIVER_FUNC(CreateTextureCube, name) \
+    ASSIGN_DRIVER_FUNC(GenColorTarget, name) \
+    ASSIGN_DRIVER_FUNC(GenDepthStencilTarget, name) \
+    ASSIGN_DRIVER_FUNC(GenVertexBuffer, name) \
+    ASSIGN_DRIVER_FUNC(GenIndexBuffer, name) \
+    ASSIGN_DRIVER_FUNC(GenShaderParamBuffer, name) \
+    ASSIGN_DRIVER_FUNC(SetTextureData2D, name) \
+    ASSIGN_DRIVER_FUNC(SetTextureData3D, name) \
+    ASSIGN_DRIVER_FUNC(SetTextureDataCube, name) \
+    ASSIGN_DRIVER_FUNC(SetTextureDataYUV, name) \
+    ASSIGN_DRIVER_FUNC(SetVertexBufferData, name) \
+    ASSIGN_DRIVER_FUNC(SetIndexBufferData, name) \
+    ASSIGN_DRIVER_FUNC(SetShaderParamData, name) \
+    ASSIGN_DRIVER_FUNC(SetVertexSamplers, name) \
+    ASSIGN_DRIVER_FUNC(SetFragmentSamplers, name) \
+    ASSIGN_DRIVER_FUNC(GetTextureData2D, name) \
+    ASSIGN_DRIVER_FUNC(GetTextureDataCube, name) \
+    ASSIGN_DRIVER_FUNC(AddDisposeTexture, name) \
+    ASSIGN_DRIVER_FUNC(AddDisposeSampler, name) \
+    ASSIGN_DRIVER_FUNC(AddDisposeVertexBuffer, name) \
+    ASSIGN_DRIVER_FUNC(AddDisposeIndexBuffer, name) \
+    ASSIGN_DRIVER_FUNC(AddDisposeShaderParamBuffer, name) \
+    ASSIGN_DRIVER_FUNC(AddDisposeColorTarget, name) \
+    ASSIGN_DRIVER_FUNC(AddDisposeDepthStencilTarget, name) \
+    ASSIGN_DRIVER_FUNC(AddDisposeFramebuffer, name) \
+    ASSIGN_DRIVER_FUNC(AddDisposeShaderModule, name) \
+    ASSIGN_DRIVER_FUNC(AddDisposeRenderPass, name) \
+    ASSIGN_DRIVER_FUNC(AddDisposeGraphicsPipeline, name) \
+    ASSIGN_DRIVER_FUNC(BeginRenderPass, name) \
+    ASSIGN_DRIVER_FUNC(EndRenderPass, name) \
+    ASSIGN_DRIVER_FUNC(BindGraphicsPipeline, name)
+
+typedef struct REFRESH_Driver
+{
+	const char *Name;
+	REFRESH_Device* (*CreateDevice)(
+		FNA3D_Device *fnaDevice
+	);
+} REFRESH_Driver;
+
+extern REFRESH_Driver VulkanDriver;
+
+#endif /* FNA3D_DRIVER_H */
+
+/* vim: set noexpandtab shiftwidth=8 tabstop=8: */
