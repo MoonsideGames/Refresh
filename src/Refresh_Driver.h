@@ -56,7 +56,6 @@ static inline uint32_t Texture_GetFormatSize(
 			return 2;
 		case REFRESH_SURFACEFORMAT_R8G8B8A8:
 		case REFRESH_SURFACEFORMAT_R32_SFLOAT:
-		case FNA3D_SURFACEFORMAT_RG32:
 		case REFRESH_SURFACEFORMAT_R16G16_SFLOAT:
 		case REFRESH_SURFACEFORMAT_R8G8B8A8_SNORM:
 		case REFRESH_SURFACEFORMAT_A2R10G10B10:
@@ -101,7 +100,7 @@ static inline uint32_t PrimitiveVerts(
 
 static inline uint32_t IndexSize(REFRESH_IndexElementSize size)
 {
-	return (size == FNA3D_INDEXELEMENTSIZE_16BIT) ? 2 : 4;
+	return (size == REFRESH_INDEXELEMENTSIZE_16BIT) ? 2 : 4;
 }
 
 static inline uint32_t BytesPerRow(
@@ -540,7 +539,7 @@ typedef struct REFRESH_Driver
 {
 	const char *Name;
 	REFRESH_Device* (*CreateDevice)(
-		FNA3D_Device *fnaDevice
+		void *deviceWindowHandle
 	);
 } REFRESH_Driver;
 

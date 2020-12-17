@@ -25,7 +25,6 @@
  */
 
 #include <stddef.h>
-#include <FNA3D.h>
 
 #ifndef REFRESH_H
 #define REFRESH_H
@@ -586,10 +585,12 @@ REFRESHAPI uint32_t REFRESH_LinkedVersion(void);
  * This creation method takes an existing FNA3D_Device
  * to ease interoperability with existing FNA graphics code.
  *
- * fnaDevice: An allocated FNA3D_Device structure.
+ * deviceWindowHandle:
+ * 		A handle to an SDL_Window.
+ * 		If this is NULL, Refresh will attempt to run in headless mode.
  */
 REFRESHAPI REFRESH_Device* REFRESH_CreateDevice(
-	FNA3D_Device *fnaDevice
+	void *deviceWindowHandle
 );
 
 /* Destroys a rendering context previously returned by REFRESH_CreateDevice. */

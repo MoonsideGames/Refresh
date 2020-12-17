@@ -76,8 +76,6 @@ set_target_properties(Refresh PROPERTIES OUTPUT_NAME "Refresh"
 	SOVERSION ${LIB_MAJOR_VERSION}
 )
 
-target_include_directories(Refresh PUBLIC ../FNA3D/include)
-
 # SDL2 Dependency
 if (DEFINED SDL2_INCLUDE_DIRS AND DEFINED SDL2_LIBRARIES)
 	message(STATUS "using pre-defined SDL2 variables SDL2_INCLUDE_DIRS and SDL2_LIBRARIES")

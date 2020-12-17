@@ -35,10 +35,10 @@
 #include <SDL_syswm.h>
 #include <SDL_vulkan.h>
 
-typedef struct VulkanRenderer
+typedef struct Refresh_VulkanRenderer
 {
-    FNA3D_Device *device;
-} VulkanRenderer;
+    VkInstance instance;
+} Refresh_VulkanRenderer;
 
 static void VULKAN_DestroyDevice(
     REFRESH_Device *device
@@ -445,15 +445,16 @@ static void VULKAN_BindGraphicsPipeline(
 }
 
 static REFRESH_Device* VULKAN_CreateDevice(
-    FNA3D_Device *fnaDevice
+    void *deviceWindowHandle
 ) {
     REFRESH_Device *result;
-    VulkanRenderer *renderer;
+    Refresh_VulkanRenderer *renderer;
 
     result = (REFRESH_Device*) SDL_malloc(sizeof(REFRESH_Device));
     ASSIGN_DRIVER(VULKAN)
 
-    renderer = (VulkanRenderer*) SDL_malloc(sizeof(VulkanRenderer));
+    renderer = (Refresh_VulkanRenderer*) SDL_malloc(sizeof(Refresh_VulkanRenderer));
+    result->driverData = (REFRESH_Renderer*) renderer;
 
     return result;
 }

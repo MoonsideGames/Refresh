@@ -14,7 +14,7 @@ For shaders, we plan to consume SPIR-V bytecode.
 
 Dependencies
 ------------
-Refresh depends on SDL2. It also depends on FNA3D to ease interoperability in FNA.
+Refresh depends on SDL2 for portability.
 Refresh never explicitly uses the C runtime.
 
 Building Refresh

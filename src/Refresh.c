@@ -49,14 +49,14 @@ uint32_t REFRESH_LinkedVersion(void)
 static int32_t selectedDriver = -1;
 
 REFRESH_Device* REFRESH_CreateDevice(
-    FNA3D_Device *fnaDevice
+    void *deviceWindowHandle
 ) {
     if (selectedDriver < 0)
     {
         return NULL;
     }
 
-    return drivers[selectedDriver]->CreateDevice(fnaDevice);
+    return drivers[selectedDriver]->CreateDevice(deviceWindowHandle);
 }
 
 void REFRESH_DestroyDevice(REFRESH_Device *device)
