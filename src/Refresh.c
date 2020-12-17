@@ -29,6 +29,7 @@
 #include <SDL.h>
 
 #define NULL_RETURN(name) if (name == NULL) { return; }
+#define NULL_RETURN_NULL(name) if (name == NULL) { return NULL; }
 
 /* Drivers */
 
@@ -36,6 +37,83 @@ static const REFRESH_Driver *drivers[] = {
     &VulkanDriver,
     NULL
 };
+
+/* Logging */
+
+static void REFRESH_Default_LogInfo(const char *msg)
+{
+	SDL_LogInfo(
+		SDL_LOG_CATEGORY_APPLICATION,
+		"%s",
+		msg
+	);
+}
+
+static void REFRESH_Default_LogWarn(const char *msg)
+{
+	SDL_LogWarn(
+		SDL_LOG_CATEGORY_APPLICATION,
+		"%s",
+		msg
+	);
+}
+
+static void REFRESH_Default_LogError(const char *msg)
+{
+	SDL_LogError(
+		SDL_LOG_CATEGORY_APPLICATION,
+		"%s",
+		msg
+	);
+}
+
+static REFRESH_LogFunc REFRESH_LogInfoFunc = REFRESH_Default_LogInfo;
+static REFRESH_LogFunc REFRESH_LogWarnFunc = REFRESH_Default_LogWarn;
+static REFRESH_LogFunc REFRESH_LogErrorFunc = REFRESH_Default_LogError;
+
+#define MAX_MESSAGE_SIZE 1024
+
+void REFRESH_LogInfo(const char *fmt, ...)
+{
+	char msg[MAX_MESSAGE_SIZE];
+	va_list ap;
+	va_start(ap, fmt);
+	SDL_vsnprintf(msg, sizeof(msg), fmt, ap);
+	va_end(ap);
+	REFRESH_LogInfoFunc(msg);
+}
+
+void REFRESH_LogWarn(const char *fmt, ...)
+{
+	char msg[MAX_MESSAGE_SIZE];
+	va_list ap;
+	va_start(ap, fmt);
+	SDL_vsnprintf(msg, sizeof(msg), fmt, ap);
+	va_end(ap);
+	REFRESH_LogWarnFunc(msg);
+}
+
+void REFRESH_LogError(const char *fmt, ...)
+{
+	char msg[MAX_MESSAGE_SIZE];
+	va_list ap;
+	va_start(ap, fmt);
+	SDL_vsnprintf(msg, sizeof(msg), fmt, ap);
+	va_end(ap);
+	REFRESH_LogErrorFunc(msg);
+}
+
+#undef MAX_MESSAGE_SIZE
+
+void REFRESH_HookLogFunctions(
+	REFRESH_LogFunc info,
+	REFRESH_LogFunc warn,
+	REFRESH_LogFunc error
+) {
+	REFRESH_LogInfoFunc = info;
+	REFRESH_LogWarnFunc = warn;
+	REFRESH_LogErrorFunc = error;
+}
 
 /* Version API */
 
@@ -148,8 +226,8 @@ REFRESH_RenderPass* REFRESH_CreateRenderPass(
 	REFRESH_Device *device,
 	REFRESH_RenderPassCreateInfo *renderPassCreateInfo
 ) {
-    NULL_RETURN(device);
-    device->CreateRenderPass(
+    NULL_RETURN_NULL(device);
+    return device->CreateRenderPass(
         device->driverData,
         renderPassCreateInfo
     );
@@ -159,8 +237,8 @@ REFRESH_GraphicsPipeline* REFRESH_CreateGraphicsPipeline(
 	REFRESH_Device *device,
 	REFRESH_GraphicsPipelineCreateInfo *pipelineCreateInfo
 ) {
-    NULL_RETURN(device);
-    device->CreateGraphicsPipeline(
+    NULL_RETURN_NULL(device);
+    return device->CreateGraphicsPipeline(
         device->driverData,
         pipelineCreateInfo
     );
@@ -170,8 +248,8 @@ REFRESH_Sampler* REFRESH_CreateSampler(
 	REFRESH_Device *device,
 	REFRESH_SamplerStateCreateInfo *samplerStateCreateInfo
 ) {
-    NULL_RETURN(device);
-    device->CreateSampler(
+    NULL_RETURN_NULL(device);
+    return device->CreateSampler(
         device->driverData,
         samplerStateCreateInfo
     );
@@ -181,8 +259,8 @@ REFRESH_Framebuffer* REFRESH_CreateFramebuffer(
 	REFRESH_Device *device,
 	REFRESH_FramebufferCreateInfo *framebufferCreateInfo
 ) {
-    NULL_RETURN(device);
-    device->CreateFramebuffer(
+    NULL_RETURN_NULL(device);
+    return device->CreateFramebuffer(
         device->driverData,
         framebufferCreateInfo
     );
@@ -192,8 +270,8 @@ REFRESH_ShaderModule* REFRESH_CreateShaderModule(
 	REFRESH_Device *device,
 	REFRESH_ShaderModuleCreateInfo *shaderModuleCreateInfo
 ) {
-    NULL_RETURN(device);
-    device->CreateShaderModule(
+    NULL_RETURN_NULL(device);
+    return device->CreateShaderModule(
         device->driverData,
         shaderModuleCreateInfo
     );
@@ -206,8 +284,8 @@ REFRESH_Texture* REFRESH_CreateTexture2D(
 	uint32_t height,
 	uint32_t levelCount
 ) {
-    NULL_RETURN(device);
-    device->CreateTexture2D(
+    NULL_RETURN_NULL(device);
+    return device->CreateTexture2D(
         device->driverData,
         format,
         width,
@@ -224,8 +302,8 @@ REFRESH_Texture* REFRESH_CreateTexture3D(
 	uint32_t depth,
 	uint32_t levelCount
 ) {
-    NULL_RETURN(device);
-    device->CreateTexture3D(
+    NULL_RETURN_NULL(device);
+    return device->CreateTexture3D(
         device->driverData,
         format,
         width,
@@ -241,8 +319,8 @@ REFRESH_Texture* REFRESH_CreateTextureCube(
 	uint32_t size,
 	uint32_t levelCount
 ) {
-    NULL_RETURN(device);
-    device->CreateTextureCube(
+    NULL_RETURN_NULL(device);
+    return device->CreateTextureCube(
         device->driverData,
         format,
         size,
@@ -258,8 +336,8 @@ REFRESH_ColorTarget* REFRESH_GenColorTarget(
 	uint32_t multisampleCount,
 	REFRESH_Texture *texture
 ) {
-    NULL_RETURN(device);
-    device->GenColorTarget(
+    NULL_RETURN_NULL(device);
+    return device->GenColorTarget(
         device->driverData,
         width,
         height,
@@ -276,8 +354,8 @@ REFRESH_DepthStencilTarget* REFRESH_GenDepthStencilTarget(
 	REFRESH_DepthFormat format,
 	REFRESH_Texture *texture
 ) {
-    NULL_RETURN(device);
-    device->GenDepthStencilTarget(
+    NULL_RETURN_NULL(device);
+    return device->GenDepthStencilTarget(
         device->driverData,
         width,
         height,
@@ -290,8 +368,8 @@ REFRESH_Buffer* REFRESH_GenVertexBuffer(
 	REFRESH_Device *device,
 	uint32_t sizeInBytes
 ) {
-    NULL_RETURN(device);
-    device->GenVertexBuffer(
+    NULL_RETURN_NULL(device);
+    return device->GenVertexBuffer(
         device->driverData,
         sizeInBytes
     );
@@ -301,8 +379,8 @@ REFRESH_Buffer* REFRESH_GenIndexBuffer(
 	REFRESH_Device *device,
 	uint32_t sizeInBytes
 ) {
-    NULL_RETURN(device);
-    device->GenIndexBuffer(
+    NULL_RETURN_NULL(device);
+    return device->GenIndexBuffer(
         device->driverData,
         sizeInBytes
     );
@@ -312,8 +390,8 @@ REFRESH_Buffer* REFRESH_GenShaderParamBuffer(
 	REFRESH_Device *device,
 	uint32_t sizeInBytes
 ) {
-    NULL_RETURN(device);
-    device->GenShaderParamBuffer(
+    NULL_RETURN_NULL(device);
+    return device->GenShaderParamBuffer(
         device->driverData,
         sizeInBytes
     );

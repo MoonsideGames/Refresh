@@ -579,6 +579,10 @@ REFRESHAPI uint32_t REFRESH_LinkedVersion(void);
 
 /* Functions */
 
+/* Logging */
+
+typedef void (REFRESHCALL * REFRESH_LogFunc)(const char *msg);
+
 /* Device */
 
 /* Create a rendering context for use on the calling thread.
@@ -586,8 +590,8 @@ REFRESHAPI uint32_t REFRESH_LinkedVersion(void);
  * to ease interoperability with existing FNA graphics code.
  *
  * deviceWindowHandle:
- * 		A handle to an SDL_Window.
- * 		If this is NULL, Refresh will attempt to run in headless mode.
+ * 		A handle to a window.
+ * 		If this is NULL, Refresh will run in headless mode.
  */
 REFRESHAPI REFRESH_Device* REFRESH_CreateDevice(
 	void *deviceWindowHandle

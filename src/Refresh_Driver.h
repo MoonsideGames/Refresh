@@ -34,6 +34,12 @@
 #define inline __inline
 #endif
 
+/* Logging */
+
+extern void REFRESH_LogInfo(const char *fmt, ...);
+extern void REFRESH_LogWarn(const char *fmt, ...);
+extern void REFRESH_LogError(const char *fmt, ...);
+
 /* Internal Helper Utilities */
 
 static inline uint32_t Texture_GetFormatSize(
@@ -67,7 +73,7 @@ static inline uint32_t Texture_GetFormatSize(
 		case REFRESH_SURFACEFORMAT_R32G32B32A32_SFLOAT:
 			return 16;
 		default:
-			FNA3D_LogError(
+			REFRESH_LogError(
 				"Unrecognized SurfaceFormat!"
 			);
 			return 0;
@@ -203,32 +209,32 @@ struct REFRESH_Device
 
     /* State Creation */
 
-    void (*CreateRenderPass)(
+    REFRESH_RenderPass* (*CreateRenderPass)(
         REFRESH_Renderer *driverData,
         REFRESH_RenderPassCreateInfo *renderPassCreateInfo
     );
 
-    void (*CreateGraphicsPipeline)(
+    REFRESH_GraphicsPipeline* (*CreateGraphicsPipeline)(
         REFRESH_Renderer *driverData,
         REFRESH_GraphicsPipelineCreateInfo *pipelineCreateInfo
     );
 
-    void (*CreateSampler)(
+    REFRESH_Sampler* (*CreateSampler)(
         REFRESH_Renderer *driverData,
 	    REFRESH_SamplerStateCreateInfo *samplerStateCreateInfo
     );
 
-    void (*CreateFramebuffer)(
+    REFRESH_Framebuffer* (*CreateFramebuffer)(
         REFRESH_Renderer *driverData,
         REFRESH_FramebufferCreateInfo *framebufferCreateInfo
     );
 
-    void (*CreateShaderModule)(
+    REFRESH_ShaderModule* (*CreateShaderModule)(
         REFRESH_Renderer *driverData,
 	    REFRESH_ShaderModuleCreateInfo *shaderModuleCreateInfo
     );
 
-    void (*CreateTexture2D)(
+    REFRESH_Texture* (*CreateTexture2D)(
         REFRESH_Renderer *driverData,
         REFRESH_SurfaceFormat format,
         uint32_t width,
@@ -236,7 +242,7 @@ struct REFRESH_Device
         uint32_t levelCount
     );
 
-    void (*CreateTexture3D)(
+    REFRESH_Texture* (*CreateTexture3D)(
         REFRESH_Renderer *driverData,
         REFRESH_SurfaceFormat format,
         uint32_t width,
@@ -245,14 +251,14 @@ struct REFRESH_Device
         uint32_t levelCount
     );
 
-    void (*CreateTextureCube)(
+    REFRESH_Texture* (*CreateTextureCube)(
         REFRESH_Renderer *driverData,
         REFRESH_SurfaceFormat format,
         uint32_t size,
         uint32_t levelCount
     );
 
-    void (*GenColorTarget)(
+    REFRESH_ColorTarget* (*GenColorTarget)(
         REFRESH_Renderer *driverData,
         uint32_t width,
         uint32_t height,
@@ -261,7 +267,7 @@ struct REFRESH_Device
         REFRESH_Texture *texture
     );
 
-    void(*GenDepthStencilTarget)(
+    REFRESH_DepthStencilTarget* (*GenDepthStencilTarget)(
         REFRESH_Renderer *driverData,
         uint32_t width,
         uint32_t height,
@@ -269,17 +275,17 @@ struct REFRESH_Device
         REFRESH_Texture *texture
     );
 
-    void(*GenVertexBuffer)(
+    REFRESH_Buffer* (*GenVertexBuffer)(
         REFRESH_Renderer *driverData,
         uint32_t sizeInBytes
     );
 
-    void(*GenIndexBuffer)(
+    REFRESH_Buffer* (*GenIndexBuffer)(
         REFRESH_Renderer *driverData,
         uint32_t sizeInBytes
     );
 
-    void(*GenShaderParamBuffer)(
+    REFRESH_Buffer* (*GenShaderParamBuffer)(
         REFRESH_Renderer *driverData,
         uint32_t sizeInBytes
     );

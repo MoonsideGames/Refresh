@@ -35,9 +35,76 @@
 #include <SDL_syswm.h>
 #include <SDL_vulkan.h>
 
+/* Global Vulkan Loader Entry Points */
+
+static PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr = NULL;
+
+#define VULKAN_GLOBAL_FUNCTION(name) \
+	static PFN_##name name = NULL;
+#include "Refresh_Driver_Vulkan_vkfuncs.h"
+
+/* vkInstance/vkDevice function typedefs */
+
+#define VULKAN_INSTANCE_FUNCTION(ext, ret, func, params) \
+	typedef ret (VKAPI_CALL *vkfntype_##func) params;
+#define VULKAN_DEVICE_FUNCTION(ext, ret, func, params) \
+	typedef ret (VKAPI_CALL *vkfntype_##func) params;
+#include "Refresh_Driver_Vulkan_vkfuncs.h"
+
+/* Required extensions */
+static const char* deviceExtensionNames[] =
+{
+	/* Globally supported */
+	VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+	/* Core since 1.1 */
+	VK_KHR_MAINTENANCE1_EXTENSION_NAME,
+	VK_KHR_DEDICATED_ALLOCATION_EXTENSION_NAME,
+	VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME,
+	/* Core since 1.2 */
+	VK_KHR_DRIVER_PROPERTIES_EXTENSION_NAME,
+	/* EXT, probably not going to be Core */
+	VK_EXT_VERTEX_ATTRIBUTE_DIVISOR_EXTENSION_NAME,
+};
+static uint32_t deviceExtensionCount = SDL_arraysize(deviceExtensionNames);
+
+typedef struct QueueFamilyIndices
+{
+	uint32_t graphicsFamily;
+	uint32_t presentFamily;
+} QueueFamilyIndices;
+
 typedef struct Refresh_VulkanRenderer
 {
     VkInstance instance;
+    VkPhysicalDevice physicalDevice;
+    VkPhysicalDeviceProperties2 physicalDeviceProperties;
+    VkPhysicalDeviceDriverPropertiesKHR physicalDeviceDriverProperties;
+    VkDevice logicalDevice;
+
+    void* deviceWindowHandle;
+
+    QueueFamilyIndices queueFamilyIndices;
+	VkQueue graphicsQueue;
+	VkQueue presentQueue;
+
+    /* Command Buffers */
+	VkCommandPool commandPool;
+	VkCommandBuffer *inactiveCommandBuffers;
+	VkCommandBuffer *activeCommandBuffers;
+	VkCommandBuffer *submittedCommandBuffers;
+	uint32_t inactiveCommandBufferCount;
+	uint32_t activeCommandBufferCount;
+	uint32_t submittedCommandBufferCount;
+	uint32_t allocatedCommandBufferCount;
+	uint32_t currentCommandCount;
+	VkCommandBuffer currentCommandBuffer;
+	uint32_t numActiveCommands;
+
+    #define VULKAN_INSTANCE_FUNCTION(ext, ret, func, params) \
+		vkfntype_##func func;
+	#define VULKAN_DEVICE_FUNCTION(ext, ret, func, params) \
+		vkfntype_##func func;
+	#include "Refresh_Driver_Vulkan_vkfuncs.h"
 } Refresh_VulkanRenderer;
 
 static void VULKAN_DestroyDevice(
