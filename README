@@ -8,6 +8,7 @@ About Refresh
 -------------
 Refresh is directly inspired by FNA3D and intended to be a replacement for XNA's Graphics namespace.
 XNA 4.0 is a powerful API, but its shader system is outdated and certain restrictions are awkward to handle in a modern context.
+In the way that XNA was "one step above" DX9, Refresh intends to be "one step above" Vulkan.
 Refresh intends to provide an ergonomic high-level API that maps nicely to modern graphics pipelines.
 Refresh will have a Vulkan runtime implementation. Support for other APIs like DX12 may come later.
 For shaders, we plan to consume SPIR-V bytecode.
