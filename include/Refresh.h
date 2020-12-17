@@ -592,9 +592,11 @@ typedef void (REFRESHCALL * REFRESH_LogFunc)(const char *msg);
  * deviceWindowHandle:
  * 		A handle to a window.
  * 		If this is NULL, Refresh will run in headless mode.
+ * debugMode: Enable debug mode properties.
  */
 REFRESHAPI REFRESH_Device* REFRESH_CreateDevice(
-	void *deviceWindowHandle
+	void *deviceWindowHandle,
+	uint8_t debugMode
 );
 
 /* Destroys a rendering context previously returned by REFRESH_CreateDevice. */

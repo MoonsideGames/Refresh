@@ -545,7 +545,8 @@ typedef struct REFRESH_Driver
 {
 	const char *Name;
 	REFRESH_Device* (*CreateDevice)(
-		void *deviceWindowHandle
+		void *deviceWindowHandle,
+        uint8_t debugMode
 	);
 } REFRESH_Driver;
 
