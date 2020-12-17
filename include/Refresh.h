@@ -631,11 +631,11 @@ REFRESHAPI void REFRESH_Clear(
 REFRESHAPI void REFRESH_DrawIndexedPrimitives(
 	REFRESH_Device *device,
 	REFRESH_PrimitiveType primitiveType,
-	int32_t baseVertex,
-	int32_t minVertexIndex,
-	int32_t numVertices,
-	int32_t startIndex,
-	int32_t primitiveCount,
+	uint32_t baseVertex,
+	uint32_t minVertexIndex,
+	uint32_t numVertices,
+	uint32_t startIndex,
+	uint32_t primitiveCount,
 	REFRESH_Buffer *indices,
 	REFRESH_IndexElementSize indexElementSize
 );
@@ -655,12 +655,12 @@ REFRESHAPI void REFRESH_DrawIndexedPrimitives(
 REFRESHAPI void REFRESH_DrawInstancedPrimitives(
 	REFRESH_Device *device,
 	REFRESH_PrimitiveType primitiveType,
-	int32_t baseVertex,
-	int32_t minVertexIndex,
-	int32_t numVertices,
-	int32_t startIndex,
-	int32_t primitiveCount,
-	int32_t instanceCount,
+	uint32_t baseVertex,
+	uint32_t minVertexIndex,
+	uint32_t numVertices,
+	uint32_t startIndex,
+	uint32_t primitiveCount,
+	uint32_t instanceCount,
 	REFRESH_Buffer *indices,
 	REFRESH_IndexElementSize indexElementSize
 );
@@ -673,8 +673,8 @@ REFRESHAPI void REFRESH_DrawInstancedPrimitives(
 REFRESHAPI void REFRESH_DrawPrimitives(
 	REFRESH_Device *device,
 	REFRESH_PrimitiveType primitiveType,
-	int32_t vertexStart,
-	int32_t primitiveCount
+	uint32_t vertexStart,
+	uint32_t primitiveCount
 );
 
 /* State Creation */
