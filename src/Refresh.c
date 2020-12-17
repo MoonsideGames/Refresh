@@ -34,3 +34,50 @@ static const REFRESH_Driver *drivers[] = {
     &VulkanDriver,
     NULL
 };
+
+/* Version API */
+
+uint32_t REFRESH_LinkedVersion(void)
+{
+	return REFRESH_COMPILED_VERSION;
+}
+
+/* Driver Functions */
+
+static int32_t selectedDriver = -1;
+
+REFRESH_Device* REFRESH_CreateDevice(
+    FNA3D_Device *fnaDevice
+) {
+    if (selectedDriver < 0)
+    {
+        return NULL;
+    }
+
+    return drivers[selectedDriver]->CreateDevice(fnaDevice);
+}
+
+void REFRESH_DestroyDevice(REFRESH_Device *device)
+{
+    if (device == NULL)
+    {
+        return;
+    }
+
+    device->DestroyDevice(device);
+}
+
+void REFRESH_Clear(
+	REFRESH_Device *device,
+	REFRESH_ClearOptions options,
+	REFRESH_Vec4 **colors,
+    uint32_t colorCount,
+	float depth,
+	int32_t stencil
+) {
+    if (device == NULL)
+    {
+        return;
+    }
+    device->Clear(device->driverData, options, colors, colorCount, depth, stencil);
+}
