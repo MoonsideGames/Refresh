@@ -159,7 +159,10 @@ typedef struct VulkanRenderer
 	VkQueue graphicsQueue;
 	VkQueue presentQueue;
 
-    /* Command Buffers */
+	VkFence inFlightFence;
+	VkSemaphore imageAvailableSemaphore;
+	VkSemaphore renderFinishedSemaphore;
+
 	VkCommandPool commandPool;
 	VkCommandBuffer *inactiveCommandBuffers;
 	VkCommandBuffer *activeCommandBuffers;
@@ -220,6 +223,82 @@ static inline void LogVulkanResult(
 		);
 	}
 }
+
+/* Command Buffers */
+
+/* Vulkan: Command Buffers */
+
+static void VULKAN_INTERNAL_BeginCommandBuffer(VulkanRenderer *renderer)
+{
+	VkCommandBufferAllocateInfo allocateInfo;
+	VkCommandBufferBeginInfo beginInfo;
+	VkResult result;
+
+	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+	beginInfo.pNext = NULL;
+	beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+	beginInfo.pInheritanceInfo = NULL;
+
+	/* If we are out of unused command buffers, allocate some more */
+	if (renderer->inactiveCommandBufferCount == 0)
+	{
+		renderer->activeCommandBuffers = SDL_realloc(
+			renderer->activeCommandBuffers,
+			sizeof(VkCommandBuffer) * renderer->allocatedCommandBufferCount * 2
+		);
+
+		renderer->inactiveCommandBuffers = SDL_realloc(
+			renderer->inactiveCommandBuffers,
+			sizeof(VkCommandBuffer) * renderer->allocatedCommandBufferCount * 2
+		);
+
+		renderer->submittedCommandBuffers = SDL_realloc(
+			renderer->submittedCommandBuffers,
+			sizeof(VkCommandBuffer) * renderer->allocatedCommandBufferCount * 2
+		);
+
+		allocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+		allocateInfo.pNext = NULL;
+		allocateInfo.commandPool = renderer->commandPool;
+		allocateInfo.commandBufferCount = renderer->allocatedCommandBufferCount;
+		allocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+
+		result = renderer->vkAllocateCommandBuffers(
+			renderer->logicalDevice,
+			&allocateInfo,
+			renderer->inactiveCommandBuffers
+		);
+
+		if (result != VK_SUCCESS)
+		{
+			LogVulkanResult("vkAllocateCommandBuffers", result);
+			return;
+		}
+
+		renderer->inactiveCommandBufferCount = renderer->allocatedCommandBufferCount;
+		renderer->allocatedCommandBufferCount *= 2;
+	}
+
+	renderer->currentCommandBuffer =
+		renderer->inactiveCommandBuffers[renderer->inactiveCommandBufferCount - 1];
+
+	renderer->activeCommandBuffers[renderer->activeCommandBufferCount] = renderer->currentCommandBuffer;
+
+	renderer->activeCommandBufferCount += 1;
+	renderer->inactiveCommandBufferCount -= 1;
+
+	result = renderer->vkBeginCommandBuffer(
+		renderer->currentCommandBuffer,
+		&beginInfo
+	);
+
+	if (result != VK_SUCCESS)
+	{
+		LogVulkanResult("vkBeginCommandBuffer", result);
+	}
+}
+
+/* Public API */
 
 static void VULKAN_DestroyDevice(
     REFRESH_Device *device
@@ -1513,6 +1592,7 @@ static uint8_t VULKAN_INTERNAL_CreateLogicalDevice(
 	uint32_t deviceExtensionCount
 ) {
 	VkResult vulkanResult;
+
 	VkDeviceCreateInfo deviceCreateInfo;
 	VkPhysicalDeviceFeatures deviceFeatures;
 
@@ -1621,6 +1701,16 @@ static REFRESH_Device* VULKAN_CreateDevice(
     REFRESH_Device *result;
     VulkanRenderer *renderer;
 
+    VkResult vulkanResult;
+
+    /* Variables: Create fence and semaphores */
+	VkFenceCreateInfo fenceInfo;
+	VkSemaphoreCreateInfo semaphoreInfo;
+
+	/* Variables: Create command pool and command buffer */
+	VkCommandPoolCreateInfo commandPoolCreateInfo;
+	VkCommandBufferAllocateInfo commandBufferAllocateInfo;
+
     result = (REFRESH_Device*) SDL_malloc(sizeof(REFRESH_Device));
     ASSIGN_DRIVER(VULKAN)
 
@@ -1724,6 +1814,103 @@ static REFRESH_Device* VULKAN_CreateDevice(
             return NULL;
         }
     }
+
+	/*
+	 * Create fence and semaphores
+	 */
+
+	fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+	fenceInfo.pNext = NULL;
+	fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+
+	semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+	semaphoreInfo.pNext = NULL;
+	semaphoreInfo.flags = 0;
+
+	vulkanResult = renderer->vkCreateSemaphore(
+		renderer->logicalDevice,
+		&semaphoreInfo,
+		NULL,
+		&renderer->imageAvailableSemaphore
+	);
+
+	if (vulkanResult != VK_SUCCESS)
+	{
+		LogVulkanResult("vkCreateFence", vulkanResult);
+		return NULL;
+	}
+
+	vulkanResult = renderer->vkCreateSemaphore(
+		renderer->logicalDevice,
+		&semaphoreInfo,
+		NULL,
+		&renderer->renderFinishedSemaphore
+	);
+
+	if (vulkanResult != VK_SUCCESS)
+	{
+		LogVulkanResult("vkCreateSemaphore", vulkanResult);
+		return NULL;
+	}
+
+	vulkanResult = renderer->vkCreateFence(
+		renderer->logicalDevice,
+		&fenceInfo,
+		NULL,
+		&renderer->inFlightFence
+	);
+
+	if (vulkanResult != VK_SUCCESS)
+	{
+		LogVulkanResult("vkCreateSemaphore", vulkanResult);
+		return NULL;
+	}
+
+	/*
+	 * Create command pool and buffers
+	 */
+
+	commandPoolCreateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+	commandPoolCreateInfo.pNext = NULL;
+	commandPoolCreateInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+	commandPoolCreateInfo.queueFamilyIndex = renderer->queueFamilyIndices.graphicsFamily;
+	vulkanResult = renderer->vkCreateCommandPool(
+		renderer->logicalDevice,
+		&commandPoolCreateInfo,
+		NULL,
+		&renderer->commandPool
+	);
+	if (vulkanResult != VK_SUCCESS)
+	{
+		LogVulkanResult("vkCreateCommandPool", vulkanResult);
+	}
+
+	renderer->allocatedCommandBufferCount = 4;
+	renderer->inactiveCommandBuffers = SDL_malloc(sizeof(VkCommandBuffer) * renderer->allocatedCommandBufferCount);
+	renderer->activeCommandBuffers = SDL_malloc(sizeof(VkCommandBuffer) * renderer->allocatedCommandBufferCount);
+	renderer->submittedCommandBuffers = SDL_malloc(sizeof(VkCommandBuffer) * renderer->allocatedCommandBufferCount);
+	renderer->inactiveCommandBufferCount = renderer->allocatedCommandBufferCount;
+	renderer->activeCommandBufferCount = 0;
+	renderer->submittedCommandBufferCount = 0;
+
+	commandBufferAllocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+	commandBufferAllocateInfo.pNext = NULL;
+	commandBufferAllocateInfo.commandPool = renderer->commandPool;
+	commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+	commandBufferAllocateInfo.commandBufferCount = renderer->allocatedCommandBufferCount;
+	vulkanResult = renderer->vkAllocateCommandBuffers(
+		renderer->logicalDevice,
+		&commandBufferAllocateInfo,
+		renderer->inactiveCommandBuffers
+	);
+	if (vulkanResult != VK_SUCCESS)
+	{
+		LogVulkanResult("vkAllocateCommandBuffers", vulkanResult);
+	}
+
+	renderer->currentCommandCount = 0;
+
+	VULKAN_INTERNAL_BeginCommandBuffer(renderer);
 
     return result;
 }
