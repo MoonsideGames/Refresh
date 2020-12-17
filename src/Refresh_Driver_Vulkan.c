@@ -1074,7 +1074,7 @@ static REFRESH_GraphicsPipeline* VULKAN_CreateGraphicsPipeline(
 		fragmentSamplerLayoutBindings[i].pImmutableSamplers = NULL;
 	}
 
-	setLayoutCreateInfo.bindingCount = pipelineCreateInfo->pipelineLayoutCreateInfo.fragmentParamBindingCount;
+	setLayoutCreateInfo.bindingCount = pipelineCreateInfo->pipelineLayoutCreateInfo.fragmentSamplerBindingCount;
 	setLayoutCreateInfo.pBindings = fragmentSamplerLayoutBindings;
 
 	vulkanResult = renderer->vkCreateDescriptorSetLayout(

@@ -447,11 +447,6 @@ typedef struct REFRESH_PipelineLayoutCreateInfo
 	const uint32_t *vertexSamplerBindings;
 	uint32_t fragmentSamplerBindingCount;
 	const uint32_t *fragmentSamplerBindings;
-
-	uint32_t vertexParamBindingCount;
-	const uint32_t *vertexParamBindings;
-	uint32_t fragmentParamBindingCount;
-	const uint32_t *fragmentParamBindings;
 } REFRESH_PipelineLayoutCreateInfo;
 
 typedef struct REFRESH_ColorTargetDescription
