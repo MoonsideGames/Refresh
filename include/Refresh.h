@@ -133,10 +133,23 @@ typedef enum REFRESH_SurfaceFormat
 
 typedef enum REFRESH_DepthFormat
 {
+	REFRESH_DEPTHFORMAT_D16_UNORM,
+	REFRESH_DEPTHFORMAT_D32_SFLOAT,
     REFRESH_DEPTHFORMAT_D16_UNORM_S8_UINT,
     REFRESH_DEPTHFORMAT_D24_UNORM_S8_UINT,
     REFRESH_DEPTHFORMAT_D32_SFLOAT_S8_UINT
 } REFRESH_DepthFormat;
+
+typedef enum REFRESH_SampleCount
+{
+	REFRESH_SAMPLECOUNT_1,
+	REFRESH_SAMPLECOUNT_2,
+	REFRESH_SAMPLECOUNT_4,
+	REFRESH_SAMPLECOUNT_8,
+	REFRESH_SAMPLECOUNT_16,
+	REFRESH_SAMPLECOUNT_32,
+	REFRESH_SAMPLECOUNT_64
+} REFRESH_SampleCount;
 
 typedef enum REFRESH_CubeMapFace
 {
@@ -454,7 +467,7 @@ typedef struct REFRESH_PipelineLayoutCreateInfo
 typedef struct REFRESH_ColorTargetDescription
 {
 	REFRESH_SurfaceFormat format;
-	uint32_t multisampleCount;
+	REFRESH_SampleCount multisampleCount;
 	REFRESH_LoadOp loadOp;
 	REFRESH_StoreOp storeOp;
 } REFRESH_ColorTargetDescription;
