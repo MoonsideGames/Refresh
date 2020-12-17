@@ -230,23 +230,32 @@ typedef enum REFRESH_StencilOp
 
 typedef enum REFRESH_BlendOp
 {
-	REFRESH_BLENDOP_CLEAR = 0,
-    REFRESH_BLENDOP_AND = 1,
-    REFRESH_BLENDOP_AND_REVERSE = 2,
-    REFRESH_BLENDOP_COPY = 3,
-    REFRESH_BLENDOP_AND_INVERTED = 4,
-    REFRESH_BLENDOP_NO_OP = 5,
-    REFRESH_BLENDOP_XOR = 6,
-    REFRESH_BLENDOP_OR = 7,
-    REFRESH_BLENDOP_NOR = 8,
-    REFRESH_BLENDOP_EQUIVALENT = 9,
-    REFRESH_BLENDOP_INVERT = 10,
-    REFRESH_BLENDOP_OR_REVERSE = 11,
-    REFRESH_BLENDOP_COPY_INVERTED = 12,
-    REFRESH_BLENDOP_OR_INVERTED = 13,
-    REFRESH_BLENDOP_NAND = 14,
-    REFRESH_BLENDOP_SET = 15
+	REFRESH_BLENDOP_ADD,
+	REFRESH_BLENDOP_SUBTRACT,
+	REFRESH_BLENDOP_REVERSE_SUBTRACT,
+	REFRESH_BLENDOP_MIN,
+	REFRESH_BLENDOP_MAX
 } REFRESH_BlendOp;
+
+typedef enum REFRESH_LogicOp
+{
+	REFRESH_LOGICOP_CLEAR = 0,
+    REFRESH_LOGICOP_AND = 1,
+    REFRESH_LOGICOP_AND_REVERSE = 2,
+    REFRESH_LOGICOP_COPY = 3,
+    REFRESH_LOGICOP_AND_INVERTED = 4,
+    REFRESH_LOGICOP_NO_OP = 5,
+    REFRESH_LOGICOP_XOR = 6,
+    REFRESH_LOGICOP_OR = 7,
+    REFRESH_LOGICOP_NOR = 8,
+    REFRESH_LOGICOP_EQUIVALENT = 9,
+    REFRESH_LOGICOP_INVERT = 10,
+    REFRESH_LOGICOP_OR_REVERSE = 11,
+    REFRESH_LOGICOP_COPY_INVERTED = 12,
+    REFRESH_LOGICOP_OR_INVERTED = 13,
+    REFRESH_LOGICOP_NAND = 14,
+    REFRESH_LOGICOP_SET = 15
+} REFRESH_LogicOp;
 
 typedef enum REFRESH_BlendFactor
 {
@@ -432,36 +441,17 @@ typedef struct REFRESH_RenderTargetBlendState
 	REFRESH_ColorComponentFlags colorWriteMask;
 } REFRESH_RenderTargetBlendState;
 
-typedef struct REFRESH_ShaderTextureSamplerLayoutBinding
-{
-	uint32_t binding;
-	REFRESH_ShaderStageType shaderStage;
-} REFRESH_ShaderSampleLayoutBinding;
-
-typedef struct REFRESH_ShaderTextureSamplerLayout
-{
-	uint32_t bindingCount;
-	const REFRESH_ShaderSampleLayoutBinding *bindings;
-} REFRESH_ShaderTextureSamplerLayout;
-
-typedef struct REFRESH_ShaderParamLayoutBinding
-{
-	uint32_t binding;
-	REFRESH_ShaderStageType shaderStage;
-} REFRESH_ShaderParamLayoutBinding;
-
-typedef struct REFRESH_ShaderParamLayout
-{
-	uint32_t bindingCount;
-	const REFRESH_ShaderParamLayoutBinding *bindings;
-} REFRESH_ShaderParamLayout;
-
 typedef struct REFRESH_PipelineLayoutCreateInfo
 {
-	uint32_t shaderParamsLayoutCount;
-	REFRESH_ShaderParamLayout *shaderParamLayouts;
-	uint32_t shaderTextureSamplerLayoutCount;
-	const REFRESH_ShaderTextureSamplerLayout *shaderTextureSamplerLayouts;
+	uint32_t vertexSamplerBindingCount;
+	const uint32_t *vertexSamplerBindings;
+	uint32_t fragmentSamplerBindingCount;
+	const uint32_t *fragmentSamplerBindings;
+
+	uint32_t vertexParamBindingCount;
+	const uint32_t *vertexParamBindings;
+	uint32_t fragmentParamBindingCount;
+	const uint32_t *fragmentParamBindings;
 } REFRESH_PipelineLayoutCreateInfo;
 
 typedef struct REFRESH_ColorTargetDescription
@@ -509,7 +499,7 @@ typedef struct REFRESH_TopologyState
 
 typedef struct REFRESH_ViewportState
 {
-	const REFRESH_Viewport *viewPorts;
+	const REFRESH_Viewport *viewports;
 	uint32_t viewportCount;
 	const REFRESH_Rect *scissors;
 	uint32_t scissorCount;
@@ -530,7 +520,7 @@ typedef struct REFRESH_RasterizerState
 
 typedef struct REFRESH_MultisampleState
 {
-	uint8_t multisampleCount;
+	REFRESH_SampleCount multisampleCount;
 	const uint32_t *sampleMask;
 } REFRESH_MultisampleState;
 
@@ -550,7 +540,7 @@ typedef struct REFRESH_DepthStencilState
 typedef struct REFRESH_ColorBlendState
 {
 	uint8_t blendOpEnable;
-	REFRESH_BlendOp blendOp;
+	REFRESH_LogicOp logicOp;
 	const REFRESH_RenderTargetBlendState *blendStates;
 	uint32_t blendStateCount;
 	float blendConstants[4];
@@ -567,7 +557,7 @@ typedef struct REFRESH_GraphicsPipelineCreateInfo
 	const REFRESH_MultisampleState multisampleState;
 	const REFRESH_DepthStencilState depthStencilState;
 	const REFRESH_ColorBlendState colorBlendState;
-	REFRESH_PipelineLayoutCreateInfo layoutCreateInfo;
+	REFRESH_PipelineLayoutCreateInfo pipelineLayoutCreateInfo;
 	REFRESH_RenderPass *renderPass;
 } REFRESH_GraphicsPipelineCreateInfo;
 
