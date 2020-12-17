@@ -597,8 +597,6 @@ typedef void (REFRESHCALL * REFRESH_LogFunc)(const char *msg);
 /* Device */
 
 /* Create a rendering context for use on the calling thread.
- * This creation method takes an existing FNA3D_Device
- * to ease interoperability with existing FNA graphics code.
  *
  * deviceWindowHandle:
  * 		A handle to a window.

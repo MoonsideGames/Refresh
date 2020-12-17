@@ -559,6 +559,6 @@ typedef struct REFRESH_Driver
 
 extern REFRESH_Driver VulkanDriver;
 
-#endif /* FNA3D_DRIVER_H */
+#endif /* REFRESH_DRIVER_H */
 
 /* vim: set noexpandtab shiftwidth=8 tabstop=8: */
