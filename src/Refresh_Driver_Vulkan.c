@@ -106,6 +106,13 @@ typedef enum VulkanResourceAccessType
 	RESOURCE_ACCESS_TYPES_COUNT
 } VulkanResourceAccessType;
 
+typedef enum CreateSwapchainResult
+{
+	CREATE_SWAPCHAIN_FAIL,
+	CREATE_SWAPCHAIN_SUCCESS,
+	CREATE_SWAPCHAIN_SURFACE_ZERO,
+} CreateSwapchainResult;
+
 /* Structures */
 
 typedef struct QueueFamilyIndices
@@ -135,14 +142,18 @@ typedef struct VulkanRenderer
 
     uint8_t supportsDebugUtils;
     uint8_t debugMode;
+    uint8_t headless;
 
+    REFRESH_PresentMode presentMode;
     VkSurfaceKHR surface;
-    VkSwapchainKHR swapchain;
-    VkImage *swapchainImages;
-    VkImageView *swapchainImageViews;
+    VkSwapchainKHR swapChain;
+    VkFormat swapChainFormat;
+    VkComponentMapping swapChainSwizzle;
+    VkImage *swapChainImages;
+    VkImageView *swapChainImageViews;
     VulkanResourceAccessType *swapChainResourceAccessTypes;
-    uint32_t swapchainImageCount;
-    VkExtent2D swapchainExtent;
+    uint32_t swapChainImageCount;
+    VkExtent2D swapChainExtent;
 
     QueueFamilyIndices queueFamilyIndices;
 	VkQueue graphicsQueue;
@@ -614,6 +625,411 @@ static void VULKAN_BindGraphicsPipeline(
     SDL_assert(0);
 }
 
+/* Swapchain */
+
+static inline VkExtent2D VULKAN_INTERNAL_ChooseSwapExtent(
+	void* windowHandle,
+	const VkSurfaceCapabilitiesKHR capabilities
+) {
+	VkExtent2D actualExtent;
+	int32_t drawableWidth, drawableHeight;
+
+	if (capabilities.currentExtent.width != UINT32_MAX)
+	{
+		return capabilities.currentExtent;
+	}
+	else
+	{
+		SDL_Vulkan_GetDrawableSize(
+			(SDL_Window*) windowHandle,
+			&drawableWidth,
+			&drawableHeight
+		);
+
+		actualExtent.width = drawableWidth;
+		actualExtent.height = drawableHeight;
+
+		return actualExtent;
+	}
+}
+
+static uint8_t VULKAN_INTERNAL_QuerySwapChainSupport(
+	VulkanRenderer *renderer,
+	VkPhysicalDevice physicalDevice,
+	VkSurfaceKHR surface,
+	SwapChainSupportDetails *outputDetails
+) {
+	VkResult result;
+	uint32_t formatCount;
+	uint32_t presentModeCount;
+
+	result = renderer->vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
+		physicalDevice,
+		surface,
+		&outputDetails->capabilities
+	);
+	if (result != VK_SUCCESS)
+	{
+		REFRESH_LogError(
+			"vkGetPhysicalDeviceSurfaceCapabilitiesKHR: %s",
+			VkErrorMessages(result)
+		);
+
+		return 0;
+	}
+
+	renderer->vkGetPhysicalDeviceSurfaceFormatsKHR(
+		physicalDevice,
+		surface,
+		&formatCount,
+		NULL
+	);
+
+	if (formatCount != 0)
+	{
+		outputDetails->formats = (VkSurfaceFormatKHR*) SDL_malloc(
+			sizeof(VkSurfaceFormatKHR) * formatCount
+		);
+		outputDetails->formatsLength = formatCount;
+
+		if (!outputDetails->formats)
+		{
+			SDL_OutOfMemory();
+			return 0;
+		}
+
+		result = renderer->vkGetPhysicalDeviceSurfaceFormatsKHR(
+			physicalDevice,
+			surface,
+			&formatCount,
+			outputDetails->formats
+		);
+		if (result != VK_SUCCESS)
+		{
+			REFRESH_LogError(
+				"vkGetPhysicalDeviceSurfaceFormatsKHR: %s",
+				VkErrorMessages(result)
+			);
+
+			SDL_free(outputDetails->formats);
+			return 0;
+		}
+	}
+
+	renderer->vkGetPhysicalDeviceSurfacePresentModesKHR(
+		physicalDevice,
+		surface,
+		&presentModeCount,
+		NULL
+	);
+
+	if (presentModeCount != 0)
+	{
+		outputDetails->presentModes = (VkPresentModeKHR*) SDL_malloc(
+			sizeof(VkPresentModeKHR) * presentModeCount
+		);
+		outputDetails->presentModesLength = presentModeCount;
+
+		if (!outputDetails->presentModes)
+		{
+			SDL_OutOfMemory();
+			return 0;
+		}
+
+		result = renderer->vkGetPhysicalDeviceSurfacePresentModesKHR(
+			physicalDevice,
+			surface,
+			&presentModeCount,
+			outputDetails->presentModes
+		);
+		if (result != VK_SUCCESS)
+		{
+			REFRESH_LogError(
+				"vkGetPhysicalDeviceSurfacePresentModesKHR: %s",
+				VkErrorMessages(result)
+			);
+
+			SDL_free(outputDetails->formats);
+			SDL_free(outputDetails->presentModes);
+			return 0;
+		}
+	}
+
+	return 1;
+}
+
+static uint8_t VULKAN_INTERNAL_ChooseSwapSurfaceFormat(
+	VkFormat desiredFormat,
+	VkSurfaceFormatKHR *availableFormats,
+	uint32_t availableFormatsLength,
+	VkSurfaceFormatKHR *outputFormat
+) {
+	uint32_t i;
+	for (i = 0; i < availableFormatsLength; i += 1)
+	{
+		if (	availableFormats[i].format == desiredFormat &&
+			availableFormats[i].colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR	)
+		{
+			*outputFormat = availableFormats[i];
+			return 1;
+		}
+	}
+
+	REFRESH_LogError("Desired surface format is unavailable.");
+	return 0;
+}
+
+static uint8_t VULKAN_INTERNAL_ChooseSwapPresentMode(
+	REFRESH_PresentMode desiredPresentInterval,
+	VkPresentModeKHR *availablePresentModes,
+	uint32_t availablePresentModesLength,
+	VkPresentModeKHR *outputPresentMode
+) {
+	#define CHECK_MODE(m) \
+		for (i = 0; i < availablePresentModesLength; i += 1) \
+		{ \
+			if (availablePresentModes[i] == m) \
+			{ \
+				*outputPresentMode = m; \
+				REFRESH_LogInfo("Using " #m "!"); \
+				return 1; \
+			} \
+		} \
+		REFRESH_LogInfo(#m " unsupported.");
+
+	uint32_t i;
+    if (desiredPresentInterval == REFRESH_PRESENTMODE_IMMEDIATE)
+	{
+		CHECK_MODE(VK_PRESENT_MODE_IMMEDIATE_KHR)
+	}
+    else if (desiredPresentInterval == REFRESH_PRESENTMODE_MAILBOX)
+    {
+        CHECK_MODE(VK_PRESENT_MODE_MAILBOX_KHR)
+    }
+    else if (desiredPresentInterval == REFRESH_PRESENTMODE_FIFO)
+    {
+        CHECK_MODE(VK_PRESENT_MODE_FIFO_KHR)
+    }
+    else if (desiredPresentInterval == REFRESH_PRESENTMODE_FIFO_RELAXED)
+    {
+        CHECK_MODE(VK_PRESENT_MODE_FIFO_RELAXED_KHR)
+    }
+	else
+	{
+		REFRESH_LogError(
+			"Unrecognized PresentInterval: %d",
+			desiredPresentInterval
+		);
+		return 0;
+	}
+
+	#undef CHECK_MODE
+
+	REFRESH_LogInfo("Fall back to VK_PRESENT_MODE_FIFO_KHR.");
+	*outputPresentMode = VK_PRESENT_MODE_FIFO_KHR;
+	return 1;
+}
+
+static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
+	VulkanRenderer *renderer
+) {
+	VkResult vulkanResult;
+	SwapChainSupportDetails swapChainSupportDetails;
+	VkSurfaceFormatKHR surfaceFormat;
+	VkPresentModeKHR presentMode;
+	VkExtent2D extent;
+	uint32_t imageCount, swapChainImageCount, i;
+	VkSwapchainCreateInfoKHR swapChainCreateInfo;
+	VkImage *swapChainImages;
+	VkImageViewCreateInfo createInfo;
+	VkImageView swapChainImageView;
+
+	if (!VULKAN_INTERNAL_QuerySwapChainSupport(
+		renderer,
+		renderer->physicalDevice,
+		renderer->surface,
+		&swapChainSupportDetails
+	)) {
+		REFRESH_LogError("Device does not support swap chain creation");
+		return CREATE_SWAPCHAIN_FAIL;
+	}
+
+	renderer->swapChainFormat = VK_FORMAT_B8G8R8A8_UNORM;
+	renderer->swapChainSwizzle.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+	renderer->swapChainSwizzle.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+	renderer->swapChainSwizzle.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+	renderer->swapChainSwizzle.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+	if (!VULKAN_INTERNAL_ChooseSwapSurfaceFormat(
+		renderer->swapChainFormat,
+		swapChainSupportDetails.formats,
+		swapChainSupportDetails.formatsLength,
+		&surfaceFormat
+	)) {
+		SDL_free(swapChainSupportDetails.formats);
+		SDL_free(swapChainSupportDetails.presentModes);
+		REFRESH_LogError("Device does not support swap chain format");
+		return CREATE_SWAPCHAIN_FAIL;
+	}
+
+	if (!VULKAN_INTERNAL_ChooseSwapPresentMode(
+		renderer->presentMode,
+		swapChainSupportDetails.presentModes,
+		swapChainSupportDetails.presentModesLength,
+		&presentMode
+	)) {
+		SDL_free(swapChainSupportDetails.formats);
+		SDL_free(swapChainSupportDetails.presentModes);
+		REFRESH_LogError("Device does not support swap chain present mode");
+		return CREATE_SWAPCHAIN_FAIL;
+	}
+
+	extent = VULKAN_INTERNAL_ChooseSwapExtent(
+		renderer->deviceWindowHandle,
+		swapChainSupportDetails.capabilities
+	);
+
+	if (extent.width == 0 || extent.height == 0)
+	{
+		return CREATE_SWAPCHAIN_SURFACE_ZERO;
+	}
+
+	imageCount = swapChainSupportDetails.capabilities.minImageCount + 1;
+
+	if (	swapChainSupportDetails.capabilities.maxImageCount > 0 &&
+		imageCount > swapChainSupportDetails.capabilities.maxImageCount	)
+	{
+		imageCount = swapChainSupportDetails.capabilities.maxImageCount;
+	}
+
+	if (presentMode == VK_PRESENT_MODE_MAILBOX_KHR)
+	{
+		/* Required for proper triple-buffering.
+		 * Note that this is below the above maxImageCount check!
+		 * If the driver advertises MAILBOX but does not support 3 swap
+		 * images, it's not real mailbox support, so let it fail hard.
+		 * -flibit
+		 */
+		imageCount = SDL_max(imageCount, 3);
+	}
+
+	swapChainCreateInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+	swapChainCreateInfo.pNext = NULL;
+	swapChainCreateInfo.flags = 0;
+	swapChainCreateInfo.surface = renderer->surface;
+	swapChainCreateInfo.minImageCount = imageCount;
+	swapChainCreateInfo.imageFormat = surfaceFormat.format;
+	swapChainCreateInfo.imageColorSpace = surfaceFormat.colorSpace;
+	swapChainCreateInfo.imageExtent = extent;
+	swapChainCreateInfo.imageArrayLayers = 1;
+	swapChainCreateInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+	swapChainCreateInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+	swapChainCreateInfo.queueFamilyIndexCount = 0;
+	swapChainCreateInfo.pQueueFamilyIndices = NULL;
+	swapChainCreateInfo.preTransform = swapChainSupportDetails.capabilities.currentTransform;
+	swapChainCreateInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+	swapChainCreateInfo.presentMode = presentMode;
+	swapChainCreateInfo.clipped = VK_TRUE;
+	swapChainCreateInfo.oldSwapchain = VK_NULL_HANDLE;
+
+	vulkanResult = renderer->vkCreateSwapchainKHR(
+		renderer->logicalDevice,
+		&swapChainCreateInfo,
+		NULL,
+		&renderer->swapChain
+	);
+
+	SDL_free(swapChainSupportDetails.formats);
+	SDL_free(swapChainSupportDetails.presentModes);
+
+	if (vulkanResult != VK_SUCCESS)
+	{
+		LogVulkanResult("vkCreateSwapchainKHR", vulkanResult);
+
+		return CREATE_SWAPCHAIN_FAIL;
+	}
+
+	renderer->vkGetSwapchainImagesKHR(
+		renderer->logicalDevice,
+		renderer->swapChain,
+		&swapChainImageCount,
+		NULL
+	);
+
+	renderer->swapChainImages = (VkImage*) SDL_malloc(
+		sizeof(VkImage) * swapChainImageCount
+	);
+	if (!renderer->swapChainImages)
+	{
+		SDL_OutOfMemory();
+		return CREATE_SWAPCHAIN_FAIL;
+	}
+
+	renderer->swapChainImageViews = (VkImageView*) SDL_malloc(
+		sizeof(VkImageView) * swapChainImageCount
+	);
+	if (!renderer->swapChainImageViews)
+	{
+		SDL_OutOfMemory();
+		return CREATE_SWAPCHAIN_FAIL;
+	}
+
+	renderer->swapChainResourceAccessTypes = (VulkanResourceAccessType*) SDL_malloc(
+		sizeof(VulkanResourceAccessType) * swapChainImageCount
+	);
+	if (!renderer->swapChainResourceAccessTypes)
+	{
+		SDL_OutOfMemory();
+		return CREATE_SWAPCHAIN_FAIL;
+	}
+
+	swapChainImages = SDL_stack_alloc(VkImage, swapChainImageCount);
+	renderer->vkGetSwapchainImagesKHR(
+		renderer->logicalDevice,
+		renderer->swapChain,
+		&swapChainImageCount,
+		swapChainImages
+	);
+	renderer->swapChainImageCount = swapChainImageCount;
+	renderer->swapChainExtent = extent;
+
+	createInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+	createInfo.pNext = NULL;
+	createInfo.flags = 0;
+	createInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+	createInfo.format = surfaceFormat.format;
+	createInfo.components = renderer->swapChainSwizzle;
+	createInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	createInfo.subresourceRange.baseMipLevel = 0;
+	createInfo.subresourceRange.levelCount = 1;
+	createInfo.subresourceRange.baseArrayLayer = 0;
+	createInfo.subresourceRange.layerCount = 1;
+	for (i = 0; i < swapChainImageCount; i += 1)
+	{
+		createInfo.image = swapChainImages[i];
+
+		vulkanResult = renderer->vkCreateImageView(
+			renderer->logicalDevice,
+			&createInfo,
+			NULL,
+			&swapChainImageView
+		);
+
+		if (vulkanResult != VK_SUCCESS)
+		{
+			LogVulkanResult("vkCreateImageView", vulkanResult);
+			SDL_stack_free(swapChainImages);
+			return CREATE_SWAPCHAIN_FAIL;
+		}
+
+		renderer->swapChainImages[i] = swapChainImages[i];
+		renderer->swapChainImageViews[i] = swapChainImageView;
+		renderer->swapChainResourceAccessTypes[i] = RESOURCE_ACCESS_NONE;
+	}
+
+	SDL_stack_free(swapChainImages);
+	return CREATE_SWAPCHAIN_SUCCESS;
+}
+
 /* Device instantiation */
 
 static inline uint8_t VULKAN_INTERNAL_SupportsExtension(
@@ -881,111 +1297,6 @@ static uint8_t VULKAN_INTERNAL_CheckDeviceExtensions(
 
 	SDL_stack_free(availableExtensions);
 	return allExtensionsSupported;
-}
-
-static uint8_t VULKAN_INTERNAL_QuerySwapChainSupport(
-	VulkanRenderer *renderer,
-	VkPhysicalDevice physicalDevice,
-	VkSurfaceKHR surface,
-	SwapChainSupportDetails *outputDetails
-) {
-	VkResult result;
-	uint32_t formatCount;
-	uint32_t presentModeCount;
-
-	result = renderer->vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
-		physicalDevice,
-		surface,
-		&outputDetails->capabilities
-	);
-	if (result != VK_SUCCESS)
-	{
-		REFRESH_LogError(
-			"vkGetPhysicalDeviceSurfaceCapabilitiesKHR: %s",
-			VkErrorMessages(result)
-		);
-
-		return 0;
-	}
-
-	renderer->vkGetPhysicalDeviceSurfaceFormatsKHR(
-		physicalDevice,
-		surface,
-		&formatCount,
-		NULL
-	);
-
-	if (formatCount != 0)
-	{
-		outputDetails->formats = (VkSurfaceFormatKHR*) SDL_malloc(
-			sizeof(VkSurfaceFormatKHR) * formatCount
-		);
-		outputDetails->formatsLength = formatCount;
-
-		if (!outputDetails->formats)
-		{
-			SDL_OutOfMemory();
-			return 0;
-		}
-
-		result = renderer->vkGetPhysicalDeviceSurfaceFormatsKHR(
-			physicalDevice,
-			surface,
-			&formatCount,
-			outputDetails->formats
-		);
-		if (result != VK_SUCCESS)
-		{
-			REFRESH_LogError(
-				"vkGetPhysicalDeviceSurfaceFormatsKHR: %s",
-				VkErrorMessages(result)
-			);
-
-			SDL_free(outputDetails->formats);
-			return 0;
-		}
-	}
-
-	renderer->vkGetPhysicalDeviceSurfacePresentModesKHR(
-		physicalDevice,
-		surface,
-		&presentModeCount,
-		NULL
-	);
-
-	if (presentModeCount != 0)
-	{
-		outputDetails->presentModes = (VkPresentModeKHR*) SDL_malloc(
-			sizeof(VkPresentModeKHR) * presentModeCount
-		);
-		outputDetails->presentModesLength = presentModeCount;
-
-		if (!outputDetails->presentModes)
-		{
-			SDL_OutOfMemory();
-			return 0;
-		}
-
-		result = renderer->vkGetPhysicalDeviceSurfacePresentModesKHR(
-			physicalDevice,
-			surface,
-			&presentModeCount,
-			outputDetails->presentModes
-		);
-		if (result != VK_SUCCESS)
-		{
-			REFRESH_LogError(
-				"vkGetPhysicalDeviceSurfacePresentModesKHR: %s",
-				VkErrorMessages(result)
-			);
-
-			SDL_free(outputDetails->formats);
-			SDL_free(outputDetails->presentModes);
-			return 0;
-		}
-	}
-
-	return 1;
 }
 
 static uint8_t VULKAN_INTERNAL_IsDeviceSuitable(
@@ -1316,6 +1627,7 @@ static REFRESH_Device* VULKAN_CreateDevice(
     renderer = (VulkanRenderer*) SDL_malloc(sizeof(VulkanRenderer));
     result->driverData = (REFRESH_Renderer*) renderer;
     renderer->debugMode = debugMode;
+    renderer->headless = deviceWindowHandle == NULL;
 
     /* Create the VkInstance */
 	if (!VULKAN_INTERNAL_CreateInstance(renderer, deviceWindowHandle))
@@ -1399,6 +1711,19 @@ static REFRESH_Device* VULKAN_CreateDevice(
 		REFRESH_LogError("Failed to create logical device");
 		return NULL;
 	}
+
+	/*
+	 * Create initial swapchain
+	 */
+
+    if (!renderer->headless)
+    {
+        if (VULKAN_INTERNAL_CreateSwapchain(renderer) != CREATE_SWAPCHAIN_SUCCESS)
+        {
+            REFRESH_LogError("Failed to create swap chain");
+            return NULL;
+        }
+    }
 
     return result;
 }

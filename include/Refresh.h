@@ -65,6 +65,14 @@ typedef struct REFRESH_ShaderModule REFRESH_ShaderModule;
 typedef struct REFRESH_RenderPass REFRESH_RenderPass;
 typedef struct REFRESH_GraphicsPipeline REFRESH_GraphicsPipeline;
 
+typedef enum REFRESH_PresentMode
+{
+	REFRESH_PRESENTMODE_IMMEDIATE,
+	REFRESH_PRESENTMODE_MAILBOX,
+	REFRESH_PRESENTMODE_FIFO,
+	REFRESH_PRESENTMODE_FIFO_RELAXED
+} REFRESH_PresentMode;
+
 typedef enum REFRESH_PrimitiveType
 {
     REFRESH_PRIMITIVETYPE_POINTLIST,
