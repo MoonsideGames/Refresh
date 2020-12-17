@@ -490,6 +490,12 @@ struct REFRESH_Device
         REFRESH_GraphicsPipeline *graphicsPipeline
     );
 
+    void(*Present)(
+        REFRESH_Renderer *driverData,
+        REFRESH_Rect *sourceRectangle,
+        REFRESH_Rect *destinationRectangle
+    );
+
 	/* Opaque pointer for the Driver */
 	REFRESH_Renderer *driverData;
 };
@@ -539,7 +545,8 @@ struct REFRESH_Device
     ASSIGN_DRIVER_FUNC(AddDisposeGraphicsPipeline, name) \
     ASSIGN_DRIVER_FUNC(BeginRenderPass, name) \
     ASSIGN_DRIVER_FUNC(EndRenderPass, name) \
-    ASSIGN_DRIVER_FUNC(BindGraphicsPipeline, name)
+    ASSIGN_DRIVER_FUNC(BindGraphicsPipeline, name) \
+    ASSIGN_DRIVER_FUNC(Present, name)
 
 typedef struct REFRESH_Driver
 {

@@ -704,6 +704,14 @@ static void VULKAN_BindGraphicsPipeline(
     SDL_assert(0);
 }
 
+static void VULKAN_Present(
+    REFRESH_Renderer *renderer,
+    REFRESH_Rect *sourceRectangle,
+    REFRESH_Rect *destinationRectangle
+) {
+    SDL_assert(0);
+}
+
 /* Swapchain */
 
 static inline VkExtent2D VULKAN_INTERNAL_ChooseSwapExtent(

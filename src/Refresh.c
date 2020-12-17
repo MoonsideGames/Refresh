@@ -808,4 +808,17 @@ void REFRESH_BindGraphicsPipeline(
     );
 }
 
+void REFRESH_Present(
+    REFRESH_Device *device,
+    REFRESH_Rect *sourceRectangle,
+    REFRESH_Rect *destinationRectangle
+) {
+    NULL_RETURN(device);
+    device->Present(
+        device->driverData,
+        sourceRectangle,
+        destinationRectangle
+    );
+}
+
 /* vim: set noexpandtab shiftwidth=8 tabstop=8: */

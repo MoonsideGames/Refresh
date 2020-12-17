@@ -1243,6 +1243,14 @@ REFRESHAPI void REFRESH_BindGraphicsPipeline(
 	REFRESH_GraphicsPipeline *graphicsPipeline
 );
 
+/* Presentation */
+
+REFRESHAPI void REFRESH_Present(
+	REFRESH_Device *device,
+	REFRESH_Rect *sourceRectangle,
+	REFRESH_Rect *destinationRectangle
+);
+
 #ifdef __cplusplus
 }
 #endif /* __cplusplus */
