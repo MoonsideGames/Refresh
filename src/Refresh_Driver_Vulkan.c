@@ -754,14 +754,14 @@ static REFRESH_GraphicsPipeline* VULKAN_CreateGraphicsPipeline(
 	VkPipelineShaderStageCreateInfo shaderStageCreateInfos[2];
 
 	VkPipelineVertexInputStateCreateInfo vertexInputStateCreateInfo;
-	VkVertexInputBindingDescription vertexInputBindingDescriptions[pipelineCreateInfo->vertexInputState.vertexBindingCount];
-	VkVertexInputAttributeDescription vertexInputAttributeDescriptions[pipelineCreateInfo->vertexInputState.vertexAttributeCount];
+	VkVertexInputBindingDescription *vertexInputBindingDescriptions = SDL_stack_alloc(VkVertexInputBindingDescription, pipelineCreateInfo->vertexInputState.vertexBindingCount);
+	VkVertexInputAttributeDescription *vertexInputAttributeDescriptions = SDL_stack_alloc(VkVertexInputAttributeDescription, pipelineCreateInfo->vertexInputState.vertexAttributeCount);
 
 	VkPipelineInputAssemblyStateCreateInfo inputAssemblyStateCreateInfo;
 
 	VkPipelineViewportStateCreateInfo viewportStateCreateInfo;
-	VkViewport viewports[pipelineCreateInfo->viewportState.viewportCount];
-	VkRect2D scissors[pipelineCreateInfo->viewportState.scissorCount];
+	VkViewport *viewports = SDL_stack_alloc(VkViewport, pipelineCreateInfo->viewportState.viewportCount);
+	VkRect2D *scissors = SDL_stack_alloc(VkRect2D, pipelineCreateInfo->viewportState.scissorCount);
 
 	VkPipelineRasterizationStateCreateInfo rasterizationStateCreateInfo;
 
@@ -772,21 +772,24 @@ static REFRESH_GraphicsPipeline* VULKAN_CreateGraphicsPipeline(
 	VkStencilOpState backStencilState;
 
 	VkPipelineColorBlendStateCreateInfo colorBlendStateCreateInfo;
-	VkPipelineColorBlendAttachmentState colorBlendAttachmentStates[
+	VkPipelineColorBlendAttachmentState *colorBlendAttachmentStates = SDL_stack_alloc(
+		VkPipelineColorBlendAttachmentState,
 		pipelineCreateInfo->colorBlendState.blendStateCount
-	];
+	);
 
 	VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo;
 	VkPipelineLayout pipelineLayout;
 	VkDescriptorSetLayout setLayouts[4];
 	VkDescriptorSetLayoutCreateInfo setLayoutCreateInfo;
 
-	VkDescriptorSetLayoutBinding vertexSamplerLayoutBindings[
+	VkDescriptorSetLayoutBinding *vertexSamplerLayoutBindings = SDL_stack_alloc(
+		VkDescriptorSetLayoutBinding,
 		pipelineCreateInfo->pipelineLayoutCreateInfo.vertexSamplerBindingCount
-	];
-	VkDescriptorSetLayoutBinding fragmentSamplerLayoutBindings[
+	);
+	VkDescriptorSetLayoutBinding *fragmentSamplerLayoutBindings = SDL_stack_alloc(
+		VkDescriptorSetLayoutBinding,
 		pipelineCreateInfo->pipelineLayoutCreateInfo.fragmentSamplerBindingCount
-	];
+	);
 
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 
@@ -1059,6 +1062,14 @@ static REFRESH_GraphicsPipeline* VULKAN_CreateGraphicsPipeline(
 	if (vulkanResult != VK_SUCCESS)
 	{
 		REFRESH_LogError("Failed to create vertex sampler layout!");
+
+		SDL_stack_free(vertexInputBindingDescriptions);
+		SDL_stack_free(vertexInputAttributeDescriptions);
+		SDL_stack_free(viewports);
+		SDL_stack_free(scissors);
+		SDL_stack_free(colorBlendAttachmentStates);
+		SDL_stack_free(vertexSamplerLayoutBindings);
+		SDL_stack_free(fragmentSamplerLayoutBindings);
 		return NULL;
 	}
 
@@ -1087,6 +1098,13 @@ static REFRESH_GraphicsPipeline* VULKAN_CreateGraphicsPipeline(
 	if (vulkanResult != VK_SUCCESS)
 	{
 		REFRESH_LogError("Failed to create fragment sampler layout!");
+		SDL_stack_free(vertexInputBindingDescriptions);
+		SDL_stack_free(vertexInputAttributeDescriptions);
+		SDL_stack_free(viewports);
+		SDL_stack_free(scissors);
+		SDL_stack_free(colorBlendAttachmentStates);
+		SDL_stack_free(vertexSamplerLayoutBindings);
+		SDL_stack_free(fragmentSamplerLayoutBindings);
 		return NULL;
 	}
 
@@ -1140,9 +1158,23 @@ static REFRESH_GraphicsPipeline* VULKAN_CreateGraphicsPipeline(
 	if (vulkanResult != VK_SUCCESS)
 	{
 		REFRESH_LogError("Failed to create graphics pipeline!");
+		SDL_stack_free(vertexInputBindingDescriptions);
+		SDL_stack_free(vertexInputAttributeDescriptions);
+		SDL_stack_free(viewports);
+		SDL_stack_free(scissors);
+		SDL_stack_free(colorBlendAttachmentStates);
+		SDL_stack_free(vertexSamplerLayoutBindings);
+		SDL_stack_free(fragmentSamplerLayoutBindings);
 		return NULL;
 	}
 
+	SDL_stack_free(vertexInputBindingDescriptions);
+	SDL_stack_free(vertexInputAttributeDescriptions);
+	SDL_stack_free(viewports);
+	SDL_stack_free(scissors);
+	SDL_stack_free(colorBlendAttachmentStates);
+	SDL_stack_free(vertexSamplerLayoutBindings);
+	SDL_stack_free(fragmentSamplerLayoutBindings);
 	return (REFRESH_GraphicsPipeline*) pipeline;
 }
 
@@ -1966,7 +1998,7 @@ static uint8_t VULKAN_INTERNAL_CheckValidationLayers(
 	uint32_t layerCount;
 	VkLayerProperties *availableLayers;
 	uint32_t i, j;
-	uint8_t layerFound;
+	uint8_t layerFound = 0;
 
 	vkEnumerateInstanceLayerProperties(&layerCount, NULL);
 	availableLayers = SDL_stack_alloc(VkLayerProperties, layerCount);

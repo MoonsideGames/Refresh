@@ -367,10 +367,10 @@ typedef struct REFRESH_Vec4
 
 typedef struct REFRESH_Viewport
 {
-	int32_t x;
-	int32_t y;
-	int32_t w;
-	int32_t h;
+	float x;
+	float y;
+	float w;
+	float h;
 	float minDepth;
 	float maxDepth;
 } REFRESH_Viewport;
