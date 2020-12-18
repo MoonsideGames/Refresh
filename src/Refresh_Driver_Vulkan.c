@@ -303,6 +303,26 @@ static VkVertexInputRate RefreshToVK_VertexInputRate[] =
 	VK_VERTEX_INPUT_RATE_INSTANCE
 };
 
+static VkFilter RefreshToVK_SamplerFilter[] =
+{
+	VK_FILTER_NEAREST,
+	VK_FILTER_LINEAR
+};
+
+static VkSamplerMipmapMode RefreshToVK_SamplerMipmapMode[] =
+{
+	VK_SAMPLER_MIPMAP_MODE_NEAREST,
+	VK_SAMPLER_MIPMAP_MODE_LINEAR
+};
+
+static VkSamplerAddressMode RefreshToVK_SamplerAddressMode[] =
+{
+	VK_SAMPLER_ADDRESS_MODE_REPEAT,
+	VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT,
+	VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+	VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER
+};
+
 /* Structures */
 
 typedef struct QueueFamilyIndices
@@ -1061,6 +1081,7 @@ static REFRESH_GraphicsPipeline* VULKAN_CreateGraphicsPipeline(
 
 	if (vulkanResult != VK_SUCCESS)
 	{
+		LogVulkanResult("vkCreateDescriptorSetLayout", vulkanResult);
 		REFRESH_LogError("Failed to create vertex sampler layout!");
 
 		SDL_stack_free(vertexInputBindingDescriptions);
@@ -1097,7 +1118,9 @@ static REFRESH_GraphicsPipeline* VULKAN_CreateGraphicsPipeline(
 
 	if (vulkanResult != VK_SUCCESS)
 	{
+		LogVulkanResult("vkCreateDescriptorSetLayout", vulkanResult);
 		REFRESH_LogError("Failed to create fragment sampler layout!");
+
 		SDL_stack_free(vertexInputBindingDescriptions);
 		SDL_stack_free(vertexInputAttributeDescriptions);
 		SDL_stack_free(viewports);
@@ -1157,7 +1180,9 @@ static REFRESH_GraphicsPipeline* VULKAN_CreateGraphicsPipeline(
 
 	if (vulkanResult != VK_SUCCESS)
 	{
+		LogVulkanResult("vkCreateGraphicsPipelines", vulkanResult);
 		REFRESH_LogError("Failed to create graphics pipeline!");
+
 		SDL_stack_free(vertexInputBindingDescriptions);
 		SDL_stack_free(vertexInputAttributeDescriptions);
 		SDL_stack_free(viewports);
@@ -1182,7 +1207,59 @@ static REFRESH_Sampler* VULKAN_CreateSampler(
 	REFRESH_Renderer *driverData,
 	REFRESH_SamplerStateCreateInfo *samplerStateCreateInfo
 ) {
-    SDL_assert(0);
+	VkResult vulkanResult;
+	VkSampler sampler;
+	
+	VulkanRenderer* renderer = (VulkanRenderer*)driverData;
+
+	VkSamplerCreateInfo vkSamplerCreateInfo;
+	vkSamplerCreateInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+	vkSamplerCreateInfo.pNext = NULL;
+	vkSamplerCreateInfo.flags = 0;
+	vkSamplerCreateInfo.magFilter = RefreshToVK_SamplerFilter[
+		samplerStateCreateInfo->magFilter
+	];
+	vkSamplerCreateInfo.minFilter = RefreshToVK_SamplerFilter[
+		samplerStateCreateInfo->minFilter
+	];
+	vkSamplerCreateInfo.mipmapMode = RefreshToVK_SamplerMipmapMode[
+		samplerStateCreateInfo->mipmapMode
+	];
+	vkSamplerCreateInfo.addressModeU = RefreshToVK_SamplerAddressMode[
+		samplerStateCreateInfo->addressModeU
+	];
+	vkSamplerCreateInfo.addressModeV = RefreshToVK_SamplerAddressMode[
+		samplerStateCreateInfo->addressModeV
+	];
+	vkSamplerCreateInfo.addressModeW = RefreshToVK_SamplerAddressMode[
+		samplerStateCreateInfo->addressModeW
+	];
+	vkSamplerCreateInfo.mipLodBias = samplerStateCreateInfo->mipLodBias;
+	vkSamplerCreateInfo.anisotropyEnable = samplerStateCreateInfo->anisotropyEnable;
+	vkSamplerCreateInfo.maxAnisotropy = samplerStateCreateInfo->maxAnisotropy;
+	vkSamplerCreateInfo.compareEnable = samplerStateCreateInfo->compareEnable;
+	vkSamplerCreateInfo.compareOp = RefreshToVK_CompareOp[
+		samplerStateCreateInfo->compareOp
+	];
+	vkSamplerCreateInfo.minLod = samplerStateCreateInfo->minLod;
+	vkSamplerCreateInfo.maxLod = samplerStateCreateInfo->maxLod;
+	vkSamplerCreateInfo.borderColor = samplerStateCreateInfo->borderColor;
+	vkSamplerCreateInfo.unnormalizedCoordinates = VK_FALSE;
+
+	vulkanResult = renderer->vkCreateSampler(
+		renderer->logicalDevice,
+		&vkSamplerCreateInfo,
+		NULL,
+		&sampler
+	);
+
+	if (vulkanResult != VK_SUCCESS)
+	{
+		LogVulkanResult("vkCreateSampler", vulkanResult);
+		return NULL;
+	}
+
+	return (REFRESH_Sampler*) sampler;
 }
 
 static REFRESH_Framebuffer* VULKAN_CreateFramebuffer(
