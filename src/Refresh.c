@@ -286,7 +286,8 @@ REFRESH_Texture* REFRESH_CreateTexture2D(
 	REFRESH_SurfaceFormat format,
 	uint32_t width,
 	uint32_t height,
-	uint32_t levelCount
+	uint32_t levelCount,
+    uint8_t canBeRenderTarget
 ) {
     NULL_RETURN_NULL(device);
     return device->CreateTexture2D(
@@ -294,7 +295,8 @@ REFRESH_Texture* REFRESH_CreateTexture2D(
         format,
         width,
         height,
-        levelCount
+        levelCount,
+        canBeRenderTarget
     );
 }
 
@@ -304,7 +306,8 @@ REFRESH_Texture* REFRESH_CreateTexture3D(
 	uint32_t width,
 	uint32_t height,
 	uint32_t depth,
-	uint32_t levelCount
+	uint32_t levelCount,
+    uint8_t canBeRenderTarget
 ) {
     NULL_RETURN_NULL(device);
     return device->CreateTexture3D(
@@ -313,7 +316,8 @@ REFRESH_Texture* REFRESH_CreateTexture3D(
         width,
         height,
         depth,
-        levelCount
+        levelCount,
+        canBeRenderTarget
     );
 }
 
@@ -321,14 +325,31 @@ REFRESH_Texture* REFRESH_CreateTextureCube(
 	REFRESH_Device *device,
 	REFRESH_SurfaceFormat format,
 	uint32_t size,
-	uint32_t levelCount
+	uint32_t levelCount,
+    uint8_t canBeRenderTarget
 ) {
     NULL_RETURN_NULL(device);
     return device->CreateTextureCube(
         device->driverData,
         format,
         size,
-        levelCount
+        levelCount,
+        canBeRenderTarget
+    );
+}
+
+REFRESH_DepthStencilTexture* REFRESH_CreateTextureDepthStencil(
+    REFRESH_Device *device,
+    REFRESH_DepthFormat format,
+    uint32_t width,
+    uint32_t height
+) {
+    NULL_RETURN_NULL(device);
+    return device->CreateTextureDepthStencil(
+        device->driverData,
+        format,
+        width,
+        height
     );
 }
 

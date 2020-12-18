@@ -239,7 +239,8 @@ struct REFRESH_Device
         REFRESH_SurfaceFormat format,
         uint32_t width,
         uint32_t height,
-        uint32_t levelCount
+        uint32_t levelCount,
+        uint8_t canBeRenderTarget
     );
 
     REFRESH_Texture* (*CreateTexture3D)(
@@ -248,14 +249,23 @@ struct REFRESH_Device
         uint32_t width,
         uint32_t height,
         uint32_t depth,
-        uint32_t levelCount
+        uint32_t levelCount,
+        uint8_t canBeRenderTarget
     );
 
     REFRESH_Texture* (*CreateTextureCube)(
         REFRESH_Renderer *driverData,
         REFRESH_SurfaceFormat format,
         uint32_t size,
-        uint32_t levelCount
+        uint32_t levelCount,
+        uint8_t canBeRenderTarget
+    );
+
+    REFRESH_DepthStencilTexture* (*CreateTextureDepthStencil)(
+        REFRESH_Renderer *driverData,
+        REFRESH_DepthFormat format,
+        uint32_t width,
+        uint32_t height
     );
 
     REFRESH_ColorTarget* (*GenColorTarget)(
@@ -516,6 +526,7 @@ struct REFRESH_Device
     ASSIGN_DRIVER_FUNC(CreateTexture2D, name) \
     ASSIGN_DRIVER_FUNC(CreateTexture3D, name) \
     ASSIGN_DRIVER_FUNC(CreateTextureCube, name) \
+    ASSIGN_DRIVER_FUNC(CreateTextureDepthStencil, name) \
     ASSIGN_DRIVER_FUNC(GenColorTarget, name) \
     ASSIGN_DRIVER_FUNC(GenDepthStencilTarget, name) \
     ASSIGN_DRIVER_FUNC(GenVertexBuffer, name) \

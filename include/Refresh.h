@@ -57,6 +57,7 @@ extern "C" {
 typedef struct REFRESH_Device REFRESH_Device;
 typedef struct REFRESH_Buffer REFRESH_Buffer;
 typedef struct REFRESH_Texture REFRESH_Texture;
+typedef struct REFRESH_DepthStencilTexture REFRESH_DepthStencilTexture;
 typedef struct REFRESH_Sampler REFRESH_Sampler;
 typedef struct REFRESH_ColorTarget REFRESH_ColorTarget;
 typedef struct REFRESH_DepthStencilTarget REFRESH_DepthStencilTarget;
@@ -735,7 +736,8 @@ REFRESHAPI REFRESH_Texture* REFRESH_CreateTexture2D(
 	REFRESH_SurfaceFormat format,
 	uint32_t width,
 	uint32_t height,
-	uint32_t levelCount
+	uint32_t levelCount,
+	uint8_t canBeRenderTarget
 );
 
 /* Creates a 3D texture.
@@ -755,7 +757,8 @@ REFRESHAPI REFRESH_Texture* REFRESH_CreateTexture3D(
 	uint32_t width,
 	uint32_t height,
 	uint32_t depth,
-	uint32_t levelCount
+	uint32_t levelCount,
+	uint8_t canBeRenderTarget
 );
 
 /* Creates a texture cube.
@@ -771,7 +774,24 @@ REFRESHAPI REFRESH_Texture* REFRESH_CreateTextureCube(
 	REFRESH_Device *device,
 	REFRESH_SurfaceFormat format,
 	uint32_t size,
-	uint32_t levelCount
+	uint32_t levelCount,
+	uint8_t canBeRenderTarget
+);
+
+/* Creates a depth/stencil texture to be used with a DepthStencilTarget.
+ *
+ * format: 	The pixel format of the depth/stencil data.
+ * width: 	The width of the texture.
+ * height: 	The height of the texture.
+ *
+ * Returns an allocated REFRESH_Texture* object. Note that the contents of
+ * the texture are undefined until SetData is called.
+ */
+REFRESHAPI REFRESH_DepthStencilTexture* REFRESH_CreateTextureDepthStencil(
+	REFRESH_Device *device,
+	REFRESH_DepthFormat format,
+	uint32_t width,
+	uint32_t height
 );
 
 /* Creates a color target.

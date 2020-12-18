@@ -69,6 +69,17 @@ static uint32_t deviceExtensionCount = SDL_arraysize(deviceExtensionNames);
 
 /* Defines */
 
+#define STARTING_ALLOCATION_SIZE 64000000 /* 64MB */
+#define MAX_ALLOCATION_SIZE 256000000 /* 256MB */
+
+#define IDENTITY_SWIZZLE \
+{ \
+	VK_COMPONENT_SWIZZLE_IDENTITY, \
+	VK_COMPONENT_SWIZZLE_IDENTITY, \
+	VK_COMPONENT_SWIZZLE_IDENTITY, \
+	VK_COMPONENT_SWIZZLE_IDENTITY \
+}
+
 #define NULL_RENDER_PASS (REFRESH_RenderPass*) 0
 
 /* Enums */
@@ -335,6 +346,43 @@ static VkBorderColor RefreshToVK_BorderColor[] =
 
 /* Structures */
 
+typedef struct VulkanMemoryAllocation VulkanMemoryAllocation;
+
+typedef struct VulkanMemoryFreeRegion
+{
+	VulkanMemoryAllocation *allocation;
+	VkDeviceSize offset;
+	VkDeviceSize size;
+	uint32_t allocationIndex;
+	uint32_t sortedIndex;
+} VulkanMemoryFreeRegion;
+
+typedef struct VulkanMemorySubAllocator
+{
+	VkDeviceSize nextAllocationSize;
+	VulkanMemoryAllocation **allocations;
+	uint32_t allocationCount;
+	VulkanMemoryFreeRegion **sortedFreeRegions;
+	uint32_t sortedFreeRegionCount;
+	uint32_t sortedFreeRegionCapacity;
+} VulkanMemorySubAllocator;
+
+struct VulkanMemoryAllocation
+{
+	VulkanMemorySubAllocator *allocator;
+	VkDeviceMemory memory;
+	VkDeviceSize size;
+	VulkanMemoryFreeRegion **freeRegions;
+	uint32_t freeRegionCount;
+	uint32_t freeRegionCapacity;
+	uint8_t dedicated;
+};
+
+typedef struct VulkanMemoryAllocator
+{
+	VulkanMemorySubAllocator subAllocators[VK_MAX_MEMORY_TYPES];
+} VulkanMemoryAllocator;
+
 typedef struct QueueFamilyIndices
 {
 	uint32_t graphicsFamily;
@@ -363,6 +411,8 @@ typedef struct VulkanRenderer
     uint8_t supportsDebugUtils;
     uint8_t debugMode;
     uint8_t headless;
+
+	VulkanMemoryAllocator *memoryAllocator;
 
     REFRESH_PresentMode presentMode;
     VkSurfaceKHR surface;
@@ -398,6 +448,8 @@ typedef struct VulkanRenderer
 	VkDescriptorSetLayout vertexParamLayout;
 	VkDescriptorSetLayout fragmentParamLayout;
 
+	SDL_mutex *allocatorLock;
+
     #define VULKAN_INSTANCE_FUNCTION(ext, ret, func, params) \
 		vkfntype_##func func;
 	#define VULKAN_DEVICE_FUNCTION(ext, ret, func, params) \
@@ -407,16 +459,44 @@ typedef struct VulkanRenderer
 
 typedef struct VulkanTexture
 {
+	VulkanMemoryAllocation *allocation;
+	VkDeviceSize offset;
+	VkDeviceSize memorySize;
+
 	VkImage image;
 	VkImageView view;
 	VkExtent2D dimensions;
+	uint32_t depth;
+	uint32_t layerCount;
+	uint32_t levelCount;
+	VkFormat surfaceFormat;
+	VulkanResourceAccessType resourceAccessType;
 } VulkanTexture;
+
+typedef struct VulkanDepthStencilTexture
+{
+	VulkanMemoryAllocation *allocation;
+	VkDeviceSize offset;
+	VkDeviceSize memorySize;
+
+	VkImage image;
+	VkImageView view;
+	VkExtent2D dimensions;
+	VkFormat surfaceFormat;
+	VulkanResourceAccessType resourceAccessType;
+} VulkanDepthStencilTexture;
 
 typedef struct VulkanColorTarget
 {
 	VulkanTexture *texture;
 	VkImageView imageView;
 } VulkanColorTarget;
+
+typedef struct VulkanDepthStencilTarget
+{
+	VulkanDepthStencilTexture *texture;
+	VkImageView imageView;
+} VulkanDepthStencilTarget;
 
 /* Error Handling */
 
@@ -460,9 +540,490 @@ static inline void LogVulkanResult(
 	}
 }
 
-/* Command Buffers */
+/* Utility */
 
-/* Vulkan: Command Buffers */
+static inline uint8_t DepthFormatContainsStencil(VkFormat format)
+{
+	switch(format)
+	{
+		case VK_FORMAT_D16_UNORM:
+		case VK_FORMAT_D32_SFLOAT:
+			return 0;
+		case VK_FORMAT_D16_UNORM_S8_UINT:
+		case VK_FORMAT_D24_UNORM_S8_UINT:
+		case VK_FORMAT_D32_SFLOAT_S8_UINT:
+			return 1;
+		default:
+			SDL_assert(0 && "Invalid depth format");
+			return 0;
+	}
+}
+
+/* Memory Management */
+
+static inline VkDeviceSize VULKAN_INTERNAL_NextHighestAlignment(
+	VkDeviceSize n,
+	VkDeviceSize align
+) {
+	return align * ((n + align - 1) / align);
+}
+
+static VulkanMemoryFreeRegion* VULKAN_INTERNAL_NewMemoryFreeRegion(
+	VulkanMemoryAllocation *allocation,
+	VkDeviceSize offset,
+	VkDeviceSize size
+) {
+	VulkanMemoryFreeRegion *newFreeRegion;
+	uint32_t insertionIndex = 0;
+	uint32_t i;
+
+	/* TODO: an improvement here could be to merge contiguous free regions */
+	allocation->freeRegionCount += 1;
+	if (allocation->freeRegionCount > allocation->freeRegionCapacity)
+	{
+		allocation->freeRegionCapacity *= 2;
+		allocation->freeRegions = SDL_realloc(
+			allocation->freeRegions,
+			sizeof(VulkanMemoryFreeRegion*) * allocation->freeRegionCapacity
+		);
+	}
+
+	newFreeRegion = SDL_malloc(sizeof(VulkanMemoryFreeRegion));
+	newFreeRegion->offset = offset;
+	newFreeRegion->size = size;
+	newFreeRegion->allocation = allocation;
+
+	allocation->freeRegions[allocation->freeRegionCount - 1] = newFreeRegion;
+	newFreeRegion->allocationIndex = allocation->freeRegionCount - 1;
+
+	for (i = 0; i < allocation->allocator->sortedFreeRegionCount; i += 1)
+	{
+		if (allocation->allocator->sortedFreeRegions[i]->size < size)
+		{
+			/* this is where the new region should go */
+			break;
+		}
+
+		insertionIndex += 1;
+	}
+
+	if (allocation->allocator->sortedFreeRegionCount + 1 > allocation->allocator->sortedFreeRegionCapacity)
+	{
+		allocation->allocator->sortedFreeRegionCapacity *= 2;
+		allocation->allocator->sortedFreeRegions = SDL_realloc(
+			allocation->allocator->sortedFreeRegions,
+			sizeof(VulkanMemoryFreeRegion*) * allocation->allocator->sortedFreeRegionCapacity
+		);
+	}
+
+	/* perform insertion sort */
+	if (allocation->allocator->sortedFreeRegionCount > 0 && insertionIndex != allocation->allocator->sortedFreeRegionCount)
+	{
+		for (i = allocation->allocator->sortedFreeRegionCount; i > insertionIndex && i > 0; i -= 1)
+		{
+			allocation->allocator->sortedFreeRegions[i] = allocation->allocator->sortedFreeRegions[i - 1];
+			allocation->allocator->sortedFreeRegions[i]->sortedIndex = i;
+		}
+	}
+
+	allocation->allocator->sortedFreeRegionCount += 1;
+	allocation->allocator->sortedFreeRegions[insertionIndex] = newFreeRegion;
+	newFreeRegion->sortedIndex = insertionIndex;
+
+	return newFreeRegion;
+}
+
+static void VULKAN_INTERNAL_RemoveMemoryFreeRegion(
+	VulkanMemoryFreeRegion *freeRegion
+) {
+	uint32_t i;
+
+	/* close the gap in the sorted list */
+	if (freeRegion->allocation->allocator->sortedFreeRegionCount > 1)
+	{
+		for (i = freeRegion->sortedIndex; i < freeRegion->allocation->allocator->sortedFreeRegionCount - 1; i += 1)
+		{
+			freeRegion->allocation->allocator->sortedFreeRegions[i] =
+				freeRegion->allocation->allocator->sortedFreeRegions[i + 1];
+
+			freeRegion->allocation->allocator->sortedFreeRegions[i]->sortedIndex = i;
+		}
+	}
+
+	freeRegion->allocation->allocator->sortedFreeRegionCount -= 1;
+
+	/* close the gap in the buffer list */
+	if (freeRegion->allocation->freeRegionCount > 1 && freeRegion->allocationIndex != freeRegion->allocation->freeRegionCount - 1)
+	{
+		freeRegion->allocation->freeRegions[freeRegion->allocationIndex] =
+			freeRegion->allocation->freeRegions[freeRegion->allocation->freeRegionCount - 1];
+
+		freeRegion->allocation->freeRegions[freeRegion->allocationIndex]->allocationIndex =
+			freeRegion->allocationIndex;
+	}
+
+	freeRegion->allocation->freeRegionCount -= 1;
+
+	SDL_free(freeRegion);
+}
+
+static uint8_t VULKAN_INTERNAL_FindMemoryType(
+	VulkanRenderer *renderer,
+	uint32_t typeFilter,
+	VkMemoryPropertyFlags properties,
+	uint32_t *result
+) {
+	VkPhysicalDeviceMemoryProperties memoryProperties;
+	uint32_t i;
+
+	renderer->vkGetPhysicalDeviceMemoryProperties(
+		renderer->physicalDevice,
+		&memoryProperties
+	);
+
+	for (i = 0; i < memoryProperties.memoryTypeCount; i += 1)
+	{
+		if (	(typeFilter & (1 << i)) &&
+			(memoryProperties.memoryTypes[i].propertyFlags & properties) == properties	)
+		{
+			*result = i;
+			return 1;
+		}
+	}
+
+	REFRESH_LogError("Failed to find memory properties %X, filter %X", properties, typeFilter);
+	return 0;
+}
+
+static uint8_t VULKAN_INTERNAL_FindBufferMemoryRequirements(
+	VulkanRenderer *renderer,
+	VkBuffer buffer,
+	VkMemoryRequirements2KHR *pMemoryRequirements,
+	uint32_t *pMemoryTypeIndex
+) {
+	VkBufferMemoryRequirementsInfo2KHR bufferRequirementsInfo;
+	bufferRequirementsInfo.sType =
+		VK_STRUCTURE_TYPE_BUFFER_MEMORY_REQUIREMENTS_INFO_2_KHR;
+	bufferRequirementsInfo.pNext = NULL;
+	bufferRequirementsInfo.buffer = buffer;
+
+	renderer->vkGetBufferMemoryRequirements2KHR(
+		renderer->logicalDevice,
+		&bufferRequirementsInfo,
+		pMemoryRequirements
+	);
+
+	if (!VULKAN_INTERNAL_FindMemoryType(
+		renderer,
+		pMemoryRequirements->memoryRequirements.memoryTypeBits,
+		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+		pMemoryTypeIndex
+	)) {
+		REFRESH_LogError(
+			"Could not find valid memory type for buffer creation"
+		);
+		return 0;
+	}
+
+	return 1;
+}
+
+static uint8_t VULKAN_INTERNAL_FindImageMemoryRequirements(
+	VulkanRenderer *renderer,
+	VkImage image,
+	VkMemoryRequirements2KHR *pMemoryRequirements,
+	uint32_t *pMemoryTypeIndex
+) {
+	VkImageMemoryRequirementsInfo2KHR imageRequirementsInfo;
+	imageRequirementsInfo.sType =
+		VK_STRUCTURE_TYPE_IMAGE_MEMORY_REQUIREMENTS_INFO_2_KHR;
+	imageRequirementsInfo.pNext = NULL;
+	imageRequirementsInfo.image = image;
+
+	renderer->vkGetImageMemoryRequirements2KHR(
+		renderer->logicalDevice,
+		&imageRequirementsInfo,
+		pMemoryRequirements
+	);
+
+	if (!VULKAN_INTERNAL_FindMemoryType(
+		renderer,
+		pMemoryRequirements->memoryRequirements.memoryTypeBits,
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+		pMemoryTypeIndex
+	)) {
+		REFRESH_LogError(
+			"Could not find valid memory type for image creation"
+		);
+		return 0;
+	}
+
+	return 1;
+}
+
+static uint8_t VULKAN_INTERNAL_AllocateMemory(
+	VulkanRenderer *renderer,
+	VkBuffer buffer,
+	VkImage image,
+	uint32_t memoryTypeIndex,
+	VkDeviceSize allocationSize,
+	uint8_t dedicated,
+	VulkanMemoryAllocation **pMemoryAllocation
+) {
+	VulkanMemoryAllocation *allocation;
+	VulkanMemorySubAllocator *allocator = &renderer->memoryAllocator->subAllocators[memoryTypeIndex];
+	VkMemoryAllocateInfo allocInfo;
+	VkMemoryDedicatedAllocateInfoKHR dedicatedInfo;
+	VkResult result;
+
+	allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+	allocInfo.memoryTypeIndex = memoryTypeIndex;
+	allocInfo.allocationSize = allocationSize;
+
+	allocation = SDL_malloc(sizeof(VulkanMemoryAllocation));
+	allocation->size = allocationSize;
+
+	if (dedicated)
+	{
+		dedicatedInfo.sType =
+			VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO_KHR;
+		dedicatedInfo.pNext = NULL;
+		dedicatedInfo.buffer = buffer;
+		dedicatedInfo.image = image;
+
+		allocInfo.pNext = &dedicatedInfo;
+
+		allocation->dedicated = 1;
+	}
+	else
+	{
+		allocInfo.pNext = NULL;
+
+		/* allocate a non-dedicated texture buffer */
+		allocator->allocationCount += 1;
+		allocator->allocations = SDL_realloc(
+			allocator->allocations,
+			sizeof(VulkanMemoryAllocation*) * allocator->allocationCount
+		);
+
+		allocator->allocations[
+			allocator->allocationCount - 1
+		] = allocation;
+
+		allocation->dedicated = 0;
+	}
+
+	allocation->freeRegions = SDL_malloc(sizeof(VulkanMemoryFreeRegion*));
+	allocation->freeRegionCount = 0;
+	allocation->freeRegionCapacity = 1;
+	allocation->allocator = allocator;
+
+	result = renderer->vkAllocateMemory(
+		renderer->logicalDevice,
+		&allocInfo,
+		NULL,
+		&allocation->memory
+	);
+
+	if (result != VK_SUCCESS)
+	{
+		LogVulkanResult("vkAllocateMemory", result);
+		return 0;
+	}
+
+	VULKAN_INTERNAL_NewMemoryFreeRegion(
+		allocation,
+		0,
+		allocation->size
+	);
+
+	*pMemoryAllocation = allocation;
+	return 1;
+}
+
+static uint8_t VULKAN_INTERNAL_FindAvailableMemory(
+	VulkanRenderer *renderer,
+	VkBuffer buffer,
+	VkImage image,
+	VulkanMemoryAllocation **pMemoryAllocation,
+	VkDeviceSize *pOffset,
+	VkDeviceSize *pSize
+) {
+	VkMemoryDedicatedRequirementsKHR dedicatedRequirements =
+	{
+		VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS_KHR,
+		NULL
+	};
+	VkMemoryRequirements2KHR memoryRequirements =
+	{
+		VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2_KHR,
+		&dedicatedRequirements
+	};
+	uint32_t memoryTypeIndex;
+
+	VulkanMemoryAllocation *allocation;
+	VulkanMemorySubAllocator *allocator;
+	VulkanMemoryFreeRegion *region;
+
+	VkDeviceSize requiredSize, allocationSize;
+	VkDeviceSize alignedOffset;
+	uint32_t newRegionSize, newRegionOffset;
+	uint8_t allocationResult;
+
+	if (buffer != VK_NULL_HANDLE && image != VK_NULL_HANDLE)
+	{
+		REFRESH_LogError("Calling FindAvailableMemory with both a buffer and image handle is invalid!");
+		return 0;
+	}
+	else if (buffer != VK_NULL_HANDLE)
+	{
+		if (!VULKAN_INTERNAL_FindBufferMemoryRequirements(
+			renderer,
+			buffer,
+			&memoryRequirements,
+			&memoryTypeIndex
+		)) {
+			REFRESH_LogError("Failed to acquire buffer memory requirements!");
+			return 0;
+		}
+	}
+	else if (image != VK_NULL_HANDLE)
+	{
+		if (!VULKAN_INTERNAL_FindImageMemoryRequirements(
+			renderer,
+			image,
+			&memoryRequirements,
+			&memoryTypeIndex
+		)) {
+			REFRESH_LogError("Failed to acquire image memory requirements!");
+			return 0;
+		}
+	}
+	else
+	{
+		REFRESH_LogError("Calling FindAvailableMemory with neither buffer nor image handle is invalid!");
+		return 0;
+	}
+
+	allocator = &renderer->memoryAllocator->subAllocators[memoryTypeIndex];
+	requiredSize = memoryRequirements.memoryRequirements.size;
+
+	SDL_LockMutex(renderer->allocatorLock);
+
+	/* find the largest free region and use it */
+	if (allocator->sortedFreeRegionCount > 0)
+	{
+		region = allocator->sortedFreeRegions[0];
+		allocation = region->allocation;
+
+		alignedOffset = VULKAN_INTERNAL_NextHighestAlignment(
+			region->offset,
+			memoryRequirements.memoryRequirements.alignment
+		);
+
+		if (alignedOffset + requiredSize <= region->offset + region->size)
+		{
+			*pMemoryAllocation = allocation;
+
+			/* not aligned - create a new free region */
+			if (region->offset != alignedOffset)
+			{
+				VULKAN_INTERNAL_NewMemoryFreeRegion(
+					allocation,
+					region->offset,
+					alignedOffset - region->offset
+				);
+			}
+
+			*pOffset = alignedOffset;
+			*pSize = requiredSize;
+
+			newRegionSize = region->size - ((alignedOffset - region->offset) + requiredSize);
+			newRegionOffset = alignedOffset + requiredSize;
+
+			/* remove and add modified region to re-sort */
+			VULKAN_INTERNAL_RemoveMemoryFreeRegion(region);
+
+			/* if size is 0, no need to re-insert */
+			if (newRegionSize != 0)
+			{
+				VULKAN_INTERNAL_NewMemoryFreeRegion(
+					allocation,
+					newRegionOffset,
+					newRegionSize
+				);
+			}
+
+			SDL_UnlockMutex(renderer->allocatorLock);
+
+			return 1;
+		}
+	}
+
+	/* No suitable free regions exist, allocate a new memory region */
+
+	if (dedicatedRequirements.prefersDedicatedAllocation || dedicatedRequirements.requiresDedicatedAllocation)
+	{
+		allocationSize = requiredSize;
+	}
+	else if (requiredSize > allocator->nextAllocationSize)
+	{
+		/* allocate a page of required size aligned to STARTING_ALLOCATION_SIZE increments */
+		allocationSize =
+			VULKAN_INTERNAL_NextHighestAlignment(requiredSize, STARTING_ALLOCATION_SIZE);
+	}
+	else
+	{
+		allocationSize = allocator->nextAllocationSize;
+		allocator->nextAllocationSize = SDL_min(allocator->nextAllocationSize * 2, MAX_ALLOCATION_SIZE);
+	}
+
+	allocationResult = VULKAN_INTERNAL_AllocateMemory(
+		renderer,
+		buffer,
+		image,
+		memoryTypeIndex,
+		allocationSize,
+		dedicatedRequirements.prefersDedicatedAllocation || dedicatedRequirements.requiresDedicatedAllocation,
+		&allocation
+	);
+
+	/* Uh oh, we're out of memory */
+	if (allocationResult == 0)
+	{
+		/* Responsibility of the caller to handle being out of memory */
+		REFRESH_LogWarn("Failed to allocate memory!");
+		SDL_UnlockMutex(renderer->allocatorLock);
+
+		return 2;
+	}
+
+	*pMemoryAllocation = allocation;
+	*pOffset = 0;
+	*pSize = requiredSize;
+
+	region = allocation->freeRegions[0];
+
+	newRegionOffset = region->offset + requiredSize;
+	newRegionSize = region->size - requiredSize;
+
+	VULKAN_INTERNAL_RemoveMemoryFreeRegion(region);
+
+	if (newRegionSize != 0)
+	{
+		VULKAN_INTERNAL_NewMemoryFreeRegion(
+			allocation,
+			newRegionOffset,
+			newRegionSize
+		);
+	}
+
+	SDL_UnlockMutex(renderer->allocatorLock);
+
+	return 1;
+}
+
+/* Command Buffers */
 
 static void VULKAN_INTERNAL_BeginCommandBuffer(VulkanRenderer *renderer)
 {
@@ -1344,14 +1905,308 @@ static REFRESH_ShaderModule* VULKAN_CreateShaderModule(
     SDL_assert(0);
 }
 
+/* texture should be an alloc'd but uninitialized VulkanTexture */
+static uint8_t VULKAN_INTERNAL_CreateTexture(
+	VulkanRenderer *renderer,
+	uint32_t width,
+	uint32_t height,
+	uint32_t depth,
+	uint32_t isCube,
+	VkSampleCountFlagBits samples,
+	uint32_t levelCount,
+	VkFormat format,
+	VkImageAspectFlags aspectMask,
+	VkImageTiling tiling,
+	VkImageType imageType,
+	VkImageUsageFlags usage,
+	VulkanTexture *texture
+) {
+	VkResult vulkanResult;
+	VkImageCreateInfo imageCreateInfo;
+	VkImageViewCreateInfo imageViewCreateInfo;
+	uint8_t findMemoryResult;
+	uint8_t layerCount = isCube ? 6 : 1;
+	VkComponentMapping swizzle = IDENTITY_SWIZZLE;
+
+	imageCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+	imageCreateInfo.pNext = NULL;
+	imageCreateInfo.flags = isCube ? VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT : 0;
+	imageCreateInfo.imageType = imageType;
+	imageCreateInfo.format = format;
+	imageCreateInfo.extent.width = width;
+	imageCreateInfo.extent.height = height;
+	imageCreateInfo.extent.depth = depth;
+	imageCreateInfo.mipLevels = levelCount;
+	imageCreateInfo.arrayLayers = layerCount;
+	imageCreateInfo.samples = samples;
+	imageCreateInfo.tiling = tiling;
+	imageCreateInfo.usage = usage;
+	// FIXME: would this interfere with pixel data sharing?
+	imageCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+	imageCreateInfo.queueFamilyIndexCount = 0;
+	imageCreateInfo.pQueueFamilyIndices = NULL;
+	imageCreateInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+	vulkanResult = renderer->vkCreateImage(
+		renderer->logicalDevice,
+		&imageCreateInfo,
+		NULL,
+		&texture->image
+	);
+
+	if (vulkanResult != VK_SUCCESS)
+	{
+		LogVulkanResult("vkCreateImage", vulkanResult);
+		REFRESH_LogError("Failed to create texture!");
+	}
+
+	findMemoryResult = VULKAN_INTERNAL_FindAvailableMemory(
+		renderer,
+		VK_NULL_HANDLE,
+		texture->image,
+		&texture->allocation,
+		&texture->offset,
+		&texture->memorySize
+	);
+
+	/* No device memory available, time to die */
+	if (findMemoryResult == 0 || findMemoryResult == 2)
+	{
+		REFRESH_LogError("Failed to find texture memory!");
+		return 0;
+	}
+
+	vulkanResult = renderer->vkBindImageMemory(
+		renderer->logicalDevice,
+		texture->image,
+		texture->allocation->memory,
+		texture->offset
+	);
+
+	if (vulkanResult != VK_SUCCESS)
+	{
+		LogVulkanResult("vkBindImageMemory", vulkanResult);
+		REFRESH_LogError("Failed to bind texture memory!");
+		return 0;
+	}
+
+	imageViewCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+	imageViewCreateInfo.pNext = NULL;
+	imageViewCreateInfo.flags = 0;
+	imageViewCreateInfo.image = texture->image;
+	imageViewCreateInfo.format = format;
+	imageViewCreateInfo.components = swizzle;
+	imageViewCreateInfo.subresourceRange.aspectMask = aspectMask;
+	imageViewCreateInfo.subresourceRange.baseMipLevel = 0;
+	imageViewCreateInfo.subresourceRange.levelCount = levelCount;
+	imageViewCreateInfo.subresourceRange.baseArrayLayer = 0;
+	imageViewCreateInfo.subresourceRange.layerCount = layerCount;
+
+	if (isCube)
+	{
+		imageViewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_CUBE;
+	}
+	else if (imageType == VK_IMAGE_TYPE_2D)
+	{
+		imageViewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+	}
+	else if (imageType == VK_IMAGE_TYPE_3D)
+	{
+		imageViewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_3D;
+	}
+	else
+	{
+		REFRESH_LogError("invalid image type: %u", imageType);
+	}
+
+	vulkanResult = renderer->vkCreateImageView(
+		renderer->logicalDevice,
+		&imageViewCreateInfo,
+		NULL,
+		&texture->view
+	);
+
+	if (vulkanResult != VK_SUCCESS)
+	{
+		LogVulkanResult("vkCreateImageView", vulkanResult);
+		REFRESH_LogError("Failed to create texture image view");
+		return 0;
+	}
+
+	texture->dimensions.width = width;
+	texture->dimensions.height = height;
+	texture->depth = depth;
+	texture->surfaceFormat = format;
+	texture->levelCount = levelCount;
+	texture->layerCount = layerCount;
+	texture->resourceAccessType = RESOURCE_ACCESS_NONE;
+
+	return 1;
+}
+
+static uint8_t VULKAN_INTERNAL_CreateTextureDepthStencil(
+	VulkanRenderer *renderer,
+	uint32_t width,
+	uint32_t height,
+	VkFormat format,
+	VulkanDepthStencilTexture *texture
+) {
+	VkResult vulkanResult;
+	VkImageCreateInfo imageCreateInfo;
+	VkImageViewCreateInfo imageViewCreateInfo;
+	uint8_t findMemoryResult;
+	uint8_t layerCount = 1;
+	VkComponentMapping swizzle = IDENTITY_SWIZZLE;
+	uint32_t usageFlags = (
+		VK_IMAGE_USAGE_SAMPLED_BIT |
+		VK_IMAGE_USAGE_TRANSFER_DST_BIT |
+		VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
+		VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
+	);
+	VkImageAspectFlags aspectFlags = VK_IMAGE_ASPECT_DEPTH_BIT;
+
+	imageCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+	imageCreateInfo.pNext = NULL;
+	imageCreateInfo.flags = 0;
+	imageCreateInfo.imageType = VK_IMAGE_TYPE_2D;
+	imageCreateInfo.format = format;
+	imageCreateInfo.extent.width = width;
+	imageCreateInfo.extent.height = height;
+	imageCreateInfo.extent.depth = 1;
+	imageCreateInfo.mipLevels = 1;
+	imageCreateInfo.arrayLayers = layerCount;
+	imageCreateInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+	imageCreateInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+	imageCreateInfo.usage = usageFlags;
+	// FIXME: would this interfere with pixel data sharing?
+	imageCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+	imageCreateInfo.queueFamilyIndexCount = 0;
+	imageCreateInfo.pQueueFamilyIndices = NULL;
+	imageCreateInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+	vulkanResult = renderer->vkCreateImage(
+		renderer->logicalDevice,
+		&imageCreateInfo,
+		NULL,
+		&texture->image
+	);
+
+	if (vulkanResult != VK_SUCCESS)
+	{
+		LogVulkanResult("vkCreateImage", vulkanResult);
+		REFRESH_LogError("Failed to create texture!");
+	}
+
+	findMemoryResult = VULKAN_INTERNAL_FindAvailableMemory(
+		renderer,
+		VK_NULL_HANDLE,
+		texture->image,
+		&texture->allocation,
+		&texture->offset,
+		&texture->memorySize
+	);
+
+	/* No device memory available, time to die */
+	if (findMemoryResult == 0 || findMemoryResult == 2)
+	{
+		REFRESH_LogError("Failed to find texture memory!");
+		return 0;
+	}
+
+	vulkanResult = renderer->vkBindImageMemory(
+		renderer->logicalDevice,
+		texture->image,
+		texture->allocation->memory,
+		texture->offset
+	);
+
+	if (vulkanResult != VK_SUCCESS)
+	{
+		LogVulkanResult("vkBindImageMemory", vulkanResult);
+		REFRESH_LogError("Failed to bind texture memory!");
+		return 0;
+	}
+
+	if (DepthFormatContainsStencil(format))
+	{
+		aspectFlags |= VK_IMAGE_ASPECT_STENCIL_BIT;
+	}
+
+	imageViewCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+	imageViewCreateInfo.pNext = NULL;
+	imageViewCreateInfo.flags = 0;
+	imageViewCreateInfo.image = texture->image;
+	imageViewCreateInfo.format = format;
+	imageViewCreateInfo.components = swizzle;
+	imageViewCreateInfo.subresourceRange.aspectMask = aspectFlags;
+	imageViewCreateInfo.subresourceRange.baseMipLevel = 0;
+	imageViewCreateInfo.subresourceRange.levelCount = 1;
+	imageViewCreateInfo.subresourceRange.baseArrayLayer = 0;
+	imageViewCreateInfo.subresourceRange.layerCount = layerCount;
+	imageViewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+
+	vulkanResult = renderer->vkCreateImageView(
+		renderer->logicalDevice,
+		&imageViewCreateInfo,
+		NULL,
+		&texture->view
+	);
+
+	if (vulkanResult != VK_SUCCESS)
+	{
+		LogVulkanResult("vkCreateImageView", vulkanResult);
+		REFRESH_LogError("Failed to create texture image view");
+		return 0;
+	}
+
+	texture->dimensions.width = width;
+	texture->dimensions.height = height;
+	texture->surfaceFormat = format;
+	texture->resourceAccessType = RESOURCE_ACCESS_NONE;
+
+	return 1;
+}
+
 static REFRESH_Texture* VULKAN_CreateTexture2D(
 	REFRESH_Renderer *driverData,
 	REFRESH_SurfaceFormat format,
 	uint32_t width,
 	uint32_t height,
-	uint32_t levelCount
+	uint32_t levelCount,
+	uint8_t canBeRenderTarget
 ) {
-    SDL_assert(0);
+	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	VulkanTexture *result;
+	uint32_t usageFlags = (
+		VK_IMAGE_USAGE_SAMPLED_BIT |
+		VK_IMAGE_USAGE_TRANSFER_DST_BIT |
+		VK_IMAGE_USAGE_TRANSFER_SRC_BIT
+	);
+
+	if (canBeRenderTarget)
+	{
+		usageFlags |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+	}
+
+	result = (VulkanTexture*) SDL_malloc(sizeof(VulkanTexture));
+
+	VULKAN_INTERNAL_CreateTexture(
+		renderer,
+		width,
+		height,
+		1,
+		0,
+		VK_SAMPLE_COUNT_1_BIT,
+		levelCount,
+		RefreshToVK_SurfaceFormat[format],
+		VK_IMAGE_ASPECT_COLOR_BIT,
+		VK_IMAGE_TILING_OPTIMAL,
+		VK_IMAGE_TYPE_2D,
+		usageFlags,
+		result
+	);
+
+	return (REFRESH_Texture*) result;
 }
 
 static REFRESH_Texture* VULKAN_CreateTexture3D(
@@ -1360,18 +2215,104 @@ static REFRESH_Texture* VULKAN_CreateTexture3D(
 	uint32_t width,
 	uint32_t height,
 	uint32_t depth,
-	uint32_t levelCount
+	uint32_t levelCount,
+	uint8_t canBeRenderTarget
 ) {
-    SDL_assert(0);
+	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	VulkanTexture *result;
+	uint32_t usageFlags = (
+		VK_IMAGE_USAGE_SAMPLED_BIT |
+		VK_IMAGE_USAGE_TRANSFER_DST_BIT |
+		VK_IMAGE_USAGE_TRANSFER_SRC_BIT
+	);
+
+	if (canBeRenderTarget)
+	{
+		usageFlags |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+	}
+
+	result = (VulkanTexture*) SDL_malloc(sizeof(VulkanTexture));
+
+	VULKAN_INTERNAL_CreateTexture(
+		renderer,
+		width,
+		height,
+		depth,
+		0,
+		VK_SAMPLE_COUNT_1_BIT,
+		levelCount,
+		RefreshToVK_SurfaceFormat[format],
+		VK_IMAGE_ASPECT_COLOR_BIT,
+		VK_IMAGE_TILING_OPTIMAL,
+		VK_IMAGE_TYPE_3D,
+		usageFlags,
+		result
+	);
+
+	return (REFRESH_Texture*) result;
 }
 
 static REFRESH_Texture* VULKAN_CreateTextureCube(
 	REFRESH_Renderer *driverData,
 	REFRESH_SurfaceFormat format,
 	uint32_t size,
-	uint32_t levelCount
+	uint32_t levelCount,
+	uint8_t canBeRenderTarget
 ) {
-    SDL_assert(0);
+	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	VulkanTexture *result;
+	uint32_t usageFlags = (
+		VK_IMAGE_USAGE_SAMPLED_BIT |
+		VK_IMAGE_USAGE_TRANSFER_DST_BIT |
+		VK_IMAGE_USAGE_TRANSFER_SRC_BIT
+	);
+
+	if (canBeRenderTarget)
+	{
+		usageFlags |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+	}
+
+	result = (VulkanTexture*) SDL_malloc(sizeof(VulkanTexture));
+
+	VULKAN_INTERNAL_CreateTexture(
+		renderer,
+		size,
+		size,
+		1,
+		1,
+		VK_SAMPLE_COUNT_1_BIT,
+		levelCount,
+		RefreshToVK_SurfaceFormat[format],
+		VK_IMAGE_ASPECT_COLOR_BIT,
+		VK_IMAGE_TILING_OPTIMAL,
+		VK_IMAGE_TYPE_2D,
+		usageFlags,
+		result
+	);
+
+	return (REFRESH_Texture*) result;
+}
+
+static REFRESH_DepthStencilTexture* VULKAN_CreateTextureDepthStencil(
+	REFRESH_Renderer *driverData,
+	REFRESH_DepthFormat format,
+	uint32_t width,
+	uint32_t height
+) {
+	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	VulkanDepthStencilTexture *result;
+
+	result = (VulkanDepthStencilTexture*) SDL_malloc(sizeof(VulkanDepthStencilTexture));
+
+	VULKAN_INTERNAL_CreateTextureDepthStencil(
+		renderer,
+		width,
+		height,
+		RefreshToVK_DepthFormat[format],
+		result
+	);
+
+	return (REFRESH_DepthStencilTexture*) result;
 }
 
 static REFRESH_ColorTarget* VULKAN_GenColorTarget(
@@ -2664,6 +3605,7 @@ static REFRESH_Device* VULKAN_CreateDevice(
     VulkanRenderer *renderer;
 
     VkResult vulkanResult;
+	uint32_t i;
 
     /* Variables: Create fence and semaphores */
 	VkFenceCreateInfo fenceInfo;
@@ -2927,6 +3869,28 @@ static REFRESH_Device* VULKAN_CreateDevice(
 		REFRESH_LogError("Failed to create fragment UBO layout!");
 		return NULL;
 	}
+
+	/* Memory Allocator */
+
+		renderer->memoryAllocator = (VulkanMemoryAllocator*) SDL_malloc(
+		sizeof(VulkanMemoryAllocator)
+	);
+
+	for (i = 0; i < VK_MAX_MEMORY_TYPES; i += 1)
+	{
+		renderer->memoryAllocator->subAllocators[i].nextAllocationSize = STARTING_ALLOCATION_SIZE;
+		renderer->memoryAllocator->subAllocators[i].allocations = NULL;
+		renderer->memoryAllocator->subAllocators[i].allocationCount = 0;
+		renderer->memoryAllocator->subAllocators[i].sortedFreeRegions = SDL_malloc(
+			sizeof(VulkanMemoryFreeRegion*) * 4
+		);
+		renderer->memoryAllocator->subAllocators[i].sortedFreeRegionCount = 0;
+		renderer->memoryAllocator->subAllocators[i].sortedFreeRegionCapacity = 4;
+	}
+
+	/* Threading */
+
+	renderer->allocatorLock = SDL_CreateMutex();
 
     return result;
 }
