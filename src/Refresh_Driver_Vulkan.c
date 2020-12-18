@@ -323,6 +323,16 @@ static VkSamplerAddressMode RefreshToVK_SamplerAddressMode[] =
 	VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER
 };
 
+static VkBorderColor RefreshToVK_BorderColor[] =
+{
+	VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK,
+	VK_BORDER_COLOR_INT_TRANSPARENT_BLACK,
+	VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK,
+	VK_BORDER_COLOR_INT_OPAQUE_BLACK,
+	VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE,
+	VK_BORDER_COLOR_INT_OPAQUE_WHITE
+};
+
 /* Structures */
 
 typedef struct QueueFamilyIndices
@@ -394,6 +404,19 @@ typedef struct VulkanRenderer
 		vkfntype_##func func;
 	#include "Refresh_Driver_Vulkan_vkfuncs.h"
 } VulkanRenderer;
+
+typedef struct VulkanTexture
+{
+	VkImage image;
+	VkImageView view;
+	VkExtent2D dimensions;
+} VulkanTexture;
+
+typedef struct VulkanColorTarget
+{
+	VulkanTexture *texture;
+	VkImageView imageView;
+} VulkanColorTarget;
 
 /* Error Handling */
 
@@ -1209,7 +1232,7 @@ static REFRESH_Sampler* VULKAN_CreateSampler(
 ) {
 	VkResult vulkanResult;
 	VkSampler sampler;
-	
+
 	VulkanRenderer* renderer = (VulkanRenderer*)driverData;
 
 	VkSamplerCreateInfo vkSamplerCreateInfo;
@@ -1243,7 +1266,9 @@ static REFRESH_Sampler* VULKAN_CreateSampler(
 	];
 	vkSamplerCreateInfo.minLod = samplerStateCreateInfo->minLod;
 	vkSamplerCreateInfo.maxLod = samplerStateCreateInfo->maxLod;
-	vkSamplerCreateInfo.borderColor = samplerStateCreateInfo->borderColor;
+	vkSamplerCreateInfo.borderColor = RefreshToVK_BorderColor[
+		samplerStateCreateInfo->borderColor
+	];
 	vkSamplerCreateInfo.unnormalizedCoordinates = VK_FALSE;
 
 	vulkanResult = renderer->vkCreateSampler(
@@ -1266,7 +1291,50 @@ static REFRESH_Framebuffer* VULKAN_CreateFramebuffer(
 	REFRESH_Renderer *driverData,
 	REFRESH_FramebufferCreateInfo *framebufferCreateInfo
 ) {
-    SDL_assert(0);
+	VkResult vulkanResult;
+	VkFramebuffer framebuffer;
+	VkFramebufferCreateInfo vkFramebufferCreateInfo;
+
+	VkImageView *imageViews;
+	uint32_t colorAttachmentCount = framebufferCreateInfo->colorTargetCount;
+
+	uint32_t i;
+
+	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+
+	imageViews = SDL_stack_alloc(VkImageView, colorAttachmentCount);
+
+	for (i = 0; i < colorAttachmentCount; i += 1)
+	{
+		imageViews[i] = ((VulkanColorTarget*)framebufferCreateInfo->pColorTargets[i])->imageView;
+	}
+
+	vkFramebufferCreateInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+	vkFramebufferCreateInfo.pNext = NULL;
+	vkFramebufferCreateInfo.flags = 0;
+	vkFramebufferCreateInfo.renderPass = (VkRenderPass) framebufferCreateInfo->renderPass;
+	vkFramebufferCreateInfo.attachmentCount = framebufferCreateInfo->colorTargetCount;
+	vkFramebufferCreateInfo.pAttachments = imageViews;
+	vkFramebufferCreateInfo.width = framebufferCreateInfo->width;
+	vkFramebufferCreateInfo.height = framebufferCreateInfo->height;
+	vkFramebufferCreateInfo.layers = framebufferCreateInfo->layers;
+
+	vulkanResult = renderer->vkCreateFramebuffer(
+		renderer->logicalDevice,
+		&vkFramebufferCreateInfo,
+		NULL,
+		&framebuffer
+	);
+
+	if (vulkanResult != VK_SUCCESS)
+	{
+		LogVulkanResult("vkCreateFramebuffer", vulkanResult);
+		SDL_stack_free(imageViews);
+		return NULL;
+	}
+
+	SDL_stack_free(imageViews);
+	return (REFRESH_Framebuffer*) framebuffer;
 }
 
 static REFRESH_ShaderModule* VULKAN_CreateShaderModule(
