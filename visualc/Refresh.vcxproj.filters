@@ -1,26 +1,23 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="16.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
-    <ClCompile Include="D:\Dev\Games\Refresh\src\Refresh.c">
+    <ClCompile Include="..\src\Refresh.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="D:\Dev\Games\Refresh\src\Refresh_Driver_Vulkan.c">
+    <ClCompile Include="..\src\Refresh_Driver_Vulkan.c">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="D:\Dev\Games\Refresh\include\Refresh.h">
+    <ClInclude Include="..\include\Refresh.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="D:\Dev\Games\Refresh\src\Refresh_Driver.h">
+    <ClInclude Include="..\src\Refresh_Driver.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="D:\Dev\Games\Refresh\src\Refresh_Driver_Vulkan_vkfuncs.h">
+    <ClInclude Include="..\src\Refresh_Driver_Vulkan_vkfuncs.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-  </ItemGroup>
-  <ItemGroup>
-    <CustomBuild Include="D:\Dev\Games\Refresh\CMakeLists.txt" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="Header Files">
