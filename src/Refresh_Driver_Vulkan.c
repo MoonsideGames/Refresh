@@ -2383,7 +2383,32 @@ static REFRESH_ShaderModule* VULKAN_CreateShaderModule(
 	REFRESH_Renderer *driverData,
 	REFRESH_ShaderModuleCreateInfo *shaderModuleCreateInfo
 ) {
-    SDL_assert(0);
+	VkResult vulkanResult;
+	VkShaderModule shaderModule;
+	VkShaderModuleCreateInfo vkShaderModuleCreateInfo;
+	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+
+	vkShaderModuleCreateInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+	vkShaderModuleCreateInfo.pNext = NULL;
+	vkShaderModuleCreateInfo.flags = 0;
+	vkShaderModuleCreateInfo.codeSize = shaderModuleCreateInfo->codeSize;
+	vkShaderModuleCreateInfo.pCode = (uint32_t*) shaderModuleCreateInfo->byteCode;
+
+	vulkanResult = renderer->vkCreateShaderModule(
+		renderer->logicalDevice,
+		&vkShaderModuleCreateInfo,
+		NULL,
+		&shaderModule
+	);
+
+	if (vulkanResult != VK_SUCCESS)
+	{
+		LogVulkanResult("vkCreateShaderModule", vulkanResult);
+		REFRESH_LogError("Failed to create shader module!");
+		return NULL;
+	}
+
+	return (REFRESH_ShaderModule*) shaderModule;
 }
 
 /* texture should be an alloc'd but uninitialized VulkanTexture */
