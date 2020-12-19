@@ -976,32 +976,36 @@ REFRESHAPI void REFRESH_PushShaderParamData(
 
 /* Sets textures/samplers for use with the currently bound vertex shader.
  *
- * startIndex: The index at which to begin replacing sampler references.
- * textures: A pointer to an array of textures.
- * samplers: A pointer to an array of samplers.
- * count: The length of the above arrays.
+ * NOTE:
+ * 		The length of the passed arrays must be equal to the number
+ * 		of sampler bindings specified by the shader.
+ *
+ * pipeline:	The graphics pipeline to push shader data to.
+ * textures:	A pointer to an array of textures.
+ * samplers:	A pointer to an array of samplers.
  */
 REFRESHAPI void REFRESH_SetVertexSamplers(
 	REFRESH_Device *device,
-	uint32_t startIndex,
-	REFRESH_Texture *pTextures,
-	REFRESH_Sampler *pSamplers,
-	uint32_t count
+	REFRESH_GraphicsPipeline *pipeline,
+	REFRESH_Texture **pTextures,
+	REFRESH_Sampler **pSamplers
 );
 
 /* Sets textures/samplers for use with the currently bound fragment shader.
  *
- * startIndex: The index at which to begin replacing sampler references.
- * textures: A pointer to an array of textures.
- * samplers: A pointer to an array of samplers.
- * count: The length of the above arrays.
+ * NOTE:
+ *		The length of the passed arrays must be equal to the number
+ * 		of sampler bindings specified by the shader.
+ *
+ * pipeline:	The graphics pipeline to push shader data to.
+ * textures: 	A pointer to an array of textures.
+ * samplers:	A pointer to an array of samplers.
  */
 REFRESHAPI void REFRESH_SetFragmentSamplers(
 	REFRESH_Device *device,
-	uint32_t startIndex,
-	REFRESH_Texture *pTextures,
-	REFRESH_Sampler *pSamplers,
-	uint32_t count
+	REFRESH_GraphicsPipeline *pipeline,
+	REFRESH_Texture **pTextures,
+	REFRESH_Sampler **pSamplers
 );
 
 /* Getters */

@@ -365,18 +365,16 @@ struct REFRESH_Device
 
     void(*SetVertexSamplers)(
         REFRESH_Renderer *driverData,
-        uint32_t startIndex,
-        REFRESH_Texture *pTextures,
-        REFRESH_Sampler *pSamplers,
-        uint32_t count
+        REFRESH_GraphicsPipeline *pipeline,
+        REFRESH_Texture **pTextures,
+        REFRESH_Sampler **pSamplers
     );
 
     void(*SetFragmentSamplers)(
         REFRESH_Renderer *driverData,
-        uint32_t startIndex,
-        REFRESH_Texture *pTextures,
-        REFRESH_Sampler *pSamplers,
-        uint32_t count
+        REFRESH_GraphicsPipeline *pipeline,
+        REFRESH_Texture **pTextures,
+        REFRESH_Sampler **pSamplers
     );
 
     /* Getters */

@@ -670,6 +670,13 @@ typedef struct VulkanRenderer
 	VkCommandBuffer currentCommandBuffer;
 	uint32_t numActiveCommands;
 
+	/*
+	 * TODO: we can get rid of this reference when we
+	 * come up with a clever descriptor set reuse system
+	 */
+	VkDescriptorPool *descriptorPools;
+	uint32_t descriptorPoolCount;
+
 	VkDescriptorSetLayout vertexParamLayout;
 	VkDescriptorSetLayout fragmentParamLayout;
 
@@ -738,6 +745,10 @@ typedef struct VulkanGraphicsPipeline
 {
 	VkPipeline pipeline;
 	VkDescriptorPool descriptorPool;
+	VkDescriptorSetLayout vertexSamplerLayout;
+	uint32_t vertexSamplerBindingCount;
+	VkDescriptorSetLayout fragmentSamplerLayout;
+	uint32_t fragmentSamplerBindingCount;
 } VulkanGraphicsPipeline;
 
 /* Forward declarations */
@@ -2346,6 +2357,11 @@ static REFRESH_GraphicsPipeline* VULKAN_CreateGraphicsPipeline(
 		&pipelineLayout
 	);
 
+	graphicsPipeline->vertexSamplerLayout = setLayouts[0];
+	graphicsPipeline->fragmentSamplerLayout = setLayouts[1];
+	graphicsPipeline->vertexSamplerBindingCount = pipelineCreateInfo->pipelineLayoutCreateInfo.vertexSamplerBindingCount;
+	graphicsPipeline->fragmentSamplerBindingCount = pipelineCreateInfo->pipelineLayoutCreateInfo.fragmentSamplerBindingCount;
+
 	/* Pipeline */
 
 	vkPipelineCreateInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
@@ -2408,6 +2424,13 @@ static REFRESH_GraphicsPipeline* VULKAN_CreateGraphicsPipeline(
 		REFRESH_LogError("Failed to create descriptor pool!");
 		return NULL;
 	}
+
+	renderer->descriptorPools = SDL_realloc(
+		renderer->descriptorPools,
+		renderer->descriptorPoolCount + 1
+	);
+	renderer->descriptorPools[renderer->descriptorPoolCount + 1] =
+		graphicsPipeline->descriptorPool;
 
 	return (REFRESH_GraphicsPipeline*) graphicsPipeline;
 }
@@ -3598,22 +3621,132 @@ static void VULKAN_PushShaderParamData(
 
 static void VULKAN_SetVertexSamplers(
 	REFRESH_Renderer *driverData,
-	uint32_t startIndex,
-	REFRESH_Texture *pTextures,
-	REFRESH_Sampler *pSamplers,
-	uint32_t count
+	REFRESH_GraphicsPipeline *pipeline,
+	REFRESH_Texture **pTextures,
+	REFRESH_Sampler **pSamplers
 ) {
-    SDL_assert(0);
+	/* TODO: we can defer and batch these */
+
+	VkDescriptorSetAllocateInfo descriptorSetAllocateInfo;
+	VkDescriptorSet descriptorSet;
+	VkWriteDescriptorSet *writeDescriptorSets;
+	VkDescriptorImageInfo *descriptorImageInfos;
+	VulkanTexture *currentTexture;
+	VkSampler currentSampler;
+	uint32_t i;
+
+	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
+	VulkanGraphicsPipeline *graphicsPipeline = (VulkanGraphicsPipeline*) pipeline;
+
+	writeDescriptorSets = SDL_stack_alloc(VkWriteDescriptorSet, graphicsPipeline->vertexSamplerBindingCount);
+	descriptorImageInfos = SDL_stack_alloc(VkDescriptorImageInfo, graphicsPipeline->vertexSamplerBindingCount);
+
+	descriptorSetAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+	descriptorSetAllocateInfo.pNext = NULL;
+	descriptorSetAllocateInfo.descriptorSetCount = 1;
+	descriptorSetAllocateInfo.descriptorPool = graphicsPipeline->descriptorPool;
+	descriptorSetAllocateInfo.pSetLayouts = &graphicsPipeline->vertexSamplerLayout;
+
+	renderer->vkAllocateDescriptorSets(
+		renderer->logicalDevice,
+		&descriptorSetAllocateInfo,
+		&descriptorSet
+	);
+
+	for (i = 0; i < graphicsPipeline->vertexSamplerBindingCount; i += 1)
+	{
+		currentTexture = (VulkanTexture*) pTextures[i];
+		currentSampler = (VkSampler) pSamplers[i];
+
+		descriptorImageInfos[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		descriptorImageInfos[i].imageView = currentTexture->view;
+		descriptorImageInfos[i].sampler = currentSampler;
+
+		writeDescriptorSets[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		writeDescriptorSets[i].pNext = NULL;
+		writeDescriptorSets[i].dstSet = descriptorSet;
+		writeDescriptorSets[i].dstBinding = i;
+		writeDescriptorSets[i].dstArrayElement = 0;
+		writeDescriptorSets[i].descriptorCount = 1;
+		writeDescriptorSets[i].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		writeDescriptorSets[i].pImageInfo = &descriptorImageInfos[i];
+	}
+
+	renderer->vkUpdateDescriptorSets(
+		renderer->logicalDevice,
+		graphicsPipeline->vertexSamplerBindingCount,
+		writeDescriptorSets,
+		0,
+		NULL
+	);
+
+	SDL_stack_free(writeDescriptorSets);
+	SDL_stack_free(descriptorImageInfos);
 }
 
 static void VULKAN_SetFragmentSamplers(
 	REFRESH_Renderer *driverData,
-	uint32_t startIndex,
-	REFRESH_Texture *pTextures,
-	REFRESH_Sampler *pSamplers,
-	uint32_t count
+	REFRESH_GraphicsPipeline *pipeline,
+	REFRESH_Texture **pTextures,
+	REFRESH_Sampler **pSamplers
 ) {
-    SDL_assert(0);
+	/* TODO: we can defer and batch these */
+
+	VkDescriptorSetAllocateInfo descriptorSetAllocateInfo;
+	VkDescriptorSet descriptorSet;
+	VkWriteDescriptorSet *writeDescriptorSets;
+	VkDescriptorImageInfo *descriptorImageInfos;
+	VulkanTexture *currentTexture;
+	VkSampler currentSampler;
+	uint32_t i;
+
+	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
+	VulkanGraphicsPipeline *graphicsPipeline = (VulkanGraphicsPipeline*) pipeline;
+
+	writeDescriptorSets = SDL_stack_alloc(VkWriteDescriptorSet, graphicsPipeline->fragmentSamplerBindingCount);
+	descriptorImageInfos = SDL_stack_alloc(VkDescriptorImageInfo, graphicsPipeline->fragmentSamplerBindingCount);
+
+	descriptorSetAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+	descriptorSetAllocateInfo.pNext = NULL;
+	descriptorSetAllocateInfo.descriptorSetCount = 1;
+	descriptorSetAllocateInfo.descriptorPool = graphicsPipeline->descriptorPool;
+	descriptorSetAllocateInfo.pSetLayouts = &graphicsPipeline->fragmentSamplerLayout;
+
+	renderer->vkAllocateDescriptorSets(
+		renderer->logicalDevice,
+		&descriptorSetAllocateInfo,
+		&descriptorSet
+	);
+
+	for (i = 0; i < graphicsPipeline->fragmentSamplerBindingCount; i += 1)
+	{
+		currentTexture = (VulkanTexture*) pTextures[i];
+		currentSampler = (VkSampler) pSamplers[i];
+
+		descriptorImageInfos[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		descriptorImageInfos[i].imageView = currentTexture->view;
+		descriptorImageInfos[i].sampler = currentSampler;
+
+		writeDescriptorSets[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		writeDescriptorSets[i].pNext = NULL;
+		writeDescriptorSets[i].dstSet = descriptorSet;
+		writeDescriptorSets[i].dstBinding = i;
+		writeDescriptorSets[i].dstArrayElement = 0;
+		writeDescriptorSets[i].descriptorCount = 1;
+		writeDescriptorSets[i].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		writeDescriptorSets[i].pImageInfo = &descriptorImageInfos[i];
+	}
+
+	renderer->vkUpdateDescriptorSets(
+		renderer->logicalDevice,
+		graphicsPipeline->fragmentSamplerBindingCount,
+		writeDescriptorSets,
+		0,
+		NULL
+	);
+
+	SDL_stack_free(writeDescriptorSets);
+	SDL_stack_free(descriptorImageInfos);
 }
 
 static void VULKAN_GetTextureData2D(
@@ -5078,6 +5211,11 @@ static REFRESH_Device* VULKAN_CreateDevice(
 		REFRESH_LogError("Failed to create texture staging buffer!");
 		return NULL;
 	}
+
+	/* Descriptor Pools */
+
+	renderer->descriptorPools = NULL;
+	renderer->descriptorPoolCount = 0;
 
 	/* Threading */
 

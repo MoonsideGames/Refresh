@@ -551,35 +551,31 @@ void REFRESH_PushShaderParamData(
 
 void REFRESH_SetVertexSamplers(
 	REFRESH_Device *device,
-	uint32_t startIndex,
-	REFRESH_Texture *pTextures,
-	REFRESH_Sampler *pSamplers,
-	uint32_t count
+    REFRESH_GraphicsPipeline *pipeline,
+	REFRESH_Texture **pTextures,
+	REFRESH_Sampler **pSamplers
 ) {
     NULL_RETURN(device);
     device->SetVertexSamplers(
         device->driverData,
-        startIndex,
+        pipeline,
         pTextures,
-        pSamplers,
-        count
+        pSamplers
     );
 }
 
 void REFRESH_SetFragmentSamplers(
 	REFRESH_Device *device,
-	uint32_t startIndex,
-	REFRESH_Texture *pTextures,
-	REFRESH_Sampler *pSamplers,
-	uint32_t count
+    REFRESH_GraphicsPipeline *pipeline,
+	REFRESH_Texture **pTextures,
+	REFRESH_Sampler **pSamplers
 ) {
     NULL_RETURN(device);
     device->SetFragmentSamplers(
         device->driverData,
-        startIndex,
+        pipeline,
         pTextures,
-        pSamplers,
-        count
+        pSamplers
     );
 }
 
