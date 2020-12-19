@@ -738,8 +738,6 @@ typedef struct VulkanGraphicsPipeline
 {
 	VkPipeline pipeline;
 	VkDescriptorPool descriptorPool;
-	VulkanBuffer vertexUBO;
-	VulkanBuffer fragmentUBO;
 } VulkanGraphicsPipeline;
 
 /* Forward declarations */
@@ -2401,6 +2399,15 @@ static REFRESH_GraphicsPipeline* VULKAN_CreateGraphicsPipeline(
 	SDL_stack_free(colorBlendAttachmentStates);
 	SDL_stack_free(vertexSamplerLayoutBindings);
 	SDL_stack_free(fragmentSamplerLayoutBindings);
+
+	if (!VULKAN_INTERNAL_CreateDescriptorPool(
+		renderer,
+		&pipelineCreateInfo->pipelineLayoutCreateInfo,
+		&graphicsPipeline->descriptorPool
+	)) {
+		REFRESH_LogError("Failed to create descriptor pool!");
+		return NULL;
+	}
 
 	return (REFRESH_GraphicsPipeline*) graphicsPipeline;
 }
