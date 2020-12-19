@@ -388,17 +388,6 @@ REFRESH_Buffer* REFRESH_GenIndexBuffer(
     );
 }
 
-REFRESH_Buffer* REFRESH_GenShaderParamBuffer(
-	REFRESH_Device *device,
-	uint32_t sizeInBytes
-) {
-    NULL_RETURN_NULL(device);
-    return device->GenShaderParamBuffer(
-        device->driverData,
-        sizeInBytes
-    );
-}
-
 void REFRESH_SetTextureData2D(
 	REFRESH_Device *device,
 	REFRESH_Texture *texture,
@@ -543,19 +532,17 @@ void REFRESH_SetIndexBufferData(
     );
 }
 
-void REFRESH_SetShaderParamData(
+void REFRESH_PushShaderParamData(
 	REFRESH_Device *device,
-	REFRESH_Buffer *shaderParamBuffer,
-	uint32_t offsetInBytes,
+    REFRESH_GraphicsPipeline *pipeline,
 	void *data,
 	uint32_t elementCount,
 	uint32_t elementSizeInBytes
 ) {
     NULL_RETURN(device);
-    device->SetShaderParamData(
+    device->PushShaderParamData(
         device->driverData,
-        shaderParamBuffer,
-        offsetInBytes,
+        pipeline,
         data,
         elementCount,
         elementSizeInBytes

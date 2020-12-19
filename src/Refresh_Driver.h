@@ -284,11 +284,6 @@ struct REFRESH_Device
         uint32_t sizeInBytes
     );
 
-    REFRESH_Buffer* (*GenShaderParamBuffer)(
-        REFRESH_Renderer *driverData,
-        uint32_t sizeInBytes
-    );
-
     /* Setters */
 
     void(*SetTextureData2D)(
@@ -360,10 +355,9 @@ struct REFRESH_Device
         uint32_t dataLength
     );
 
-    void(*SetShaderParamData)(
+    void(*PushShaderParamData)(
         REFRESH_Renderer *driverData,
-        REFRESH_Buffer *shaderParamBuffer,
-        uint32_t offsetInBytes,
+        REFRESH_GraphicsPipeline *pipeline,
         void *data,
         uint32_t elementCount,
         uint32_t elementSizeInBytes
@@ -519,14 +513,13 @@ struct REFRESH_Device
     ASSIGN_DRIVER_FUNC(GenDepthStencilTarget, name) \
     ASSIGN_DRIVER_FUNC(GenVertexBuffer, name) \
     ASSIGN_DRIVER_FUNC(GenIndexBuffer, name) \
-    ASSIGN_DRIVER_FUNC(GenShaderParamBuffer, name) \
     ASSIGN_DRIVER_FUNC(SetTextureData2D, name) \
     ASSIGN_DRIVER_FUNC(SetTextureData3D, name) \
     ASSIGN_DRIVER_FUNC(SetTextureDataCube, name) \
     ASSIGN_DRIVER_FUNC(SetTextureDataYUV, name) \
     ASSIGN_DRIVER_FUNC(SetVertexBufferData, name) \
     ASSIGN_DRIVER_FUNC(SetIndexBufferData, name) \
-    ASSIGN_DRIVER_FUNC(SetShaderParamData, name) \
+    ASSIGN_DRIVER_FUNC(PushShaderParamData, name) \
     ASSIGN_DRIVER_FUNC(SetVertexSamplers, name) \
     ASSIGN_DRIVER_FUNC(SetFragmentSamplers, name) \
     ASSIGN_DRIVER_FUNC(GetTextureData2D, name) \

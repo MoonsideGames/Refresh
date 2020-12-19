@@ -825,15 +825,6 @@ REFRESHAPI REFRESH_Buffer* REFRESH_GenIndexBuffer(
 	uint32_t sizeInBytes
 );
 
-/* Creates a shader param buffer to be used by shaders.
- *
- * sizeInBytes: The length of the shader param buffer.
- */
-REFRESHAPI REFRESH_Buffer* REFRESH_GenShaderParamBuffer(
-	REFRESH_Device *device,
-	uint32_t sizeInBytes
-);
-
 /* Setters */
 
 /* Uploads image data to a 2D texture object.
@@ -970,16 +961,14 @@ REFRESHAPI void REFRESH_SetIndexBufferData(
 
 /* Pushes shader param data to a buffer.
  *
- * shaderParamBuffer: 	The buffer to be updated.
- * offsetInBytes: 		The starting offset of the buffer to write into.
+ * pipeline: 			The graphics pipeline to push shader data to.
  * data: 				The client data to write into the buffer.
  * elementCount: 		The number of elements from the client buffer to write.
  * elementSizeInBytes:	The size of each element in the client buffer.
  */
-REFRESHAPI void REFRESH_SetShaderParamData(
+REFRESHAPI void REFRESH_PushShaderParamData(
 	REFRESH_Device *device,
-	REFRESH_Buffer *shaderParamBuffer,
-	uint32_t offsetInBytes,
+    REFRESH_GraphicsPipeline *pipeline,
 	void *data,
 	uint32_t elementCount,
 	uint32_t elementSizeInBytes
