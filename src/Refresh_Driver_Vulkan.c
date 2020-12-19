@@ -2931,14 +2931,40 @@ static REFRESH_Buffer* VULKAN_GenVertexBuffer(
 	REFRESH_Renderer *driverData,
 	uint32_t sizeInBytes
 ) {
-    SDL_assert(0);
+	VulkanBuffer *buffer = (VulkanBuffer*) SDL_malloc(sizeof(VulkanBuffer));
+
+	if(!VULKAN_INTERNAL_CreateBuffer(
+		(VulkanRenderer*) driverData,
+		sizeInBytes,
+		RESOURCE_ACCESS_VERTEX_BUFFER,
+		VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+		buffer
+	)) {
+		REFRESH_LogError("Failed to create vertex buffer!");
+		return NULL;
+	}
+
+	return (REFRESH_Buffer*) buffer;
 }
 
 static REFRESH_Buffer* VULKAN_GenIndexBuffer(
 	REFRESH_Renderer *driverData,
 	uint32_t sizeInBytes
 ) {
-    SDL_assert(0);
+	VulkanBuffer *buffer = (VulkanBuffer*) SDL_malloc(sizeof(VulkanBuffer));
+
+	if (!VULKAN_INTERNAL_CreateBuffer(
+		(VulkanRenderer*) driverData,
+		sizeInBytes,
+		RESOURCE_ACCESS_INDEX_BUFFER,
+		VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+		buffer
+	)) {
+		REFRESH_LogError("Failed to create index buffer!");
+		return NULL;
+	}
+
+	return (REFRESH_Buffer*) buffer;
 }
 
 static REFRESH_Buffer* VULKAN_GenShaderParamBuffer(
