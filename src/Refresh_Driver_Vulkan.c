@@ -69,8 +69,9 @@ static uint32_t deviceExtensionCount = SDL_arraysize(deviceExtensionNames);
 
 /* Defines */
 
-#define STARTING_ALLOCATION_SIZE 64000000 /* 64MB */
-#define MAX_ALLOCATION_SIZE 256000000 /* 256MB */
+#define STARTING_ALLOCATION_SIZE 64000000 	/* 64MB */
+#define MAX_ALLOCATION_SIZE 256000000 		/* 256MB */
+#define TEXTURE_STAGING_SIZE 8000000 		/* 8MB */
 
 #define IDENTITY_SWIZZLE \
 { \
@@ -572,6 +573,16 @@ static const VulkanResourceAccessInfo AccessMap[RESOURCE_ACCESS_TYPES_COUNT] =
 	}
 };
 
+typedef struct VulkanBuffer /* cast from FNA3D_Buffer */
+{
+	VulkanMemoryAllocation *allocation;
+	VkBuffer buffer;
+	VkDeviceSize offset;
+	VkDeviceSize size;
+	VulkanResourceAccessType resourceAccessType;
+	int8_t bound;
+} VulkanBuffer;
+
 /* Renderer Structure */
 
 typedef struct QueueFamilyIndices
@@ -641,6 +652,8 @@ typedef struct VulkanRenderer
 
 	SDL_mutex *allocatorLock;
 	SDL_mutex *commandLock;
+
+	VulkanBuffer *textureStagingBuffer;
 
     #define VULKAN_INSTANCE_FUNCTION(ext, ret, func, params) \
 		vkfntype_##func func;
@@ -1237,6 +1250,77 @@ static uint8_t VULKAN_INTERNAL_FindAvailableMemory(
 
 /* Memory Barriers */
 
+static void VULKAN_INTERNAL_BufferMemoryBarrier(
+	VulkanRenderer *renderer,
+	VulkanResourceAccessType nextResourceAccessType,
+	VulkanBuffer *buffer
+) {
+	VkPipelineStageFlags srcStages = 0;
+	VkPipelineStageFlags dstStages = 0;
+	VkBufferMemoryBarrier memoryBarrier;
+	VulkanResourceAccessType prevAccess, nextAccess;
+	const VulkanResourceAccessInfo *prevAccessInfo, *nextAccessInfo;
+
+	if (buffer->resourceAccessType == nextResourceAccessType)
+	{
+		return;
+	}
+
+	memoryBarrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+	memoryBarrier.pNext = NULL;
+	memoryBarrier.srcAccessMask = 0;
+	memoryBarrier.dstAccessMask = 0;
+	memoryBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	memoryBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	memoryBarrier.buffer = buffer->buffer;
+	memoryBarrier.offset = 0;
+	memoryBarrier.size = buffer->size;
+
+	prevAccess = buffer->resourceAccessType;
+	prevAccessInfo = &AccessMap[prevAccess];
+
+	srcStages |= prevAccessInfo->stageMask;
+
+	if (prevAccess > RESOURCE_ACCESS_END_OF_READ)
+	{
+		memoryBarrier.srcAccessMask |= prevAccessInfo->accessMask;
+	}
+
+	nextAccess = nextResourceAccessType;
+	nextAccessInfo = &AccessMap[nextAccess];
+
+	dstStages |= nextAccessInfo->stageMask;
+
+	if (memoryBarrier.srcAccessMask != 0)
+	{
+		memoryBarrier.dstAccessMask |= nextAccessInfo->accessMask;
+	}
+
+	if (srcStages == 0)
+	{
+		srcStages = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+	}
+	if (dstStages == 0)
+	{
+		dstStages = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+	}
+
+	RECORD_CMD(renderer->vkCmdPipelineBarrier(
+		renderer->currentCommandBuffer,
+		srcStages,
+		dstStages,
+		0,
+		0,
+		NULL,
+		1,
+		&memoryBarrier,
+		0,
+		NULL
+	));
+
+	buffer->resourceAccessType = nextResourceAccessType;
+}
+
 static void VULKAN_INTERNAL_ImageMemoryBarrier(
 	VulkanRenderer *renderer,
 	VulkanResourceAccessType nextAccess,
@@ -1324,6 +1408,90 @@ static void VULKAN_INTERNAL_ImageMemoryBarrier(
 	));
 
 	*resourceAccessType = nextAccess;
+}
+
+
+/* Data Buffer */
+
+/* buffer should be an alloc'd but uninitialized VulkanTexture */
+static uint8_t VULKAN_INTERNAL_CreateBuffer(
+	VulkanRenderer *renderer,
+	VkDeviceSize size,
+	VulkanResourceAccessType resourceAccessType,
+	VkBufferUsageFlags usage,
+	VulkanBuffer *buffer
+) {
+	VkResult vulkanResult;
+	VkBufferCreateInfo bufferCreateInfo;
+	uint8_t findMemoryResult;
+
+	bufferCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+	bufferCreateInfo.pNext = NULL;
+	bufferCreateInfo.flags = 0;
+	bufferCreateInfo.size = size;
+	bufferCreateInfo.usage = usage;
+	bufferCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+	bufferCreateInfo.queueFamilyIndexCount = 1;
+	bufferCreateInfo.pQueueFamilyIndices = &renderer->queueFamilyIndices.graphicsFamily;
+
+	vulkanResult = renderer->vkCreateBuffer(
+		renderer->logicalDevice,
+		&bufferCreateInfo,
+		NULL,
+		&buffer->buffer
+	);
+
+	if (vulkanResult != VK_SUCCESS)
+	{
+		LogVulkanResult("vkCreateBuffer", vulkanResult);
+		REFRESH_LogError("Failed to create VkBuffer");
+		return 0;
+	}
+
+	findMemoryResult = VULKAN_INTERNAL_FindAvailableMemory(
+		renderer,
+		buffer->buffer,
+		VK_NULL_HANDLE,
+		&buffer->allocation,
+		&buffer->offset,
+		&buffer->size
+	);
+
+	/* We're out of available memory */
+	if (findMemoryResult == 2)
+	{
+		REFRESH_LogWarn("Out of buffer memory!");
+		return 2;
+	}
+	else if (findMemoryResult == 0)
+	{
+		REFRESH_LogError("Failed to find buffer memory!");
+		return 0;
+	}
+
+	vulkanResult = renderer->vkBindBufferMemory(
+		renderer->logicalDevice,
+		buffer->buffer,
+		buffer->allocation->memory,
+		buffer->offset
+	);
+
+	if (vulkanResult != VK_SUCCESS)
+	{
+		REFRESH_LogError("Failed to bind buffer memory!");
+		return 0;
+	}
+
+	buffer->resourceAccessType = resourceAccessType;
+	buffer->bound = -1;
+
+	VULKAN_INTERNAL_BufferMemoryBarrier(
+		renderer,
+		buffer->resourceAccessType,
+		buffer
+	);
+
+	return 1;
 }
 
 /* Command Buffers */
@@ -2766,7 +2934,69 @@ static void VULKAN_SetTextureData2D(
 	void *data,
 	uint32_t dataLengthInBytes
 ) {
-    SDL_assert(0);
+	VkResult vulkanResult;
+	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	VulkanTexture *vulkanTexture = (VulkanTexture*) texture;
+	VkBufferImageCopy imageCopy;
+	uint8_t *mapPointer;
+
+	vulkanResult = renderer->vkMapMemory(
+		renderer->logicalDevice,
+		renderer->textureStagingBuffer->allocation->memory,
+		renderer->textureStagingBuffer->offset,
+		renderer->textureStagingBuffer->size,
+		0,
+		(void**) &mapPointer
+	);
+
+	if (vulkanResult != VK_SUCCESS)
+	{
+		REFRESH_LogError("Failed to map buffer memory!");
+		return;
+	}
+
+	SDL_memcpy(mapPointer, data, dataLengthInBytes);
+
+	renderer->vkUnmapMemory(
+		renderer->logicalDevice,
+		renderer->textureStagingBuffer->allocation->memory
+	);
+
+	VULKAN_INTERNAL_ImageMemoryBarrier(
+		renderer,
+		RESOURCE_ACCESS_TRANSFER_WRITE,
+		VK_IMAGE_ASPECT_COLOR_BIT,
+		0,
+		vulkanTexture->layerCount,
+		0,
+		vulkanTexture->levelCount,
+		0,
+		vulkanTexture->image,
+		&vulkanTexture->resourceAccessType
+	);
+
+	imageCopy.imageExtent.width = w;
+	imageCopy.imageExtent.height = h;
+	imageCopy.imageExtent.depth = 1;
+	imageCopy.imageOffset.x = x;
+	imageCopy.imageOffset.y = y;
+	imageCopy.imageOffset.z = 0;
+	imageCopy.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	imageCopy.imageSubresource.baseArrayLayer = 0;
+	imageCopy.imageSubresource.layerCount = 1;
+	imageCopy.imageSubresource.mipLevel = level;
+	imageCopy.bufferOffset = 0;
+	imageCopy.bufferRowLength = 0;
+	imageCopy.bufferImageHeight = 0;
+
+	RECORD_CMD(renderer->vkCmdCopyBufferToImage(
+		renderer->currentCommandBuffer,
+		renderer->textureStagingBuffer->buffer,
+		vulkanTexture->image,
+		AccessMap[vulkanTexture->resourceAccessType].imageLayout,
+		1,
+		&imageCopy
+	));
 }
 
 static void VULKAN_SetTextureData3D(
@@ -4284,6 +4514,21 @@ static REFRESH_Device* VULKAN_CreateDevice(
 		);
 		renderer->memoryAllocator->subAllocators[i].sortedFreeRegionCount = 0;
 		renderer->memoryAllocator->subAllocators[i].sortedFreeRegionCapacity = 4;
+	}
+
+	/* Staging Buffer */
+
+	renderer->textureStagingBuffer = (VulkanBuffer*) SDL_malloc(sizeof(VulkanBuffer));
+
+	if (!VULKAN_INTERNAL_CreateBuffer(
+		renderer,
+		TEXTURE_STAGING_SIZE,
+		RESOURCE_ACCESS_MEMORY_TRANSFER_READ_WRITE,
+		VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+		renderer->textureStagingBuffer
+	)) {
+		REFRESH_LogError("Failed to create texture staging buffer!");
+		return NULL;
 	}
 
 	/* Threading */
