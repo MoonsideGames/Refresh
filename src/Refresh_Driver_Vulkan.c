@@ -346,6 +346,8 @@ static VkBorderColor RefreshToVK_BorderColor[] =
 
 /* Structures */
 
+/* Memory Allocation */
+
 typedef struct VulkanMemoryAllocation VulkanMemoryAllocation;
 
 typedef struct VulkanMemoryFreeRegion
@@ -382,6 +384,195 @@ typedef struct VulkanMemoryAllocator
 {
 	VulkanMemorySubAllocator subAllocators[VK_MAX_MEMORY_TYPES];
 } VulkanMemoryAllocator;
+
+/* Memory Barriers */
+
+typedef struct VulkanResourceAccessInfo
+{
+	VkPipelineStageFlags stageMask;
+	VkAccessFlags accessMask;
+	VkImageLayout imageLayout;
+} VulkanResourceAccessInfo;
+
+static const VulkanResourceAccessInfo AccessMap[RESOURCE_ACCESS_TYPES_COUNT] =
+{
+	/* RESOURCE_ACCESS_NONE */
+	{
+		0,
+		0,
+		VK_IMAGE_LAYOUT_UNDEFINED
+	},
+
+	/* RESOURCE_ACCESS_INDEX_BUFFER */
+	{
+		VK_PIPELINE_STAGE_VERTEX_INPUT_BIT,
+		VK_ACCESS_INDEX_READ_BIT,
+		VK_IMAGE_LAYOUT_UNDEFINED
+	},
+
+	/* RESOURCE_ACCESS_VERTEX_BUFFER */
+	{
+		VK_PIPELINE_STAGE_VERTEX_INPUT_BIT,
+		VK_ACCESS_INDEX_READ_BIT,
+		VK_IMAGE_LAYOUT_UNDEFINED
+	},
+
+	/* RESOURCE_ACCESS_VERTEX_SHADER_READ_UNIFORM_BUFFER */
+	{
+		VK_PIPELINE_STAGE_VERTEX_SHADER_BIT,
+		VK_ACCESS_SHADER_READ_BIT,
+		VK_IMAGE_LAYOUT_UNDEFINED
+	},
+
+	/* RESOURCE_ACCESS_VERTEX_SHADER_READ_SAMPLED_IMAGE */
+	{
+		VK_PIPELINE_STAGE_VERTEX_SHADER_BIT,
+		VK_ACCESS_SHADER_READ_BIT,
+		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+	},
+
+	/* RESOURCE_ACCESS_FRAGMENT_SHADER_READ_UNIFORM_BUFFER */
+	{
+		VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+		VK_ACCESS_UNIFORM_READ_BIT,
+		VK_IMAGE_LAYOUT_UNDEFINED
+	},
+
+	/* RESOURCE_ACCESS_FRAGMENT_SHADER_READ_SAMPLED_IMAGE */
+	{
+		VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+		VK_ACCESS_SHADER_READ_BIT,
+		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+	},
+
+	/* RESOURCE_ACCESS_FRAGMENT_SHADER_READ_COLOR_ATTACHMENT */
+	{
+		VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+		VK_ACCESS_INPUT_ATTACHMENT_READ_BIT,
+		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+	},
+
+	/* RESOURCE_ACCESS_FRAGMENT_SHADER_READ_DEPTH_STENCIL_ATTACHMENT */
+	{
+		VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+		VK_ACCESS_INPUT_ATTACHMENT_READ_BIT,
+		VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
+	},
+
+	/* RESOURCE_ACCESS_COLOR_ATTACHMENT_READ */
+	{
+		VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+		VK_ACCESS_COLOR_ATTACHMENT_READ_BIT,
+		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+	},
+
+	/* RESOURCE_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ */
+	{
+		VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+		VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT,
+		VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
+	},
+
+	/* RESOURCE_ACCESS_TRANSFER_READ */
+	{
+		VK_PIPELINE_STAGE_TRANSFER_BIT,
+		VK_ACCESS_TRANSFER_READ_BIT,
+		VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
+	},
+
+	/* RESOURCE_ACCESS_HOST_READ */
+	{
+		VK_PIPELINE_STAGE_HOST_BIT,
+		VK_ACCESS_HOST_READ_BIT,
+		VK_IMAGE_LAYOUT_GENERAL
+	},
+
+	/* RESOURCE_ACCESS_PRESENT */
+	{
+		0,
+		0,
+		VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
+	},
+
+	/* RESOURCE_ACCESS_END_OF_READ */
+	{
+		0,
+		0,
+		VK_IMAGE_LAYOUT_UNDEFINED
+	},
+
+	/* RESOURCE_ACCESS_VERTEX_SHADER_WRITE */
+	{
+		VK_PIPELINE_STAGE_VERTEX_SHADER_BIT,
+		VK_ACCESS_SHADER_WRITE_BIT,
+		VK_IMAGE_LAYOUT_GENERAL
+	},
+
+	/* RESOURCE_ACCESS_FRAGMENT_SHADER_WRITE */
+	{
+		VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+		VK_ACCESS_SHADER_WRITE_BIT,
+		VK_IMAGE_LAYOUT_GENERAL
+	},
+
+	/* RESOURCE_ACCESS_COLOR_ATTACHMENT_WRITE */
+	{
+		VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+		VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+	},
+
+	/* RESOURCE_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE */
+	{
+		VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+		VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+		VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+	},
+
+	/* RESOURCE_ACCESS_TRANSFER_WRITE */
+	{
+		VK_PIPELINE_STAGE_TRANSFER_BIT,
+		VK_ACCESS_TRANSFER_WRITE_BIT,
+		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
+	},
+
+	/* RESOURCE_ACCESS_HOST_WRITE */
+	{
+		VK_PIPELINE_STAGE_HOST_BIT,
+		VK_ACCESS_HOST_WRITE_BIT,
+		VK_IMAGE_LAYOUT_GENERAL
+	},
+
+	/* RESOURCE_ACCESS_COLOR_ATTACHMENT_READ_WRITE */
+	{
+		VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+		VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+	},
+
+	/* RESOURCE_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_WRITE */
+	{
+		VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+		VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+		VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+	},
+
+	/* RESOURCE_ACCESS_MEMORY_TRANSFER_READ_WRITE */
+	{
+		VK_PIPELINE_STAGE_TRANSFER_BIT,
+		VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT,
+		VK_IMAGE_LAYOUT_UNDEFINED
+	},
+
+	/* RESOURCE_ACCESS_GENERAL */
+	{
+		VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+		VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT,
+		VK_IMAGE_LAYOUT_GENERAL
+	}
+};
+
+/* Renderer Structure */
 
 typedef struct QueueFamilyIndices
 {
@@ -449,6 +640,7 @@ typedef struct VulkanRenderer
 	VkDescriptorSetLayout fragmentParamLayout;
 
 	SDL_mutex *allocatorLock;
+	SDL_mutex *commandLock;
 
     #define VULKAN_INSTANCE_FUNCTION(ext, ret, func, params) \
 		vkfntype_##func func;
@@ -456,6 +648,8 @@ typedef struct VulkanRenderer
 		vkfntype_##func func;
 	#include "Refresh_Driver_Vulkan_vkfuncs.h"
 } VulkanRenderer;
+
+/* Image Data */
 
 typedef struct VulkanTexture
 {
@@ -469,7 +663,7 @@ typedef struct VulkanTexture
 	uint32_t depth;
 	uint32_t layerCount;
 	uint32_t levelCount;
-	VkFormat surfaceFormat;
+	VkFormat format;
 	VulkanResourceAccessType resourceAccessType;
 } VulkanTexture;
 
@@ -482,21 +676,39 @@ typedef struct VulkanDepthStencilTexture
 	VkImage image;
 	VkImageView view;
 	VkExtent2D dimensions;
-	VkFormat surfaceFormat;
+	VkFormat format;
 	VulkanResourceAccessType resourceAccessType;
 } VulkanDepthStencilTexture;
 
 typedef struct VulkanColorTarget
 {
 	VulkanTexture *texture;
-	VkImageView imageView;
+	VkImageView view;
+	VulkanTexture *multisampleTexture;
+	uint32_t multisampleCount;
 } VulkanColorTarget;
 
 typedef struct VulkanDepthStencilTarget
 {
 	VulkanDepthStencilTexture *texture;
-	VkImageView imageView;
+	VkImageView view;
 } VulkanDepthStencilTarget;
+
+/* Forward declarations */
+
+static void VULKAN_INTERNAL_BeginCommandBuffer(VulkanRenderer *renderer);
+
+/* Macros */
+
+#define RECORD_CMD(cmdCall)					\
+	SDL_LockMutex(renderer->commandLock);			\
+	if (renderer->currentCommandBuffer == NULL)		\
+	{							\
+		VULKAN_INTERNAL_BeginCommandBuffer(renderer);	\
+	}							\
+	cmdCall;						\
+	renderer->numActiveCommands += 1;			\
+	SDL_UnlockMutex(renderer->commandLock);
 
 /* Error Handling */
 
@@ -1021,6 +1233,97 @@ static uint8_t VULKAN_INTERNAL_FindAvailableMemory(
 	SDL_UnlockMutex(renderer->allocatorLock);
 
 	return 1;
+}
+
+/* Memory Barriers */
+
+static void VULKAN_INTERNAL_ImageMemoryBarrier(
+	VulkanRenderer *renderer,
+	VulkanResourceAccessType nextAccess,
+	VkImageAspectFlags aspectMask,
+	uint32_t baseLayer,
+	uint32_t layerCount,
+	uint32_t baseLevel,
+	uint32_t levelCount,
+	uint8_t discardContents,
+	VkImage image,
+	VulkanResourceAccessType *resourceAccessType
+) {
+	VkPipelineStageFlags srcStages = 0;
+	VkPipelineStageFlags dstStages = 0;
+	VkImageMemoryBarrier memoryBarrier;
+	VulkanResourceAccessType prevAccess;
+	const VulkanResourceAccessInfo *pPrevAccessInfo, *pNextAccessInfo;
+
+	if (*resourceAccessType == nextAccess)
+	{
+		return;
+	}
+
+	memoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+	memoryBarrier.pNext = NULL;
+	memoryBarrier.srcAccessMask = 0;
+	memoryBarrier.dstAccessMask = 0;
+	memoryBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	memoryBarrier.newLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	memoryBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	memoryBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	memoryBarrier.image = image;
+	memoryBarrier.subresourceRange.aspectMask = aspectMask;
+	memoryBarrier.subresourceRange.baseArrayLayer = baseLayer;
+	memoryBarrier.subresourceRange.layerCount = layerCount;
+	memoryBarrier.subresourceRange.baseMipLevel = baseLevel;
+	memoryBarrier.subresourceRange.levelCount = levelCount;
+
+	prevAccess = *resourceAccessType;
+	pPrevAccessInfo = &AccessMap[prevAccess];
+
+	srcStages |= pPrevAccessInfo->stageMask;
+
+	if (prevAccess > RESOURCE_ACCESS_END_OF_READ)
+	{
+		memoryBarrier.srcAccessMask |= pPrevAccessInfo->accessMask;
+	}
+
+	if (discardContents)
+	{
+		memoryBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	}
+	else
+	{
+		memoryBarrier.oldLayout = pPrevAccessInfo->imageLayout;
+	}
+
+	pNextAccessInfo = &AccessMap[nextAccess];
+
+	dstStages |= pNextAccessInfo->stageMask;
+
+	memoryBarrier.dstAccessMask |= pNextAccessInfo->accessMask;
+	memoryBarrier.newLayout = pNextAccessInfo->imageLayout;
+
+	if (srcStages == 0)
+	{
+		srcStages = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+	}
+	if (dstStages == 0)
+	{
+		dstStages = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+	}
+
+	RECORD_CMD(renderer->vkCmdPipelineBarrier(
+		renderer->currentCommandBuffer,
+		srcStages,
+		dstStages,
+		0,
+		0,
+		NULL,
+		0,
+		NULL,
+		1,
+		&memoryBarrier
+	));
+
+	*resourceAccessType = nextAccess;
 }
 
 /* Command Buffers */
@@ -1867,7 +2170,7 @@ static REFRESH_Framebuffer* VULKAN_CreateFramebuffer(
 
 	for (i = 0; i < colorAttachmentCount; i += 1)
 	{
-		imageViews[i] = ((VulkanColorTarget*)framebufferCreateInfo->pColorTargets[i])->imageView;
+		imageViews[i] = ((VulkanColorTarget*)framebufferCreateInfo->pColorTargets[i])->view;
 	}
 
 	vkFramebufferCreateInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
@@ -1878,7 +2181,7 @@ static REFRESH_Framebuffer* VULKAN_CreateFramebuffer(
 	vkFramebufferCreateInfo.pAttachments = imageViews;
 	vkFramebufferCreateInfo.width = framebufferCreateInfo->width;
 	vkFramebufferCreateInfo.height = framebufferCreateInfo->height;
-	vkFramebufferCreateInfo.layers = framebufferCreateInfo->layers;
+	vkFramebufferCreateInfo.layers = 1;
 
 	vulkanResult = renderer->vkCreateFramebuffer(
 		renderer->logicalDevice,
@@ -1923,14 +2226,25 @@ static uint8_t VULKAN_INTERNAL_CreateTexture(
 ) {
 	VkResult vulkanResult;
 	VkImageCreateInfo imageCreateInfo;
+	VkImageCreateFlags imageCreateFlags = 0;
 	VkImageViewCreateInfo imageViewCreateInfo;
 	uint8_t findMemoryResult;
+	uint8_t is3D = depth > 1 ? 1 : 0;
 	uint8_t layerCount = isCube ? 6 : 1;
 	VkComponentMapping swizzle = IDENTITY_SWIZZLE;
 
+	if (isCube)
+	{
+		imageCreateFlags |= VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
+	}
+	else if (is3D)
+	{
+		imageCreateFlags |= VK_IMAGE_CREATE_2D_ARRAY_COMPATIBLE_BIT;
+	}
+
 	imageCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
 	imageCreateInfo.pNext = NULL;
-	imageCreateInfo.flags = isCube ? VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT : 0;
+	imageCreateInfo.flags = imageCreateFlags;
 	imageCreateInfo.imageType = imageType;
 	imageCreateInfo.format = format;
 	imageCreateInfo.extent.width = width;
@@ -2036,7 +2350,7 @@ static uint8_t VULKAN_INTERNAL_CreateTexture(
 	texture->dimensions.width = width;
 	texture->dimensions.height = height;
 	texture->depth = depth;
-	texture->surfaceFormat = format;
+	texture->format = format;
 	texture->levelCount = levelCount;
 	texture->layerCount = layerCount;
 	texture->resourceAccessType = RESOURCE_ACCESS_NONE;
@@ -2161,7 +2475,7 @@ static uint8_t VULKAN_INTERNAL_CreateTextureDepthStencil(
 
 	texture->dimensions.width = width;
 	texture->dimensions.height = height;
-	texture->surfaceFormat = format;
+	texture->format = format;
 	texture->resourceAccessType = RESOURCE_ACCESS_NONE;
 
 	return 1;
@@ -2293,47 +2607,121 @@ static REFRESH_Texture* VULKAN_CreateTextureCube(
 	return (REFRESH_Texture*) result;
 }
 
-static REFRESH_DepthStencilTexture* VULKAN_CreateTextureDepthStencil(
-	REFRESH_Renderer *driverData,
-	REFRESH_DepthFormat format,
-	uint32_t width,
-	uint32_t height
-) {
-	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
-	VulkanDepthStencilTexture *result;
-
-	result = (VulkanDepthStencilTexture*) SDL_malloc(sizeof(VulkanDepthStencilTexture));
-
-	VULKAN_INTERNAL_CreateTextureDepthStencil(
-		renderer,
-		width,
-		height,
-		RefreshToVK_DepthFormat[format],
-		result
-	);
-
-	return (REFRESH_DepthStencilTexture*) result;
-}
-
 static REFRESH_ColorTarget* VULKAN_GenColorTarget(
 	REFRESH_Renderer *driverData,
-	uint32_t width,
-	uint32_t height,
-	REFRESH_SurfaceFormat format,
-	uint32_t multisampleCount,
-	REFRESH_Texture *texture
+	REFRESH_SampleCount multisampleCount,
+	REFRESH_TextureSlice textureSlice
 ) {
-    SDL_assert(0);
+	VkResult vulkanResult;
+	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	VulkanColorTarget *colorTarget = (VulkanColorTarget*) SDL_malloc(sizeof(VulkanColorTarget));
+	VkImageViewCreateInfo imageViewCreateInfo;
+	VkComponentMapping swizzle = IDENTITY_SWIZZLE;
+
+	colorTarget->texture = (VulkanTexture*) textureSlice.texture;
+	colorTarget->multisampleTexture = NULL;
+	colorTarget->multisampleCount = 1;
+
+	/* create resolve target for multisample */
+	if (multisampleCount > 1)
+	{
+		colorTarget->multisampleTexture =
+			(VulkanTexture*) SDL_malloc(sizeof(VulkanTexture));
+
+		VULKAN_INTERNAL_CreateTexture(
+			renderer,
+			colorTarget->texture->dimensions.width,
+			colorTarget->texture->dimensions.height,
+			1,
+			0,
+			RefreshToVK_SampleCount[multisampleCount],
+			1,
+			RefreshToVK_SurfaceFormat[colorTarget->texture->format],
+			VK_IMAGE_ASPECT_COLOR_BIT,
+			VK_IMAGE_TILING_OPTIMAL,
+			VK_IMAGE_TYPE_2D,
+			VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+			colorTarget->multisampleTexture
+		);
+		colorTarget->multisampleCount = multisampleCount;
+
+		VULKAN_INTERNAL_ImageMemoryBarrier(
+			renderer,
+			RESOURCE_ACCESS_COLOR_ATTACHMENT_READ_WRITE,
+			VK_IMAGE_ASPECT_COLOR_BIT,
+			0,
+			colorTarget->multisampleTexture->layerCount,
+			0,
+			colorTarget->multisampleTexture->levelCount,
+			0,
+			colorTarget->multisampleTexture->image,
+			&colorTarget->multisampleTexture->resourceAccessType
+		);
+	}
+
+	/* create framebuffer compatible views for RenderTarget */
+	imageViewCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+	imageViewCreateInfo.pNext = NULL;
+	imageViewCreateInfo.flags = 0;
+	imageViewCreateInfo.image = colorTarget->texture->image;
+	imageViewCreateInfo.format = colorTarget->texture->format;
+	imageViewCreateInfo.components = swizzle;
+	imageViewCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	imageViewCreateInfo.subresourceRange.baseMipLevel = 0;
+	imageViewCreateInfo.subresourceRange.levelCount = 1;
+	imageViewCreateInfo.subresourceRange.baseArrayLayer = textureSlice.layer;
+	imageViewCreateInfo.subresourceRange.layerCount = 1;
+	imageViewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+
+	vulkanResult = renderer->vkCreateImageView(
+		renderer->logicalDevice,
+		&imageViewCreateInfo,
+		NULL,
+		&colorTarget->view
+	);
+
+	if (vulkanResult != VK_SUCCESS)
+	{
+		LogVulkanResult(
+			"vkCreateImageView",
+			vulkanResult
+		);
+		REFRESH_LogError("Failed to create color attachment image view");
+		return NULL;
+	}
+
+	return (REFRESH_ColorTarget*) colorTarget;
 }
 
 static REFRESH_DepthStencilTarget* VULKAN_GenDepthStencilTarget(
 	REFRESH_Renderer *driverData,
 	uint32_t width,
 	uint32_t height,
-	REFRESH_DepthFormat format,
-	REFRESH_Texture *texture
+	REFRESH_DepthFormat format
 ) {
-    SDL_assert(0);
+	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	VulkanDepthStencilTarget *depthStencilTarget =
+		(VulkanDepthStencilTarget*) SDL_malloc(
+			sizeof(VulkanDepthStencilTarget)
+		);
+
+	VulkanDepthStencilTexture *texture =
+		(VulkanDepthStencilTexture*) SDL_malloc(
+			sizeof(VulkanDepthStencilTexture)
+		);
+
+	VULKAN_INTERNAL_CreateTextureDepthStencil(
+		renderer,
+		width,
+		height,
+		RefreshToVK_DepthFormat[format],
+		texture
+	);
+
+	depthStencilTarget->texture = texture;
+	depthStencilTarget->view = texture->view;
+
+    return (REFRESH_DepthStencilTarget*) depthStencilTarget;
 }
 
 static REFRESH_Buffer* VULKAN_GenVertexBuffer(
@@ -3891,6 +4279,7 @@ static REFRESH_Device* VULKAN_CreateDevice(
 	/* Threading */
 
 	renderer->allocatorLock = SDL_CreateMutex();
+	renderer->commandLock = SDL_CreateMutex();
 
     return result;
 }

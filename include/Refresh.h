@@ -376,6 +376,12 @@ typedef struct REFRESH_Viewport
 	float maxDepth;
 } REFRESH_Viewport;
 
+typedef struct REFRESH_TextureSlice
+{
+	REFRESH_Texture *texture;
+	uint32_t layer; /* 0-5 for cube, or z-slice for 3D */
+} REFRESH_TextureSlice;
+
 /* State structures */
 
 typedef struct REFRESH_SamplerStateCreateInfo
@@ -565,7 +571,6 @@ typedef struct REFRESH_FramebufferCreateInfo
 	const REFRESH_DepthStencilTarget *pDepthTarget;
 	uint32_t width;
 	uint32_t height;
-	uint32_t layers;
 } REFRESH_FramebufferCreateInfo;
 
 /* Version API */
@@ -778,37 +783,15 @@ REFRESHAPI REFRESH_Texture* REFRESH_CreateTextureCube(
 	uint8_t canBeRenderTarget
 );
 
-/* Creates a depth/stencil texture to be used with a DepthStencilTarget.
- *
- * format: 	The pixel format of the depth/stencil data.
- * width: 	The width of the texture.
- * height: 	The height of the texture.
- *
- * Returns an allocated REFRESH_Texture* object. Note that the contents of
- * the texture are undefined until SetData is called.
- */
-REFRESHAPI REFRESH_DepthStencilTexture* REFRESH_CreateTextureDepthStencil(
-	REFRESH_Device *device,
-	REFRESH_DepthFormat format,
-	uint32_t width,
-	uint32_t height
-);
-
 /* Creates a color target.
  *
- * width: 				The width of the color target.
- * height: 				The height of the color target.
- * format: 				The pixel format of the color target.
  * multisampleCount:	The MSAA value for the color target.
- * texture: 			The texture that the color target will resolve to.
+ * textureSlice: 		The texture slice that the color target will resolve to.
  */
 REFRESHAPI REFRESH_ColorTarget* REFRESH_GenColorTarget(
 	REFRESH_Device *device,
-	uint32_t width,
-	uint32_t height,
-	REFRESH_SurfaceFormat format,
-	uint32_t multisampleCount,
-	REFRESH_Texture *texture
+	REFRESH_SampleCount multisampleCount,
+	REFRESH_TextureSlice textureSlice
 );
 
 /* Creates a depth/stencil target.
@@ -816,14 +799,12 @@ REFRESHAPI REFRESH_ColorTarget* REFRESH_GenColorTarget(
  * width:	The width of the depth/stencil target.
  * height: 	The height of the depth/stencil target.
  * format:	The storage format of the depth/stencil target.
- * texture: The texture that the depth/stencil target will resolve to.
  */
 REFRESHAPI REFRESH_DepthStencilTarget* REFRESH_GenDepthStencilTarget(
 	REFRESH_Device *device,
 	uint32_t width,
 	uint32_t height,
-	REFRESH_DepthFormat format,
-	REFRESH_Texture *texture
+	REFRESH_DepthFormat format
 );
 
 /* Creates a vertex buffer to be used by Draw commands.

@@ -338,37 +338,16 @@ REFRESH_Texture* REFRESH_CreateTextureCube(
     );
 }
 
-REFRESH_DepthStencilTexture* REFRESH_CreateTextureDepthStencil(
-    REFRESH_Device *device,
-    REFRESH_DepthFormat format,
-    uint32_t width,
-    uint32_t height
-) {
-    NULL_RETURN_NULL(device);
-    return device->CreateTextureDepthStencil(
-        device->driverData,
-        format,
-        width,
-        height
-    );
-}
-
 REFRESH_ColorTarget* REFRESH_GenColorTarget(
 	REFRESH_Device *device,
-	uint32_t width,
-	uint32_t height,
-	REFRESH_SurfaceFormat format,
 	uint32_t multisampleCount,
-	REFRESH_Texture *texture
+	REFRESH_TextureSlice textureSlice
 ) {
     NULL_RETURN_NULL(device);
     return device->GenColorTarget(
         device->driverData,
-        width,
-        height,
-        format,
         multisampleCount,
-        texture
+        textureSlice
     );
 }
 
@@ -376,16 +355,14 @@ REFRESH_DepthStencilTarget* REFRESH_GenDepthStencilTarget(
 	REFRESH_Device *device,
 	uint32_t width,
 	uint32_t height,
-	REFRESH_DepthFormat format,
-	REFRESH_Texture *texture
+	REFRESH_DepthFormat format
 ) {
     NULL_RETURN_NULL(device);
     return device->GenDepthStencilTarget(
         device->driverData,
         width,
         height,
-        format,
-        texture
+        format
     );
 }
 
