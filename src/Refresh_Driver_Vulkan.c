@@ -2161,23 +2161,33 @@ static REFRESH_Framebuffer* VULKAN_CreateFramebuffer(
 
 	VkImageView *imageViews;
 	uint32_t colorAttachmentCount = framebufferCreateInfo->colorTargetCount;
-
+	uint32_t attachmentCount = colorAttachmentCount;
 	uint32_t i;
 
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 
-	imageViews = SDL_stack_alloc(VkImageView, colorAttachmentCount);
+	if (framebufferCreateInfo->pDepthTarget != NULL)
+	{
+		attachmentCount += 1;
+	}
+
+	imageViews = SDL_stack_alloc(VkImageView, attachmentCount);
 
 	for (i = 0; i < colorAttachmentCount; i += 1)
 	{
 		imageViews[i] = ((VulkanColorTarget*)framebufferCreateInfo->pColorTargets[i])->view;
 	}
 
+	if (framebufferCreateInfo->pDepthTarget != NULL)
+	{
+		imageViews[colorAttachmentCount] = ((VulkanDepthStencilTarget*)framebufferCreateInfo->pDepthTarget)->view;
+	}
+
 	vkFramebufferCreateInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
 	vkFramebufferCreateInfo.pNext = NULL;
 	vkFramebufferCreateInfo.flags = 0;
 	vkFramebufferCreateInfo.renderPass = (VkRenderPass) framebufferCreateInfo->renderPass;
-	vkFramebufferCreateInfo.attachmentCount = framebufferCreateInfo->colorTargetCount;
+	vkFramebufferCreateInfo.attachmentCount = attachmentCount;
 	vkFramebufferCreateInfo.pAttachments = imageViews;
 	vkFramebufferCreateInfo.width = framebufferCreateInfo->width;
 	vkFramebufferCreateInfo.height = framebufferCreateInfo->height;
