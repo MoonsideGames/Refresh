@@ -2967,13 +2967,6 @@ static REFRESH_Buffer* VULKAN_GenIndexBuffer(
 	return (REFRESH_Buffer*) buffer;
 }
 
-static REFRESH_Buffer* VULKAN_GenShaderParamBuffer(
-	REFRESH_Renderer *driverData,
-	uint32_t sizeInBytes
-) {
-    SDL_assert(0);
-}
-
 static void VULKAN_SetTextureData2D(
 	REFRESH_Renderer *driverData,
 	REFRESH_Texture *texture,
@@ -3063,7 +3056,69 @@ static void VULKAN_SetTextureData3D(
 	void* data,
 	uint32_t dataLength
 ) {
-    SDL_assert(0);
+	VkResult vulkanResult;
+	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	VulkanTexture *vulkanTexture = (VulkanTexture*) texture;
+	VkBufferImageCopy imageCopy;
+	uint8_t *mapPointer;
+
+	vulkanResult = renderer->vkMapMemory(
+		renderer->logicalDevice,
+		renderer->textureStagingBuffer->allocation->memory,
+		renderer->textureStagingBuffer->offset,
+		renderer->textureStagingBuffer->size,
+		0,
+		(void**) &mapPointer
+	);
+
+	if (vulkanResult != VK_SUCCESS)
+	{
+		REFRESH_LogError("Failed to map buffer memory!");
+		return;
+	}
+
+	SDL_memcpy(mapPointer, data, dataLength);
+
+	renderer->vkUnmapMemory(
+		renderer->logicalDevice,
+		renderer->textureStagingBuffer->allocation->memory
+	);
+
+	VULKAN_INTERNAL_ImageMemoryBarrier(
+		renderer,
+		RESOURCE_ACCESS_TRANSFER_WRITE,
+		VK_IMAGE_ASPECT_COLOR_BIT,
+		0,
+		vulkanTexture->layerCount,
+		0,
+		vulkanTexture->levelCount,
+		0,
+		vulkanTexture->image,
+		&vulkanTexture->resourceAccessType
+	);
+
+	imageCopy.imageExtent.width = w;
+	imageCopy.imageExtent.height = h;
+	imageCopy.imageExtent.depth = d;
+	imageCopy.imageOffset.x = x;
+	imageCopy.imageOffset.y = y;
+	imageCopy.imageOffset.z = z;
+	imageCopy.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	imageCopy.imageSubresource.baseArrayLayer = 0;
+	imageCopy.imageSubresource.layerCount = 1;
+	imageCopy.imageSubresource.mipLevel = level;
+	imageCopy.bufferOffset = 0;
+	imageCopy.bufferRowLength = 0;
+	imageCopy.bufferImageHeight = 0;
+
+	RECORD_CMD(renderer->vkCmdCopyBufferToImage(
+		renderer->currentCommandBuffer,
+		renderer->textureStagingBuffer->buffer,
+		vulkanTexture->image,
+		AccessMap[vulkanTexture->resourceAccessType].imageLayout,
+		1,
+		&imageCopy
+	));
 }
 
 static void VULKAN_SetTextureDataCube(
@@ -3078,7 +3133,69 @@ static void VULKAN_SetTextureDataCube(
 	void* data,
 	uint32_t dataLength
 ) {
-    SDL_assert(0);
+	VkResult vulkanResult;
+	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	VulkanTexture *vulkanTexture = (VulkanTexture*) texture;
+	VkBufferImageCopy imageCopy;
+	uint8_t *mapPointer;
+
+	vulkanResult = renderer->vkMapMemory(
+		renderer->logicalDevice,
+		renderer->textureStagingBuffer->allocation->memory,
+		renderer->textureStagingBuffer->offset,
+		renderer->textureStagingBuffer->size,
+		0,
+		(void**) &mapPointer
+	);
+
+	if (vulkanResult != VK_SUCCESS)
+	{
+		REFRESH_LogError("Failed to map buffer memory!");
+		return;
+	}
+
+	SDL_memcpy(mapPointer, data, dataLength);
+
+	renderer->vkUnmapMemory(
+		renderer->logicalDevice,
+		renderer->textureStagingBuffer->allocation->memory
+	);
+
+	VULKAN_INTERNAL_ImageMemoryBarrier(
+		renderer,
+		RESOURCE_ACCESS_TRANSFER_WRITE,
+		VK_IMAGE_ASPECT_COLOR_BIT,
+		0,
+		vulkanTexture->layerCount,
+		0,
+		vulkanTexture->levelCount,
+		0,
+		vulkanTexture->image,
+		&vulkanTexture->resourceAccessType
+	);
+
+	imageCopy.imageExtent.width = w;
+	imageCopy.imageExtent.height = h;
+	imageCopy.imageExtent.depth = 1;
+	imageCopy.imageOffset.x = x;
+	imageCopy.imageOffset.y = y;
+	imageCopy.imageOffset.z = 0;
+	imageCopy.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	imageCopy.imageSubresource.baseArrayLayer = cubeMapFace;
+	imageCopy.imageSubresource.layerCount = 1;
+	imageCopy.imageSubresource.mipLevel = level;
+	imageCopy.bufferOffset = 0;
+	imageCopy.bufferRowLength = 0; /* assumes tightly packed data */
+	imageCopy.bufferImageHeight = 0; /* assumes tightly packed data */
+
+	RECORD_CMD(renderer->vkCmdCopyBufferToImage(
+		renderer->currentCommandBuffer,
+		renderer->textureStagingBuffer->buffer,
+		vulkanTexture->image,
+		AccessMap[vulkanTexture->resourceAccessType].imageLayout,
+		1,
+		&imageCopy
+	));
 }
 
 static void VULKAN_SetTextureDataYUV(
@@ -3093,7 +3210,158 @@ static void VULKAN_SetTextureDataYUV(
 	void* data,
 	uint32_t dataLength
 ) {
-    SDL_assert(0);
+	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	VulkanTexture *tex;
+	uint8_t *dataPtr = (uint8_t*) data;
+	int32_t yDataLength = BytesPerImage(yWidth, yHeight, REFRESH_SURFACEFORMAT_R8);
+	int32_t uvDataLength = BytesPerImage(uvWidth, uvHeight, REFRESH_SURFACEFORMAT_R8);
+	VkBufferImageCopy imageCopy;
+	uint8_t *mapPointer;
+	VkResult vulkanResult;
+
+	/* Initialize values that are the same for Y, U, and V */
+
+	imageCopy.imageExtent.depth = 1;
+	imageCopy.imageOffset.x = 0;
+	imageCopy.imageOffset.y = 0;
+	imageCopy.imageOffset.z = 0;
+	imageCopy.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	imageCopy.imageSubresource.baseArrayLayer = 0;
+	imageCopy.imageSubresource.layerCount = 1;
+	imageCopy.imageSubresource.mipLevel = 0;
+	imageCopy.bufferOffset = 0;
+
+	/* Y */
+
+	tex = (VulkanTexture*) y;
+
+	vulkanResult = renderer->vkMapMemory(
+		renderer->logicalDevice,
+		renderer->textureStagingBuffer->allocation->memory,
+		renderer->textureStagingBuffer->offset,
+		renderer->textureStagingBuffer->size,
+		0,
+		(void**) &mapPointer
+	);
+
+	if (vulkanResult != VK_SUCCESS)
+	{
+		REFRESH_LogError("Failed to map buffer memory!");
+		return;
+	}
+
+	SDL_memcpy(
+		mapPointer,
+		dataPtr,
+		yDataLength
+	);
+
+	VULKAN_INTERNAL_ImageMemoryBarrier(
+		renderer,
+		RESOURCE_ACCESS_TRANSFER_WRITE,
+		VK_IMAGE_ASPECT_COLOR_BIT,
+		0,
+		tex->layerCount,
+		0,
+		tex->levelCount,
+		0,
+		tex->image,
+		&tex->resourceAccessType
+	);
+
+	imageCopy.imageExtent.width = yWidth;
+	imageCopy.imageExtent.height = yHeight;
+	imageCopy.bufferRowLength = yWidth;
+	imageCopy.bufferImageHeight = yHeight;
+
+	RECORD_CMD(renderer->vkCmdCopyBufferToImage(
+		renderer->currentCommandBuffer,
+		renderer->textureStagingBuffer->buffer,
+		tex->image,
+		AccessMap[tex->resourceAccessType].imageLayout,
+		1,
+		&imageCopy
+	));
+
+	/* These apply to both U and V */
+
+	imageCopy.imageExtent.width = uvWidth;
+	imageCopy.imageExtent.height = uvHeight;
+	imageCopy.bufferRowLength = uvWidth;
+	imageCopy.bufferImageHeight = uvHeight;
+
+	/* U */
+
+	imageCopy.bufferOffset = yDataLength;
+
+	tex = (VulkanTexture*) u;
+
+	SDL_memcpy(
+		mapPointer + yDataLength,
+		dataPtr + yDataLength,
+		uvDataLength
+	);
+
+	VULKAN_INTERNAL_ImageMemoryBarrier(
+		renderer,
+		RESOURCE_ACCESS_TRANSFER_WRITE,
+		VK_IMAGE_ASPECT_COLOR_BIT,
+		0,
+		tex->layerCount,
+		0,
+		tex->levelCount,
+		0,
+		tex->image,
+		&tex->resourceAccessType
+	);
+
+	RECORD_CMD(renderer->vkCmdCopyBufferToImage(
+		renderer->currentCommandBuffer,
+		renderer->textureStagingBuffer->buffer,
+		tex->image,
+		AccessMap[tex->resourceAccessType].imageLayout,
+		1,
+		&imageCopy
+	));
+
+	/* V */
+
+	imageCopy.bufferOffset = yDataLength + uvDataLength;
+
+	tex = (VulkanTexture*) v;
+
+	SDL_memcpy(
+		mapPointer + yDataLength + uvDataLength,
+		dataPtr + yDataLength + uvDataLength,
+		uvDataLength
+	);
+
+	renderer->vkUnmapMemory(
+		renderer->logicalDevice,
+		renderer->textureStagingBuffer->allocation->memory
+	);
+
+	VULKAN_INTERNAL_ImageMemoryBarrier(
+		renderer,
+		RESOURCE_ACCESS_TRANSFER_WRITE,
+		VK_IMAGE_ASPECT_COLOR_BIT,
+		0,
+		tex->layerCount,
+		0,
+		tex->levelCount,
+		0,
+		tex->image,
+		&tex->resourceAccessType
+	);
+
+	RECORD_CMD(renderer->vkCmdCopyBufferToImage(
+		renderer->currentCommandBuffer,
+		renderer->textureStagingBuffer->buffer,
+		tex->image,
+		AccessMap[tex->resourceAccessType].imageLayout,
+		1,
+		&imageCopy
+	));
 }
 
 static void VULKAN_SetVertexBufferData(
