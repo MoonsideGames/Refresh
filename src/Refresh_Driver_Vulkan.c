@@ -3859,10 +3859,57 @@ static void VULKAN_BeginRenderPass(
 	REFRESH_RenderPass *renderPass,
 	REFRESH_Framebuffer *framebuffer,
 	REFRESH_Rect renderArea,
-	REFRESH_ClearValue *pClearValues,
-	uint32_t clearCount
+	REFRESH_Color *pColorClearValues,
+	uint32_t colorClearCount,
+	REFRESH_DepthStencilValue *depthStencilClearValue
 ) {
-    SDL_assert(0);
+	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	VkClearValue *clearValues;
+	uint32_t i;
+	uint32_t colorCount = colorClearCount;
+
+	if (depthStencilClearValue != NULL)
+	{
+		colorCount += 1;
+	}
+
+	clearValues = SDL_stack_alloc(VkClearValue, colorCount);
+
+	for (i = 0; i < colorClearCount; i += 1)
+	{
+		clearValues[i].color.uint32[0] = pColorClearValues[i].r;
+		clearValues[i].color.uint32[1] = pColorClearValues[i].g;
+		clearValues[i].color.uint32[2] = pColorClearValues[i].b;
+		clearValues[i].color.uint32[3] = pColorClearValues[i].a;
+	}
+
+	if (depthStencilClearValue != NULL)
+	{
+		clearValues[colorClearCount].depthStencil.depth =
+			depthStencilClearValue->depth;
+		clearValues[colorClearCount].depthStencil.stencil =
+			depthStencilClearValue->stencil;
+	}
+
+	VkRenderPassBeginInfo renderPassBeginInfo;
+	renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+	renderPassBeginInfo.pNext = NULL;
+	renderPassBeginInfo.renderPass = (VkRenderPass) renderPass;
+	renderPassBeginInfo.framebuffer = (VkFramebuffer) framebuffer;
+	renderPassBeginInfo.renderArea.extent.width = renderArea.w;
+	renderPassBeginInfo.renderArea.extent.height = renderArea.h;
+	renderPassBeginInfo.renderArea.offset.x = renderArea.x;
+	renderPassBeginInfo.renderArea.offset.y = renderArea.y;
+	renderPassBeginInfo.pClearValues = clearValues;
+	renderPassBeginInfo.clearValueCount = colorCount;
+
+	RECORD_CMD(renderer->vkCmdBeginRenderPass(
+		renderer->currentCommandBuffer,
+		&renderPassBeginInfo,
+		VK_SUBPASS_CONTENTS_INLINE
+	));
+
+	SDL_stack_free(clearValues);
 }
 
 static void VULKAN_EndRenderPass(

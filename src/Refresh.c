@@ -746,8 +746,9 @@ void REFRESH_BeginRenderPass(
 	REFRESH_RenderPass *renderPass,
 	REFRESH_Framebuffer *framebuffer,
 	REFRESH_Rect renderArea,
-	REFRESH_ClearValue *pClearValues,
-	uint32_t clearCount
+	REFRESH_Color *pColorClearValues,
+	uint32_t colorClearCount,
+	REFRESH_DepthStencilValue *depthStencilClearValue
 ) {
     NULL_RETURN(device);
     device->BeginRenderPass(
@@ -755,8 +756,9 @@ void REFRESH_BeginRenderPass(
         renderPass,
         framebuffer,
         renderArea,
-        pClearValues,
-        clearCount
+        pColorClearValues,
+        colorClearCount,
+        depthStencilClearValue
     );
 }
 

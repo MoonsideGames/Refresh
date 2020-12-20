@@ -344,12 +344,6 @@ typedef struct REFRESH_DepthStencilValue
 	uint32_t stencil;
 } REFRESH_DepthStencilValue;
 
-typedef struct REFRESH_ClearValue
-{
-	REFRESH_Color color;
-	REFRESH_DepthStencilValue depthStencil;
-} REFRESH_ClearValue;
-
 typedef struct REFRESH_Rect
 {
 	int32_t x;
@@ -1206,18 +1200,20 @@ REFRESHAPI void REFRESH_AddDisposeGraphicsPipeline(
  * 		All load, store and resolve operations are restricted
  * 		to the given rectangle.
  * clearValues:
- * 		A pointer to an array of REFRESH_ClearValue structures
- * 		that contains clear values for each render target in the
- * 		framebuffer.
- * clearCount: The amount of clearValue structs in the above array.
+ * 		A pointer to an array of REFRESH_Color structures
+ * 		that contains clear values for each color target in the
+ * 		framebuffer. May be NULL.
+ * clearCount: The amount of color structs in the above array.
+ * depthStencilClearValue: The depth/stencil clear value. May be NULL.
  */
 REFRESHAPI void REFRESH_BeginRenderPass(
 	REFRESH_Device *device,
 	REFRESH_RenderPass *renderPass,
 	REFRESH_Framebuffer *framebuffer,
 	REFRESH_Rect renderArea,
-	REFRESH_ClearValue *pClearValues,
-	uint32_t clearCount
+	REFRESH_Color *pColorClearValues,
+	uint32_t colorClearCount,
+	REFRESH_DepthStencilValue *depthStencilClearValue
 );
 
 /* Ends the current render pass. */

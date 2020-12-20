@@ -463,8 +463,9 @@ struct REFRESH_Device
         REFRESH_RenderPass *renderPass,
         REFRESH_Framebuffer *framebuffer,
         REFRESH_Rect renderArea,
-        REFRESH_ClearValue *pClearValues,
-        uint32_t clearCount
+        REFRESH_Color *pColorClearValues,
+        uint32_t colorClearCount,
+        REFRESH_DepthStencilValue *depthStencilClearValue
     );
 
     void(*EndRenderPass)(
