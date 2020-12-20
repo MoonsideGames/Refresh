@@ -3876,6 +3876,14 @@ static void VULKAN_BindGraphicsPipeline(
 	REFRESH_Renderer *driverData,
 	REFRESH_GraphicsPipeline *graphicsPipeline
 ) {
+	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
+	VulkanGraphicsPipeline* pipeline = (VulkanGraphicsPipeline*) graphicsPipeline;
+
+	RECORD_CMD(renderer->vkCmdBindPipeline(
+		renderer->currentCommandBuffer,
+		VK_PIPELINE_BIND_POINT_GRAPHICS,
+		pipeline->pipeline
+	));
     SDL_assert(0);
 }
 
