@@ -3915,7 +3915,11 @@ static void VULKAN_BeginRenderPass(
 static void VULKAN_EndRenderPass(
 	REFRESH_Renderer *driverData
 ) {
-    SDL_assert(0);
+	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+
+	RECORD_CMD(renderer->vkCmdEndRenderPass(
+		renderer->currentCommandBuffer
+	));
 }
 
 static void VULKAN_BindGraphicsPipeline(
