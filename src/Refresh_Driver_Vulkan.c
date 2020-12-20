@@ -683,8 +683,11 @@ typedef struct VulkanRenderer
 	VkDescriptorPool *descriptorPools;
 	uint32_t descriptorPoolCount;
 
+	VkDescriptorPool UBODescriptorPool;
 	VkDescriptorSetLayout vertexParamLayout;
 	VkDescriptorSetLayout fragmentParamLayout;
+	VkDescriptorSet vertexUBODescriptorSet;
+	VkDescriptorSet fragmentUBODescriptorSet;
 
 	VulkanBuffer *textureStagingBuffer;
 	VulkanBuffer *vertexUBO;
@@ -750,11 +753,16 @@ typedef struct VulkanDepthStencilTarget
 typedef struct VulkanGraphicsPipeline
 {
 	VkPipeline pipeline;
+	VkPipelineLayout layout;
 	VkDescriptorPool descriptorPool;
 	VkDescriptorSetLayout vertexSamplerLayout;
 	uint32_t vertexSamplerBindingCount;
 	VkDescriptorSetLayout fragmentSamplerLayout;
 	uint32_t fragmentSamplerBindingCount;
+	VkDescriptorSet vertexSamplerDescriptorSet; /* updated by SetVertexSamplers */
+	VkDescriptorSet fragmentSamplerDescriptorSet; /* updated by SetFragmentSamplers */
+	uint32_t vertexUBOOffset; /* updated by PushVertexShaderParams */
+	uint32_t fragmentUBOOffset; /* updated by PushFragmentShaderParams */
 } VulkanGraphicsPipeline;
 
 /* Forward declarations */
@@ -1707,22 +1715,9 @@ static void VULKAN_Clear(
     SDL_assert(0);
 }
 
-static void VULKAN_DrawIndexedPrimitives(
-	REFRESH_Renderer *driverData,
-	REFRESH_PrimitiveType primitiveType,
-	uint32_t baseVertex,
-	uint32_t minVertexIndex,
-	uint32_t numVertices,
-	uint32_t startIndex,
-	uint32_t primitiveCount,
-	REFRESH_Buffer *indices,
-	REFRESH_IndexElementSize indexElementSize
-) {
-    SDL_assert(0);
-}
-
 static void VULKAN_DrawInstancedPrimitives(
 	REFRESH_Renderer *driverData,
+	REFRESH_GraphicsPipeline *graphicsPipeline,
 	REFRESH_PrimitiveType primitiveType,
 	uint32_t baseVertex,
 	uint32_t minVertexIndex,
@@ -1733,16 +1728,108 @@ static void VULKAN_DrawInstancedPrimitives(
 	REFRESH_Buffer *indices,
 	REFRESH_IndexElementSize indexElementSize
 ) {
-    SDL_assert(0);
+	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	VulkanGraphicsPipeline *pipeline = (VulkanGraphicsPipeline*) graphicsPipeline;
+	VkDescriptorSet descriptorSets[4];
+	uint32_t dynamicOffsets[2];
+
+	descriptorSets[0] = pipeline->vertexSamplerDescriptorSet;
+	descriptorSets[1] = pipeline->fragmentSamplerDescriptorSet;
+	descriptorSets[2] = renderer->vertexUBODescriptorSet;
+	descriptorSets[3] = renderer->fragmentUBODescriptorSet;
+
+	dynamicOffsets[0] = pipeline->vertexUBOOffset;
+	dynamicOffsets[1] = pipeline->fragmentUBOOffset;
+
+	RECORD_CMD(renderer->vkCmdBindDescriptorSets(
+		renderer->currentCommandBuffer,
+		VK_PIPELINE_BIND_POINT_GRAPHICS,
+		pipeline->layout,
+		0,
+		4,
+		descriptorSets,
+		2,
+		dynamicOffsets
+	));
+
+	RECORD_CMD(renderer->vkCmdDrawIndexed(
+		renderer->currentCommandBuffer,
+		PrimitiveVerts(primitiveType, primitiveCount),
+		instanceCount,
+		startIndex,
+		baseVertex,
+		0
+	));
+}
+
+static void VULKAN_DrawIndexedPrimitives(
+	REFRESH_Renderer *driverData,
+	REFRESH_GraphicsPipeline *graphicsPipeline,
+	REFRESH_PrimitiveType primitiveType,
+	uint32_t baseVertex,
+	uint32_t minVertexIndex,
+	uint32_t numVertices,
+	uint32_t startIndex,
+	uint32_t primitiveCount,
+	REFRESH_Buffer *indices,
+	REFRESH_IndexElementSize indexElementSize
+) {
+	VULKAN_DrawInstancedPrimitives(
+		driverData,
+		graphicsPipeline,
+		primitiveType,
+		baseVertex,
+		minVertexIndex,
+		numVertices,
+		startIndex,
+		primitiveCount,
+		1,
+		indices,
+		indexElementSize
+	);
 }
 
 static void VULKAN_DrawPrimitives(
 	REFRESH_Renderer *driverData,
+	REFRESH_GraphicsPipeline *graphicsPipeline,
 	REFRESH_PrimitiveType primitiveType,
 	uint32_t vertexStart,
 	uint32_t primitiveCount
 ) {
-    SDL_assert(0);
+	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	VulkanGraphicsPipeline *pipeline = (VulkanGraphicsPipeline*) graphicsPipeline;
+	VkDescriptorSet descriptorSets[4];
+	uint32_t dynamicOffsets[2];
+
+	descriptorSets[0] = pipeline->vertexSamplerDescriptorSet;
+	descriptorSets[1] = pipeline->fragmentSamplerDescriptorSet;
+	descriptorSets[2] = renderer->vertexUBODescriptorSet;
+	descriptorSets[3] = renderer->fragmentUBODescriptorSet;
+
+	dynamicOffsets[0] = pipeline->vertexUBOOffset;
+	dynamicOffsets[1] = pipeline->fragmentUBOOffset;
+
+	RECORD_CMD(renderer->vkCmdBindDescriptorSets(
+		renderer->currentCommandBuffer,
+		VK_PIPELINE_BIND_POINT_GRAPHICS,
+		pipeline->layout,
+		0,
+		4,
+		descriptorSets,
+		2,
+		dynamicOffsets
+	));
+
+	RECORD_CMD(renderer->vkCmdDraw(
+		renderer->currentCommandBuffer,
+		PrimitiveVerts(
+			primitiveType,
+			primitiveCount
+		),
+		1,
+		vertexStart,
+		0
+	));
 }
 
 static REFRESH_RenderPass* VULKAN_CreateRenderPass(
@@ -1938,7 +2025,7 @@ static REFRESH_RenderPass* VULKAN_CreateRenderPass(
     return (REFRESH_RenderPass*) renderPass;
 }
 
-static uint8_t VULKAN_INTERNAL_CreateDescriptorPool(
+static uint8_t VULKAN_INTERNAL_CreateSamplerDescriptorPool(
 	VulkanRenderer *renderer,
 	REFRESH_PipelineLayoutCreateInfo *pipelineLayoutCreateInfo,
 	VkDescriptorPool *pDescriptorPool
@@ -2367,6 +2454,7 @@ static REFRESH_GraphicsPipeline* VULKAN_CreateGraphicsPipeline(
 	graphicsPipeline->fragmentSamplerLayout = setLayouts[1];
 	graphicsPipeline->vertexSamplerBindingCount = pipelineCreateInfo->pipelineLayoutCreateInfo.vertexSamplerBindingCount;
 	graphicsPipeline->fragmentSamplerBindingCount = pipelineCreateInfo->pipelineLayoutCreateInfo.fragmentSamplerBindingCount;
+	graphicsPipeline->layout = pipelineLayout;
 
 	/* Pipeline */
 
@@ -2422,7 +2510,7 @@ static REFRESH_GraphicsPipeline* VULKAN_CreateGraphicsPipeline(
 	SDL_stack_free(vertexSamplerLayoutBindings);
 	SDL_stack_free(fragmentSamplerLayoutBindings);
 
-	if (!VULKAN_INTERNAL_CreateDescriptorPool(
+	if (!VULKAN_INTERNAL_CreateSamplerDescriptorPool(
 		renderer,
 		&pipelineCreateInfo->pipelineLayoutCreateInfo,
 		&graphicsPipeline->descriptorPool
@@ -3686,6 +3774,8 @@ static void VULKAN_SetVertexSamplers(
 		NULL
 	);
 
+	graphicsPipeline->vertexSamplerDescriptorSet = descriptorSet;
+
 	SDL_stack_free(writeDescriptorSets);
 	SDL_stack_free(descriptorImageInfos);
 }
@@ -3750,6 +3840,8 @@ static void VULKAN_SetFragmentSamplers(
 		0,
 		NULL
 	);
+
+	graphicsPipeline->fragmentSamplerDescriptorSet = descriptorSet;
 
 	SDL_stack_free(writeDescriptorSets);
 	SDL_stack_free(descriptorImageInfos);
@@ -5003,6 +5095,12 @@ static REFRESH_Device* VULKAN_CreateDevice(
 	VkDescriptorSetLayoutBinding vertexParamLayoutBinding;
 	VkDescriptorSetLayoutBinding fragmentParamLayoutBinding;
 
+	/* Variables: UBO Creation */
+	VkDescriptorPoolCreateInfo uboDescriptorPoolInfo;
+	VkDescriptorPoolSize uboPoolSize;
+	VkDescriptorSetAllocateInfo vertexUBODescriptorAllocateInfo;
+	VkDescriptorSetAllocateInfo fragmentUBODescriptorAllocateInfo;
+
     result = (REFRESH_Device*) SDL_malloc(sizeof(REFRESH_Device));
     ASSIGN_DRIVER(VULKAN)
 
@@ -5252,6 +5350,51 @@ static REFRESH_Device* VULKAN_CreateDevice(
 		REFRESH_LogError("Failed to create fragment UBO layout!");
 		return NULL;
 	}
+
+	/* UBO Descriptors */
+
+	uboPoolSize.descriptorCount = 2;
+	uboPoolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+
+	uboDescriptorPoolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+	uboDescriptorPoolInfo.pNext = NULL;
+	uboDescriptorPoolInfo.flags = 0;
+	uboDescriptorPoolInfo.maxSets = 2;
+	uboDescriptorPoolInfo.poolSizeCount = 1;
+	uboDescriptorPoolInfo.pPoolSizes = &uboPoolSize;
+
+	renderer->vkCreateDescriptorPool(
+		renderer->logicalDevice,
+		&uboDescriptorPoolInfo,
+		NULL,
+		&renderer->UBODescriptorPool
+	);
+
+	vertexUBODescriptorAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+	vertexUBODescriptorAllocateInfo.pNext = NULL;
+	vertexUBODescriptorAllocateInfo.descriptorPool = renderer->UBODescriptorPool;
+	vertexUBODescriptorAllocateInfo.descriptorSetCount = 1;
+	vertexUBODescriptorAllocateInfo.pSetLayouts = &renderer->vertexParamLayout;
+
+	renderer->vkAllocateDescriptorSets(
+		renderer->logicalDevice,
+		&vertexUBODescriptorAllocateInfo,
+		&renderer->vertexUBODescriptorSet
+	);
+
+	fragmentUBODescriptorAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+	fragmentUBODescriptorAllocateInfo.pNext = NULL;
+	fragmentUBODescriptorAllocateInfo.descriptorPool = renderer->UBODescriptorPool;
+	fragmentUBODescriptorAllocateInfo.descriptorSetCount = 1;
+	fragmentUBODescriptorAllocateInfo.pSetLayouts = &renderer->fragmentParamLayout;
+
+	renderer->vkAllocateDescriptorSets(
+		renderer->logicalDevice,
+		&fragmentUBODescriptorAllocateInfo,
+		&renderer->fragmentUBODescriptorSet
+	);
+
+	/* UBO Data */
 
 	renderer->vertexUBO = (VulkanBuffer*) SDL_malloc(sizeof(VulkanBuffer));
 

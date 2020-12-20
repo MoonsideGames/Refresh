@@ -177,19 +177,9 @@ struct REFRESH_Device
         int32_t stencil
 	);
 
-	void (*DrawIndexedPrimitives)(
-        REFRESH_Renderer *driverData,
-        REFRESH_PrimitiveType primitiveType,
-        uint32_t baseVertex,
-        uint32_t minVertexIndex,
-        uint32_t numVertices,
-        uint32_t startIndex,
-        uint32_t primitiveCount,
-        REFRESH_Buffer *indices,
-        REFRESH_IndexElementSize indexElementSize
-	);
 	void (*DrawInstancedPrimitives)(
         REFRESH_Renderer *driverData,
+        REFRESH_GraphicsPipeline *graphicsPipeline,
         REFRESH_PrimitiveType primitiveType,
         uint32_t baseVertex,
         uint32_t minVertexIndex,
@@ -200,8 +190,23 @@ struct REFRESH_Device
         REFRESH_Buffer *indices,
         REFRESH_IndexElementSize indexElementSize
 	);
+
+	void (*DrawIndexedPrimitives)(
+        REFRESH_Renderer *driverData,
+        REFRESH_GraphicsPipeline *graphicsPipeline,
+        REFRESH_PrimitiveType primitiveType,
+        uint32_t baseVertex,
+        uint32_t minVertexIndex,
+        uint32_t numVertices,
+        uint32_t startIndex,
+        uint32_t primitiveCount,
+        REFRESH_Buffer *indices,
+        REFRESH_IndexElementSize indexElementSize
+	);
+
 	void (*DrawPrimitives)(
 	    REFRESH_Renderer *driverData,
+        REFRESH_GraphicsPipeline *graphicsPipeline,
         REFRESH_PrimitiveType primitiveType,
         uint32_t vertexStart,
         uint32_t primitiveCount

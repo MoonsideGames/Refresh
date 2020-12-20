@@ -628,43 +628,22 @@ REFRESHAPI void REFRESH_Clear(
 	int32_t stencil
 );
 
-/* Draws data from vertex/index buffers.
- *
- * primitiveType:	The primitive topology of the vertex data.
- * baseVertex:		The starting offset to read from the vertex buffer.
- * minVertexIndex:	The lowest index value expected from the index buffer.
- * numVertices:		The highest offset expected from the index buffer.
- * startIndex:		The starting offset to read from the index buffer.
- * primitiveCount:	The number of primitives to draw.
- * indices:		The index buffer to bind for this draw call.
- * indexElementSize:	The size of the index type for this index buffer.
- */
-REFRESHAPI void REFRESH_DrawIndexedPrimitives(
-	REFRESH_Device *device,
-	REFRESH_PrimitiveType primitiveType,
-	uint32_t baseVertex,
-	uint32_t minVertexIndex,
-	uint32_t numVertices,
-	uint32_t startIndex,
-	uint32_t primitiveCount,
-	REFRESH_Buffer *indices,
-	REFRESH_IndexElementSize indexElementSize
-);
-
 /* Draws data from vertex/index buffers with instancing enabled.
  *
- * primitiveType:	The primitive topology of the vertex data.
- * baseVertex:		The starting offset to read from the vertex buffer.
- * minVertexIndex:	The lowest index value expected from the index buffer.
- * numVertices:		The highest offset expected from the index buffer.
- * startIndex:		The starting offset to read from the index buffer.
- * primitiveCount:	The number of primitives to draw.
- * instanceCount:	The number of instances that will be drawn.
- * indices:		The index buffer to bind for this draw call.
+ * graphicsPipeline:	The graphics pipeline through which to draw.
+ * primitiveType:		The primitive topology of the vertex data.
+ * baseVertex:			The starting offset to read from the vertex buffer.
+ * minVertexIndex:		The lowest index value expected from the index buffer.
+ * numVertices:			The highest offset expected from the index buffer.
+ * startIndex:			The starting offset to read from the index buffer.
+ * primitiveCount:		The number of primitives to draw.
+ * instanceCount:		The number of instances that will be drawn.
+ * indices:				The index buffer to bind for this draw call.
  * indexElementSize:	The size of the index type for this index buffer.
  */
 REFRESHAPI void REFRESH_DrawInstancedPrimitives(
 	REFRESH_Device *device,
+	REFRESH_GraphicsPipeline *graphicsPipeline,
 	REFRESH_PrimitiveType primitiveType,
 	uint32_t baseVertex,
 	uint32_t minVertexIndex,
@@ -676,13 +655,41 @@ REFRESHAPI void REFRESH_DrawInstancedPrimitives(
 	REFRESH_IndexElementSize indexElementSize
 );
 
+/* Draws data from vertex/index buffers.
+ *
+ * graphicsPipeline:	The graphics pipeline through which to draw.
+ * primitiveType:		The primitive topology of the vertex data.
+ * baseVertex:			The starting offset to read from the vertex buffer.
+ * minVertexIndex:		The lowest index value expected from the index buffer.
+ * numVertices:			The highest offset expected from the index buffer.
+ * startIndex:			The starting offset to read from the index buffer.
+ * primitiveCount:		The number of primitives to draw.
+ * indices:				The index buffer to bind for this draw call.
+ * indexElementSize:	The size of the index type for this index buffer.
+ */
+REFRESHAPI void REFRESH_DrawIndexedPrimitives(
+	REFRESH_Device *device,
+	REFRESH_GraphicsPipeline *graphicsPipeline,
+	REFRESH_PrimitiveType primitiveType,
+	uint32_t baseVertex,
+	uint32_t minVertexIndex,
+	uint32_t numVertices,
+	uint32_t startIndex,
+	uint32_t primitiveCount,
+	REFRESH_Buffer *indices,
+	REFRESH_IndexElementSize indexElementSize
+);
+
 /* Draws data from vertex buffers.
- * primitiveType:	The primitive topology of the vertex data.
- * vertexStart:		The starting offset to read from the vertex buffer.
- * primitiveCount:	The number of primitives to draw.
+ *
+ * graphicsPipeline:	The graphics pipeline through which to draw.
+ * primitiveType:		The primitive topology of the vertex data.
+ * vertexStart:			The starting offset to read from the vertex buffer.
+ * primitiveCount:		The number of primitives to draw.
  */
 REFRESHAPI void REFRESH_DrawPrimitives(
 	REFRESH_Device *device,
+	REFRESH_GraphicsPipeline *graphicsPipeline,
 	REFRESH_PrimitiveType primitiveType,
 	uint32_t vertexStart,
 	uint32_t primitiveCount
