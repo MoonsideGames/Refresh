@@ -183,6 +183,12 @@ static VkFormat RefreshToVK_VertexFormat[] =
 	VK_FORMAT_R16G16B16A16_SFLOAT	/* HALFVECTOR4 */
 };
 
+static VkIndexType RefreshToVK_IndexType[] =
+{
+	VK_INDEX_TYPE_UINT16,
+	VK_INDEX_TYPE_UINT32
+};
+
 static VkPrimitiveTopology RefreshToVK_PrimitiveType[] =
 {
 	VK_PRIMITIVE_TOPOLOGY_POINT_LIST,
@@ -3885,6 +3891,51 @@ static void VULKAN_BindGraphicsPipeline(
 		pipeline->pipeline
 	));
     SDL_assert(0);
+}
+
+static void VULKAN_BindVertexBuffers(
+	REFRESH_Renderer *driverData,
+	uint32_t firstBinding,
+	uint32_t bindingCount,
+	REFRESH_Buffer **pBuffers,
+	uint64_t *pOffsets
+) {
+	VkBuffer *buffers = SDL_stack_alloc(VkBuffer, bindingCount);
+	VulkanBuffer* currentBuffer;
+	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
+
+	for (int i = 0; i < bindingCount; i += 1)
+	{
+		currentBuffer = (VulkanBuffer*) pBuffers[i];
+		buffers[i] = currentBuffer->subBuffers[currentBuffer->currentSubBufferIndex]->buffer;
+	}
+
+	RECORD_CMD(renderer->vkCmdBindVertexBuffers(
+		renderer->currentCommandBuffer,
+		firstBinding,
+		bindingCount,
+		buffers,
+		pOffsets
+	));
+
+	SDL_stack_free(buffers);
+}
+
+static void VULKAN_BindIndexBuffer(
+	REFRESH_Renderer *driverData,
+	REFRESH_Buffer *buffer,
+	uint64_t offset,
+	REFRESH_IndexElementSize indexElementSize
+) {
+	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
+	VulkanBuffer* vulkanBuffer = (VulkanBuffer*) buffer;
+
+	RECORD_CMD(renderer->vkCmdBindIndexBuffer(
+		renderer->currentCommandBuffer,
+		vulkanBuffer->subBuffers[vulkanBuffer->currentSubBufferIndex]->buffer,
+		offset,
+		RefreshToVK_IndexType[indexElementSize]
+	));
 }
 
 static void VULKAN_Present(

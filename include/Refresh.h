@@ -1233,6 +1233,21 @@ REFRESHAPI void REFRESH_BindGraphicsPipeline(
 	REFRESH_GraphicsPipeline *graphicsPipeline
 );
 
+REFRESHAPI void REFRESH_BindVertexBuffers(
+	REFRESH_Device *device,
+	uint32_t firstBinding,
+	uint32_t bindingCount,
+	REFRESH_Buffer **pBuffers,
+	uint64_t *pOffsets
+);
+
+REFRESHAPI void REFRESH_BindIndexBuffer(
+	REFRESH_Device *device,
+	REFRESH_Buffer *buffer,
+	uint64_t offset,
+	REFRESH_IndexElementSize indexElementSize
+);
+
 /* Presentation */
 
 REFRESHAPI void REFRESH_Present(

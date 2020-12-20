@@ -481,6 +481,21 @@ struct REFRESH_Device
         REFRESH_GraphicsPipeline *graphicsPipeline
     );
 
+    void(*BindVertexBuffers)(
+        REFRESH_Renderer *driverData,
+        uint32_t firstBinding,
+        uint32_t bindingCount,
+        REFRESH_Buffer **pBuffers,
+        uint64_t *pOffsets
+    );
+
+    void(*BindIndexBuffer)(
+        REFRESH_Renderer *driverData,
+        REFRESH_Buffer *buffer,
+        uint64_t offset,
+        REFRESH_IndexElementSize indexElementSize
+    );
+
     void(*Present)(
         REFRESH_Renderer *driverData,
         REFRESH_Rect *sourceRectangle,
@@ -536,6 +551,8 @@ struct REFRESH_Device
     ASSIGN_DRIVER_FUNC(BeginRenderPass, name) \
     ASSIGN_DRIVER_FUNC(EndRenderPass, name) \
     ASSIGN_DRIVER_FUNC(BindGraphicsPipeline, name) \
+    ASSIGN_DRIVER_FUNC(BindVertexBuffers, name) \
+    ASSIGN_DRIVER_FUNC(BindIndexBuffer, name) \
     ASSIGN_DRIVER_FUNC(Present, name)
 
 typedef struct REFRESH_Driver
