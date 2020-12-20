@@ -970,14 +970,29 @@ REFRESHAPI void REFRESH_SetIndexBufferData(
 	uint32_t dataLength
 );
 
-/* Pushes shader param data to a buffer.
+/* Pushes vertex shader params for subsequent draw calls.
  *
  * pipeline: 			The graphics pipeline to push shader data to.
  * data: 				The client data to write into the buffer.
  * elementCount: 		The number of elements from the client buffer to write.
  * elementSizeInBytes:	The size of each element in the client buffer.
  */
-REFRESHAPI void REFRESH_PushShaderParamData(
+REFRESHAPI void REFRESH_PushVertexShaderParams(
+	REFRESH_Device *device,
+    REFRESH_GraphicsPipeline *pipeline,
+	void *data,
+	uint32_t elementCount,
+	uint32_t elementSizeInBytes
+);
+
+/* Pushes fragment shader params for subsequent draw calls.
+ *
+ * pipeline: 			The graphics pipeline to push shader data to.
+ * data: 				The client data to write into the buffer.
+ * elementCount: 		The number of elements from the client buffer to write.
+ * elementSizeInBytes:	The size of each element in the client buffer.
+ */
+REFRESHAPI void REFRESH_PushFragmentShaderParams(
 	REFRESH_Device *device,
     REFRESH_GraphicsPipeline *pipeline,
 	void *data,

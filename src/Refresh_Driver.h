@@ -360,7 +360,15 @@ struct REFRESH_Device
         uint32_t dataLength
     );
 
-    void(*PushShaderParamData)(
+    void(*PushVertexShaderParams)(
+        REFRESH_Renderer *driverData,
+        REFRESH_GraphicsPipeline *pipeline,
+        void *data,
+        uint32_t elementCount,
+        uint32_t elementSizeInBytes
+    );
+
+    void(*PushFragmentShaderParams)(
         REFRESH_Renderer *driverData,
         REFRESH_GraphicsPipeline *pipeline,
         void *data,
@@ -533,7 +541,8 @@ struct REFRESH_Device
     ASSIGN_DRIVER_FUNC(SetTextureDataYUV, name) \
     ASSIGN_DRIVER_FUNC(SetVertexBufferData, name) \
     ASSIGN_DRIVER_FUNC(SetIndexBufferData, name) \
-    ASSIGN_DRIVER_FUNC(PushShaderParamData, name) \
+    ASSIGN_DRIVER_FUNC(PushVertexShaderParams, name) \
+    ASSIGN_DRIVER_FUNC(PushFragmentShaderParams, name) \
     ASSIGN_DRIVER_FUNC(SetVertexSamplers, name) \
     ASSIGN_DRIVER_FUNC(SetFragmentSamplers, name) \
     ASSIGN_DRIVER_FUNC(GetTextureData2D, name) \

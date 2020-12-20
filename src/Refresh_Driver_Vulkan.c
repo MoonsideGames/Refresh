@@ -3703,7 +3703,17 @@ static void VULKAN_SetIndexBufferData(
     SDL_assert(0);
 }
 
-static void VULKAN_PushShaderParamData(
+static void VULKAN_PushVertexShaderParams(
+	REFRESH_Renderer *driverData,
+    REFRESH_GraphicsPipeline *pipeline,
+	void *data,
+	uint32_t elementCount,
+	uint32_t elementSizeInBytes
+) {
+    SDL_assert(0);
+}
+
+static void VULKAN_PushFragmentShaderParams(
 	REFRESH_Renderer *driverData,
     REFRESH_GraphicsPipeline *pipeline,
 	void *data,

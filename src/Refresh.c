@@ -538,7 +538,7 @@ void REFRESH_SetIndexBufferData(
     );
 }
 
-void REFRESH_PushShaderParamData(
+void REFRESH_PushVertexShaderParams(
 	REFRESH_Device *device,
     REFRESH_GraphicsPipeline *pipeline,
 	void *data,
@@ -546,7 +546,24 @@ void REFRESH_PushShaderParamData(
 	uint32_t elementSizeInBytes
 ) {
     NULL_RETURN(device);
-    device->PushShaderParamData(
+    device->PushVertexShaderParams(
+        device->driverData,
+        pipeline,
+        data,
+        elementCount,
+        elementSizeInBytes
+    );
+}
+
+void REFRESH_PushFragmentShaderParams(
+	REFRESH_Device *device,
+    REFRESH_GraphicsPipeline *pipeline,
+	void *data,
+	uint32_t elementCount,
+	uint32_t elementSizeInBytes
+) {
+    NULL_RETURN(device);
+    device->PushFragmentShaderParams(
         device->driverData,
         pipeline,
         data,
