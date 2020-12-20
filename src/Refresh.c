@@ -675,17 +675,6 @@ void REFRESH_AddDisposeIndexBuffer(
     );
 }
 
-void REFRESH_AddDisposeShaderParamBuffer(
-	REFRESH_Device *device,
-	REFRESH_Buffer *buffer
-) {
-    NULL_RETURN(device);
-    device->AddDisposeShaderParamBuffer(
-        device->driverData,
-        buffer
-    );
-}
-
 void REFRESH_AddDisposeColorTarget(
 	REFRESH_Device *device,
 	REFRESH_ColorTarget *colorTarget
@@ -786,6 +775,38 @@ void REFRESH_BindGraphicsPipeline(
     device->BindGraphicsPipeline(
         device->driverData,
         graphicsPipeline
+    );
+}
+
+void REFRESH_BindVertexBuffers(
+	REFRESH_Device *device,
+	uint32_t firstBinding,
+	uint32_t bindingCount,
+	REFRESH_Buffer **pBuffers,
+	uint64_t *pOffsets
+) {
+    NULL_RETURN(device);
+    device->BindVertexBuffers(
+        device->driverData,
+        firstBinding,
+        bindingCount,
+        pBuffers,
+        pOffsets
+    );
+}
+
+void REFRESH_BindIndexBuffer(
+    REFRESH_Device *device,
+    REFRESH_Buffer *buffer,
+	uint64_t offset,
+	REFRESH_IndexElementSize indexElementSize
+) {
+    NULL_RETURN(device);
+    device->BindIndexBuffer(
+        device->driverData,
+        buffer,
+        offset,
+        indexElementSize
     );
 }
 

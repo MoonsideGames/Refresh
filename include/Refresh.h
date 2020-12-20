@@ -1123,18 +1123,6 @@ REFRESHAPI void REFRESH_AddDisposeIndexBuffer(
 	REFRESH_Buffer *buffer
 );
 
-/* Sends an shader param buffer to be destroyed by the renderer. Note that we call it
- * "AddDispose" because it may not be immediately destroyed by the renderer if
- * this is not called from the main thread (for example, if a garbage collector
- * deletes the resource instead of the programmer).
- *
- * buffer: The REFRESH_Buffer to be destroyed.
- */
-REFRESHAPI void REFRESH_AddDisposeShaderParamBuffer(
-	REFRESH_Device *device,
-	REFRESH_Buffer *buffer
-);
-
 /* Sends a color target to be destroyed by the renderer. Note that we call it
  * "AddDispose" because it may not be immediately destroyed by the renderer if
  * this is not called from the main thread (for example, if a garbage collector

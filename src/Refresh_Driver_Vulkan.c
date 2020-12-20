@@ -3812,13 +3812,6 @@ static void VULKAN_AddDisposeIndexBuffer(
     SDL_assert(0);
 }
 
-static void VULKAN_AddDisposeShaderParamBuffer(
-	REFRESH_Renderer *driverData,
-	REFRESH_Buffer *buffer
-) {
-    SDL_assert(0);
-}
-
 static void VULKAN_AddDisposeColorTarget(
 	REFRESH_Renderer *driverData,
 	REFRESH_ColorTarget *colorTarget

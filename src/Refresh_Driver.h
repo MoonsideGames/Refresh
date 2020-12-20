@@ -426,11 +426,6 @@ struct REFRESH_Device
         REFRESH_Buffer *buffer
     );
 
-    void(*AddDisposeShaderParamBuffer)(
-        REFRESH_Renderer *driverData,
-        REFRESH_Buffer *buffer
-    );
-
     void(*AddDisposeColorTarget)(
         REFRESH_Renderer *driverData,
 	    REFRESH_ColorTarget *colorTarget
@@ -541,7 +536,6 @@ struct REFRESH_Device
     ASSIGN_DRIVER_FUNC(AddDisposeSampler, name) \
     ASSIGN_DRIVER_FUNC(AddDisposeVertexBuffer, name) \
     ASSIGN_DRIVER_FUNC(AddDisposeIndexBuffer, name) \
-    ASSIGN_DRIVER_FUNC(AddDisposeShaderParamBuffer, name) \
     ASSIGN_DRIVER_FUNC(AddDisposeColorTarget, name) \
     ASSIGN_DRIVER_FUNC(AddDisposeDepthStencilTarget, name) \
     ASSIGN_DRIVER_FUNC(AddDisposeFramebuffer, name) \
