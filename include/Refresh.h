@@ -929,6 +929,11 @@ REFRESHAPI void REFRESH_SetTextureDataYUV(
 
 /* Sets a region of the vertex buffer with client data.
  *
+ * NOTE:
+ * 		Calling this function on a buffer after the buffer
+ * 		has been bound by BindVertexBuffers but before
+ * 		Present has been called is an error.
+ *
  * buffer:		The vertex buffer to be updated.
  * offsetInBytes:	The starting offset of the buffer to write into.
  * data:		The client data to write into the buffer.
@@ -945,6 +950,11 @@ REFRESHAPI void REFRESH_SetVertexBufferData(
 );
 
 /* Sets a region of the index buffer with client data.
+ *
+ * NOTE:
+ * 		Calling this function on a buffer after the buffer
+ * 		has been bound by BindIndexBuffer but before
+ * 		Present has been called is an error.
  *
  * buffer:		The index buffer to be updated.
  * offsetInBytes:	The starting offset of the buffer to write into.
