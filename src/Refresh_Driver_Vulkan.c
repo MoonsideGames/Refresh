@@ -3583,7 +3583,7 @@ static REFRESH_Texture* VULKAN_CreateTextureCube(
 	return (REFRESH_Texture*) result;
 }
 
-static REFRESH_ColorTarget* VULKAN_GenColorTarget(
+static REFRESH_ColorTarget* VULKAN_CreateColorTarget(
 	REFRESH_Renderer *driverData,
 	REFRESH_SampleCount multisampleCount,
 	REFRESH_TextureSlice textureSlice
@@ -3669,7 +3669,7 @@ static REFRESH_ColorTarget* VULKAN_GenColorTarget(
 	return (REFRESH_ColorTarget*) colorTarget;
 }
 
-static REFRESH_DepthStencilTarget* VULKAN_GenDepthStencilTarget(
+static REFRESH_DepthStencilTarget* VULKAN_CreateDepthStencilTarget(
 	REFRESH_Renderer *driverData,
 	uint32_t width,
 	uint32_t height,
@@ -3700,7 +3700,7 @@ static REFRESH_DepthStencilTarget* VULKAN_GenDepthStencilTarget(
     return (REFRESH_DepthStencilTarget*) depthStencilTarget;
 }
 
-static REFRESH_Buffer* VULKAN_GenVertexBuffer(
+static REFRESH_Buffer* VULKAN_CreateVertexBuffer(
 	REFRESH_Renderer *driverData,
 	uint32_t sizeInBytes
 ) {
@@ -3721,7 +3721,7 @@ static REFRESH_Buffer* VULKAN_GenVertexBuffer(
 	return (REFRESH_Buffer*) buffer;
 }
 
-static REFRESH_Buffer* VULKAN_GenIndexBuffer(
+static REFRESH_Buffer* VULKAN_CreateIndexBuffer(
 	REFRESH_Renderer *driverData,
 	uint32_t sizeInBytes
 ) {

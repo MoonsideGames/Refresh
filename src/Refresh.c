@@ -344,27 +344,27 @@ REFRESH_Texture* REFRESH_CreateTextureCube(
     );
 }
 
-REFRESH_ColorTarget* REFRESH_GenColorTarget(
+REFRESH_ColorTarget* REFRESH_CreateColorTarget(
 	REFRESH_Device *device,
     REFRESH_SampleCount multisampleCount,
 	REFRESH_TextureSlice textureSlice
 ) {
     NULL_RETURN_NULL(device);
-    return device->GenColorTarget(
+    return device->CreateColorTarget(
         device->driverData,
         multisampleCount,
         textureSlice
     );
 }
 
-REFRESH_DepthStencilTarget* REFRESH_GenDepthStencilTarget(
+REFRESH_DepthStencilTarget* REFRESH_CreateDepthStencilTarget(
 	REFRESH_Device *device,
 	uint32_t width,
 	uint32_t height,
 	REFRESH_DepthFormat format
 ) {
     NULL_RETURN_NULL(device);
-    return device->GenDepthStencilTarget(
+    return device->CreateDepthStencilTarget(
         device->driverData,
         width,
         height,
@@ -372,23 +372,23 @@ REFRESH_DepthStencilTarget* REFRESH_GenDepthStencilTarget(
     );
 }
 
-REFRESH_Buffer* REFRESH_GenVertexBuffer(
+REFRESH_Buffer* REFRESH_CreateVertexBuffer(
 	REFRESH_Device *device,
 	uint32_t sizeInBytes
 ) {
     NULL_RETURN_NULL(device);
-    return device->GenVertexBuffer(
+    return device->CreateVertexBuffer(
         device->driverData,
         sizeInBytes
     );
 }
 
-REFRESH_Buffer* REFRESH_GenIndexBuffer(
+REFRESH_Buffer* REFRESH_CreateIndexBuffer(
 	REFRESH_Device *device,
 	uint32_t sizeInBytes
 ) {
     NULL_RETURN_NULL(device);
-    return device->GenIndexBuffer(
+    return device->CreateIndexBuffer(
         device->driverData,
         sizeInBytes
     );

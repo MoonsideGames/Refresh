@@ -789,7 +789,7 @@ REFRESHAPI REFRESH_Texture* REFRESH_CreateTextureCube(
  * multisampleCount:	The MSAA value for the color target.
  * textureSlice: 		The texture slice that the color target will resolve to.
  */
-REFRESHAPI REFRESH_ColorTarget* REFRESH_GenColorTarget(
+REFRESHAPI REFRESH_ColorTarget* REFRESH_CreateColorTarget(
 	REFRESH_Device *device,
 	REFRESH_SampleCount multisampleCount,
 	REFRESH_TextureSlice textureSlice
@@ -801,7 +801,7 @@ REFRESHAPI REFRESH_ColorTarget* REFRESH_GenColorTarget(
  * height: 	The height of the depth/stencil target.
  * format:	The storage format of the depth/stencil target.
  */
-REFRESHAPI REFRESH_DepthStencilTarget* REFRESH_GenDepthStencilTarget(
+REFRESHAPI REFRESH_DepthStencilTarget* REFRESH_CreateDepthStencilTarget(
 	REFRESH_Device *device,
 	uint32_t width,
 	uint32_t height,
@@ -812,7 +812,7 @@ REFRESHAPI REFRESH_DepthStencilTarget* REFRESH_GenDepthStencilTarget(
  *
  * sizeInBytes: The length of the vertex buffer.
  */
-REFRESHAPI REFRESH_Buffer* REFRESH_GenVertexBuffer(
+REFRESHAPI REFRESH_Buffer* REFRESH_CreateVertexBuffer(
 	REFRESH_Device *device,
 	uint32_t sizeInBytes
 );
@@ -821,7 +821,7 @@ REFRESHAPI REFRESH_Buffer* REFRESH_GenVertexBuffer(
  *
  * sizeInBytes: The length of the index buffer.
  */
-REFRESHAPI REFRESH_Buffer* REFRESH_GenIndexBuffer(
+REFRESHAPI REFRESH_Buffer* REFRESH_CreateIndexBuffer(
 	REFRESH_Device *device,
 	uint32_t sizeInBytes
 );
