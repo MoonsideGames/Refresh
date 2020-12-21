@@ -690,8 +690,20 @@ typedef struct VulkanRenderer
 	VkDescriptorSet fragmentUBODescriptorSet;
 
 	VulkanBuffer *textureStagingBuffer;
+
 	VulkanBuffer *vertexUBO;
 	VulkanBuffer *fragmentUBO;
+	uint32_t minUBOAlignment;
+
+	uint32_t vertexUBOOffset;
+	uint32_t vertexUBOBlockSize;
+	uint32_t vertexUBOBlockIncrement;
+
+	uint32_t fragmentUBOOffset;
+	uint32_t fragmentUBOBlockSize;
+	uint32_t fragmentUBOBlockIncrement;
+
+	uint32_t frameIndex;
 
 	SDL_mutex *allocatorLock;
 	SDL_mutex *commandLock;
@@ -761,8 +773,6 @@ typedef struct VulkanGraphicsPipeline
 	uint32_t fragmentSamplerBindingCount;
 	VkDescriptorSet vertexSamplerDescriptorSet; /* updated by SetVertexSamplers */
 	VkDescriptorSet fragmentSamplerDescriptorSet; /* updated by SetFragmentSamplers */
-	uint32_t vertexUBOOffset; /* updated by PushVertexShaderParams */
-	uint32_t fragmentUBOOffset; /* updated by PushFragmentShaderParams */
 } VulkanGraphicsPipeline;
 
 /* Forward declarations */
@@ -847,6 +857,13 @@ static inline uint8_t DepthFormatContainsStencil(VkFormat format)
 static inline VkDeviceSize VULKAN_INTERNAL_NextHighestAlignment(
 	VkDeviceSize n,
 	VkDeviceSize align
+) {
+	return align * ((n + align - 1) / align);
+}
+
+static inline uint32_t VULKAN_INTERNAL_NextHighestAlignment32(
+	uint32_t n,
+	uint32_t align
 ) {
 	return align * ((n + align - 1) / align);
 }
@@ -1738,8 +1755,8 @@ static void VULKAN_DrawInstancedPrimitives(
 	descriptorSets[2] = renderer->vertexUBODescriptorSet;
 	descriptorSets[3] = renderer->fragmentUBODescriptorSet;
 
-	dynamicOffsets[0] = pipeline->vertexUBOOffset;
-	dynamicOffsets[1] = pipeline->fragmentUBOOffset;
+	dynamicOffsets[0] = renderer->vertexUBOOffset;
+	dynamicOffsets[1] = renderer->fragmentUBOOffset;
 
 	RECORD_CMD(renderer->vkCmdBindDescriptorSets(
 		renderer->currentCommandBuffer,
@@ -1806,8 +1823,8 @@ static void VULKAN_DrawPrimitives(
 	descriptorSets[2] = renderer->vertexUBODescriptorSet;
 	descriptorSets[3] = renderer->fragmentUBODescriptorSet;
 
-	dynamicOffsets[0] = pipeline->vertexUBOOffset;
-	dynamicOffsets[1] = pipeline->fragmentUBOOffset;
+	dynamicOffsets[0] = renderer->vertexUBOOffset;
+	dynamicOffsets[1] = renderer->fragmentUBOOffset;
 
 	RECORD_CMD(renderer->vkCmdBindDescriptorSets(
 		renderer->currentCommandBuffer,
@@ -3773,7 +3790,29 @@ static void VULKAN_PushVertexShaderParams(
 	uint32_t elementCount,
 	uint32_t elementSizeInBytes
 ) {
-    SDL_assert(0);
+	VulkanRenderer* renderer = (VulkanRenderer*)driverData;
+	VulkanGraphicsPipeline* vulkanPipeline = (VulkanGraphicsPipeline*)pipeline;
+
+	renderer->vertexUBOOffset += renderer->vertexUBOBlockIncrement;
+	renderer->vertexUBOBlockSize = VULKAN_INTERNAL_NextHighestAlignment32(
+		renderer->vertexUBOOffset,
+		renderer->minUBOAlignment
+	);
+	renderer->vertexUBOBlockIncrement = renderer->vertexUBOBlockSize;
+
+	if (renderer->vertexUBOOffset + renderer->vertexUBOBlockSize >= UBO_BUFFER_SIZE * renderer->frameIndex)
+	{
+		REFRESH_LogError("Vertex UBO overflow!");
+		return;
+	}
+
+	VULKAN_INTERNAL_SetBufferData(
+		driverData,
+		(REFRESH_Buffer*) renderer->vertexUBO,
+		renderer->vertexUBOOffset,
+		data,
+		elementCount * elementSizeInBytes
+	);
 }
 
 static void VULKAN_PushFragmentShaderParams(
@@ -3783,7 +3822,29 @@ static void VULKAN_PushFragmentShaderParams(
 	uint32_t elementCount,
 	uint32_t elementSizeInBytes
 ) {
-    SDL_assert(0);
+	VulkanRenderer* renderer = (VulkanRenderer*)driverData;
+	VulkanGraphicsPipeline* vulkanPipeline = (VulkanGraphicsPipeline*)pipeline;
+
+	renderer->fragmentUBOOffset += renderer->fragmentUBOBlockIncrement;
+	renderer->fragmentUBOBlockSize = VULKAN_INTERNAL_NextHighestAlignment32(
+		renderer->fragmentUBOOffset,
+		renderer->minUBOAlignment
+	);
+	renderer->fragmentUBOBlockIncrement = renderer->fragmentUBOBlockSize;
+
+	if (renderer->fragmentUBOOffset + renderer->fragmentUBOBlockSize >= UBO_BUFFER_SIZE * renderer->frameIndex)
+	{
+		REFRESH_LogError("Fragment UBO overflow!");
+		return;
+	}
+
+	VULKAN_INTERNAL_SetBufferData(
+		driverData,
+		(REFRESH_Buffer*) renderer->fragmentUBO,
+		renderer->fragmentUBOOffset,
+		data,
+		elementCount * elementSizeInBytes
+	);
 }
 
 static void VULKAN_SetVertexSamplers(
