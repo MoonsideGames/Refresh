@@ -939,7 +939,7 @@ REFRESHAPI void REFRESH_SetTextureDataYUV(
  * offsetInBytes:	The starting offset of the buffer to write into.
  * data:		The client data to write into the buffer.
  * elementCount:	The number of elements from the client buffer to write.
- * elementSizeInBytes:	The size of each element in the client buffer.
+ * vertexStride:	The size of each element in the client buffer (including padding).
  */
 REFRESHAPI void REFRESH_SetVertexBufferData(
 	REFRESH_Device *device,
@@ -947,7 +947,7 @@ REFRESHAPI void REFRESH_SetVertexBufferData(
 	uint32_t offsetInBytes,
 	void* data,
 	uint32_t elementCount,
-	uint32_t elementSizeInBytes
+	uint32_t vertexStride
 );
 
 /* Sets a region of the index buffer with client data.

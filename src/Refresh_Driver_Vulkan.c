@@ -604,8 +604,8 @@ struct VulkanBuffer /* cast from FNA3D_Buffer */
 {
 	VkDeviceSize size;
 	VulkanSubBuffer **subBuffers;
-	int32_t subBufferCount;
-	int32_t currentSubBufferIndex;
+	uint32_t subBufferCount;
+	uint32_t currentSubBufferIndex;
 	VulkanResourceAccessType resourceAccessType;
 	VkBufferUsageFlags usage;
 	uint8_t bound;
@@ -1150,7 +1150,7 @@ static uint8_t VULKAN_INTERNAL_FindAvailableMemory(
 
 	VkDeviceSize requiredSize, allocationSize;
 	VkDeviceSize alignedOffset;
-	uint32_t newRegionSize, newRegionOffset;
+	VkDeviceSize newRegionSize, newRegionOffset;
 	uint8_t allocationResult;
 
 	if (buffer != VK_NULL_HANDLE && image != VK_NULL_HANDLE)
@@ -3682,15 +3682,72 @@ static void VULKAN_SetTextureDataYUV(
 	));
 }
 
+static void VULKAN_INTERNAL_SetBufferData(
+	REFRESH_Renderer* driverData,
+	REFRESH_Buffer* buffer,
+	uint32_t offsetInBytes,
+	void* data,
+	uint32_t dataLength
+) {
+	VulkanRenderer* renderer = (VulkanRenderer*)driverData;
+	VulkanBuffer* vulkanBuffer = (VulkanBuffer*)buffer;
+	uint8_t* mapPointer;
+	VkResult vulkanResult;
+
+	#define SUBBUF vulkanBuffer->subBuffers[vulkanBuffer->currentSubBufferIndex]
+
+	/* Buffer already bound, time to die */
+	if (vulkanBuffer->subBuffers[vulkanBuffer->currentSubBufferIndex]->bound)
+	{
+		REFRESH_LogError("Buffer already bound. It is an error to write data to a buffer after binding before calling Present.");
+		return;
+	}
+
+	/* Map the memory and perform the copy */
+	vulkanResult = renderer->vkMapMemory(
+		renderer->logicalDevice,
+		SUBBUF->allocation->memory,
+		SUBBUF->offset,
+		SUBBUF->size,
+		0,
+		(void**)&mapPointer
+	);
+
+	if (vulkanResult != VK_SUCCESS)
+	{
+		REFRESH_LogError("Failed to map buffer memory!");
+		return;
+	}
+
+	SDL_memcpy(
+		mapPointer + offsetInBytes,
+		data,
+		dataLength
+	);
+
+	renderer->vkUnmapMemory(
+		renderer->logicalDevice,
+		SUBBUF->allocation->memory
+	);
+
+	#undef SUBBUF
+}
+
 static void VULKAN_SetVertexBufferData(
 	REFRESH_Renderer *driverData,
 	REFRESH_Buffer *buffer,
 	uint32_t offsetInBytes,
 	void* data,
 	uint32_t elementCount,
-	uint32_t elementSizeInBytes
+	uint32_t vertexStride
 ) {
-    SDL_assert(0);
+	VULKAN_INTERNAL_SetBufferData(
+		driverData,
+		buffer,
+		offsetInBytes,
+		data,
+		elementCount * vertexStride
+	);
 }
 
 static void VULKAN_SetIndexBufferData(
@@ -3700,7 +3757,13 @@ static void VULKAN_SetIndexBufferData(
 	void* data,
 	uint32_t dataLength
 ) {
-    SDL_assert(0);
+	VULKAN_INTERNAL_SetBufferData(
+		driverData,
+		buffer,
+		offsetInBytes,
+		data,
+		dataLength
+	);
 }
 
 static void VULKAN_PushVertexShaderParams(
@@ -4049,8 +4112,9 @@ static void VULKAN_BindVertexBuffers(
 	VkBuffer *buffers = SDL_stack_alloc(VkBuffer, bindingCount);
 	VulkanBuffer* currentBuffer;
 	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
+	uint32_t i;
 
-	for (int i = 0; i < bindingCount; i += 1)
+	for (i = 0; i < bindingCount; i += 1)
 	{
 		currentBuffer = (VulkanBuffer*) pBuffers[i];
 		buffers[i] = currentBuffer->subBuffers[currentBuffer->currentSubBufferIndex]->buffer;

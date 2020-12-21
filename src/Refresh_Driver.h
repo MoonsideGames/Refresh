@@ -349,7 +349,7 @@ struct REFRESH_Device
         uint32_t offsetInBytes,
         void* data,
         uint32_t elementCount,
-        uint32_t elementSizeInBytes
+        uint32_t vertexStride
     );
 
     void(*SetIndexBufferData)(

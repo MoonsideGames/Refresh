@@ -508,7 +508,7 @@ void REFRESH_SetVertexBufferData(
 	uint32_t offsetInBytes,
 	void* data,
 	uint32_t elementCount,
-	uint32_t elementSizeInBytes
+	uint32_t vertexStride
 ) {
     NULL_RETURN(device);
     device->SetVertexBufferData(
@@ -517,7 +517,7 @@ void REFRESH_SetVertexBufferData(
         offsetInBytes,
         data,
         elementCount,
-        elementSizeInBytes
+        vertexStride
     );
 }
 
