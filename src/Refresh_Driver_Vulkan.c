@@ -605,7 +605,6 @@ struct VulkanBuffer /* cast from FNA3D_Buffer */
 	VkDeviceSize size;
 	VulkanSubBuffer **subBuffers;
 	uint32_t subBufferCount;
-	uint32_t currentSubBufferIndex;
 	VulkanResourceAccessType resourceAccessType;
 	VkBufferUsageFlags usage;
 	uint8_t bound;
@@ -655,6 +654,11 @@ typedef struct VulkanRenderer
     VulkanResourceAccessType *swapChainResourceAccessTypes;
     uint32_t swapChainImageCount;
     VkExtent2D swapChainExtent;
+	
+	uint8_t needNewSwapChain;
+	uint8_t shouldPresent;
+	uint8_t swapChainImageAcquired;
+	uint32_t currentSwapChainIndex;
 
     QueueFamilyIndices queueFamilyIndices;
 	VkQueue graphicsQueue;
@@ -690,6 +694,14 @@ typedef struct VulkanRenderer
 	VkDescriptorSet fragmentUBODescriptorSet;
 
 	VulkanBuffer *textureStagingBuffer;
+
+	VulkanBuffer** buffersInUse;
+	uint32_t buffersInUseCount;
+	uint32_t buffersInUseCapacity;
+
+	VulkanBuffer** submittedBuffers;
+	uint32_t submittedBufferCount;
+	uint32_t submittedBufferCapacity;
 
 	VulkanBuffer *vertexUBO;
 	VulkanBuffer *fragmentUBO;
@@ -751,7 +763,7 @@ typedef struct VulkanColorTarget
 	VulkanTexture *texture;
 	VkImageView view;
 	VulkanTexture *multisampleTexture;
-	uint32_t multisampleCount;
+	VkSampleCountFlags multisampleCount;
 } VulkanColorTarget;
 
 typedef struct VulkanDepthStencilTarget
@@ -1541,6 +1553,480 @@ static void VULKAN_INTERNAL_DestroyBuffer(
 	SDL_free(buffer);
 }
 
+static void VULKAN_INTERNAL_DestroySwapchain(VulkanRenderer* renderer)
+{
+	uint32_t i;
+
+	for (i = 0; i < renderer->swapChainImageCount; i += 1)
+	{
+		renderer->vkDestroyImageView(
+			renderer->logicalDevice,
+			renderer->swapChainImageViews[i],
+			NULL
+		);
+	}
+
+	SDL_free(renderer->swapChainImages);
+	renderer->swapChainImages = NULL;
+	SDL_free(renderer->swapChainImageViews);
+	renderer->swapChainImageViews = NULL;
+	SDL_free(renderer->swapChainResourceAccessTypes);
+	renderer->swapChainResourceAccessTypes = NULL;
+
+	renderer->vkDestroySwapchainKHR(
+		renderer->logicalDevice,
+		renderer->swapChain,
+		NULL
+	);
+}
+
+static void VULKAN_INTERNAL_PerformDeferredDestroys(VulkanRenderer* renderer)
+{
+	/* TODO */
+}
+
+/* Swapchain */
+
+static inline VkExtent2D VULKAN_INTERNAL_ChooseSwapExtent(
+	void* windowHandle,
+	const VkSurfaceCapabilitiesKHR capabilities
+) {
+	VkExtent2D actualExtent;
+	int32_t drawableWidth, drawableHeight;
+
+	if (capabilities.currentExtent.width != UINT32_MAX)
+	{
+		return capabilities.currentExtent;
+	}
+	else
+	{
+		SDL_Vulkan_GetDrawableSize(
+			(SDL_Window*) windowHandle,
+			&drawableWidth,
+			&drawableHeight
+		);
+
+		actualExtent.width = drawableWidth;
+		actualExtent.height = drawableHeight;
+
+		return actualExtent;
+	}
+}
+
+static uint8_t VULKAN_INTERNAL_QuerySwapChainSupport(
+	VulkanRenderer *renderer,
+	VkPhysicalDevice physicalDevice,
+	VkSurfaceKHR surface,
+	SwapChainSupportDetails *outputDetails
+) {
+	VkResult result;
+	uint32_t formatCount;
+	uint32_t presentModeCount;
+
+	result = renderer->vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
+		physicalDevice,
+		surface,
+		&outputDetails->capabilities
+	);
+	if (result != VK_SUCCESS)
+	{
+		REFRESH_LogError(
+			"vkGetPhysicalDeviceSurfaceCapabilitiesKHR: %s",
+			VkErrorMessages(result)
+		);
+
+		return 0;
+	}
+
+	renderer->vkGetPhysicalDeviceSurfaceFormatsKHR(
+		physicalDevice,
+		surface,
+		&formatCount,
+		NULL
+	);
+
+	if (formatCount != 0)
+	{
+		outputDetails->formats = (VkSurfaceFormatKHR*) SDL_malloc(
+			sizeof(VkSurfaceFormatKHR) * formatCount
+		);
+		outputDetails->formatsLength = formatCount;
+
+		if (!outputDetails->formats)
+		{
+			SDL_OutOfMemory();
+			return 0;
+		}
+
+		result = renderer->vkGetPhysicalDeviceSurfaceFormatsKHR(
+			physicalDevice,
+			surface,
+			&formatCount,
+			outputDetails->formats
+		);
+		if (result != VK_SUCCESS)
+		{
+			REFRESH_LogError(
+				"vkGetPhysicalDeviceSurfaceFormatsKHR: %s",
+				VkErrorMessages(result)
+			);
+
+			SDL_free(outputDetails->formats);
+			return 0;
+		}
+	}
+
+	renderer->vkGetPhysicalDeviceSurfacePresentModesKHR(
+		physicalDevice,
+		surface,
+		&presentModeCount,
+		NULL
+	);
+
+	if (presentModeCount != 0)
+	{
+		outputDetails->presentModes = (VkPresentModeKHR*) SDL_malloc(
+			sizeof(VkPresentModeKHR) * presentModeCount
+		);
+		outputDetails->presentModesLength = presentModeCount;
+
+		if (!outputDetails->presentModes)
+		{
+			SDL_OutOfMemory();
+			return 0;
+		}
+
+		result = renderer->vkGetPhysicalDeviceSurfacePresentModesKHR(
+			physicalDevice,
+			surface,
+			&presentModeCount,
+			outputDetails->presentModes
+		);
+		if (result != VK_SUCCESS)
+		{
+			REFRESH_LogError(
+				"vkGetPhysicalDeviceSurfacePresentModesKHR: %s",
+				VkErrorMessages(result)
+			);
+
+			SDL_free(outputDetails->formats);
+			SDL_free(outputDetails->presentModes);
+			return 0;
+		}
+	}
+
+	return 1;
+}
+
+static uint8_t VULKAN_INTERNAL_ChooseSwapSurfaceFormat(
+	VkFormat desiredFormat,
+	VkSurfaceFormatKHR *availableFormats,
+	uint32_t availableFormatsLength,
+	VkSurfaceFormatKHR *outputFormat
+) {
+	uint32_t i;
+	for (i = 0; i < availableFormatsLength; i += 1)
+	{
+		if (	availableFormats[i].format == desiredFormat &&
+			availableFormats[i].colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR	)
+		{
+			*outputFormat = availableFormats[i];
+			return 1;
+		}
+	}
+
+	REFRESH_LogError("Desired surface format is unavailable.");
+	return 0;
+}
+
+static uint8_t VULKAN_INTERNAL_ChooseSwapPresentMode(
+	REFRESH_PresentMode desiredPresentInterval,
+	VkPresentModeKHR *availablePresentModes,
+	uint32_t availablePresentModesLength,
+	VkPresentModeKHR *outputPresentMode
+) {
+	#define CHECK_MODE(m) \
+		for (i = 0; i < availablePresentModesLength; i += 1) \
+		{ \
+			if (availablePresentModes[i] == m) \
+			{ \
+				*outputPresentMode = m; \
+				REFRESH_LogInfo("Using " #m "!"); \
+				return 1; \
+			} \
+		} \
+		REFRESH_LogInfo(#m " unsupported.");
+
+	uint32_t i;
+    if (desiredPresentInterval == REFRESH_PRESENTMODE_IMMEDIATE)
+	{
+		CHECK_MODE(VK_PRESENT_MODE_IMMEDIATE_KHR)
+	}
+    else if (desiredPresentInterval == REFRESH_PRESENTMODE_MAILBOX)
+    {
+        CHECK_MODE(VK_PRESENT_MODE_MAILBOX_KHR)
+    }
+    else if (desiredPresentInterval == REFRESH_PRESENTMODE_FIFO)
+    {
+        CHECK_MODE(VK_PRESENT_MODE_FIFO_KHR)
+    }
+    else if (desiredPresentInterval == REFRESH_PRESENTMODE_FIFO_RELAXED)
+    {
+        CHECK_MODE(VK_PRESENT_MODE_FIFO_RELAXED_KHR)
+    }
+	else
+	{
+		REFRESH_LogError(
+			"Unrecognized PresentInterval: %d",
+			desiredPresentInterval
+		);
+		return 0;
+	}
+
+	#undef CHECK_MODE
+
+	REFRESH_LogInfo("Fall back to VK_PRESENT_MODE_FIFO_KHR.");
+	*outputPresentMode = VK_PRESENT_MODE_FIFO_KHR;
+	return 1;
+}
+
+static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
+	VulkanRenderer *renderer
+) {
+	VkResult vulkanResult;
+	SwapChainSupportDetails swapChainSupportDetails;
+	VkSurfaceFormatKHR surfaceFormat;
+	VkPresentModeKHR presentMode;
+	VkExtent2D extent;
+	uint32_t imageCount, swapChainImageCount, i;
+	VkSwapchainCreateInfoKHR swapChainCreateInfo;
+	VkImage *swapChainImages;
+	VkImageViewCreateInfo createInfo;
+	VkImageView swapChainImageView;
+
+	if (!VULKAN_INTERNAL_QuerySwapChainSupport(
+		renderer,
+		renderer->physicalDevice,
+		renderer->surface,
+		&swapChainSupportDetails
+	)) {
+		REFRESH_LogError("Device does not support swap chain creation");
+		return CREATE_SWAPCHAIN_FAIL;
+	}
+
+	renderer->swapChainFormat = VK_FORMAT_B8G8R8A8_UNORM;
+	renderer->swapChainSwizzle.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+	renderer->swapChainSwizzle.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+	renderer->swapChainSwizzle.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+	renderer->swapChainSwizzle.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+	if (!VULKAN_INTERNAL_ChooseSwapSurfaceFormat(
+		renderer->swapChainFormat,
+		swapChainSupportDetails.formats,
+		swapChainSupportDetails.formatsLength,
+		&surfaceFormat
+	)) {
+		SDL_free(swapChainSupportDetails.formats);
+		SDL_free(swapChainSupportDetails.presentModes);
+		REFRESH_LogError("Device does not support swap chain format");
+		return CREATE_SWAPCHAIN_FAIL;
+	}
+
+	if (!VULKAN_INTERNAL_ChooseSwapPresentMode(
+		renderer->presentMode,
+		swapChainSupportDetails.presentModes,
+		swapChainSupportDetails.presentModesLength,
+		&presentMode
+	)) {
+		SDL_free(swapChainSupportDetails.formats);
+		SDL_free(swapChainSupportDetails.presentModes);
+		REFRESH_LogError("Device does not support swap chain present mode");
+		return CREATE_SWAPCHAIN_FAIL;
+	}
+
+	extent = VULKAN_INTERNAL_ChooseSwapExtent(
+		renderer->deviceWindowHandle,
+		swapChainSupportDetails.capabilities
+	);
+
+	if (extent.width == 0 || extent.height == 0)
+	{
+		return CREATE_SWAPCHAIN_SURFACE_ZERO;
+	}
+
+	imageCount = swapChainSupportDetails.capabilities.minImageCount + 1;
+
+	if (	swapChainSupportDetails.capabilities.maxImageCount > 0 &&
+		imageCount > swapChainSupportDetails.capabilities.maxImageCount	)
+	{
+		imageCount = swapChainSupportDetails.capabilities.maxImageCount;
+	}
+
+	if (presentMode == VK_PRESENT_MODE_MAILBOX_KHR)
+	{
+		/* Required for proper triple-buffering.
+		 * Note that this is below the above maxImageCount check!
+		 * If the driver advertises MAILBOX but does not support 3 swap
+		 * images, it's not real mailbox support, so let it fail hard.
+		 * -flibit
+		 */
+		imageCount = SDL_max(imageCount, 3);
+	}
+
+	swapChainCreateInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+	swapChainCreateInfo.pNext = NULL;
+	swapChainCreateInfo.flags = 0;
+	swapChainCreateInfo.surface = renderer->surface;
+	swapChainCreateInfo.minImageCount = imageCount;
+	swapChainCreateInfo.imageFormat = surfaceFormat.format;
+	swapChainCreateInfo.imageColorSpace = surfaceFormat.colorSpace;
+	swapChainCreateInfo.imageExtent = extent;
+	swapChainCreateInfo.imageArrayLayers = 1;
+	swapChainCreateInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+	swapChainCreateInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+	swapChainCreateInfo.queueFamilyIndexCount = 0;
+	swapChainCreateInfo.pQueueFamilyIndices = NULL;
+	swapChainCreateInfo.preTransform = swapChainSupportDetails.capabilities.currentTransform;
+	swapChainCreateInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+	swapChainCreateInfo.presentMode = presentMode;
+	swapChainCreateInfo.clipped = VK_TRUE;
+	swapChainCreateInfo.oldSwapchain = VK_NULL_HANDLE;
+
+	vulkanResult = renderer->vkCreateSwapchainKHR(
+		renderer->logicalDevice,
+		&swapChainCreateInfo,
+		NULL,
+		&renderer->swapChain
+	);
+
+	SDL_free(swapChainSupportDetails.formats);
+	SDL_free(swapChainSupportDetails.presentModes);
+
+	if (vulkanResult != VK_SUCCESS)
+	{
+		LogVulkanResult("vkCreateSwapchainKHR", vulkanResult);
+
+		return CREATE_SWAPCHAIN_FAIL;
+	}
+
+	renderer->vkGetSwapchainImagesKHR(
+		renderer->logicalDevice,
+		renderer->swapChain,
+		&swapChainImageCount,
+		NULL
+	);
+
+	renderer->swapChainImages = (VkImage*) SDL_malloc(
+		sizeof(VkImage) * swapChainImageCount
+	);
+	if (!renderer->swapChainImages)
+	{
+		SDL_OutOfMemory();
+		return CREATE_SWAPCHAIN_FAIL;
+	}
+
+	renderer->swapChainImageViews = (VkImageView*) SDL_malloc(
+		sizeof(VkImageView) * swapChainImageCount
+	);
+	if (!renderer->swapChainImageViews)
+	{
+		SDL_OutOfMemory();
+		return CREATE_SWAPCHAIN_FAIL;
+	}
+
+	renderer->swapChainResourceAccessTypes = (VulkanResourceAccessType*) SDL_malloc(
+		sizeof(VulkanResourceAccessType) * swapChainImageCount
+	);
+	if (!renderer->swapChainResourceAccessTypes)
+	{
+		SDL_OutOfMemory();
+		return CREATE_SWAPCHAIN_FAIL;
+	}
+
+	swapChainImages = SDL_stack_alloc(VkImage, swapChainImageCount);
+	renderer->vkGetSwapchainImagesKHR(
+		renderer->logicalDevice,
+		renderer->swapChain,
+		&swapChainImageCount,
+		swapChainImages
+	);
+	renderer->swapChainImageCount = swapChainImageCount;
+	renderer->swapChainExtent = extent;
+
+	createInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+	createInfo.pNext = NULL;
+	createInfo.flags = 0;
+	createInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+	createInfo.format = surfaceFormat.format;
+	createInfo.components = renderer->swapChainSwizzle;
+	createInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	createInfo.subresourceRange.baseMipLevel = 0;
+	createInfo.subresourceRange.levelCount = 1;
+	createInfo.subresourceRange.baseArrayLayer = 0;
+	createInfo.subresourceRange.layerCount = 1;
+	for (i = 0; i < swapChainImageCount; i += 1)
+	{
+		createInfo.image = swapChainImages[i];
+
+		vulkanResult = renderer->vkCreateImageView(
+			renderer->logicalDevice,
+			&createInfo,
+			NULL,
+			&swapChainImageView
+		);
+
+		if (vulkanResult != VK_SUCCESS)
+		{
+			LogVulkanResult("vkCreateImageView", vulkanResult);
+			SDL_stack_free(swapChainImages);
+			return CREATE_SWAPCHAIN_FAIL;
+		}
+
+		renderer->swapChainImages[i] = swapChainImages[i];
+		renderer->swapChainImageViews[i] = swapChainImageView;
+		renderer->swapChainResourceAccessTypes[i] = RESOURCE_ACCESS_NONE;
+	}
+
+	SDL_stack_free(swapChainImages);
+	return CREATE_SWAPCHAIN_SUCCESS;
+}
+
+static void VULKAN_INTERNAL_RecreateSwapchain(VulkanRenderer* renderer)
+{
+	CreateSwapchainResult createSwapchainResult;
+	SwapChainSupportDetails swapChainSupportDetails;
+	VkExtent2D extent;
+
+	renderer->vkDeviceWaitIdle(renderer->logicalDevice);
+
+	VULKAN_INTERNAL_QuerySwapChainSupport(
+		renderer,
+		renderer->physicalDevice,
+		renderer->surface,
+		&swapChainSupportDetails
+	);
+
+	extent = VULKAN_INTERNAL_ChooseSwapExtent(
+		renderer->deviceWindowHandle,
+		swapChainSupportDetails.capabilities
+	);
+
+	if (extent.width == 0 || extent.height == 0)
+	{
+		return;
+	}
+
+	VULKAN_INTERNAL_DestroySwapchain(renderer);
+	createSwapchainResult = VULKAN_INTERNAL_CreateSwapchain(renderer);
+
+	if (createSwapchainResult == CREATE_SWAPCHAIN_FAIL)
+	{
+		REFRESH_LogError("Failed to recreate swapchain");
+		return;
+	}
+
+	renderer->vkDeviceWaitIdle(renderer->logicalDevice);
+}
+
 /* Data Buffer */
 
 /* buffer should be an alloc'd but uninitialized VulkanTexture */
@@ -1558,7 +2044,6 @@ static uint8_t VULKAN_INTERNAL_CreateBuffer(
 	uint32_t i;
 
 	buffer->size = size;
-	buffer->currentSubBufferIndex = 0;
 	buffer->bound = 0;
 	buffer->boundSubmitted = 0;
 	buffer->resourceAccessType = resourceAccessType;
@@ -3711,10 +4196,10 @@ static void VULKAN_INTERNAL_SetBufferData(
 	uint8_t* mapPointer;
 	VkResult vulkanResult;
 
-	#define SUBBUF vulkanBuffer->subBuffers[vulkanBuffer->currentSubBufferIndex]
+	#define SUBBUF vulkanBuffer->subBuffers[renderer->frameIndex]
 
 	/* Buffer already bound, time to die */
-	if (vulkanBuffer->subBuffers[vulkanBuffer->currentSubBufferIndex]->bound)
+	if (vulkanBuffer->subBuffers[renderer->frameIndex]->bound)
 	{
 		REFRESH_LogError("Buffer already bound. It is an error to write data to a buffer after binding before calling Present.");
 		return;
@@ -4163,6 +4648,31 @@ static void VULKAN_BindGraphicsPipeline(
     SDL_assert(0);
 }
 
+static void VULKAN_INTERNAL_MarkAsBound(
+	VulkanRenderer* renderer,
+	VulkanBuffer* buf
+) {
+	VulkanSubBuffer* subbuf = buf->subBuffers[renderer->frameIndex];
+	subbuf->bound = 1;
+
+	/* Don't rebind a bound buffer */
+	if (buf->bound) return;
+
+	buf->bound = 1;
+
+	if (renderer->buffersInUseCount == renderer->buffersInUseCapacity)
+	{
+		renderer->buffersInUseCapacity *= 2;
+		renderer->buffersInUse = SDL_realloc(
+			renderer->buffersInUse,
+			sizeof(VulkanBuffer*) * renderer->buffersInUseCapacity
+		);
+	}
+
+	renderer->buffersInUse[renderer->buffersInUseCount] = buf;
+	renderer->buffersInUseCount += 1;
+}
+
 static void VULKAN_BindVertexBuffers(
 	REFRESH_Renderer *driverData,
 	uint32_t firstBinding,
@@ -4178,7 +4688,8 @@ static void VULKAN_BindVertexBuffers(
 	for (i = 0; i < bindingCount; i += 1)
 	{
 		currentBuffer = (VulkanBuffer*) pBuffers[i];
-		buffers[i] = currentBuffer->subBuffers[currentBuffer->currentSubBufferIndex]->buffer;
+		buffers[i] = currentBuffer->subBuffers[renderer->frameIndex]->buffer;
+		VULKAN_INTERNAL_MarkAsBound(renderer, currentBuffer);
 	}
 
 	RECORD_CMD(renderer->vkCmdBindVertexBuffers(
@@ -4201,425 +4712,353 @@ static void VULKAN_BindIndexBuffer(
 	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
 	VulkanBuffer* vulkanBuffer = (VulkanBuffer*) buffer;
 
+	VULKAN_INTERNAL_MarkAsBound(renderer, vulkanBuffer);
+
 	RECORD_CMD(renderer->vkCmdBindIndexBuffer(
 		renderer->currentCommandBuffer,
-		vulkanBuffer->subBuffers[vulkanBuffer->currentSubBufferIndex]->buffer,
+		vulkanBuffer->subBuffers[renderer->frameIndex]->buffer,
 		offset,
 		RefreshToVK_IndexType[indexElementSize]
 	));
 }
 
-static void VULKAN_Present(
-    REFRESH_Renderer *driverData,
-    REFRESH_Rect *sourceRectangle,
-    REFRESH_Rect *destinationRectangle
+static void VULKAN_PreparePresent(
+	REFRESH_Renderer* driverData,
+	REFRESH_Texture* texture,
+	REFRESH_Rect* sourceRectangle,
+	REFRESH_Rect* destinationRectangle
 ) {
-    SDL_assert(0);
-}
+	VkResult acquireResult;
+	uint32_t swapChainImageIndex;
 
-/* Swapchain */
+	REFRESH_Rect srcRect;
+	REFRESH_Rect dstRect;
+	VkImageBlit blit;
 
-static inline VkExtent2D VULKAN_INTERNAL_ChooseSwapExtent(
-	void* windowHandle,
-	const VkSurfaceCapabilitiesKHR capabilities
-) {
-	VkExtent2D actualExtent;
-	int32_t drawableWidth, drawableHeight;
+	VulkanRenderer* renderer = (VulkanRenderer*)driverData;
+	VulkanTexture* vulkanTexture = (VulkanTexture*)texture;
 
-	if (capabilities.currentExtent.width != UINT32_MAX)
+	if (renderer->headless)
 	{
-		return capabilities.currentExtent;
-	}
-	else
-	{
-		SDL_Vulkan_GetDrawableSize(
-			(SDL_Window*) windowHandle,
-			&drawableWidth,
-			&drawableHeight
-		);
-
-		actualExtent.width = drawableWidth;
-		actualExtent.height = drawableHeight;
-
-		return actualExtent;
-	}
-}
-
-static uint8_t VULKAN_INTERNAL_QuerySwapChainSupport(
-	VulkanRenderer *renderer,
-	VkPhysicalDevice physicalDevice,
-	VkSurfaceKHR surface,
-	SwapChainSupportDetails *outputDetails
-) {
-	VkResult result;
-	uint32_t formatCount;
-	uint32_t presentModeCount;
-
-	result = renderer->vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
-		physicalDevice,
-		surface,
-		&outputDetails->capabilities
-	);
-	if (result != VK_SUCCESS)
-	{
-		REFRESH_LogError(
-			"vkGetPhysicalDeviceSurfaceCapabilitiesKHR: %s",
-			VkErrorMessages(result)
-		);
-
-		return 0;
+		REFRESH_LogError("Cannot call PreparePresent in headless mode!");
+		return;
 	}
 
-	renderer->vkGetPhysicalDeviceSurfaceFormatsKHR(
-		physicalDevice,
-		surface,
-		&formatCount,
-		NULL
-	);
-
-	if (formatCount != 0)
-	{
-		outputDetails->formats = (VkSurfaceFormatKHR*) SDL_malloc(
-			sizeof(VkSurfaceFormatKHR) * formatCount
-		);
-		outputDetails->formatsLength = formatCount;
-
-		if (!outputDetails->formats)
-		{
-			SDL_OutOfMemory();
-			return 0;
-		}
-
-		result = renderer->vkGetPhysicalDeviceSurfaceFormatsKHR(
-			physicalDevice,
-			surface,
-			&formatCount,
-			outputDetails->formats
-		);
-		if (result != VK_SUCCESS)
-		{
-			REFRESH_LogError(
-				"vkGetPhysicalDeviceSurfaceFormatsKHR: %s",
-				VkErrorMessages(result)
-			);
-
-			SDL_free(outputDetails->formats);
-			return 0;
-		}
-	}
-
-	renderer->vkGetPhysicalDeviceSurfacePresentModesKHR(
-		physicalDevice,
-		surface,
-		&presentModeCount,
-		NULL
-	);
-
-	if (presentModeCount != 0)
-	{
-		outputDetails->presentModes = (VkPresentModeKHR*) SDL_malloc(
-			sizeof(VkPresentModeKHR) * presentModeCount
-		);
-		outputDetails->presentModesLength = presentModeCount;
-
-		if (!outputDetails->presentModes)
-		{
-			SDL_OutOfMemory();
-			return 0;
-		}
-
-		result = renderer->vkGetPhysicalDeviceSurfacePresentModesKHR(
-			physicalDevice,
-			surface,
-			&presentModeCount,
-			outputDetails->presentModes
-		);
-		if (result != VK_SUCCESS)
-		{
-			REFRESH_LogError(
-				"vkGetPhysicalDeviceSurfacePresentModesKHR: %s",
-				VkErrorMessages(result)
-			);
-
-			SDL_free(outputDetails->formats);
-			SDL_free(outputDetails->presentModes);
-			return 0;
-		}
-	}
-
-	return 1;
-}
-
-static uint8_t VULKAN_INTERNAL_ChooseSwapSurfaceFormat(
-	VkFormat desiredFormat,
-	VkSurfaceFormatKHR *availableFormats,
-	uint32_t availableFormatsLength,
-	VkSurfaceFormatKHR *outputFormat
-) {
-	uint32_t i;
-	for (i = 0; i < availableFormatsLength; i += 1)
-	{
-		if (	availableFormats[i].format == desiredFormat &&
-			availableFormats[i].colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR	)
-		{
-			*outputFormat = availableFormats[i];
-			return 1;
-		}
-	}
-
-	REFRESH_LogError("Desired surface format is unavailable.");
-	return 0;
-}
-
-static uint8_t VULKAN_INTERNAL_ChooseSwapPresentMode(
-	REFRESH_PresentMode desiredPresentInterval,
-	VkPresentModeKHR *availablePresentModes,
-	uint32_t availablePresentModesLength,
-	VkPresentModeKHR *outputPresentMode
-) {
-	#define CHECK_MODE(m) \
-		for (i = 0; i < availablePresentModesLength; i += 1) \
-		{ \
-			if (availablePresentModes[i] == m) \
-			{ \
-				*outputPresentMode = m; \
-				REFRESH_LogInfo("Using " #m "!"); \
-				return 1; \
-			} \
-		} \
-		REFRESH_LogInfo(#m " unsupported.");
-
-	uint32_t i;
-    if (desiredPresentInterval == REFRESH_PRESENTMODE_IMMEDIATE)
-	{
-		CHECK_MODE(VK_PRESENT_MODE_IMMEDIATE_KHR)
-	}
-    else if (desiredPresentInterval == REFRESH_PRESENTMODE_MAILBOX)
-    {
-        CHECK_MODE(VK_PRESENT_MODE_MAILBOX_KHR)
-    }
-    else if (desiredPresentInterval == REFRESH_PRESENTMODE_FIFO)
-    {
-        CHECK_MODE(VK_PRESENT_MODE_FIFO_KHR)
-    }
-    else if (desiredPresentInterval == REFRESH_PRESENTMODE_FIFO_RELAXED)
-    {
-        CHECK_MODE(VK_PRESENT_MODE_FIFO_RELAXED_KHR)
-    }
-	else
-	{
-		REFRESH_LogError(
-			"Unrecognized PresentInterval: %d",
-			desiredPresentInterval
-		);
-		return 0;
-	}
-
-	#undef CHECK_MODE
-
-	REFRESH_LogInfo("Fall back to VK_PRESENT_MODE_FIFO_KHR.");
-	*outputPresentMode = VK_PRESENT_MODE_FIFO_KHR;
-	return 1;
-}
-
-static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
-	VulkanRenderer *renderer
-) {
-	VkResult vulkanResult;
-	SwapChainSupportDetails swapChainSupportDetails;
-	VkSurfaceFormatKHR surfaceFormat;
-	VkPresentModeKHR presentMode;
-	VkExtent2D extent;
-	uint32_t imageCount, swapChainImageCount, i;
-	VkSwapchainCreateInfoKHR swapChainCreateInfo;
-	VkImage *swapChainImages;
-	VkImageViewCreateInfo createInfo;
-	VkImageView swapChainImageView;
-
-	if (!VULKAN_INTERNAL_QuerySwapChainSupport(
-		renderer,
-		renderer->physicalDevice,
-		renderer->surface,
-		&swapChainSupportDetails
-	)) {
-		REFRESH_LogError("Device does not support swap chain creation");
-		return CREATE_SWAPCHAIN_FAIL;
-	}
-
-	renderer->swapChainFormat = VK_FORMAT_B8G8R8A8_UNORM;
-	renderer->swapChainSwizzle.r = VK_COMPONENT_SWIZZLE_IDENTITY;
-	renderer->swapChainSwizzle.g = VK_COMPONENT_SWIZZLE_IDENTITY;
-	renderer->swapChainSwizzle.b = VK_COMPONENT_SWIZZLE_IDENTITY;
-	renderer->swapChainSwizzle.a = VK_COMPONENT_SWIZZLE_IDENTITY;
-	if (!VULKAN_INTERNAL_ChooseSwapSurfaceFormat(
-		renderer->swapChainFormat,
-		swapChainSupportDetails.formats,
-		swapChainSupportDetails.formatsLength,
-		&surfaceFormat
-	)) {
-		SDL_free(swapChainSupportDetails.formats);
-		SDL_free(swapChainSupportDetails.presentModes);
-		REFRESH_LogError("Device does not support swap chain format");
-		return CREATE_SWAPCHAIN_FAIL;
-	}
-
-	if (!VULKAN_INTERNAL_ChooseSwapPresentMode(
-		renderer->presentMode,
-		swapChainSupportDetails.presentModes,
-		swapChainSupportDetails.presentModesLength,
-		&presentMode
-	)) {
-		SDL_free(swapChainSupportDetails.formats);
-		SDL_free(swapChainSupportDetails.presentModes);
-		REFRESH_LogError("Device does not support swap chain present mode");
-		return CREATE_SWAPCHAIN_FAIL;
-	}
-
-	extent = VULKAN_INTERNAL_ChooseSwapExtent(
-		renderer->deviceWindowHandle,
-		swapChainSupportDetails.capabilities
-	);
-
-	if (extent.width == 0 || extent.height == 0)
-	{
-		return CREATE_SWAPCHAIN_SURFACE_ZERO;
-	}
-
-	imageCount = swapChainSupportDetails.capabilities.minImageCount + 1;
-
-	if (	swapChainSupportDetails.capabilities.maxImageCount > 0 &&
-		imageCount > swapChainSupportDetails.capabilities.maxImageCount	)
-	{
-		imageCount = swapChainSupportDetails.capabilities.maxImageCount;
-	}
-
-	if (presentMode == VK_PRESENT_MODE_MAILBOX_KHR)
-	{
-		/* Required for proper triple-buffering.
-		 * Note that this is below the above maxImageCount check!
-		 * If the driver advertises MAILBOX but does not support 3 swap
-		 * images, it's not real mailbox support, so let it fail hard.
-		 * -flibit
-		 */
-		imageCount = SDL_max(imageCount, 3);
-	}
-
-	swapChainCreateInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
-	swapChainCreateInfo.pNext = NULL;
-	swapChainCreateInfo.flags = 0;
-	swapChainCreateInfo.surface = renderer->surface;
-	swapChainCreateInfo.minImageCount = imageCount;
-	swapChainCreateInfo.imageFormat = surfaceFormat.format;
-	swapChainCreateInfo.imageColorSpace = surfaceFormat.colorSpace;
-	swapChainCreateInfo.imageExtent = extent;
-	swapChainCreateInfo.imageArrayLayers = 1;
-	swapChainCreateInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-	swapChainCreateInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
-	swapChainCreateInfo.queueFamilyIndexCount = 0;
-	swapChainCreateInfo.pQueueFamilyIndices = NULL;
-	swapChainCreateInfo.preTransform = swapChainSupportDetails.capabilities.currentTransform;
-	swapChainCreateInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
-	swapChainCreateInfo.presentMode = presentMode;
-	swapChainCreateInfo.clipped = VK_TRUE;
-	swapChainCreateInfo.oldSwapchain = VK_NULL_HANDLE;
-
-	vulkanResult = renderer->vkCreateSwapchainKHR(
+	acquireResult = renderer->vkAcquireNextImageKHR(
 		renderer->logicalDevice,
-		&swapChainCreateInfo,
-		NULL,
-		&renderer->swapChain
+		renderer->swapChain,
+		UINT64_MAX,
+		renderer->imageAvailableSemaphore,
+		VK_NULL_HANDLE,
+		&swapChainImageIndex
 	);
 
-	SDL_free(swapChainSupportDetails.formats);
-	SDL_free(swapChainSupportDetails.presentModes);
+	if (acquireResult != VK_SUCCESS && acquireResult != VK_SUBOPTIMAL_KHR)
+	{
+		/* Failed to acquire swapchain image, mark that we need a new one */
+		renderer->needNewSwapChain = 1;
+		return;
+	}
+
+	renderer->shouldPresent = 1;
+	renderer->swapChainImageAcquired = 1;
+	renderer->currentSwapChainIndex = swapChainImageIndex;
+
+	if (sourceRectangle != NULL)
+	{
+		srcRect = *sourceRectangle;
+	}
+	else
+	{
+		srcRect.x = 0;
+		srcRect.y = 0;
+		srcRect.w = vulkanTexture->dimensions.width;
+		srcRect.h = vulkanTexture->dimensions.height;
+	}
+
+	if (destinationRectangle != NULL)
+	{
+		dstRect = *destinationRectangle;
+	}
+	else
+	{
+		dstRect.x = 0;
+		dstRect.y = 0;
+		dstRect.w = renderer->swapChainExtent.width;
+		dstRect.h = renderer->swapChainExtent.height;
+	}
+
+	/* Blit the framebuffer! */
+
+	VULKAN_INTERNAL_ImageMemoryBarrier(
+		renderer,
+		RESOURCE_ACCESS_TRANSFER_READ,
+		VK_IMAGE_ASPECT_COLOR_BIT,
+		0,
+		1,
+		0,
+		1,
+		0,
+		vulkanTexture->image,
+		&vulkanTexture->resourceAccessType
+	);
+
+	VULKAN_INTERNAL_ImageMemoryBarrier(
+		renderer,
+		RESOURCE_ACCESS_TRANSFER_WRITE,
+		VK_IMAGE_ASPECT_COLOR_BIT,
+		0,
+		1,
+		0,
+		1,
+		0,
+		renderer->swapChainImages[swapChainImageIndex],
+		&renderer->swapChainResourceAccessTypes[swapChainImageIndex]
+	);
+
+	blit.srcOffsets[0].x = srcRect.x;
+	blit.srcOffsets[0].y = srcRect.y;
+	blit.srcOffsets[0].z = 0;
+	blit.srcOffsets[1].x = srcRect.x + srcRect.w;
+	blit.srcOffsets[1].y = srcRect.y + srcRect.h;
+	blit.srcOffsets[1].z = 1;
+
+	blit.srcSubresource.mipLevel = 0;
+	blit.srcSubresource.baseArrayLayer = 0;
+	blit.srcSubresource.layerCount = 1;
+	blit.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+
+	blit.dstOffsets[0].x = dstRect.x;
+	blit.dstOffsets[0].y = dstRect.y;
+	blit.dstOffsets[0].z = 0;
+	blit.dstOffsets[1].x = dstRect.x + dstRect.w;
+	blit.dstOffsets[1].y = dstRect.y + dstRect.h;
+	blit.dstOffsets[1].z = 1;
+
+	blit.dstSubresource.mipLevel = 0;
+	blit.dstSubresource.baseArrayLayer = 0;
+	blit.dstSubresource.layerCount = 1;
+	blit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+
+	RECORD_CMD(renderer->vkCmdBlitImage(
+		renderer->currentCommandBuffer,
+		vulkanTexture->image,
+		VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+		renderer->swapChainImages[swapChainImageIndex],
+		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+		1,
+		&blit,
+		VK_FILTER_LINEAR
+	));
+
+	VULKAN_INTERNAL_ImageMemoryBarrier(
+		renderer,
+		RESOURCE_ACCESS_PRESENT,
+		VK_IMAGE_ASPECT_COLOR_BIT,
+		0,
+		1,
+		0,
+		1,
+		0,
+		renderer->swapChainImages[swapChainImageIndex],
+		&renderer->swapChainResourceAccessTypes[swapChainImageIndex]
+	);
+
+	VULKAN_INTERNAL_ImageMemoryBarrier(
+		renderer,
+		RESOURCE_ACCESS_COLOR_ATTACHMENT_READ_WRITE,
+		VK_IMAGE_ASPECT_COLOR_BIT,
+		0,
+		1,
+		0,
+		1,
+		0,
+		vulkanTexture->image,
+		&vulkanTexture->resourceAccessType
+	);
+}
+
+static void VULKAN_Submit(
+    REFRESH_Renderer *driverData
+) {
+	VulkanRenderer* renderer = (VulkanRenderer*)driverData;
+	VkSubmitInfo submitInfo;
+	VkResult vulkanResult, presentResult = VK_SUCCESS;
+	uint32_t i;
+	uint8_t present;
+
+	VkPipelineStageFlags waitStages = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	VkPresentInfoKHR presentInfo;
+
+	present = !renderer->headless && renderer->shouldPresent;
+
+	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	submitInfo.pNext = NULL;
+	submitInfo.commandBufferCount = renderer->activeCommandBufferCount;
+	submitInfo.pCommandBuffers = renderer->activeCommandBuffers;
+
+	if (present)
+	{
+		submitInfo.waitSemaphoreCount = 1;
+		submitInfo.pWaitSemaphores = &renderer->imageAvailableSemaphore;
+		submitInfo.pWaitDstStageMask = &waitStages;
+		submitInfo.signalSemaphoreCount = 1;
+		submitInfo.pSignalSemaphores = &renderer->renderFinishedSemaphore;
+	}
+	else
+	{
+		submitInfo.waitSemaphoreCount = 0;
+		submitInfo.pWaitSemaphores = NULL;
+		submitInfo.pWaitDstStageMask = NULL;
+		submitInfo.signalSemaphoreCount = 0;
+		submitInfo.pSignalSemaphores = NULL;
+	}
+
+	/* Wait for the previous submission to complete */
+	vulkanResult = renderer->vkWaitForFences(
+		renderer->logicalDevice,
+		1,
+		&renderer->inFlightFence,
+		VK_TRUE,
+		UINT64_MAX
+	);
 
 	if (vulkanResult != VK_SUCCESS)
 	{
-		LogVulkanResult("vkCreateSwapchainKHR", vulkanResult);
-
-		return CREATE_SWAPCHAIN_FAIL;
+		LogVulkanResult("vkWaitForFences", vulkanResult);
+		return;
 	}
 
-	renderer->vkGetSwapchainImagesKHR(
-		renderer->logicalDevice,
-		renderer->swapChain,
-		&swapChainImageCount,
-		NULL
-	);
+	VULKAN_INTERNAL_PerformDeferredDestroys(renderer);
 
-	renderer->swapChainImages = (VkImage*) SDL_malloc(
-		sizeof(VkImage) * swapChainImageCount
-	);
-	if (!renderer->swapChainImages)
+	renderer->frameIndex = (renderer->frameIndex + 1) % 2;
+
+	/* Mark sub buffers of previously submitted buffers as unbound */
+	for (i = 0; i < renderer->submittedBufferCount; i += 1)
 	{
-		SDL_OutOfMemory();
-		return CREATE_SWAPCHAIN_FAIL;
+		if (renderer->submittedBuffers[i] != NULL)
+		{
+			renderer->submittedBuffers[i]->subBuffers[renderer->frameIndex]->bound = 0;
+			renderer->submittedBuffers[i] = NULL;
+		}
 	}
 
-	renderer->swapChainImageViews = (VkImageView*) SDL_malloc(
-		sizeof(VkImageView) * swapChainImageCount
-	);
-	if (!renderer->swapChainImageViews)
+	renderer->submittedBufferCount = 0;
+
+	/* Mark currently bound buffers as submitted buffers */
+	if (renderer->buffersInUseCount > renderer->submittedBufferCapacity)
 	{
-		SDL_OutOfMemory();
-		return CREATE_SWAPCHAIN_FAIL;
+		renderer->submittedBuffers = SDL_realloc(
+			renderer->submittedBuffers,
+			sizeof(VulkanBuffer*) * renderer->buffersInUseCount
+		);
+
+		renderer->submittedBufferCapacity = renderer->buffersInUseCount;
 	}
 
-	renderer->swapChainResourceAccessTypes = (VulkanResourceAccessType*) SDL_malloc(
-		sizeof(VulkanResourceAccessType) * swapChainImageCount
-	);
-	if (!renderer->swapChainResourceAccessTypes)
+	for (i = 0; i < renderer->buffersInUseCount; i += 1)
 	{
-		SDL_OutOfMemory();
-		return CREATE_SWAPCHAIN_FAIL;
+		if (renderer->buffersInUse[i] != NULL)
+		{
+			renderer->buffersInUse[i]->bound = 0;
+			renderer->buffersInUse[i]->boundSubmitted = 1;
+
+			renderer->submittedBuffers[i] = renderer->buffersInUse[i];
+			renderer->buffersInUse[i] = NULL;
+		}
 	}
 
-	swapChainImages = SDL_stack_alloc(VkImage, swapChainImageCount);
-	renderer->vkGetSwapchainImagesKHR(
-		renderer->logicalDevice,
-		renderer->swapChain,
-		&swapChainImageCount,
-		swapChainImages
-	);
-	renderer->swapChainImageCount = swapChainImageCount;
-	renderer->swapChainExtent = extent;
+	renderer->submittedBufferCount = renderer->buffersInUseCount;
+	renderer->buffersInUseCount = 0;
 
-	createInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-	createInfo.pNext = NULL;
-	createInfo.flags = 0;
-	createInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-	createInfo.format = surfaceFormat.format;
-	createInfo.components = renderer->swapChainSwizzle;
-	createInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-	createInfo.subresourceRange.baseMipLevel = 0;
-	createInfo.subresourceRange.levelCount = 1;
-	createInfo.subresourceRange.baseArrayLayer = 0;
-	createInfo.subresourceRange.layerCount = 1;
-	for (i = 0; i < swapChainImageCount; i += 1)
+	/* Reset the previously submitted command buffers */
+	for (i = 0; i < renderer->submittedCommandBufferCount; i += 1)
 	{
-		createInfo.image = swapChainImages[i];
-
-		vulkanResult = renderer->vkCreateImageView(
-			renderer->logicalDevice,
-			&createInfo,
-			NULL,
-			&swapChainImageView
+		vulkanResult = renderer->vkResetCommandBuffer(
+			renderer->submittedCommandBuffers[i],
+			VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT
 		);
 
 		if (vulkanResult != VK_SUCCESS)
 		{
-			LogVulkanResult("vkCreateImageView", vulkanResult);
-			SDL_stack_free(swapChainImages);
-			return CREATE_SWAPCHAIN_FAIL;
+			LogVulkanResult("vkResetCommandBuffer", vulkanResult);
 		}
-
-		renderer->swapChainImages[i] = swapChainImages[i];
-		renderer->swapChainImageViews[i] = swapChainImageView;
-		renderer->swapChainResourceAccessTypes[i] = RESOURCE_ACCESS_NONE;
 	}
 
-	SDL_stack_free(swapChainImages);
-	return CREATE_SWAPCHAIN_SUCCESS;
+	/* Mark the previously submitted command buffers as inactive */
+	for (i = 0; i < renderer->submittedCommandBufferCount; i += 1)
+	{
+		renderer->inactiveCommandBuffers[renderer->inactiveCommandBufferCount] = renderer->submittedCommandBuffers[i];
+		renderer->inactiveCommandBufferCount += 1;
+	}
+
+	renderer->submittedCommandBufferCount = 0;
+
+	/* Prepare the command buffer fence for submission */
+	renderer->vkResetFences(
+		renderer->logicalDevice,
+		1,
+		&renderer->inFlightFence
+	);
+
+	/* Submit the commands, finally. */
+	vulkanResult = renderer->vkQueueSubmit(
+		renderer->graphicsQueue,
+		1,
+		&submitInfo,
+		renderer->inFlightFence
+	);
+
+	if (vulkanResult != VK_SUCCESS)
+	{
+		LogVulkanResult("vkQueueSubmit", vulkanResult);
+		return;
+	}
+
+	/* Mark active command buffers as submitted */
+	for (i = 0; i < renderer->activeCommandBufferCount; i += 1)
+	{
+		renderer->submittedCommandBuffers[renderer->submittedCommandBufferCount] = renderer->activeCommandBuffers[i];
+		renderer->submittedCommandBufferCount += 1;
+	}
+
+	renderer->activeCommandBufferCount = 0;
+
+	/* Reset UBOs */
+
+	renderer->vertexUBOOffset = UBO_BUFFER_SIZE * renderer->frameIndex;
+	renderer->vertexUBOBlockIncrement = 0;
+	renderer->fragmentUBOOffset = UBO_BUFFER_SIZE * renderer->frameIndex;
+	renderer->fragmentUBOBlockIncrement = 0;
+
+	/* Present, if applicable */
+
+	if (present)
+	{
+		presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+		presentInfo.pNext = NULL;
+		presentInfo.waitSemaphoreCount = 1;
+		presentInfo.pWaitSemaphores = &renderer->renderFinishedSemaphore;
+		presentInfo.swapchainCount = 1;
+		presentInfo.pSwapchains = &renderer->swapChain;
+		presentInfo.pImageIndices = &renderer->currentSwapChainIndex;
+		presentInfo.pResults = NULL;
+
+		presentResult = renderer->vkQueuePresentKHR(
+			renderer->presentQueue,
+			&presentInfo
+		);
+
+		if (renderer->needNewSwapChain)
+		{
+			VULKAN_INTERNAL_RecreateSwapchain(renderer);
+		}
+	}
+
+	renderer->swapChainImageAcquired = 0;
+	renderer->shouldPresent = 0;
+
+	VULKAN_INTERNAL_BeginCommandBuffer(renderer);
 }
 
 /* Device instantiation */
@@ -5340,6 +5779,10 @@ static REFRESH_Device* VULKAN_CreateDevice(
         }
     }
 
+	renderer->needNewSwapChain = 0;
+	renderer->shouldPresent = 0;
+	renderer->swapChainImageAcquired = 0;
+
 	/*
 	 * Create fence and semaphores
 	 */
@@ -5576,6 +6019,19 @@ static REFRESH_Device* VULKAN_CreateDevice(
 		renderer->memoryAllocator->subAllocators[i].sortedFreeRegionCount = 0;
 		renderer->memoryAllocator->subAllocators[i].sortedFreeRegionCapacity = 4;
 	}
+
+	/* Initialize buffer space */
+
+	renderer->buffersInUseCapacity = 32;
+	renderer->buffersInUse = (VulkanBuffer**)SDL_malloc(
+		sizeof(VulkanBuffer*) * renderer->buffersInUseCapacity
+	);
+
+	renderer->submittedBufferCapacity = 32;
+	renderer->submittedBufferCount = 0;
+	renderer->submittedBuffers = (VulkanBuffer**)SDL_malloc(
+		sizeof(VulkanBuffer*) * renderer->submittedBufferCapacity
+	);
 
 	/* Staging Buffer */
 

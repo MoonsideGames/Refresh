@@ -932,8 +932,8 @@ REFRESHAPI void REFRESH_SetTextureDataYUV(
  *
  * NOTE:
  * 		Calling this function on a buffer after the buffer
- * 		has been bound by BindVertexBuffers but before
- * 		Present has been called is an error.
+ * 		has been bound by BindVertexBuffers without calling
+ * 		Submit first is an error.
  *
  * buffer:		The vertex buffer to be updated.
  * offsetInBytes:	The starting offset of the buffer to write into.
@@ -954,8 +954,8 @@ REFRESHAPI void REFRESH_SetVertexBufferData(
  *
  * NOTE:
  * 		Calling this function on a buffer after the buffer
- * 		has been bound by BindIndexBuffer but before
- * 		Present has been called is an error.
+ * 		has been bound by BindIndexBuffer without calling
+ * 		Submit first is an error.
  *
  * buffer:		The index buffer to be updated.
  * offsetInBytes:	The starting offset of the buffer to write into.
@@ -1249,6 +1249,7 @@ REFRESHAPI void REFRESH_BindGraphicsPipeline(
 	REFRESH_GraphicsPipeline *graphicsPipeline
 );
 
+/* Binds vertex buffers for use with subsequent draw calls. */
 REFRESHAPI void REFRESH_BindVertexBuffers(
 	REFRESH_Device *device,
 	uint32_t firstBinding,
@@ -1257,6 +1258,7 @@ REFRESHAPI void REFRESH_BindVertexBuffers(
 	uint64_t *pOffsets
 );
 
+/* Binds an index buffer for use with subsequent draw calls. */
 REFRESHAPI void REFRESH_BindIndexBuffer(
 	REFRESH_Device *device,
 	REFRESH_Buffer *buffer,
@@ -1264,12 +1266,28 @@ REFRESHAPI void REFRESH_BindIndexBuffer(
 	REFRESH_IndexElementSize indexElementSize
 );
 
-/* Presentation */
+/* Submission/Presentation */
 
-REFRESHAPI void REFRESH_Present(
+/* Prepares for an image to be presented to the screen.
+ * The image will be presented upon the next REFRESH_Submit call.
+ *
+ * NOTE:
+ *		It is an error to call this function in headless mode.
+ * 
+ * texture:					The image to present.
+ * sourceRectangle:			The region of the image to present (or NULL).
+ * destinationRectangle:	The region of the window to update (or NULL).
+ */
+REFRESHAPI void REFRESH_PreparePresent(
 	REFRESH_Device *device,
+	REFRESH_Texture* texture,
 	REFRESH_Rect *sourceRectangle,
 	REFRESH_Rect *destinationRectangle
+);
+
+/* Submits all of the enqueued commands. */
+REFRESHAPI void REFRESH_Submit(
+	REFRESH_Device* device
 );
 
 #ifdef __cplusplus

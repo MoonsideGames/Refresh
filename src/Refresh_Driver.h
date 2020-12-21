@@ -268,7 +268,7 @@ struct REFRESH_Device
 
     REFRESH_ColorTarget* (*GenColorTarget)(
         REFRESH_Renderer *driverData,
-        uint32_t multisampleCount,
+        REFRESH_SampleCount multisampleCount,
         REFRESH_TextureSlice textureSlice
     );
 
@@ -505,10 +505,15 @@ struct REFRESH_Device
         REFRESH_IndexElementSize indexElementSize
     );
 
-    void(*Present)(
+    void(*PreparePresent)(
         REFRESH_Renderer *driverData,
+        REFRESH_Texture *texture,
         REFRESH_Rect *sourceRectangle,
         REFRESH_Rect *destinationRectangle
+    );
+
+    void(*Submit)(
+        REFRESH_Renderer *driverData
     );
 
 	/* Opaque pointer for the Driver */
@@ -562,7 +567,8 @@ struct REFRESH_Device
     ASSIGN_DRIVER_FUNC(BindGraphicsPipeline, name) \
     ASSIGN_DRIVER_FUNC(BindVertexBuffers, name) \
     ASSIGN_DRIVER_FUNC(BindIndexBuffer, name) \
-    ASSIGN_DRIVER_FUNC(Present, name)
+    ASSIGN_DRIVER_FUNC(PreparePresent, name) \
+    ASSIGN_DRIVER_FUNC(Submit, name)
 
 typedef struct REFRESH_Driver
 {
