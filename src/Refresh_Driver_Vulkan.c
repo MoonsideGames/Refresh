@@ -2202,6 +2202,24 @@ static void VULKAN_INTERNAL_BeginCommandBuffer(VulkanRenderer *renderer)
 	}
 }
 
+static void VULKAN_INTERNAL_EndCommandBuffer(
+	VulkanRenderer* renderer
+) {
+	VkResult result;
+
+	result = renderer->vkEndCommandBuffer(
+		renderer->currentCommandBuffer
+	);
+
+	if (result != VK_SUCCESS)
+	{
+		LogVulkanResult("vkEndCommandBuffer", result);
+	}
+
+	renderer->currentCommandBuffer = NULL;
+	renderer->numActiveCommands = 0;
+}
+
 /* Public API */
 
 static void VULKAN_DestroyDevice(
@@ -2353,6 +2371,7 @@ static REFRESH_RenderPass* VULKAN_CreateRenderPass(
     VkSubpassDescription subpass;
     VkRenderPass renderPass;
     uint32_t i;
+	uint8_t multisampling = 0;
 
     uint32_t attachmentDescriptionCount = 0;
     uint32_t colorAttachmentReferenceCount = 0;
@@ -2362,6 +2381,8 @@ static REFRESH_RenderPass* VULKAN_CreateRenderPass(
     {
         if (renderPassCreateInfo->colorTargetDescriptions[attachmentDescriptionCount].multisampleCount > REFRESH_SAMPLECOUNT_1)
         {
+			multisampling = 1;
+
             /* Resolve attachment and multisample attachment */
 
             attachmentDescriptions[attachmentDescriptionCount].flags = 0;
@@ -2504,6 +2525,15 @@ static REFRESH_RenderPass* VULKAN_CreateRenderPass(
 
         attachmentDescriptionCount += 1;
     }
+
+	if (multisampling)
+	{
+		subpass.pResolveAttachments = resolveReferences;
+	}
+	else
+	{
+		subpass.pResolveAttachments = NULL;
+	}
 
     vkRenderPassCreateInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
     vkRenderPassCreateInfo.pNext = NULL;
@@ -4592,10 +4622,10 @@ static void VULKAN_BeginRenderPass(
 
 	for (i = 0; i < colorClearCount; i += 1)
 	{
-		clearValues[i].color.uint32[0] = pColorClearValues[i].r;
-		clearValues[i].color.uint32[1] = pColorClearValues[i].g;
-		clearValues[i].color.uint32[2] = pColorClearValues[i].b;
-		clearValues[i].color.uint32[3] = pColorClearValues[i].a;
+		clearValues[i].color.float32[0] = pColorClearValues[i].r / 256.0f;
+		clearValues[i].color.float32[1] = pColorClearValues[i].g / 256.0f;
+		clearValues[i].color.float32[2] = pColorClearValues[i].b / 256.0f;
+		clearValues[i].color.float32[3] = pColorClearValues[i].a / 256.0f;
 	}
 
 	if (depthStencilClearValue != NULL)
@@ -4895,6 +4925,17 @@ static void VULKAN_Submit(
 	VkPresentInfoKHR presentInfo;
 
 	present = !renderer->headless && renderer->shouldPresent;
+
+	if (renderer->activeCommandBufferCount <= 1 && renderer->numActiveCommands == 0)
+	{
+		/* No commands recorded, bailing out */
+		return;
+	}
+
+	if (renderer->currentCommandBuffer != NULL)
+	{
+		VULKAN_INTERNAL_EndCommandBuffer(renderer);
+	}
 
 	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 	submitInfo.pNext = NULL;
