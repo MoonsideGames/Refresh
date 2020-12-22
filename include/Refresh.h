@@ -376,6 +376,12 @@ typedef struct REFRESH_TextureSlice
 	uint32_t layer; /* 0-5 for cube, or z-slice for 3D */
 } REFRESH_TextureSlice;
 
+typedef struct REFRESH_PresentationParameters
+{
+	void* deviceWindowHandle;
+	REFRESH_PresentMode presentMode;
+} REFRESH_PresentationParameters;
+
 /* State structures */
 
 typedef struct REFRESH_SamplerStateCreateInfo
@@ -593,13 +599,12 @@ typedef void (REFRESHCALL * REFRESH_LogFunc)(const char *msg);
 
 /* Create a rendering context for use on the calling thread.
  *
- * deviceWindowHandle:
- * 		A handle to a window.
- * 		If this is NULL, Refresh will run in headless mode.
+ * presentationParameters:
+ * 		If the windowHandle is NULL, Refresh will run in headless mode.
  * debugMode: Enable debug mode properties.
  */
 REFRESHAPI REFRESH_Device* REFRESH_CreateDevice(
-	void *deviceWindowHandle,
+	REFRESH_PresentationParameters *presentationParameters,
 	uint8_t debugMode
 );
 
@@ -1273,7 +1278,7 @@ REFRESHAPI void REFRESH_BindIndexBuffer(
  *
  * NOTE:
  *		It is an error to call this function in headless mode.
- * 
+ *
  * texture:					The image to present.
  * sourceRectangle:			The region of the image to present (or NULL).
  * destinationRectangle:	The region of the window to update (or NULL).

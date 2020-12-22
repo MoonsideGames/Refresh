@@ -127,7 +127,7 @@ uint32_t REFRESH_LinkedVersion(void)
 static int32_t selectedDriver = -1;
 
 REFRESH_Device* REFRESH_CreateDevice(
-    void *deviceWindowHandle,
+    REFRESH_PresentationParameters *presentationParameters,
     uint8_t debugMode
 ) {
     if (selectedDriver < 0)
@@ -136,7 +136,7 @@ REFRESH_Device* REFRESH_CreateDevice(
     }
 
     return drivers[selectedDriver]->CreateDevice(
-        deviceWindowHandle,
+        presentationParameters,
         debugMode
     );
 }

@@ -654,7 +654,7 @@ typedef struct VulkanRenderer
     VulkanResourceAccessType *swapChainResourceAccessTypes;
     uint32_t swapChainImageCount;
     VkExtent2D swapChainExtent;
-	
+
 	uint8_t needNewSwapChain;
 	uint8_t shouldPresent;
 	uint8_t swapChainImageAcquired;
@@ -5647,7 +5647,7 @@ static uint8_t VULKAN_INTERNAL_CreateLogicalDevice(
 }
 
 static REFRESH_Device* VULKAN_CreateDevice(
-    void *deviceWindowHandle,
+	REFRESH_PresentationParameters *presentationParameters,
     uint8_t debugMode
 ) {
     REFRESH_Device *result;
@@ -5681,23 +5681,24 @@ static REFRESH_Device* VULKAN_CreateDevice(
     renderer = (VulkanRenderer*) SDL_malloc(sizeof(VulkanRenderer));
     result->driverData = (REFRESH_Renderer*) renderer;
     renderer->debugMode = debugMode;
-    renderer->headless = deviceWindowHandle == NULL;
+    renderer->headless = presentationParameters->deviceWindowHandle == NULL;
 
     /* Create the VkInstance */
-	if (!VULKAN_INTERNAL_CreateInstance(renderer, deviceWindowHandle))
+	if (!VULKAN_INTERNAL_CreateInstance(renderer, presentationParameters->deviceWindowHandle))
 	{
 		REFRESH_LogError("Error creating vulkan instance");
 		return NULL;
 	}
 
-    renderer->deviceWindowHandle = deviceWindowHandle;
+    renderer->deviceWindowHandle = presentationParameters->deviceWindowHandle;
+	renderer->presentMode = presentationParameters->presentMode;
 
 	/*
 	 * Create the WSI vkSurface
 	 */
 
 	if (!SDL_Vulkan_CreateSurface(
-		(SDL_Window*) deviceWindowHandle,
+		(SDL_Window*) renderer->deviceWindowHandle,
 		renderer->instance,
 		&renderer->surface
 	)) {
