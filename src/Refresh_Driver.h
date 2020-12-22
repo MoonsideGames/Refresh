@@ -269,7 +269,7 @@ struct REFRESH_Device
     REFRESH_ColorTarget* (*CreateColorTarget)(
         REFRESH_Renderer *driverData,
         REFRESH_SampleCount multisampleCount,
-        REFRESH_TextureSlice textureSlice
+        REFRESH_TextureSlice *textureSlice
     );
 
     REFRESH_DepthStencilTarget* (*CreateDepthStencilTarget)(
@@ -505,9 +505,9 @@ struct REFRESH_Device
         REFRESH_IndexElementSize indexElementSize
     );
 
-    void(*PreparePresent)(
+    void(*QueuePresent)(
         REFRESH_Renderer *driverData,
-        REFRESH_Texture *texture,
+        REFRESH_TextureSlice *textureSlice,
         REFRESH_Rect *sourceRectangle,
         REFRESH_Rect *destinationRectangle
     );
@@ -567,7 +567,7 @@ struct REFRESH_Device
     ASSIGN_DRIVER_FUNC(BindGraphicsPipeline, name) \
     ASSIGN_DRIVER_FUNC(BindVertexBuffers, name) \
     ASSIGN_DRIVER_FUNC(BindIndexBuffer, name) \
-    ASSIGN_DRIVER_FUNC(PreparePresent, name) \
+    ASSIGN_DRIVER_FUNC(QueuePresent, name) \
     ASSIGN_DRIVER_FUNC(Submit, name)
 
 typedef struct REFRESH_Driver

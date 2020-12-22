@@ -3620,7 +3620,7 @@ static REFRESH_Texture* VULKAN_CreateTextureCube(
 static REFRESH_ColorTarget* VULKAN_CreateColorTarget(
 	REFRESH_Renderer *driverData,
 	REFRESH_SampleCount multisampleCount,
-	REFRESH_TextureSlice textureSlice
+	REFRESH_TextureSlice *textureSlice
 ) {
 	VkResult vulkanResult;
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
@@ -3628,7 +3628,7 @@ static REFRESH_ColorTarget* VULKAN_CreateColorTarget(
 	VkImageViewCreateInfo imageViewCreateInfo;
 	VkComponentMapping swizzle = IDENTITY_SWIZZLE;
 
-	colorTarget->texture = (VulkanTexture*) textureSlice.texture;
+	colorTarget->texture = (VulkanTexture*) textureSlice->texture;
 	colorTarget->multisampleTexture = NULL;
 	colorTarget->multisampleCount = 1;
 
@@ -3679,7 +3679,7 @@ static REFRESH_ColorTarget* VULKAN_CreateColorTarget(
 	imageViewCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 	imageViewCreateInfo.subresourceRange.baseMipLevel = 0;
 	imageViewCreateInfo.subresourceRange.levelCount = 1;
-	imageViewCreateInfo.subresourceRange.baseArrayLayer = textureSlice.layer;
+	imageViewCreateInfo.subresourceRange.baseArrayLayer = textureSlice->layer;
 	imageViewCreateInfo.subresourceRange.layerCount = 1;
 	imageViewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
 
@@ -4756,9 +4756,9 @@ static void VULKAN_BindIndexBuffer(
 	));
 }
 
-static void VULKAN_PreparePresent(
+static void VULKAN_QueuePresent(
 	REFRESH_Renderer* driverData,
-	REFRESH_Texture* texture,
+	REFRESH_TextureSlice* textureSlice,
 	REFRESH_Rect* sourceRectangle,
 	REFRESH_Rect* destinationRectangle
 ) {
@@ -4769,12 +4769,12 @@ static void VULKAN_PreparePresent(
 	REFRESH_Rect dstRect;
 	VkImageBlit blit;
 
-	VulkanRenderer* renderer = (VulkanRenderer*)driverData;
-	VulkanTexture* vulkanTexture = (VulkanTexture*)texture;
+	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
+	VulkanTexture* vulkanTexture = (VulkanTexture*) textureSlice->texture;
 
 	if (renderer->headless)
 	{
-		REFRESH_LogError("Cannot call PreparePresent in headless mode!");
+		REFRESH_LogError("Cannot call QueuePresent in headless mode!");
 		return;
 	}
 
@@ -4870,7 +4870,7 @@ static void VULKAN_PreparePresent(
 	blit.dstOffsets[1].z = 1;
 
 	blit.dstSubresource.mipLevel = 0;
-	blit.dstSubresource.baseArrayLayer = 0;
+	blit.dstSubresource.baseArrayLayer = textureSlice->layer;
 	blit.dstSubresource.layerCount = 1;
 	blit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 

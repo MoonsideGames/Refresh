@@ -347,7 +347,7 @@ REFRESH_Texture* REFRESH_CreateTextureCube(
 REFRESH_ColorTarget* REFRESH_CreateColorTarget(
 	REFRESH_Device *device,
     REFRESH_SampleCount multisampleCount,
-	REFRESH_TextureSlice textureSlice
+	REFRESH_TextureSlice *textureSlice
 ) {
     NULL_RETURN_NULL(device);
     return device->CreateColorTarget(
@@ -835,16 +835,16 @@ void REFRESH_BindIndexBuffer(
     );
 }
 
-void REFRESH_PreparePresent(
+void REFRESH_QueuePresent(
     REFRESH_Device *device,
-    REFRESH_Texture *texture,
+    REFRESH_TextureSlice* textureSlice,
     REFRESH_Rect *sourceRectangle,
     REFRESH_Rect *destinationRectangle
 ) {
     NULL_RETURN(device);
-    device->PreparePresent(
+    device->QueuePresent(
         device->driverData,
-        texture,
+        textureSlice,
         sourceRectangle,
         destinationRectangle
     );

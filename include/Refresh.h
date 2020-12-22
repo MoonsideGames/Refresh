@@ -797,7 +797,7 @@ REFRESHAPI REFRESH_Texture* REFRESH_CreateTextureCube(
 REFRESHAPI REFRESH_ColorTarget* REFRESH_CreateColorTarget(
 	REFRESH_Device *device,
 	REFRESH_SampleCount multisampleCount,
-	REFRESH_TextureSlice textureSlice
+	REFRESH_TextureSlice *textureSlice
 );
 
 /* Creates a depth/stencil target.
@@ -1273,19 +1273,19 @@ REFRESHAPI void REFRESH_BindIndexBuffer(
 
 /* Submission/Presentation */
 
-/* Prepares for an image to be presented to the screen.
+/* Queues an image to be presented to the screen.
  * The image will be presented upon the next REFRESH_Submit call.
  *
  * NOTE:
  *		It is an error to call this function in headless mode.
  *
- * texture:					The image to present.
+ * textureSlice:			The texture slice to present.
  * sourceRectangle:			The region of the image to present (or NULL).
  * destinationRectangle:	The region of the window to update (or NULL).
  */
-REFRESHAPI void REFRESH_PreparePresent(
+REFRESHAPI void REFRESH_QueuePresent(
 	REFRESH_Device *device,
-	REFRESH_Texture* texture,
+	REFRESH_TextureSlice *textureSlice,
 	REFRESH_Rect *sourceRectangle,
 	REFRESH_Rect *destinationRectangle
 );
