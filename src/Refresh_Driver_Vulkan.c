@@ -2050,7 +2050,7 @@ static uint8_t VULKAN_INTERNAL_CreateBuffer(
 	buffer->usage = usage;
 	buffer->subBufferCount = subBufferCount;
 	buffer->subBuffers = SDL_malloc(
-		sizeof(VulkanSubBuffer) * buffer->subBufferCount
+		sizeof(VulkanSubBuffer*) * buffer->subBufferCount
 	);
 
 	bufferCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -2064,6 +2064,10 @@ static uint8_t VULKAN_INTERNAL_CreateBuffer(
 
 	for (i = 0; i < subBufferCount; i += 1)
 	{
+		buffer->subBuffers[i] = SDL_malloc(
+			sizeof(VulkanSubBuffer) * buffer->subBufferCount
+		);
+
 		vulkanResult = renderer->vkCreateBuffer(
 			renderer->logicalDevice,
 			&bufferCreateInfo,
@@ -3599,7 +3603,7 @@ static REFRESH_ColorTarget* VULKAN_CreateColorTarget(
 	colorTarget->multisampleCount = 1;
 
 	/* create resolve target for multisample */
-	if (multisampleCount > 1)
+	if (multisampleCount > REFRESH_SAMPLECOUNT_1)
 	{
 		colorTarget->multisampleTexture =
 			(VulkanTexture*) SDL_malloc(sizeof(VulkanTexture));
@@ -5679,6 +5683,36 @@ static REFRESH_Device* VULKAN_CreateDevice(
     ASSIGN_DRIVER(VULKAN)
 
     renderer = (VulkanRenderer*) SDL_malloc(sizeof(VulkanRenderer));
+
+	/* Load Vulkan entry points */
+	if (SDL_Vulkan_LoadLibrary(NULL) < 0)
+	{
+		REFRESH_LogWarn("Vulkan: SDL_Vulkan_LoadLibrary failed!");
+		return 0;
+	}
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpedantic"
+	vkGetInstanceProcAddr = (PFN_vkGetInstanceProcAddr) SDL_Vulkan_GetVkGetInstanceProcAddr();
+#pragma GCC diagnostic pop
+	if (vkGetInstanceProcAddr == NULL)
+	{
+		REFRESH_LogWarn(
+			"SDL_Vulkan_GetVkGetInstanceProcAddr(): %s",
+			SDL_GetError()
+		);
+		return 0;
+	}
+
+	#define VULKAN_GLOBAL_FUNCTION(name)								\
+		name = (PFN_##name) vkGetInstanceProcAddr(VK_NULL_HANDLE, #name);			\
+		if (name == NULL)									\
+		{											\
+			REFRESH_LogWarn("vkGetInstanceProcAddr(VK_NULL_HANDLE, \"" #name "\") failed");	\
+			return 0;									\
+		}
+	#include "Refresh_Driver_Vulkan_vkfuncs.h"
+
     result->driverData = (REFRESH_Renderer*) renderer;
     renderer->debugMode = debugMode;
     renderer->headless = presentationParameters->deviceWindowHandle == NULL;
@@ -5751,7 +5785,7 @@ static REFRESH_Device* VULKAN_CreateDevice(
 		renderer->physicalDeviceDriverProperties.conformanceVersion.patch
 	);
 	REFRESH_LogWarn(
-		"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n"
+		"\n!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n"
 		"! Refresh Vulkan is still in development!    !\n"
         "! The API is unstable and subject to change! !\n"
         "! You have been warned!                      !\n"
@@ -5835,6 +5869,11 @@ static REFRESH_Device* VULKAN_CreateDevice(
 		return NULL;
 	}
 
+	/* Threading */
+
+	renderer->allocatorLock = SDL_CreateMutex();
+	renderer->commandLock = SDL_CreateMutex();
+
 	/*
 	 * Create command pool and buffers
 	 */
@@ -5880,6 +5919,24 @@ static REFRESH_Device* VULKAN_CreateDevice(
 	renderer->currentCommandCount = 0;
 
 	VULKAN_INTERNAL_BeginCommandBuffer(renderer);
+
+	/* Memory Allocator */
+
+		renderer->memoryAllocator = (VulkanMemoryAllocator*) SDL_malloc(
+		sizeof(VulkanMemoryAllocator)
+	);
+
+	for (i = 0; i < VK_MAX_MEMORY_TYPES; i += 1)
+	{
+		renderer->memoryAllocator->subAllocators[i].nextAllocationSize = STARTING_ALLOCATION_SIZE;
+		renderer->memoryAllocator->subAllocators[i].allocations = NULL;
+		renderer->memoryAllocator->subAllocators[i].allocationCount = 0;
+		renderer->memoryAllocator->subAllocators[i].sortedFreeRegions = SDL_malloc(
+			sizeof(VulkanMemoryFreeRegion*) * 4
+		);
+		renderer->memoryAllocator->subAllocators[i].sortedFreeRegionCount = 0;
+		renderer->memoryAllocator->subAllocators[i].sortedFreeRegionCapacity = 4;
+	}
 
 	/* Set up UBO layouts */
 
@@ -6003,27 +6060,10 @@ static REFRESH_Device* VULKAN_CreateDevice(
 		return NULL;
 	}
 
-	/* Memory Allocator */
-
-		renderer->memoryAllocator = (VulkanMemoryAllocator*) SDL_malloc(
-		sizeof(VulkanMemoryAllocator)
-	);
-
-	for (i = 0; i < VK_MAX_MEMORY_TYPES; i += 1)
-	{
-		renderer->memoryAllocator->subAllocators[i].nextAllocationSize = STARTING_ALLOCATION_SIZE;
-		renderer->memoryAllocator->subAllocators[i].allocations = NULL;
-		renderer->memoryAllocator->subAllocators[i].allocationCount = 0;
-		renderer->memoryAllocator->subAllocators[i].sortedFreeRegions = SDL_malloc(
-			sizeof(VulkanMemoryFreeRegion*) * 4
-		);
-		renderer->memoryAllocator->subAllocators[i].sortedFreeRegionCount = 0;
-		renderer->memoryAllocator->subAllocators[i].sortedFreeRegionCapacity = 4;
-	}
-
 	/* Initialize buffer space */
 
 	renderer->buffersInUseCapacity = 32;
+	renderer->buffersInUseCount = 0;
 	renderer->buffersInUse = (VulkanBuffer**)SDL_malloc(
 		sizeof(VulkanBuffer*) * renderer->buffersInUseCapacity
 	);
@@ -6054,11 +6094,6 @@ static REFRESH_Device* VULKAN_CreateDevice(
 
 	renderer->descriptorPools = NULL;
 	renderer->descriptorPoolCount = 0;
-
-	/* Threading */
-
-	renderer->allocatorLock = SDL_CreateMutex();
-	renderer->commandLock = SDL_CreateMutex();
 
     return result;
 }

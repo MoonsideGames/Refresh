@@ -124,7 +124,7 @@ uint32_t REFRESH_LinkedVersion(void)
 
 /* Driver Functions */
 
-static int32_t selectedDriver = -1;
+static int32_t selectedDriver = 0;
 
 REFRESH_Device* REFRESH_CreateDevice(
     REFRESH_PresentationParameters *presentationParameters,

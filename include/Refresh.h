@@ -566,9 +566,9 @@ typedef struct REFRESH_GraphicsPipelineCreateInfo
 typedef struct REFRESH_FramebufferCreateInfo
 {
 	REFRESH_RenderPass *renderPass;
-	const REFRESH_ColorTarget **pColorTargets;
+	REFRESH_ColorTarget **pColorTargets;
 	uint32_t colorTargetCount;
-	const REFRESH_DepthStencilTarget *pDepthTarget;
+	REFRESH_DepthStencilTarget *pDepthTarget;
 	uint32_t width;
 	uint32_t height;
 } REFRESH_FramebufferCreateInfo;
