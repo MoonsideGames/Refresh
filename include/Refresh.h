@@ -286,8 +286,7 @@ typedef enum REFRESH_ColorComponentFlagBits
     REFRESH_COLORCOMPONENT_R_BIT = 0x00000001,
     REFRESH_COLORCOMPONENT_G_BIT = 0x00000002,
     REFRESH_COLORCOMPONENT_B_BIT = 0x00000004,
-    REFRESH_COLORCOMPONENT_A_BIT = 0x00000008,
-    REFRESH_COLORCOMPONENT_FLAG_BITS_MAX_ENUM = 0x7FFFFFFF
+    REFRESH_COLORCOMPONENT_A_BIT = 0x00000008
 } REFRESH_ColorComponentFlagBits;
 
 typedef uint32_t REFRESH_ColorComponentFlags;
@@ -430,7 +429,7 @@ typedef struct REFRESH_StencilOpState
 	REFRESH_StencilOp failOp;
 	REFRESH_StencilOp passOp;
 	REFRESH_StencilOp depthFailOp;
-	REFRESH_StencilOp compareOp;
+	REFRESH_CompareOp compareOp;
 	uint32_t compareMask;
 	uint32_t writeMask;
 	uint32_t reference;

@@ -4251,10 +4251,10 @@ static void VULKAN_INTERNAL_SetBufferData(
 	uint8_t* mapPointer;
 	VkResult vulkanResult;
 
-	#define SUBBUF vulkanBuffer->subBuffers[renderer->frameIndex]
+	#define SUBBUF vulkanBuffer->subBuffers[0] // FIXME: testing
 
 	/* Buffer already bound, time to die */
-	if (vulkanBuffer->subBuffers[renderer->frameIndex]->bound)
+	if (SUBBUF->bound)
 	{
 		REFRESH_LogError("Buffer already bound. It is an error to write data to a buffer after binding before calling Present.");
 		return;
@@ -4643,10 +4643,10 @@ static void VULKAN_BeginRenderPass(
 
 	for (i = 0; i < colorClearCount; i += 1)
 	{
-		clearValues[i].color.float32[0] = pColorClearValues[i].r / 256.0f;
-		clearValues[i].color.float32[1] = pColorClearValues[i].g / 256.0f;
-		clearValues[i].color.float32[2] = pColorClearValues[i].b / 256.0f;
-		clearValues[i].color.float32[3] = pColorClearValues[i].a / 256.0f;
+		clearValues[i].color.float32[0] = pColorClearValues[i].r / 255.0f;
+		clearValues[i].color.float32[1] = pColorClearValues[i].g / 255.0f;
+		clearValues[i].color.float32[2] = pColorClearValues[i].b / 255.0f;
+		clearValues[i].color.float32[3] = pColorClearValues[i].a / 255.0f;
 	}
 
 	if (depthStencilClearValue != NULL)
@@ -4753,7 +4753,7 @@ static void VULKAN_BindVertexBuffers(
 	for (i = 0; i < bindingCount; i += 1)
 	{
 		currentBuffer = (VulkanBuffer*) pBuffers[i];
-		buffers[i] = currentBuffer->subBuffers[renderer->frameIndex]->buffer;
+		buffers[i] = currentBuffer->subBuffers[0]->buffer; // FIXME: testing
 		VULKAN_INTERNAL_MarkAsBound(renderer, currentBuffer);
 	}
 
