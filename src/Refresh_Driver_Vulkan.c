@@ -4457,7 +4457,7 @@ static void VULKAN_PushVertexShaderParams(
 		(REFRESH_Buffer*) renderer->vertexUBO,
 		renderer->vertexUBOOffset,
 		data,
-		elementCount * renderer->currentGraphicsPipeline->fragmentUBOBlockSize
+		elementCount * renderer->currentGraphicsPipeline->vertexUBOBlockSize
 	);
 }
 
