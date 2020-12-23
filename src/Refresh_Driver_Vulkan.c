@@ -4446,7 +4446,7 @@ static void VULKAN_PushVertexShaderParams(
 	if (
 		renderer->vertexUBOOffset +
 		renderer->currentGraphicsPipeline->vertexUBOBlockSize >=
-		UBO_BUFFER_SIZE * renderer->frameIndex
+		UBO_BUFFER_SIZE * (renderer->frameIndex + 1)
 	) {
 		REFRESH_LogError("Vertex UBO overflow!");
 		return;
