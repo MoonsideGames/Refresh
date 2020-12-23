@@ -154,7 +154,7 @@ static inline int32_t BytesPerImage(
 #define MAX_VERTEX_ATTRIBUTES		16
 #define MAX_BOUND_VERTEX_BUFFERS	16
 
-#define MAX_RENDERTARGET_BINDINGS	4
+#define MAX_COLOR_TARGET_BINDINGS	4
 
 /* REFRESH_Device Definition */
 

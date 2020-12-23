@@ -643,6 +643,58 @@ typedef struct VulkanGraphicsPipeline
 	VkDescriptorSet fragmentSamplerDescriptorSet; /* updated by SetFragmentSamplers */
 } VulkanGraphicsPipeline;
 
+typedef struct VulkanTexture
+{
+	VulkanMemoryAllocation *allocation;
+	VkDeviceSize offset;
+	VkDeviceSize memorySize;
+
+	VkImage image;
+	VkImageView view;
+	VkExtent2D dimensions;
+	uint32_t depth;
+	uint32_t layerCount;
+	uint32_t levelCount;
+	VkFormat format;
+	VulkanResourceAccessType resourceAccessType;
+} VulkanTexture;
+
+typedef struct VulkanDepthStencilTexture
+{
+	VulkanMemoryAllocation *allocation;
+	VkDeviceSize offset;
+	VkDeviceSize memorySize;
+
+	VkImage image;
+	VkImageView view;
+	VkExtent2D dimensions;
+	VkFormat format;
+	VulkanResourceAccessType resourceAccessType;
+} VulkanDepthStencilTexture;
+
+typedef struct VulkanColorTarget
+{
+	VulkanTexture *texture;
+	uint32_t layer;
+	VkImageView view;
+	VulkanTexture *multisampleTexture;
+	VkSampleCountFlags multisampleCount;
+} VulkanColorTarget;
+
+typedef struct VulkanDepthStencilTarget
+{
+	VulkanDepthStencilTexture *texture;
+	VkImageView view;
+} VulkanDepthStencilTarget;
+
+typedef struct VulkanFramebuffer
+{
+	VkFramebuffer framebuffer;
+	VulkanColorTarget *colorTargets[MAX_COLOR_TARGET_BINDINGS];
+	uint32_t colorTargetCount;
+	VulkanDepthStencilTarget *depthStencilTarget;
+} VulkanFramebuffer;
+
 typedef struct VulkanRenderer
 {
     VkInstance instance;
@@ -749,51 +801,6 @@ typedef struct VulkanRenderer
 		vkfntype_##func func;
 	#include "Refresh_Driver_Vulkan_vkfuncs.h"
 } VulkanRenderer;
-
-/* Image Data */
-
-typedef struct VulkanTexture
-{
-	VulkanMemoryAllocation *allocation;
-	VkDeviceSize offset;
-	VkDeviceSize memorySize;
-
-	VkImage image;
-	VkImageView view;
-	VkExtent2D dimensions;
-	uint32_t depth;
-	uint32_t layerCount;
-	uint32_t levelCount;
-	VkFormat format;
-	VulkanResourceAccessType resourceAccessType;
-} VulkanTexture;
-
-typedef struct VulkanDepthStencilTexture
-{
-	VulkanMemoryAllocation *allocation;
-	VkDeviceSize offset;
-	VkDeviceSize memorySize;
-
-	VkImage image;
-	VkImageView view;
-	VkExtent2D dimensions;
-	VkFormat format;
-	VulkanResourceAccessType resourceAccessType;
-} VulkanDepthStencilTexture;
-
-typedef struct VulkanColorTarget
-{
-	VulkanTexture *texture;
-	VkImageView view;
-	VulkanTexture *multisampleTexture;
-	VkSampleCountFlags multisampleCount;
-} VulkanColorTarget;
-
-typedef struct VulkanDepthStencilTarget
-{
-	VulkanDepthStencilTexture *texture;
-	VkImageView view;
-} VulkanDepthStencilTarget;
 
 /* Forward declarations */
 
@@ -2365,9 +2372,9 @@ static REFRESH_RenderPass* VULKAN_CreateRenderPass(
     VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 
     VkResult vulkanResult;
-    VkAttachmentDescription attachmentDescriptions[2 * MAX_RENDERTARGET_BINDINGS + 1];
-    VkAttachmentReference colorAttachmentReferences[MAX_RENDERTARGET_BINDINGS];
-    VkAttachmentReference resolveReferences[MAX_RENDERTARGET_BINDINGS + 1];
+    VkAttachmentDescription attachmentDescriptions[2 * MAX_COLOR_TARGET_BINDINGS + 1];
+    VkAttachmentReference colorAttachmentReferences[MAX_COLOR_TARGET_BINDINGS];
+    VkAttachmentReference resolveReferences[MAX_COLOR_TARGET_BINDINGS + 1];
     VkAttachmentReference depthStencilAttachmentReference;
 	VkRenderPassCreateInfo vkRenderPassCreateInfo;
     VkSubpassDescription subpass;
@@ -3149,7 +3156,6 @@ static REFRESH_Framebuffer* VULKAN_CreateFramebuffer(
 	REFRESH_FramebufferCreateInfo *framebufferCreateInfo
 ) {
 	VkResult vulkanResult;
-	VkFramebuffer framebuffer;
 	VkFramebufferCreateInfo vkFramebufferCreateInfo;
 
 	VkImageView *imageViews;
@@ -3158,8 +3164,9 @@ static REFRESH_Framebuffer* VULKAN_CreateFramebuffer(
 	uint32_t i;
 
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	VulkanFramebuffer *vulkanFramebuffer = (VulkanFramebuffer*) SDL_malloc(sizeof(VulkanFramebuffer));
 
-	if (framebufferCreateInfo->pDepthTarget != NULL)
+	if (framebufferCreateInfo->pDepthStencilTarget != NULL)
 	{
 		attachmentCount += 1;
 	}
@@ -3171,9 +3178,9 @@ static REFRESH_Framebuffer* VULKAN_CreateFramebuffer(
 		imageViews[i] = ((VulkanColorTarget*)framebufferCreateInfo->pColorTargets[i])->view;
 	}
 
-	if (framebufferCreateInfo->pDepthTarget != NULL)
+	if (framebufferCreateInfo->pDepthStencilTarget != NULL)
 	{
-		imageViews[colorAttachmentCount] = ((VulkanDepthStencilTarget*)framebufferCreateInfo->pDepthTarget)->view;
+		imageViews[colorAttachmentCount] = ((VulkanDepthStencilTarget*)framebufferCreateInfo->pDepthStencilTarget)->view;
 	}
 
 	vkFramebufferCreateInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
@@ -3190,7 +3197,7 @@ static REFRESH_Framebuffer* VULKAN_CreateFramebuffer(
 		renderer->logicalDevice,
 		&vkFramebufferCreateInfo,
 		NULL,
-		&framebuffer
+		&vulkanFramebuffer->framebuffer
 	);
 
 	if (vulkanResult != VK_SUCCESS)
@@ -3200,8 +3207,18 @@ static REFRESH_Framebuffer* VULKAN_CreateFramebuffer(
 		return NULL;
 	}
 
+	for (i = 0; i < colorAttachmentCount; i += 1)
+	{
+		vulkanFramebuffer->colorTargets[i] =
+			(VulkanColorTarget*) framebufferCreateInfo->pColorTargets[i];
+	}
+
+	vulkanFramebuffer->colorTargetCount = colorAttachmentCount;
+	vulkanFramebuffer->depthStencilTarget =
+		(VulkanDepthStencilTarget*) framebufferCreateInfo->pDepthStencilTarget;
+
 	SDL_stack_free(imageViews);
-	return (REFRESH_Framebuffer*) framebuffer;
+	return (REFRESH_Framebuffer*) vulkanFramebuffer;
 }
 
 static REFRESH_ShaderModule* VULKAN_CreateShaderModule(
@@ -3647,6 +3664,7 @@ static REFRESH_ColorTarget* VULKAN_CreateColorTarget(
 	VkComponentMapping swizzle = IDENTITY_SWIZZLE;
 
 	colorTarget->texture = (VulkanTexture*) textureSlice->texture;
+	colorTarget->layer = textureSlice->layer;
 	colorTarget->multisampleTexture = NULL;
 	colorTarget->multisampleCount = 1;
 
@@ -4642,16 +4660,58 @@ static void VULKAN_BeginRenderPass(
 	REFRESH_DepthStencilValue *depthStencilClearValue
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	VulkanFramebuffer *vulkanFramebuffer = (VulkanFramebuffer*) framebuffer;
 	VkClearValue *clearValues;
 	uint32_t i;
-	uint32_t colorCount = colorClearCount;
+	uint32_t clearCount = colorClearCount;
+	VkImageAspectFlags depthAspectFlags;
+
+	/* Layout transitions */
+
+	for (i = 0; i < vulkanFramebuffer->colorTargetCount; i += 1)
+	{
+		VULKAN_INTERNAL_ImageMemoryBarrier(
+			renderer,
+			RESOURCE_ACCESS_COLOR_ATTACHMENT_READ_WRITE,
+			VK_IMAGE_ASPECT_COLOR_BIT,
+			vulkanFramebuffer->colorTargets[i]->layer,
+			1,
+			0,
+			1,
+			0,
+			vulkanFramebuffer->colorTargets[i]->texture->image,
+			&vulkanFramebuffer->colorTargets[i]->texture->resourceAccessType
+		);
+	}
 
 	if (depthStencilClearValue != NULL)
 	{
-		colorCount += 1;
+		depthAspectFlags = VK_IMAGE_ASPECT_DEPTH_BIT;
+		if (DepthFormatContainsStencil(
+			vulkanFramebuffer->depthStencilTarget->texture->format
+		)) {
+			depthAspectFlags |= VK_IMAGE_ASPECT_STENCIL_BIT;
+		}
+
+		VULKAN_INTERNAL_ImageMemoryBarrier(
+			renderer,
+			RESOURCE_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_WRITE,
+			depthAspectFlags,
+			0,
+			1,
+			0,
+			1,
+			0,
+			vulkanFramebuffer->depthStencilTarget->texture->image,
+			&vulkanFramebuffer->depthStencilTarget->texture->resourceAccessType
+		);
+
+		clearCount += 1;
 	}
 
-	clearValues = SDL_stack_alloc(VkClearValue, colorCount);
+	/* Set clear values */
+
+	clearValues = SDL_stack_alloc(VkClearValue, clearCount);
 
 	for (i = 0; i < colorClearCount; i += 1)
 	{
@@ -4673,13 +4733,13 @@ static void VULKAN_BeginRenderPass(
 	renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
 	renderPassBeginInfo.pNext = NULL;
 	renderPassBeginInfo.renderPass = (VkRenderPass) renderPass;
-	renderPassBeginInfo.framebuffer = (VkFramebuffer) framebuffer;
+	renderPassBeginInfo.framebuffer = vulkanFramebuffer->framebuffer;
 	renderPassBeginInfo.renderArea.extent.width = renderArea.w;
 	renderPassBeginInfo.renderArea.extent.height = renderArea.h;
 	renderPassBeginInfo.renderArea.offset.x = renderArea.x;
 	renderPassBeginInfo.renderArea.offset.y = renderArea.y;
 	renderPassBeginInfo.pClearValues = clearValues;
-	renderPassBeginInfo.clearValueCount = colorCount;
+	renderPassBeginInfo.clearValueCount = clearCount;
 
 	RECORD_CMD(renderer->vkCmdBeginRenderPass(
 		renderer->currentCommandBuffer,
@@ -4698,6 +4758,8 @@ static void VULKAN_EndRenderPass(
 	RECORD_CMD(renderer->vkCmdEndRenderPass(
 		renderer->currentCommandBuffer
 	));
+
+	renderer->currentGraphicsPipeline = NULL;
 }
 
 static void VULKAN_BindGraphicsPipeline(

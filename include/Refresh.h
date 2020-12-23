@@ -567,7 +567,7 @@ typedef struct REFRESH_FramebufferCreateInfo
 	REFRESH_RenderPass *renderPass;
 	REFRESH_ColorTarget **pColorTargets;
 	uint32_t colorTargetCount;
-	REFRESH_DepthStencilTarget *pDepthTarget;
+	REFRESH_DepthStencilTarget *pDepthStencilTarget;
 	uint32_t width;
 	uint32_t height;
 } REFRESH_FramebufferCreateInfo;
