@@ -4829,7 +4829,7 @@ static void VULKAN_BindVertexBuffers(
 	for (i = 0; i < bindingCount; i += 1)
 	{
 		currentBuffer = (VulkanBuffer*) pBuffers[i];
-		buffers[i] = currentBuffer->subBuffers[0]->buffer; // FIXME: testing
+		buffers[i] = currentBuffer->subBuffers[currentBuffer->currentSubBufferIndex]->buffer;
 		VULKAN_INTERNAL_MarkAsBound(renderer, currentBuffer);
 	}
 
