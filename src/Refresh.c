@@ -528,35 +528,27 @@ void REFRESH_SetIndexBufferData(
 
 void REFRESH_PushVertexShaderParams(
 	REFRESH_Device *device,
-    REFRESH_GraphicsPipeline *pipeline,
 	void *data,
-	uint32_t elementCount,
-	uint32_t elementSizeInBytes
+	uint32_t elementCount
 ) {
     NULL_RETURN(device);
     device->PushVertexShaderParams(
         device->driverData,
-        pipeline,
         data,
-        elementCount,
-        elementSizeInBytes
+        elementCount
     );
 }
 
 void REFRESH_PushFragmentShaderParams(
 	REFRESH_Device *device,
-    REFRESH_GraphicsPipeline *pipeline,
 	void *data,
-	uint32_t elementCount,
-	uint32_t elementSizeInBytes
+	uint32_t elementCount
 ) {
     NULL_RETURN(device);
     device->PushFragmentShaderParams(
         device->driverData,
-        pipeline,
         data,
-        elementCount,
-        elementSizeInBytes
+        elementCount
     );
 }
 

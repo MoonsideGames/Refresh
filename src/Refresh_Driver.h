@@ -356,18 +356,14 @@ struct REFRESH_Device
 
     void(*PushVertexShaderParams)(
         REFRESH_Renderer *driverData,
-        REFRESH_GraphicsPipeline *pipeline,
         void *data,
-        uint32_t elementCount,
-        uint32_t elementSizeInBytes
+        uint32_t elementCount
     );
 
     void(*PushFragmentShaderParams)(
         REFRESH_Renderer *driverData,
-        REFRESH_GraphicsPipeline *pipeline,
         void *data,
-        uint32_t elementCount,
-        uint32_t elementSizeInBytes
+        uint32_t elementCount
     );
 
     void(*SetVertexSamplers)(

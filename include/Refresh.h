@@ -491,6 +491,7 @@ typedef struct REFRESH_ShaderStageState
 {
 	REFRESH_ShaderModule *shaderModule;
 	const char* entryPointName;
+	uint64_t uniformBufferSize;
 } REFRESH_ShaderStageState;
 
 typedef struct REFRESH_TopologyState
@@ -964,32 +965,32 @@ REFRESHAPI void REFRESH_SetIndexBufferData(
 
 /* Pushes vertex shader params for subsequent draw calls.
  *
- * pipeline: 			The graphics pipeline to push shader data to.
+ * NOTE:
+ * 		A pipeline must be bound.
+ * 		Will use the block size of the currently bound vertex shader.
+ *
  * data: 				The client data to write into the buffer.
  * elementCount: 		The number of elements from the client buffer to write.
- * elementSizeInBytes:	The size of each element in the client buffer.
  */
 REFRESHAPI void REFRESH_PushVertexShaderParams(
 	REFRESH_Device *device,
-    REFRESH_GraphicsPipeline *pipeline,
 	void *data,
-	uint32_t elementCount,
-	uint32_t elementSizeInBytes
+	uint32_t elementCount
 );
 
 /* Pushes fragment shader params for subsequent draw calls.
  *
- * pipeline: 			The graphics pipeline to push shader data to.
+ * NOTE:
+ * 		A pipeline must be bound.
+ * 		Will use the block size of the currently bound fragment shader.
+ *
  * data: 				The client data to write into the buffer.
  * elementCount: 		The number of elements from the client buffer to write.
- * elementSizeInBytes:	The size of each element in the client buffer.
  */
 REFRESHAPI void REFRESH_PushFragmentShaderParams(
 	REFRESH_Device *device,
-    REFRESH_GraphicsPipeline *pipeline,
 	void *data,
-	uint32_t elementCount,
-	uint32_t elementSizeInBytes
+	uint32_t elementCount
 );
 
 /* Sets textures/samplers for use with the currently bound vertex shader.

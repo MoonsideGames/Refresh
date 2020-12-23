@@ -75,6 +75,7 @@ static uint32_t deviceExtensionCount = SDL_arraysize(deviceExtensionNames);
 #define UBO_BUFFER_SIZE 8000000 				/* 8MB */
 #define UBO_ACTUAL_SIZE (UBO_BUFFER_SIZE * 2)
 #define SAMPLER_POOL_SIZE 100
+#define UBO_POOL_SIZE 1000
 #define SUB_BUFFER_COUNT 2
 
 #define IDENTITY_SWIZZLE \
@@ -641,6 +642,11 @@ typedef struct VulkanGraphicsPipeline
 	uint32_t fragmentSamplerBindingCount;
 	VkDescriptorSet vertexSamplerDescriptorSet; /* updated by SetVertexSamplers */
 	VkDescriptorSet fragmentSamplerDescriptorSet; /* updated by SetFragmentSamplers */
+
+	VkDescriptorSet vertexUBODescriptorSet; /* permanently set in Create function */
+	VkDescriptorSet fragmentUBODescriptorSet; /* permanently set in Create function */
+	VkDeviceSize vertexUBOBlockSize; /* permanently set in Create function */
+	VkDeviceSize fragmentUBOBlockSize; /* permantenly set in Create function */
 } VulkanGraphicsPipeline;
 
 typedef struct VulkanTexture
@@ -765,8 +771,6 @@ typedef struct VulkanRenderer
 
 	VkDescriptorSetLayout vertexParamLayout;
 	VkDescriptorSetLayout fragmentParamLayout;
-	VkDescriptorSet vertexUBODescriptorSet;
-	VkDescriptorSet fragmentUBODescriptorSet;
 
 	VulkanBuffer *textureStagingBuffer;
 
@@ -783,12 +787,10 @@ typedef struct VulkanRenderer
 	uint32_t minUBOAlignment;
 
 	uint32_t vertexUBOOffset;
-	uint32_t vertexUBOBlockSize;
-	uint32_t vertexUBOBlockIncrement;
+	VkDeviceSize vertexUBOBlockIncrement;
 
 	uint32_t fragmentUBOOffset;
-	uint32_t fragmentUBOBlockSize;
-	uint32_t fragmentUBOBlockIncrement;
+	VkDeviceSize fragmentUBOBlockIncrement;
 
 	uint32_t frameIndex;
 
@@ -884,13 +886,6 @@ static inline uint8_t DepthFormatContainsStencil(VkFormat format)
 static inline VkDeviceSize VULKAN_INTERNAL_NextHighestAlignment(
 	VkDeviceSize n,
 	VkDeviceSize align
-) {
-	return align * ((n + align - 1) / align);
-}
-
-static inline uint32_t VULKAN_INTERNAL_NextHighestAlignment32(
-	uint32_t n,
-	uint32_t align
 ) {
 	return align * ((n + align - 1) / align);
 }
@@ -2272,8 +2267,8 @@ static void VULKAN_DrawInstancedPrimitives(
 
 	descriptorSets[0] = renderer->currentGraphicsPipeline->vertexSamplerDescriptorSet;
 	descriptorSets[1] = renderer->currentGraphicsPipeline->fragmentSamplerDescriptorSet;
-	descriptorSets[2] = renderer->vertexUBODescriptorSet;
-	descriptorSets[3] = renderer->fragmentUBODescriptorSet;
+	descriptorSets[2] = renderer->currentGraphicsPipeline->vertexUBODescriptorSet;
+	descriptorSets[3] = renderer->currentGraphicsPipeline->fragmentUBODescriptorSet;
 
 	dynamicOffsets[0] = renderer->vertexUBOOffset;
 	dynamicOffsets[1] = renderer->fragmentUBOOffset;
@@ -2336,8 +2331,8 @@ static void VULKAN_DrawPrimitives(
 
 	descriptorSets[0] = renderer->currentGraphicsPipeline->vertexSamplerDescriptorSet;
 	descriptorSets[1] = renderer->currentGraphicsPipeline->fragmentSamplerDescriptorSet;
-	descriptorSets[2] = renderer->vertexUBODescriptorSet;
-	descriptorSets[3] = renderer->fragmentUBODescriptorSet;
+	descriptorSets[2] = renderer->currentGraphicsPipeline->vertexUBODescriptorSet;
+	descriptorSets[3] = renderer->currentGraphicsPipeline->fragmentUBODescriptorSet;
 
 	dynamicOffsets[0] = renderer->vertexUBOOffset;
 	dynamicOffsets[1] = renderer->fragmentUBOOffset;
@@ -2659,6 +2654,13 @@ static REFRESH_GraphicsPipeline* VULKAN_CreateGraphicsPipeline(
 		pipelineCreateInfo->pipelineLayoutCreateInfo.fragmentSamplerBindingCount
 	);
 
+	VkDescriptorSetAllocateInfo vertexUBODescriptorAllocateInfo;
+	VkDescriptorSetAllocateInfo fragmentUBODescriptorAllocateInfo;
+
+	VkWriteDescriptorSet uboWriteDescriptorSets[2];
+	VkDescriptorBufferInfo vertexUniformBufferInfo;
+	VkDescriptorBufferInfo fragmentUniformBufferInfo;
+
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 
 	/* Shader stages */
@@ -2671,6 +2673,12 @@ static REFRESH_GraphicsPipeline* VULKAN_CreateGraphicsPipeline(
 	shaderStageCreateInfos[0].pName = pipelineCreateInfo->vertexShaderState.entryPointName;
 	shaderStageCreateInfos[0].pSpecializationInfo = NULL;
 
+	graphicsPipeline->vertexUBOBlockSize =
+		VULKAN_INTERNAL_NextHighestAlignment(
+			pipelineCreateInfo->vertexShaderState.uniformBufferSize,
+			renderer->minUBOAlignment
+		);
+
 	shaderStageCreateInfos[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
 	shaderStageCreateInfos[1].pNext = NULL;
 	shaderStageCreateInfos[1].flags = 0;
@@ -2678,6 +2686,12 @@ static REFRESH_GraphicsPipeline* VULKAN_CreateGraphicsPipeline(
 	shaderStageCreateInfos[1].module = (VkShaderModule) pipelineCreateInfo->fragmentShaderState.shaderModule;
 	shaderStageCreateInfos[1].pName = pipelineCreateInfo->fragmentShaderState.entryPointName;
 	shaderStageCreateInfos[1].pSpecializationInfo = NULL;
+
+	graphicsPipeline->fragmentUBOBlockSize =
+		VULKAN_INTERNAL_NextHighestAlignment(
+			pipelineCreateInfo->fragmentShaderState.uniformBufferSize,
+			renderer->minUBOAlignment
+		);
 
 	/* Vertex input */
 
@@ -2902,6 +2916,10 @@ static REFRESH_GraphicsPipeline* VULKAN_CreateGraphicsPipeline(
 	/* Pipeline Layout */
 	/* TODO: should we hash these? */
 
+	setLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+	setLayoutCreateInfo.pNext = NULL;
+	setLayoutCreateInfo.flags = 0;
+
 	/* Vertex sampler layout */
 	if (pipelineCreateInfo->pipelineLayoutCreateInfo.vertexSamplerBindingCount == 0)
 	{
@@ -2919,9 +2937,6 @@ static REFRESH_GraphicsPipeline* VULKAN_CreateGraphicsPipeline(
 			vertexSamplerLayoutBindings[i].pImmutableSamplers = NULL;
 		}
 
-		setLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-		setLayoutCreateInfo.pNext = NULL;
-		setLayoutCreateInfo.flags = 0;
 		setLayoutCreateInfo.bindingCount = pipelineCreateInfo->pipelineLayoutCreateInfo.vertexSamplerBindingCount;
 		setLayoutCreateInfo.pBindings = vertexSamplerLayoutBindings;
 
@@ -3071,6 +3086,7 @@ static REFRESH_GraphicsPipeline* VULKAN_CreateGraphicsPipeline(
 	SDL_stack_free(vertexSamplerLayoutBindings);
 	SDL_stack_free(fragmentSamplerLayoutBindings);
 
+	/* Create sampler descriptor pool */
 	if (!VULKAN_INTERNAL_CreateSamplerDescriptorPool(
 		renderer,
 		&pipelineCreateInfo->pipelineLayoutCreateInfo,
@@ -3086,6 +3102,70 @@ static REFRESH_GraphicsPipeline* VULKAN_CreateGraphicsPipeline(
 	);
 	renderer->descriptorPools[renderer->descriptorPoolCount + 1] =
 		graphicsPipeline->descriptorPool;
+
+	/* Allocate uniform buffer descriptors */
+
+	vertexUBODescriptorAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+	vertexUBODescriptorAllocateInfo.pNext = NULL;
+	vertexUBODescriptorAllocateInfo.descriptorPool = renderer->defaultDescriptorPool;
+	vertexUBODescriptorAllocateInfo.descriptorSetCount = 1;
+	vertexUBODescriptorAllocateInfo.pSetLayouts = &renderer->vertexParamLayout;
+
+	renderer->vkAllocateDescriptorSets(
+		renderer->logicalDevice,
+		&vertexUBODescriptorAllocateInfo,
+		&graphicsPipeline->vertexUBODescriptorSet
+	);
+
+	fragmentUBODescriptorAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+	fragmentUBODescriptorAllocateInfo.pNext = NULL;
+	fragmentUBODescriptorAllocateInfo.descriptorPool = renderer->defaultDescriptorPool;
+	fragmentUBODescriptorAllocateInfo.descriptorSetCount = 1;
+	fragmentUBODescriptorAllocateInfo.pSetLayouts = &renderer->fragmentParamLayout;
+
+	renderer->vkAllocateDescriptorSets(
+		renderer->logicalDevice,
+		&fragmentUBODescriptorAllocateInfo,
+		&graphicsPipeline->fragmentUBODescriptorSet
+	);
+
+	vertexUniformBufferInfo.buffer = renderer->vertexUBO->subBuffers[0]->buffer;
+	vertexUniformBufferInfo.offset = 0;
+	vertexUniformBufferInfo.range = graphicsPipeline->vertexUBOBlockSize;
+
+	fragmentUniformBufferInfo.buffer = renderer->fragmentUBO->subBuffers[0]->buffer;
+	fragmentUniformBufferInfo.offset = 0;
+	fragmentUniformBufferInfo.range = graphicsPipeline->fragmentUBOBlockSize;
+
+	uboWriteDescriptorSets[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	uboWriteDescriptorSets[0].pNext = NULL;
+	uboWriteDescriptorSets[0].descriptorCount = 1;
+	uboWriteDescriptorSets[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+	uboWriteDescriptorSets[0].dstArrayElement = 0;
+	uboWriteDescriptorSets[0].dstBinding = 0;
+	uboWriteDescriptorSets[0].dstSet = graphicsPipeline->vertexUBODescriptorSet;
+	uboWriteDescriptorSets[0].pBufferInfo = &vertexUniformBufferInfo;
+	uboWriteDescriptorSets[0].pImageInfo = NULL;
+	uboWriteDescriptorSets[0].pTexelBufferView = NULL;
+
+	uboWriteDescriptorSets[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	uboWriteDescriptorSets[1].pNext = NULL;
+	uboWriteDescriptorSets[1].descriptorCount = 1;
+	uboWriteDescriptorSets[1].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+	uboWriteDescriptorSets[1].dstArrayElement = 0;
+	uboWriteDescriptorSets[1].dstBinding = 0;
+	uboWriteDescriptorSets[1].dstSet = graphicsPipeline->fragmentUBODescriptorSet;
+	uboWriteDescriptorSets[1].pBufferInfo = &fragmentUniformBufferInfo;
+	uboWriteDescriptorSets[1].pImageInfo = NULL;
+	uboWriteDescriptorSets[1].pTexelBufferView = NULL;
+
+	renderer->vkUpdateDescriptorSets(
+		renderer->logicalDevice,
+		2,
+		uboWriteDescriptorSets,
+		0,
+		NULL
+	);
 
 	return (REFRESH_GraphicsPipeline*) graphicsPipeline;
 }
@@ -4355,23 +4435,19 @@ static void VULKAN_SetIndexBufferData(
 
 static void VULKAN_PushVertexShaderParams(
 	REFRESH_Renderer *driverData,
-    REFRESH_GraphicsPipeline *pipeline,
 	void *data,
-	uint32_t elementCount,
-	uint32_t elementSizeInBytes
+	uint32_t elementCount
 ) {
 	VulkanRenderer* renderer = (VulkanRenderer*)driverData;
-	VulkanGraphicsPipeline* vulkanPipeline = (VulkanGraphicsPipeline*)pipeline;
 
 	renderer->vertexUBOOffset += renderer->vertexUBOBlockIncrement;
-	renderer->vertexUBOBlockSize = VULKAN_INTERNAL_NextHighestAlignment32(
-		renderer->vertexUBOOffset,
-		renderer->minUBOAlignment
-	);
-	renderer->vertexUBOBlockIncrement = renderer->vertexUBOBlockSize;
+	renderer->vertexUBOBlockIncrement = renderer->currentGraphicsPipeline->vertexUBOBlockSize;
 
-	if (renderer->vertexUBOOffset + renderer->vertexUBOBlockSize >= UBO_BUFFER_SIZE * renderer->frameIndex)
-	{
+	if (
+		renderer->vertexUBOOffset +
+		renderer->currentGraphicsPipeline->vertexUBOBlockSize >=
+		UBO_BUFFER_SIZE * renderer->frameIndex
+	) {
 		REFRESH_LogError("Vertex UBO overflow!");
 		return;
 	}
@@ -4381,29 +4457,25 @@ static void VULKAN_PushVertexShaderParams(
 		(REFRESH_Buffer*) renderer->vertexUBO,
 		renderer->vertexUBOOffset,
 		data,
-		elementCount * elementSizeInBytes
+		elementCount * renderer->currentGraphicsPipeline->fragmentUBOBlockSize
 	);
 }
 
 static void VULKAN_PushFragmentShaderParams(
 	REFRESH_Renderer *driverData,
-    REFRESH_GraphicsPipeline *pipeline,
 	void *data,
-	uint32_t elementCount,
-	uint32_t elementSizeInBytes
+	uint32_t elementCount
 ) {
 	VulkanRenderer* renderer = (VulkanRenderer*)driverData;
-	VulkanGraphicsPipeline* vulkanPipeline = (VulkanGraphicsPipeline*)pipeline;
 
 	renderer->fragmentUBOOffset += renderer->fragmentUBOBlockIncrement;
-	renderer->fragmentUBOBlockSize = VULKAN_INTERNAL_NextHighestAlignment32(
-		renderer->fragmentUBOOffset,
-		renderer->minUBOAlignment
-	);
-	renderer->fragmentUBOBlockIncrement = renderer->fragmentUBOBlockSize;
+	renderer->fragmentUBOBlockIncrement = renderer->currentGraphicsPipeline->fragmentUBOBlockSize;
 
-	if (renderer->fragmentUBOOffset + renderer->fragmentUBOBlockSize >= UBO_BUFFER_SIZE * renderer->frameIndex)
-	{
+	if (
+		renderer->fragmentUBOOffset +
+		renderer->currentGraphicsPipeline->fragmentUBOBlockSize >=
+		UBO_BUFFER_SIZE * (renderer->frameIndex + 1)
+	) {
 		REFRESH_LogError("Fragment UBO overflow!");
 		return;
 	}
@@ -4413,7 +4485,7 @@ static void VULKAN_PushFragmentShaderParams(
 		(REFRESH_Buffer*) renderer->fragmentUBO,
 		renderer->fragmentUBOOffset,
 		data,
-		elementCount * elementSizeInBytes
+		elementCount * renderer->currentGraphicsPipeline->fragmentUBOBlockSize
 	);
 }
 
@@ -5837,8 +5909,6 @@ static REFRESH_Device* VULKAN_CreateDevice(
 	VkDescriptorPoolSize poolSizes[2];
 	VkDescriptorSetAllocateInfo emptyVertexSamplerDescriptorAllocateInfo;
 	VkDescriptorSetAllocateInfo emptyFragmentSamplerDescriptorAllocateInfo;
-	VkDescriptorSetAllocateInfo vertexUBODescriptorAllocateInfo;
-	VkDescriptorSetAllocateInfo fragmentUBODescriptorAllocateInfo;
 
     result = (REFRESH_Device*) SDL_malloc(sizeof(REFRESH_Device));
     ASSIGN_DRIVER(VULKAN)
@@ -6099,6 +6169,42 @@ static REFRESH_Device* VULKAN_CreateDevice(
 		renderer->memoryAllocator->subAllocators[i].sortedFreeRegionCapacity = 4;
 	}
 
+	/* UBO Data */
+
+	renderer->vertexUBO = (VulkanBuffer*) SDL_malloc(sizeof(VulkanBuffer));
+
+	if (!VULKAN_INTERNAL_CreateBuffer(
+		renderer,
+		UBO_ACTUAL_SIZE,
+		RESOURCE_ACCESS_VERTEX_SHADER_READ_UNIFORM_BUFFER,
+		VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+		SUB_BUFFER_COUNT,
+		renderer->vertexUBO
+	)) {
+		REFRESH_LogError("Failed to create vertex UBO!");
+		return NULL;
+	}
+
+	renderer->fragmentUBO = (VulkanBuffer*) SDL_malloc(sizeof(VulkanBuffer));
+
+	if (!VULKAN_INTERNAL_CreateBuffer(
+		renderer,
+		UBO_ACTUAL_SIZE,
+		RESOURCE_ACCESS_FRAGMENT_SHADER_READ_UNIFORM_BUFFER,
+		VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+		SUB_BUFFER_COUNT,
+		renderer->fragmentUBO
+	)) {
+		REFRESH_LogError("Failed to create fragment UBO!");
+		return NULL;
+	}
+
+	renderer->minUBOAlignment = renderer->physicalDeviceProperties.properties.limits.minUniformBufferOffsetAlignment;
+	renderer->vertexUBOOffset = 0;
+	renderer->vertexUBOBlockIncrement = 0;
+	renderer->fragmentUBOOffset = 0;
+	renderer->fragmentUBOBlockIncrement = 0;
+
 	/* Set up UBO layouts */
 
 	emptyVertexSamplerLayoutBinding.binding = 0;
@@ -6188,16 +6294,18 @@ static REFRESH_Device* VULKAN_CreateDevice(
 
 	/* Default Descriptors */
 
+	/* default empty sampler descriptor sets */
 	poolSizes[0].descriptorCount = 2;
 	poolSizes[0].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 
-	poolSizes[1].descriptorCount = 2;
+	/* UBO descriptor sets */
+	poolSizes[1].descriptorCount = UBO_POOL_SIZE;
 	poolSizes[1].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
 
 	defaultDescriptorPoolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
 	defaultDescriptorPoolInfo.pNext = NULL;
 	defaultDescriptorPoolInfo.flags = 0;
-	defaultDescriptorPoolInfo.maxSets = 4;
+	defaultDescriptorPoolInfo.maxSets = UBO_POOL_SIZE + 2;
 	defaultDescriptorPoolInfo.poolSizeCount = 2;
 	defaultDescriptorPoolInfo.pPoolSizes = poolSizes;
 
@@ -6231,60 +6339,6 @@ static REFRESH_Device* VULKAN_CreateDevice(
 		&emptyFragmentSamplerDescriptorAllocateInfo,
 		&renderer->emptyFragmentSamplerDescriptorSet
 	);
-
-	vertexUBODescriptorAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-	vertexUBODescriptorAllocateInfo.pNext = NULL;
-	vertexUBODescriptorAllocateInfo.descriptorPool = renderer->defaultDescriptorPool;
-	vertexUBODescriptorAllocateInfo.descriptorSetCount = 1;
-	vertexUBODescriptorAllocateInfo.pSetLayouts = &renderer->vertexParamLayout;
-
-	renderer->vkAllocateDescriptorSets(
-		renderer->logicalDevice,
-		&vertexUBODescriptorAllocateInfo,
-		&renderer->vertexUBODescriptorSet
-	);
-
-	fragmentUBODescriptorAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-	fragmentUBODescriptorAllocateInfo.pNext = NULL;
-	fragmentUBODescriptorAllocateInfo.descriptorPool = renderer->defaultDescriptorPool;
-	fragmentUBODescriptorAllocateInfo.descriptorSetCount = 1;
-	fragmentUBODescriptorAllocateInfo.pSetLayouts = &renderer->fragmentParamLayout;
-
-	renderer->vkAllocateDescriptorSets(
-		renderer->logicalDevice,
-		&fragmentUBODescriptorAllocateInfo,
-		&renderer->fragmentUBODescriptorSet
-	);
-
-	/* UBO Data */
-
-	renderer->vertexUBO = (VulkanBuffer*) SDL_malloc(sizeof(VulkanBuffer));
-
-	if (!VULKAN_INTERNAL_CreateBuffer(
-		renderer,
-		UBO_ACTUAL_SIZE,
-		RESOURCE_ACCESS_VERTEX_SHADER_READ_UNIFORM_BUFFER,
-		VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-		SUB_BUFFER_COUNT,
-		renderer->vertexUBO
-	)) {
-		REFRESH_LogError("Failed to create vertex UBO!");
-		return NULL;
-	}
-
-	renderer->fragmentUBO = (VulkanBuffer*) SDL_malloc(sizeof(VulkanBuffer));
-
-	if (!VULKAN_INTERNAL_CreateBuffer(
-		renderer,
-		UBO_ACTUAL_SIZE,
-		RESOURCE_ACCESS_FRAGMENT_SHADER_READ_UNIFORM_BUFFER,
-		VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-		SUB_BUFFER_COUNT,
-		renderer->fragmentUBO
-	)) {
-		REFRESH_LogError("Failed to create fragment UBO!");
-		return NULL;
-	}
 
 	/* Initialize buffer space */
 
