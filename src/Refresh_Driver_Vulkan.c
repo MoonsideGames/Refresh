@@ -605,6 +605,7 @@ struct VulkanBuffer /* cast from FNA3D_Buffer */
 	VkDeviceSize size;
 	VulkanSubBuffer **subBuffers;
 	uint32_t subBufferCount;
+	uint32_t currentSubBufferIndex;
 	VulkanResourceAccessType resourceAccessType;
 	VkBufferUsageFlags usage;
 	uint8_t bound;
@@ -2050,6 +2051,7 @@ static uint8_t VULKAN_INTERNAL_CreateBuffer(
 	uint32_t i;
 
 	buffer->size = size;
+	buffer->currentSubBufferIndex = 0;
 	buffer->bound = 0;
 	buffer->boundSubmitted = 0;
 	buffer->resourceAccessType = resourceAccessType;
@@ -2123,7 +2125,7 @@ static uint8_t VULKAN_INTERNAL_CreateBuffer(
 		}
 
 		buffer->subBuffers[i]->resourceAccessType = resourceAccessType;
-		buffer->subBuffers[i]->bound = 0;
+		buffer->subBuffers[i]->bound = -1;
 
 		VULKAN_INTERNAL_BufferMemoryBarrier(
 			renderer,
@@ -4250,15 +4252,29 @@ static void VULKAN_INTERNAL_SetBufferData(
 	VulkanBuffer* vulkanBuffer = (VulkanBuffer*)buffer;
 	uint8_t* mapPointer;
 	VkResult vulkanResult;
+	uint32_t i;
 
-	#define SUBBUF vulkanBuffer->subBuffers[0] // FIXME: testing
+	#define CURIDX vulkanBuffer->currentSubBufferIndex
+	#define SUBBUF vulkanBuffer->subBuffers[CURIDX]
 
-	/* Buffer already bound, time to die */
-	if (SUBBUF->bound)
+	/* If buffer has not been bound this frame, set the first unbound index */
+	if (!vulkanBuffer->bound)
 	{
-		REFRESH_LogError("Buffer already bound. It is an error to write data to a buffer after binding before calling Present.");
+		for (i = 0; i < vulkanBuffer->subBufferCount; i += 1)
+		{
+			if (vulkanBuffer->subBuffers[i]->bound == -1)
+			{
+				break;
+			}
+		}
+		CURIDX = i;
+	}
+	else
+	{
+		REFRESH_LogError("Buffer already bound. It is an error to set vertex data after binding but before submitting.");
 		return;
 	}
+
 
 	/* Map the memory and perform the copy */
 	vulkanResult = renderer->vkMapMemory(
@@ -4287,6 +4303,7 @@ static void VULKAN_INTERNAL_SetBufferData(
 		SUBBUF->allocation->memory
 	);
 
+	#undef CURIDX
 	#undef SUBBUF
 }
 
@@ -4717,8 +4734,8 @@ static void VULKAN_INTERNAL_MarkAsBound(
 	VulkanRenderer* renderer,
 	VulkanBuffer* buf
 ) {
-	VulkanSubBuffer* subbuf = buf->subBuffers[renderer->frameIndex];
-	subbuf->bound = 1;
+	VulkanSubBuffer *subbuf = buf->subBuffers[buf->currentSubBufferIndex];
+	subbuf->bound = renderer->frameIndex;
 
 	/* Don't rebind a bound buffer */
 	if (buf->bound) return;
@@ -4949,7 +4966,7 @@ static void VULKAN_Submit(
 	VulkanRenderer* renderer = (VulkanRenderer*)driverData;
 	VkSubmitInfo submitInfo;
 	VkResult vulkanResult, presentResult = VK_SUCCESS;
-	uint32_t i;
+	uint32_t i, j;
 	uint8_t present;
 
 	VkPipelineStageFlags waitStages = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
@@ -5014,7 +5031,16 @@ static void VULKAN_Submit(
 	{
 		if (renderer->submittedBuffers[i] != NULL)
 		{
-			renderer->submittedBuffers[i]->subBuffers[renderer->frameIndex]->bound = 0;
+			renderer->submittedBuffers[i]->boundSubmitted = 0;
+
+			for (j = 0; j < renderer->submittedBuffers[i]->subBufferCount; j += 1)
+			{
+				if (renderer->submittedBuffers[i]->subBuffers[j]->bound == renderer->frameIndex)
+				{
+					renderer->submittedBuffers[i]->subBuffers[j]->bound = -1;
+				}
+			}
+
 			renderer->submittedBuffers[i] = NULL;
 		}
 	}
