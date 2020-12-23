@@ -179,8 +179,6 @@ struct REFRESH_Device
 
 	void (*DrawInstancedPrimitives)(
         REFRESH_Renderer *driverData,
-        REFRESH_GraphicsPipeline *graphicsPipeline,
-        REFRESH_PrimitiveType primitiveType,
         uint32_t baseVertex,
         uint32_t minVertexIndex,
         uint32_t numVertices,
@@ -193,8 +191,6 @@ struct REFRESH_Device
 
 	void (*DrawIndexedPrimitives)(
         REFRESH_Renderer *driverData,
-        REFRESH_GraphicsPipeline *graphicsPipeline,
-        REFRESH_PrimitiveType primitiveType,
         uint32_t baseVertex,
         uint32_t minVertexIndex,
         uint32_t numVertices,
@@ -206,8 +202,6 @@ struct REFRESH_Device
 
 	void (*DrawPrimitives)(
 	    REFRESH_Renderer *driverData,
-        REFRESH_GraphicsPipeline *graphicsPipeline,
-        REFRESH_PrimitiveType primitiveType,
         uint32_t vertexStart,
         uint32_t primitiveCount
 	);

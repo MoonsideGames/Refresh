@@ -435,7 +435,7 @@ typedef struct REFRESH_StencilOpState
 	uint32_t reference;
 } REFRESH_StencilOpState;
 
-typedef struct REFRESH_RenderTargetBlendState
+typedef struct REFRESH_ColorTargetBlendState
 {
 	uint8_t blendEnable;
 	REFRESH_BlendFactor srcColorBlendFactor;
@@ -445,7 +445,7 @@ typedef struct REFRESH_RenderTargetBlendState
 	REFRESH_BlendFactor dstAlphaBlendFactor;
 	REFRESH_BlendOp alphaBlendOp;
 	REFRESH_ColorComponentFlags colorWriteMask;
-} REFRESH_RenderTargetBlendState;
+} REFRESH_ColorTargetBlendState;
 
 typedef struct REFRESH_PipelineLayoutCreateInfo
 {
@@ -542,7 +542,7 @@ typedef struct REFRESH_ColorBlendState
 {
 	uint8_t blendOpEnable;
 	REFRESH_LogicOp logicOp;
-	const REFRESH_RenderTargetBlendState *blendStates;
+	const REFRESH_ColorTargetBlendState *blendStates;
 	uint32_t blendStateCount;
 	float blendConstants[4];
 } REFRESH_ColorBlendState;
@@ -634,8 +634,6 @@ REFRESHAPI void REFRESH_Clear(
 
 /* Draws data from vertex/index buffers with instancing enabled.
  *
- * graphicsPipeline:	The graphics pipeline through which to draw.
- * primitiveType:		The primitive topology of the vertex data.
  * baseVertex:			The starting offset to read from the vertex buffer.
  * minVertexIndex:		The lowest index value expected from the index buffer.
  * numVertices:			The highest offset expected from the index buffer.
@@ -647,8 +645,6 @@ REFRESHAPI void REFRESH_Clear(
  */
 REFRESHAPI void REFRESH_DrawInstancedPrimitives(
 	REFRESH_Device *device,
-	REFRESH_GraphicsPipeline *graphicsPipeline,
-	REFRESH_PrimitiveType primitiveType,
 	uint32_t baseVertex,
 	uint32_t minVertexIndex,
 	uint32_t numVertices,
@@ -661,8 +657,6 @@ REFRESHAPI void REFRESH_DrawInstancedPrimitives(
 
 /* Draws data from vertex/index buffers.
  *
- * graphicsPipeline:	The graphics pipeline through which to draw.
- * primitiveType:		The primitive topology of the vertex data.
  * baseVertex:			The starting offset to read from the vertex buffer.
  * minVertexIndex:		The lowest index value expected from the index buffer.
  * numVertices:			The highest offset expected from the index buffer.
@@ -673,8 +667,6 @@ REFRESHAPI void REFRESH_DrawInstancedPrimitives(
  */
 REFRESHAPI void REFRESH_DrawIndexedPrimitives(
 	REFRESH_Device *device,
-	REFRESH_GraphicsPipeline *graphicsPipeline,
-	REFRESH_PrimitiveType primitiveType,
 	uint32_t baseVertex,
 	uint32_t minVertexIndex,
 	uint32_t numVertices,
@@ -686,15 +678,11 @@ REFRESHAPI void REFRESH_DrawIndexedPrimitives(
 
 /* Draws data from vertex buffers.
  *
- * graphicsPipeline:	The graphics pipeline through which to draw.
- * primitiveType:		The primitive topology of the vertex data.
  * vertexStart:			The starting offset to read from the vertex buffer.
  * primitiveCount:		The number of primitives to draw.
  */
 REFRESHAPI void REFRESH_DrawPrimitives(
 	REFRESH_Device *device,
-	REFRESH_GraphicsPipeline *graphicsPipeline,
-	REFRESH_PrimitiveType primitiveType,
 	uint32_t vertexStart,
 	uint32_t primitiveCount
 );

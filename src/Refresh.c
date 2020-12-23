@@ -161,8 +161,6 @@ void REFRESH_Clear(
 
 void REFRESH_DrawIndexedPrimitives(
 	REFRESH_Device *device,
-    REFRESH_GraphicsPipeline *graphicsPipeline,
-	REFRESH_PrimitiveType primitiveType,
 	uint32_t baseVertex,
 	uint32_t minVertexIndex,
 	uint32_t numVertices,
@@ -174,8 +172,6 @@ void REFRESH_DrawIndexedPrimitives(
     NULL_RETURN(device);
     device->DrawIndexedPrimitives(
         device->driverData,
-        graphicsPipeline,
-        primitiveType,
         baseVertex,
         minVertexIndex,
         numVertices,
@@ -188,8 +184,6 @@ void REFRESH_DrawIndexedPrimitives(
 
 void REFRESH_DrawInstancedPrimitives(
 	REFRESH_Device *device,
-    REFRESH_GraphicsPipeline *graphicsPipeline,
-	REFRESH_PrimitiveType primitiveType,
 	uint32_t baseVertex,
 	uint32_t minVertexIndex,
 	uint32_t numVertices,
@@ -202,8 +196,6 @@ void REFRESH_DrawInstancedPrimitives(
     NULL_RETURN(device);
     device->DrawInstancedPrimitives(
         device->driverData,
-        graphicsPipeline,
-        primitiveType,
         baseVertex,
         minVertexIndex,
         numVertices,
@@ -217,16 +209,12 @@ void REFRESH_DrawInstancedPrimitives(
 
 void REFRESH_DrawPrimitives(
 	REFRESH_Device *device,
-    REFRESH_GraphicsPipeline *graphicsPipeline,
-	REFRESH_PrimitiveType primitiveType,
 	uint32_t vertexStart,
 	uint32_t primitiveCount
 ) {
     NULL_RETURN(device);
     device->DrawPrimitives(
         device->driverData,
-        graphicsPipeline,
-        primitiveType,
         vertexStart,
         primitiveCount
     );

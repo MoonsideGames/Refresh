@@ -629,6 +629,20 @@ typedef struct SwapChainSupportDetails
 	uint32_t presentModesLength;
 } SwapChainSupportDetails;
 
+typedef struct VulkanGraphicsPipeline
+{
+	VkPipeline pipeline;
+	VkPipelineLayout layout;
+	REFRESH_PrimitiveType primitiveType;
+	VkDescriptorPool descriptorPool;
+	VkDescriptorSetLayout vertexSamplerLayout;
+	uint32_t vertexSamplerBindingCount;
+	VkDescriptorSetLayout fragmentSamplerLayout;
+	uint32_t fragmentSamplerBindingCount;
+	VkDescriptorSet vertexSamplerDescriptorSet; /* updated by SetVertexSamplers */
+	VkDescriptorSet fragmentSamplerDescriptorSet; /* updated by SetFragmentSamplers */
+} VulkanGraphicsPipeline;
+
 typedef struct VulkanRenderer
 {
     VkInstance instance;
@@ -680,6 +694,8 @@ typedef struct VulkanRenderer
 	uint32_t currentCommandCount;
 	VkCommandBuffer currentCommandBuffer;
 	uint32_t numActiveCommands;
+
+	VulkanGraphicsPipeline *currentGraphicsPipeline;
 
 	/*
 	 * TODO: we can get rid of this reference when we
@@ -778,21 +794,6 @@ typedef struct VulkanDepthStencilTarget
 	VulkanDepthStencilTexture *texture;
 	VkImageView view;
 } VulkanDepthStencilTarget;
-
-/* Pipeline */
-
-typedef struct VulkanGraphicsPipeline
-{
-	VkPipeline pipeline;
-	VkPipelineLayout layout;
-	VkDescriptorPool descriptorPool;
-	VkDescriptorSetLayout vertexSamplerLayout;
-	uint32_t vertexSamplerBindingCount;
-	VkDescriptorSetLayout fragmentSamplerLayout;
-	uint32_t fragmentSamplerBindingCount;
-	VkDescriptorSet vertexSamplerDescriptorSet; /* updated by SetVertexSamplers */
-	VkDescriptorSet fragmentSamplerDescriptorSet; /* updated by SetFragmentSamplers */
-} VulkanGraphicsPipeline;
 
 /* Forward declarations */
 
@@ -2249,8 +2250,6 @@ static void VULKAN_Clear(
 
 static void VULKAN_DrawInstancedPrimitives(
 	REFRESH_Renderer *driverData,
-	REFRESH_GraphicsPipeline *graphicsPipeline,
-	REFRESH_PrimitiveType primitiveType,
 	uint32_t baseVertex,
 	uint32_t minVertexIndex,
 	uint32_t numVertices,
@@ -2261,12 +2260,11 @@ static void VULKAN_DrawInstancedPrimitives(
 	REFRESH_IndexElementSize indexElementSize
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
-	VulkanGraphicsPipeline *pipeline = (VulkanGraphicsPipeline*) graphicsPipeline;
 	VkDescriptorSet descriptorSets[4];
 	uint32_t dynamicOffsets[2];
 
-	descriptorSets[0] = pipeline->vertexSamplerDescriptorSet;
-	descriptorSets[1] = pipeline->fragmentSamplerDescriptorSet;
+	descriptorSets[0] = renderer->currentGraphicsPipeline->vertexSamplerDescriptorSet;
+	descriptorSets[1] = renderer->currentGraphicsPipeline->fragmentSamplerDescriptorSet;
 	descriptorSets[2] = renderer->vertexUBODescriptorSet;
 	descriptorSets[3] = renderer->fragmentUBODescriptorSet;
 
@@ -2276,7 +2274,7 @@ static void VULKAN_DrawInstancedPrimitives(
 	RECORD_CMD(renderer->vkCmdBindDescriptorSets(
 		renderer->currentCommandBuffer,
 		VK_PIPELINE_BIND_POINT_GRAPHICS,
-		pipeline->layout,
+		renderer->currentGraphicsPipeline->layout,
 		0,
 		4,
 		descriptorSets,
@@ -2286,7 +2284,10 @@ static void VULKAN_DrawInstancedPrimitives(
 
 	RECORD_CMD(renderer->vkCmdDrawIndexed(
 		renderer->currentCommandBuffer,
-		PrimitiveVerts(primitiveType, primitiveCount),
+		PrimitiveVerts(
+			renderer->currentGraphicsPipeline->primitiveType,
+			primitiveCount
+		),
 		instanceCount,
 		startIndex,
 		baseVertex,
@@ -2296,8 +2297,6 @@ static void VULKAN_DrawInstancedPrimitives(
 
 static void VULKAN_DrawIndexedPrimitives(
 	REFRESH_Renderer *driverData,
-	REFRESH_GraphicsPipeline *graphicsPipeline,
-	REFRESH_PrimitiveType primitiveType,
 	uint32_t baseVertex,
 	uint32_t minVertexIndex,
 	uint32_t numVertices,
@@ -2308,8 +2307,6 @@ static void VULKAN_DrawIndexedPrimitives(
 ) {
 	VULKAN_DrawInstancedPrimitives(
 		driverData,
-		graphicsPipeline,
-		primitiveType,
 		baseVertex,
 		minVertexIndex,
 		numVertices,
@@ -2323,18 +2320,15 @@ static void VULKAN_DrawIndexedPrimitives(
 
 static void VULKAN_DrawPrimitives(
 	REFRESH_Renderer *driverData,
-	REFRESH_GraphicsPipeline *graphicsPipeline,
-	REFRESH_PrimitiveType primitiveType,
 	uint32_t vertexStart,
 	uint32_t primitiveCount
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
-	VulkanGraphicsPipeline *pipeline = (VulkanGraphicsPipeline*) graphicsPipeline;
 	VkDescriptorSet descriptorSets[4];
 	uint32_t dynamicOffsets[2];
 
-	descriptorSets[0] = pipeline->vertexSamplerDescriptorSet;
-	descriptorSets[1] = pipeline->fragmentSamplerDescriptorSet;
+	descriptorSets[0] = renderer->currentGraphicsPipeline->vertexSamplerDescriptorSet;
+	descriptorSets[1] = renderer->currentGraphicsPipeline->fragmentSamplerDescriptorSet;
 	descriptorSets[2] = renderer->vertexUBODescriptorSet;
 	descriptorSets[3] = renderer->fragmentUBODescriptorSet;
 
@@ -2344,7 +2338,7 @@ static void VULKAN_DrawPrimitives(
 	RECORD_CMD(renderer->vkCmdBindDescriptorSets(
 		renderer->currentCommandBuffer,
 		VK_PIPELINE_BIND_POINT_GRAPHICS,
-		pipeline->layout,
+		renderer->currentGraphicsPipeline->layout,
 		0,
 		4,
 		descriptorSets,
@@ -2355,7 +2349,7 @@ static void VULKAN_DrawPrimitives(
 	RECORD_CMD(renderer->vkCmdDraw(
 		renderer->currentCommandBuffer,
 		PrimitiveVerts(
-			primitiveType,
+			renderer->currentGraphicsPipeline->primitiveType,
 			primitiveCount
 		),
 		1,
@@ -3013,6 +3007,7 @@ static REFRESH_GraphicsPipeline* VULKAN_CreateGraphicsPipeline(
 	graphicsPipeline->vertexSamplerBindingCount = pipelineCreateInfo->pipelineLayoutCreateInfo.vertexSamplerBindingCount;
 	graphicsPipeline->fragmentSamplerBindingCount = pipelineCreateInfo->pipelineLayoutCreateInfo.fragmentSamplerBindingCount;
 	graphicsPipeline->layout = pipelineLayout;
+	graphicsPipeline->primitiveType = pipelineCreateInfo->topologyState.topology;
 
 	/* Pipeline */
 
@@ -4728,6 +4723,8 @@ static void VULKAN_BindGraphicsPipeline(
 		VK_PIPELINE_BIND_POINT_GRAPHICS,
 		pipeline->pipeline
 	));
+
+	renderer->currentGraphicsPipeline = pipeline;
 }
 
 static void VULKAN_INTERNAL_MarkAsBound(
