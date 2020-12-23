@@ -2117,7 +2117,7 @@ static uint8_t VULKAN_INTERNAL_CreateBuffer(
 		}
 
 		buffer->subBuffers[i]->resourceAccessType = resourceAccessType;
-		buffer->subBuffers[i]->bound = -1;
+		buffer->subBuffers[i]->bound = 0;
 
 		VULKAN_INTERNAL_BufferMemoryBarrier(
 			renderer,
@@ -2976,6 +2976,8 @@ static REFRESH_GraphicsPipeline* VULKAN_CreateGraphicsPipeline(
 	pipelineLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
 	pipelineLayoutCreateInfo.pNext = NULL;
 	pipelineLayoutCreateInfo.flags = 0;
+	pipelineLayoutCreateInfo.pPushConstantRanges = NULL;
+	pipelineLayoutCreateInfo.pushConstantRangeCount = 0;
 	pipelineLayoutCreateInfo.setLayoutCount = 4;
 	pipelineLayoutCreateInfo.pSetLayouts = setLayouts;
 
@@ -2995,6 +2997,7 @@ static REFRESH_GraphicsPipeline* VULKAN_CreateGraphicsPipeline(
 	/* Pipeline */
 
 	vkPipelineCreateInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+	vkPipelineCreateInfo.pNext = NULL;
 	vkPipelineCreateInfo.flags = 0;
 	vkPipelineCreateInfo.stageCount = 2;
 	vkPipelineCreateInfo.pStages = shaderStageCreateInfos;
@@ -4679,7 +4682,6 @@ static void VULKAN_BindGraphicsPipeline(
 		VK_PIPELINE_BIND_POINT_GRAPHICS,
 		pipeline->pipeline
 	));
-    SDL_assert(0);
 }
 
 static void VULKAN_INTERNAL_MarkAsBound(

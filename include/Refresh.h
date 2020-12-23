@@ -550,15 +550,15 @@ typedef struct REFRESH_ColorBlendState
 
 typedef struct REFRESH_GraphicsPipelineCreateInfo
 {
-	const REFRESH_ShaderStageState vertexShaderState;
-	const REFRESH_ShaderStageState fragmentShaderState;
-	const REFRESH_VertexInputState vertexInputState;
-	const REFRESH_TopologyState topologyState;
-	const REFRESH_ViewportState viewportState;
-	const REFRESH_RasterizerState rasterizerState;
-	const REFRESH_MultisampleState multisampleState;
-	const REFRESH_DepthStencilState depthStencilState;
-	const REFRESH_ColorBlendState colorBlendState;
+	REFRESH_ShaderStageState vertexShaderState;
+	REFRESH_ShaderStageState fragmentShaderState;
+	REFRESH_VertexInputState vertexInputState;
+	REFRESH_TopologyState topologyState;
+	REFRESH_ViewportState viewportState;
+	REFRESH_RasterizerState rasterizerState;
+	REFRESH_MultisampleState multisampleState;
+	REFRESH_DepthStencilState depthStencilState;
+	REFRESH_ColorBlendState colorBlendState;
 	REFRESH_PipelineLayoutCreateInfo pipelineLayoutCreateInfo;
 	REFRESH_RenderPass *renderPass;
 } REFRESH_GraphicsPipelineCreateInfo;
