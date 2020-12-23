@@ -687,7 +687,13 @@ typedef struct VulkanRenderer
 	VkDescriptorPool *descriptorPools;
 	uint32_t descriptorPoolCount;
 
-	VkDescriptorPool UBODescriptorPool;
+	/* initialize baseline descriptor info */
+	VkDescriptorPool defaultDescriptorPool;
+	VkDescriptorSetLayout emptyVertexSamplerLayout;
+	VkDescriptorSetLayout emptyFragmentSamplerLayout;
+	VkDescriptorSet emptyVertexSamplerDescriptorSet;
+	VkDescriptorSet emptyFragmentSamplerDescriptorSet;
+
 	VkDescriptorSetLayout vertexParamLayout;
 	VkDescriptorSetLayout fragmentParamLayout;
 	VkDescriptorSet vertexUBODescriptorSet;
@@ -2894,80 +2900,92 @@ static REFRESH_GraphicsPipeline* VULKAN_CreateGraphicsPipeline(
 	/* TODO: should we hash these? */
 
 	/* Vertex sampler layout */
-	/* TODO: should we let the user split up images and samplers? */
-	for (i = 0; i < pipelineCreateInfo->pipelineLayoutCreateInfo.vertexSamplerBindingCount; i += 1)
+	if (pipelineCreateInfo->pipelineLayoutCreateInfo.vertexSamplerBindingCount == 0)
 	{
-		vertexSamplerLayoutBindings[i].binding =
-			pipelineCreateInfo->pipelineLayoutCreateInfo.vertexSamplerBindings[i];
-		vertexSamplerLayoutBindings[i].descriptorCount = 1;
-		vertexSamplerLayoutBindings[i].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-		vertexSamplerLayoutBindings[i].stageFlags = VK_PIPELINE_STAGE_VERTEX_SHADER_BIT;
-		vertexSamplerLayoutBindings[i].pImmutableSamplers = NULL;
+		setLayouts[0] = renderer->emptyVertexSamplerLayout;
 	}
-
-	setLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-	setLayoutCreateInfo.pNext = NULL;
-	setLayoutCreateInfo.flags = 0;
-	setLayoutCreateInfo.bindingCount = pipelineCreateInfo->pipelineLayoutCreateInfo.vertexSamplerBindingCount;
-	setLayoutCreateInfo.pBindings = vertexSamplerLayoutBindings;
-
-	vulkanResult = renderer->vkCreateDescriptorSetLayout(
-		renderer->logicalDevice,
-		&setLayoutCreateInfo,
-		NULL,
-		&setLayouts[0]
-	);
-
-	if (vulkanResult != VK_SUCCESS)
+	else
 	{
-		LogVulkanResult("vkCreateDescriptorSetLayout", vulkanResult);
-		REFRESH_LogError("Failed to create vertex sampler layout!");
+		for (i = 0; i < pipelineCreateInfo->pipelineLayoutCreateInfo.vertexSamplerBindingCount; i += 1)
+		{
+			vertexSamplerLayoutBindings[i].binding =
+				pipelineCreateInfo->pipelineLayoutCreateInfo.vertexSamplerBindings[i];
+			vertexSamplerLayoutBindings[i].descriptorCount = 1;
+			vertexSamplerLayoutBindings[i].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+			vertexSamplerLayoutBindings[i].stageFlags = VK_PIPELINE_STAGE_VERTEX_SHADER_BIT;
+			vertexSamplerLayoutBindings[i].pImmutableSamplers = NULL;
+		}
 
-		SDL_stack_free(vertexInputBindingDescriptions);
-		SDL_stack_free(vertexInputAttributeDescriptions);
-		SDL_stack_free(viewports);
-		SDL_stack_free(scissors);
-		SDL_stack_free(colorBlendAttachmentStates);
-		SDL_stack_free(vertexSamplerLayoutBindings);
-		SDL_stack_free(fragmentSamplerLayoutBindings);
-		return NULL;
+		setLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+		setLayoutCreateInfo.pNext = NULL;
+		setLayoutCreateInfo.flags = 0;
+		setLayoutCreateInfo.bindingCount = pipelineCreateInfo->pipelineLayoutCreateInfo.vertexSamplerBindingCount;
+		setLayoutCreateInfo.pBindings = vertexSamplerLayoutBindings;
+
+		vulkanResult = renderer->vkCreateDescriptorSetLayout(
+			renderer->logicalDevice,
+			&setLayoutCreateInfo,
+			NULL,
+			&setLayouts[0]
+		);
+
+		if (vulkanResult != VK_SUCCESS)
+		{
+			LogVulkanResult("vkCreateDescriptorSetLayout", vulkanResult);
+			REFRESH_LogError("Failed to create vertex sampler layout!");
+
+			SDL_stack_free(vertexInputBindingDescriptions);
+			SDL_stack_free(vertexInputAttributeDescriptions);
+			SDL_stack_free(viewports);
+			SDL_stack_free(scissors);
+			SDL_stack_free(colorBlendAttachmentStates);
+			SDL_stack_free(vertexSamplerLayoutBindings);
+			SDL_stack_free(fragmentSamplerLayoutBindings);
+			return NULL;
+		}
 	}
 
 	/* Frag sampler layout */
-
-	for (i = 0; i < pipelineCreateInfo->pipelineLayoutCreateInfo.fragmentSamplerBindingCount; i += 1)
+	if (pipelineCreateInfo->pipelineLayoutCreateInfo.fragmentSamplerBindingCount == 0)
 	{
-		fragmentSamplerLayoutBindings[i].binding =
-			pipelineCreateInfo->pipelineLayoutCreateInfo.fragmentSamplerBindings[i];
-		fragmentSamplerLayoutBindings[i].descriptorCount = 1;
-		fragmentSamplerLayoutBindings[i].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-		fragmentSamplerLayoutBindings[i].stageFlags = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-		fragmentSamplerLayoutBindings[i].pImmutableSamplers = NULL;
+		setLayouts[1] = renderer->emptyFragmentSamplerLayout;
 	}
-
-	setLayoutCreateInfo.bindingCount = pipelineCreateInfo->pipelineLayoutCreateInfo.fragmentSamplerBindingCount;
-	setLayoutCreateInfo.pBindings = fragmentSamplerLayoutBindings;
-
-	vulkanResult = renderer->vkCreateDescriptorSetLayout(
-		renderer->logicalDevice,
-		&setLayoutCreateInfo,
-		NULL,
-		&setLayouts[1]
-	);
-
-	if (vulkanResult != VK_SUCCESS)
+	else
 	{
-		LogVulkanResult("vkCreateDescriptorSetLayout", vulkanResult);
-		REFRESH_LogError("Failed to create fragment sampler layout!");
+		for (i = 0; i < pipelineCreateInfo->pipelineLayoutCreateInfo.fragmentSamplerBindingCount; i += 1)
+		{
+			fragmentSamplerLayoutBindings[i].binding =
+				pipelineCreateInfo->pipelineLayoutCreateInfo.fragmentSamplerBindings[i];
+			fragmentSamplerLayoutBindings[i].descriptorCount = 1;
+			fragmentSamplerLayoutBindings[i].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+			fragmentSamplerLayoutBindings[i].stageFlags = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+			fragmentSamplerLayoutBindings[i].pImmutableSamplers = NULL;
+		}
 
-		SDL_stack_free(vertexInputBindingDescriptions);
-		SDL_stack_free(vertexInputAttributeDescriptions);
-		SDL_stack_free(viewports);
-		SDL_stack_free(scissors);
-		SDL_stack_free(colorBlendAttachmentStates);
-		SDL_stack_free(vertexSamplerLayoutBindings);
-		SDL_stack_free(fragmentSamplerLayoutBindings);
-		return NULL;
+		setLayoutCreateInfo.bindingCount = pipelineCreateInfo->pipelineLayoutCreateInfo.fragmentSamplerBindingCount;
+		setLayoutCreateInfo.pBindings = fragmentSamplerLayoutBindings;
+
+		vulkanResult = renderer->vkCreateDescriptorSetLayout(
+			renderer->logicalDevice,
+			&setLayoutCreateInfo,
+			NULL,
+			&setLayouts[1]
+		);
+
+		if (vulkanResult != VK_SUCCESS)
+		{
+			LogVulkanResult("vkCreateDescriptorSetLayout", vulkanResult);
+			REFRESH_LogError("Failed to create fragment sampler layout!");
+
+			SDL_stack_free(vertexInputBindingDescriptions);
+			SDL_stack_free(vertexInputAttributeDescriptions);
+			SDL_stack_free(viewports);
+			SDL_stack_free(scissors);
+			SDL_stack_free(colorBlendAttachmentStates);
+			SDL_stack_free(vertexSamplerLayoutBindings);
+			SDL_stack_free(fragmentSamplerLayoutBindings);
+			return NULL;
+		}
 	}
 
 	setLayouts[2] = renderer->vertexParamLayout;
@@ -4677,6 +4695,17 @@ static void VULKAN_BindGraphicsPipeline(
 	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
 	VulkanGraphicsPipeline* pipeline = (VulkanGraphicsPipeline*) graphicsPipeline;
 
+	/* bind dummy samplers */
+	if (pipeline->vertexSamplerBindingCount == 0)
+	{
+		pipeline->vertexSamplerDescriptorSet = renderer->emptyVertexSamplerDescriptorSet;
+	}
+
+	if (pipeline->fragmentSamplerBindingCount == 0)
+	{
+		pipeline->fragmentSamplerDescriptorSet = renderer->emptyFragmentSamplerDescriptorSet;
+	}
+
 	RECORD_CMD(renderer->vkCmdBindPipeline(
 		renderer->currentCommandBuffer,
 		VK_PIPELINE_BIND_POINT_GRAPHICS,
@@ -5713,12 +5742,16 @@ static REFRESH_Device* VULKAN_CreateDevice(
 
 	/* Variables: Shader param layouts */
 	VkDescriptorSetLayoutCreateInfo setLayoutCreateInfo;
+	VkDescriptorSetLayoutBinding emptyVertexSamplerLayoutBinding;
+	VkDescriptorSetLayoutBinding emptyFragmentSamplerLayoutBinding;
 	VkDescriptorSetLayoutBinding vertexParamLayoutBinding;
 	VkDescriptorSetLayoutBinding fragmentParamLayoutBinding;
 
 	/* Variables: UBO Creation */
-	VkDescriptorPoolCreateInfo uboDescriptorPoolInfo;
-	VkDescriptorPoolSize uboPoolSize;
+	VkDescriptorPoolCreateInfo defaultDescriptorPoolInfo;
+	VkDescriptorPoolSize poolSizes[2];
+	VkDescriptorSetAllocateInfo emptyVertexSamplerDescriptorAllocateInfo;
+	VkDescriptorSetAllocateInfo emptyFragmentSamplerDescriptorAllocateInfo;
 	VkDescriptorSetAllocateInfo vertexUBODescriptorAllocateInfo;
 	VkDescriptorSetAllocateInfo fragmentUBODescriptorAllocateInfo;
 
@@ -5983,6 +6016,44 @@ static REFRESH_Device* VULKAN_CreateDevice(
 
 	/* Set up UBO layouts */
 
+	emptyVertexSamplerLayoutBinding.binding = 0;
+	emptyVertexSamplerLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	emptyVertexSamplerLayoutBinding.descriptorCount = 0;
+	emptyVertexSamplerLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+	emptyVertexSamplerLayoutBinding.pImmutableSamplers = NULL;
+
+	setLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+	setLayoutCreateInfo.pNext = NULL;
+	setLayoutCreateInfo.flags = 0;
+	setLayoutCreateInfo.bindingCount = 1;
+	setLayoutCreateInfo.pBindings = &emptyVertexSamplerLayoutBinding;
+
+	vulkanResult = renderer->vkCreateDescriptorSetLayout(
+		renderer->logicalDevice,
+		&setLayoutCreateInfo,
+		NULL,
+		&renderer->emptyVertexSamplerLayout
+	);
+
+	emptyFragmentSamplerLayoutBinding.binding = 0;
+	emptyFragmentSamplerLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	emptyFragmentSamplerLayoutBinding.descriptorCount = 0;
+	emptyFragmentSamplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+	emptyFragmentSamplerLayoutBinding.pImmutableSamplers = NULL;
+
+	setLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+	setLayoutCreateInfo.pNext = NULL;
+	setLayoutCreateInfo.flags = 0;
+	setLayoutCreateInfo.bindingCount = 1;
+	setLayoutCreateInfo.pBindings = &emptyFragmentSamplerLayoutBinding;
+
+	vulkanResult = renderer->vkCreateDescriptorSetLayout(
+		renderer->logicalDevice,
+		&setLayoutCreateInfo,
+		NULL,
+		&renderer->emptyFragmentSamplerLayout
+	);
+
 	vertexParamLayoutBinding.binding = 0;
 	vertexParamLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
 	vertexParamLayoutBinding.descriptorCount = 1;
@@ -6030,28 +6101,55 @@ static REFRESH_Device* VULKAN_CreateDevice(
 		return NULL;
 	}
 
-	/* UBO Descriptors */
+	/* Default Descriptors */
 
-	uboPoolSize.descriptorCount = 2;
-	uboPoolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+	poolSizes[0].descriptorCount = 2;
+	poolSizes[0].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 
-	uboDescriptorPoolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-	uboDescriptorPoolInfo.pNext = NULL;
-	uboDescriptorPoolInfo.flags = 0;
-	uboDescriptorPoolInfo.maxSets = 2;
-	uboDescriptorPoolInfo.poolSizeCount = 1;
-	uboDescriptorPoolInfo.pPoolSizes = &uboPoolSize;
+	poolSizes[1].descriptorCount = 2;
+	poolSizes[1].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+
+	defaultDescriptorPoolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+	defaultDescriptorPoolInfo.pNext = NULL;
+	defaultDescriptorPoolInfo.flags = 0;
+	defaultDescriptorPoolInfo.maxSets = 4;
+	defaultDescriptorPoolInfo.poolSizeCount = 2;
+	defaultDescriptorPoolInfo.pPoolSizes = poolSizes;
 
 	renderer->vkCreateDescriptorPool(
 		renderer->logicalDevice,
-		&uboDescriptorPoolInfo,
+		&defaultDescriptorPoolInfo,
 		NULL,
-		&renderer->UBODescriptorPool
+		&renderer->defaultDescriptorPool
+	);
+
+	emptyVertexSamplerDescriptorAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+	emptyVertexSamplerDescriptorAllocateInfo.pNext = NULL;
+	emptyVertexSamplerDescriptorAllocateInfo.descriptorPool = renderer->defaultDescriptorPool;
+	emptyVertexSamplerDescriptorAllocateInfo.descriptorSetCount = 1;
+	emptyVertexSamplerDescriptorAllocateInfo.pSetLayouts = &renderer->emptyVertexSamplerLayout;
+
+	renderer->vkAllocateDescriptorSets(
+		renderer->logicalDevice,
+		&emptyVertexSamplerDescriptorAllocateInfo,
+		&renderer->emptyVertexSamplerDescriptorSet
+	);
+
+	emptyFragmentSamplerDescriptorAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+	emptyFragmentSamplerDescriptorAllocateInfo.pNext = NULL;
+	emptyFragmentSamplerDescriptorAllocateInfo.descriptorPool = renderer->defaultDescriptorPool;
+	emptyFragmentSamplerDescriptorAllocateInfo.descriptorSetCount = 1;
+	emptyFragmentSamplerDescriptorAllocateInfo.pSetLayouts = &renderer->emptyFragmentSamplerLayout;
+
+	renderer->vkAllocateDescriptorSets(
+		renderer->logicalDevice,
+		&emptyFragmentSamplerDescriptorAllocateInfo,
+		&renderer->emptyFragmentSamplerDescriptorSet
 	);
 
 	vertexUBODescriptorAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
 	vertexUBODescriptorAllocateInfo.pNext = NULL;
-	vertexUBODescriptorAllocateInfo.descriptorPool = renderer->UBODescriptorPool;
+	vertexUBODescriptorAllocateInfo.descriptorPool = renderer->defaultDescriptorPool;
 	vertexUBODescriptorAllocateInfo.descriptorSetCount = 1;
 	vertexUBODescriptorAllocateInfo.pSetLayouts = &renderer->vertexParamLayout;
 
@@ -6063,7 +6161,7 @@ static REFRESH_Device* VULKAN_CreateDevice(
 
 	fragmentUBODescriptorAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
 	fragmentUBODescriptorAllocateInfo.pNext = NULL;
-	fragmentUBODescriptorAllocateInfo.descriptorPool = renderer->UBODescriptorPool;
+	fragmentUBODescriptorAllocateInfo.descriptorPool = renderer->defaultDescriptorPool;
 	fragmentUBODescriptorAllocateInfo.descriptorSetCount = 1;
 	fragmentUBODescriptorAllocateInfo.pSetLayouts = &renderer->fragmentParamLayout;
 
