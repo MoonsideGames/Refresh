@@ -5022,12 +5022,12 @@ static void VULKAN_SetVertexSamplers(
 	VulkanGraphicsPipeline *graphicsPipeline = (VulkanGraphicsPipeline*) pipeline;
 	SamplerDescriptorSetData vertexSamplerDescriptorSetData;
 
-	samplerCount = graphicsPipeline->pipelineLayout->vertexSamplerDescriptorSetCache->samplerBindingCount;
-
-	if (samplerCount == 0)
+	if (graphicsPipeline->pipelineLayout->vertexSamplerDescriptorSetCache == NULL)
 	{
 		return;
 	}
+
+	samplerCount = graphicsPipeline->pipelineLayout->vertexSamplerDescriptorSetCache->samplerBindingCount;
 
 	for (i = 0; i < samplerCount; i += 1)
 	{
@@ -5057,12 +5057,12 @@ static void VULKAN_SetFragmentSamplers(
 	VulkanGraphicsPipeline *graphicsPipeline = (VulkanGraphicsPipeline*) pipeline;
 	SamplerDescriptorSetData fragmentSamplerDescriptorSetData;
 
-	samplerCount = graphicsPipeline->pipelineLayout->fragmentSamplerDescriptorSetCache->samplerBindingCount;
-
-	if (samplerCount == 0)
+	if (graphicsPipeline->pipelineLayout->vertexSamplerDescriptorSetCache == NULL)
 	{
 		return;
 	}
+
+	samplerCount = graphicsPipeline->pipelineLayout->fragmentSamplerDescriptorSetCache->samplerBindingCount;
 
 	for (i = 0; i < samplerCount; i += 1)
 	{
