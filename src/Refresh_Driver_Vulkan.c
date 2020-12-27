@@ -77,6 +77,7 @@ static uint32_t deviceExtensionCount = SDL_arraysize(deviceExtensionNames);
 #define SAMPLER_POOL_STARTING_SIZE 128
 #define UBO_POOL_SIZE 1000
 #define SUB_BUFFER_COUNT 2
+#define DESCRIPTOR_SET_DEACTIVATE_FRAMES 10
 
 #define IDENTITY_SWIZZLE \
 { \
@@ -3082,6 +3083,11 @@ static VulkanGraphicsPipelineLayout* VULKAN_INTERNAL_FetchGraphicsPipelineLayout
 		vulkanGraphicsPipelineLayout
 	);
 
+	/* If the binding count is 0
+	 * we can just bind the same descriptor set
+	 * so no cache is needed
+	 */
+
 	if (vertexSamplerBindingCount == 0)
 	{
 		vulkanGraphicsPipelineLayout->vertexSamplerDescriptorSetCache = NULL;
@@ -3412,7 +3418,6 @@ static REFRESH_GraphicsPipeline* VULKAN_CreateGraphicsPipeline(
 
 	/* Pipeline Layout */
 
-
 	graphicsPipeline->pipelineLayout = VULKAN_INTERNAL_FetchGraphicsPipelineLayout(
 		renderer,
 		pipelineCreateInfo->pipelineLayoutCreateInfo.vertexSamplerBindingCount,
@@ -3461,8 +3466,6 @@ static REFRESH_GraphicsPipeline* VULKAN_CreateGraphicsPipeline(
 		SDL_stack_free(viewports);
 		SDL_stack_free(scissors);
 		SDL_stack_free(colorBlendAttachmentStates);
-		SDL_stack_free(vertexSamplerLayoutBindings);
-		SDL_stack_free(fragmentSamplerLayoutBindings);
 		return NULL;
 	}
 
@@ -3471,8 +3474,6 @@ static REFRESH_GraphicsPipeline* VULKAN_CreateGraphicsPipeline(
 	SDL_stack_free(viewports);
 	SDL_stack_free(scissors);
 	SDL_stack_free(colorBlendAttachmentStates);
-	SDL_stack_free(vertexSamplerLayoutBindings);
-	SDL_stack_free(fragmentSamplerLayoutBindings);
 
 	/* Allocate uniform buffer descriptors */
 
@@ -5546,6 +5547,91 @@ static void VULKAN_QueuePresent(
 	);
 }
 
+static void VULKAN_INTERNAL_DeactivateUnusedDescriptorSets(
+	SamplerDescriptorSetCache *samplerDescriptorSetCache
+) {
+	int32_t i, j;
+	SamplerDescriptorSetHashArray *arr;
+
+	for (i = samplerDescriptorSetCache->count - 1; i >= 0; i -= 1)
+	{
+		samplerDescriptorSetCache->elements[i].inactiveFrameCount += 1;
+
+		if (samplerDescriptorSetCache->elements[i].inactiveFrameCount + 1 > DESCRIPTOR_SET_DEACTIVATE_FRAMES)
+		{
+			arr = &samplerDescriptorSetCache->buckets[samplerDescriptorSetCache->elements[i].key % NUM_DESCRIPTOR_SET_HASH_BUCKETS];
+
+			/* remove index from bucket */
+			for (j = 0; j < arr->count; j += 1)
+			{
+				if (arr->elements[j] == i)
+				{
+					if (j < arr->count - 1)
+					{
+						arr->elements[j] = arr->elements[arr->count - 1];
+					}
+
+					arr->count -= 1;
+					break;
+				}
+			}
+
+			/* remove element from table and place in inactive sets */
+
+			samplerDescriptorSetCache->inactiveDescriptorSets[samplerDescriptorSetCache->inactiveDescriptorSetCount] = samplerDescriptorSetCache->elements[i].descriptorSet;
+			samplerDescriptorSetCache->inactiveDescriptorSetCount += 1;
+
+			/* move another descriptor set to fill the hole */
+			if (i < samplerDescriptorSetCache->count - 1)
+			{
+				samplerDescriptorSetCache->elements[i] = samplerDescriptorSetCache->elements[samplerDescriptorSetCache->count - 1];
+
+				/* update index in bucket */
+				arr = &samplerDescriptorSetCache->buckets[samplerDescriptorSetCache->elements[i].key % NUM_DESCRIPTOR_SET_HASH_BUCKETS];
+
+				for (j = 0; j < arr->count; j += 1)
+				{
+					if (arr->elements[j] == samplerDescriptorSetCache->count - 1)
+					{
+						arr->elements[j] = i;
+						break;
+					}
+				}
+			}
+
+			samplerDescriptorSetCache->count -= 1;
+		}
+	}
+}
+
+static void VULKAN_INTERNAL_ResetDescriptorSetData(VulkanRenderer *renderer)
+{
+	uint32_t i, j;
+	VulkanGraphicsPipelineLayout *pipelineLayout;
+
+	for (i = 0; i < NUM_PIPELINE_LAYOUT_BUCKETS; i += 1)
+	{
+		for (j = 0; j < renderer->pipelineLayoutHashTable.buckets[i].count; j += 1)
+		{
+			pipelineLayout = renderer->pipelineLayoutHashTable.buckets[i].elements[j].value;
+
+			if (pipelineLayout->vertexSamplerDescriptorSetCache != NULL)
+			{
+				VULKAN_INTERNAL_DeactivateUnusedDescriptorSets(
+					pipelineLayout->vertexSamplerDescriptorSetCache
+				);
+			}
+
+			if (pipelineLayout->fragmentSamplerDescriptorSetCache != NULL)
+			{
+				VULKAN_INTERNAL_DeactivateUnusedDescriptorSets(
+					pipelineLayout->fragmentSamplerDescriptorSetCache
+				);
+			}
+		}
+	}
+}
+
 static void VULKAN_Submit(
     REFRESH_Renderer *driverData
 ) {
@@ -5718,6 +5804,9 @@ static void VULKAN_Submit(
 	renderer->vertexUBOBlockIncrement = 0;
 	renderer->fragmentUBOOffset = UBO_BUFFER_SIZE * renderer->frameIndex;
 	renderer->fragmentUBOBlockIncrement = 0;
+
+	/* Reset descriptor set data */
+	VULKAN_INTERNAL_ResetDescriptorSetData(renderer);
 
 	/* Present, if applicable */
 
