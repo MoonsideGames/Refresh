@@ -450,9 +450,7 @@ typedef struct REFRESH_ColorTargetBlendState
 typedef struct REFRESH_PipelineLayoutCreateInfo
 {
 	uint32_t vertexSamplerBindingCount;
-	const uint32_t *vertexSamplerBindings;
 	uint32_t fragmentSamplerBindingCount;
-	const uint32_t *fragmentSamplerBindings;
 } REFRESH_PipelineLayoutCreateInfo;
 
 typedef struct REFRESH_ColorTargetDescription
