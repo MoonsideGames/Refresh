@@ -1069,6 +1069,7 @@ typedef struct VulkanRenderer
 /* Forward declarations */
 
 static void VULKAN_INTERNAL_BeginCommandBuffer(VulkanRenderer *renderer);
+static void VULKAN_Submit(REFRESH_Renderer* driverData);
 
 /* Macros */
 
@@ -4468,6 +4469,9 @@ static void VULKAN_SetTextureData2D(
 			&vulkanTexture->resourceAccessType
 		);
 	}
+
+	/* Sync point */
+	VULKAN_Submit(driverData);
 }
 
 static void VULKAN_SetTextureData3D(
@@ -4579,6 +4583,9 @@ static void VULKAN_SetTextureData3D(
 			&vulkanTexture->resourceAccessType
 		);
 	}
+
+	/* Sync point */
+	VULKAN_Submit(driverData);
 }
 
 static void VULKAN_SetTextureDataCube(
@@ -4689,6 +4696,9 @@ static void VULKAN_SetTextureDataCube(
 			&vulkanTexture->resourceAccessType
 		);
 	}
+
+	/* Sync point */
+	VULKAN_Submit(driverData);
 }
 
 static void VULKAN_SetTextureDataYUV(
@@ -4888,6 +4898,9 @@ static void VULKAN_SetTextureDataYUV(
 			&tex->resourceAccessType
 		);
 	}
+
+	/* Sync point */
+	VULKAN_Submit(driverData);
 }
 
 static void VULKAN_INTERNAL_SetBufferData(
