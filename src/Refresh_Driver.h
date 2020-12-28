@@ -239,7 +239,7 @@ struct REFRESH_Device
         uint32_t width,
         uint32_t height,
         uint32_t levelCount,
-        uint8_t canBeRenderTarget
+        REFRESH_TextureUsageFlags usageFlags
     );
 
     REFRESH_Texture* (*CreateTexture3D)(
@@ -249,7 +249,7 @@ struct REFRESH_Device
         uint32_t height,
         uint32_t depth,
         uint32_t levelCount,
-        uint8_t canBeRenderTarget
+        REFRESH_TextureUsageFlags usageFlags
     );
 
     REFRESH_Texture* (*CreateTextureCube)(
@@ -257,7 +257,7 @@ struct REFRESH_Device
         REFRESH_SurfaceFormat format,
         uint32_t size,
         uint32_t levelCount,
-        uint8_t canBeRenderTarget
+        REFRESH_TextureUsageFlags usageFlags
     );
 
     REFRESH_ColorTarget* (*CreateColorTarget)(
@@ -493,13 +493,6 @@ struct REFRESH_Device
         REFRESH_IndexElementSize indexElementSize
     );
 
-    void (*TextureLayoutTransition)(
-        REFRESH_Renderer *driverData,
-        REFRESH_TextureLayout layout,
-        REFRESH_Texture **pTextures,
-        uint32_t textureCount
-    );
-
     void(*QueuePresent)(
         REFRESH_Renderer *driverData,
         REFRESH_TextureSlice *textureSlice,
@@ -562,7 +555,6 @@ struct REFRESH_Device
     ASSIGN_DRIVER_FUNC(BindGraphicsPipeline, name) \
     ASSIGN_DRIVER_FUNC(BindVertexBuffers, name) \
     ASSIGN_DRIVER_FUNC(BindIndexBuffer, name) \
-    ASSIGN_DRIVER_FUNC(TextureLayoutTransition, name) \
     ASSIGN_DRIVER_FUNC(QueuePresent, name) \
     ASSIGN_DRIVER_FUNC(Submit, name)
 

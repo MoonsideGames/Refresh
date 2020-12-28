@@ -699,6 +699,7 @@ typedef struct VulkanTexture
 	uint32_t levelCount;
 	VkFormat format;
 	VulkanResourceAccessType resourceAccessType;
+	REFRESH_TextureUsageFlags usageFlags;
 } VulkanTexture;
 
 typedef struct VulkanDepthStencilTexture
@@ -1009,6 +1010,7 @@ typedef struct VulkanRenderer
 	uint32_t numActiveCommands;
 
 	VulkanGraphicsPipeline *currentGraphicsPipeline;
+	VulkanFramebuffer *currentFramebuffer;
 
 	SamplerDescriptorSetLayoutHashTable samplerDescriptorSetLayoutHashTable;
 	PipelineLayoutHashTable pipelineLayoutHashTable;
@@ -3743,7 +3745,8 @@ static uint8_t VULKAN_INTERNAL_CreateTexture(
 	VkImageAspectFlags aspectMask,
 	VkImageTiling tiling,
 	VkImageType imageType,
-	VkImageUsageFlags usage,
+	VkImageUsageFlags imageUsageFlags,
+	REFRESH_TextureUsageFlags textureUsageFlags,
 	VulkanTexture *texture
 ) {
 	VkResult vulkanResult;
@@ -3754,6 +3757,13 @@ static uint8_t VULKAN_INTERNAL_CreateTexture(
 	uint8_t is3D = depth > 1 ? 1 : 0;
 	uint8_t layerCount = isCube ? 6 : 1;
 	VkComponentMapping swizzle = IDENTITY_SWIZZLE;
+
+	if ((textureUsageFlags & REFRESH_TEXTUREUSAGE_VERTEX_SAMPLER_BIT) &&
+		(textureUsageFlags & REFRESH_TEXTUREUSAGE_FRAGMENT_SAMPLER_BIT))
+	{
+		REFRESH_LogError("Cannot use a texture for both vertex and fragment sampling.");
+		return 0;
+	}
 
 	if (isCube)
 	{
@@ -3776,7 +3786,7 @@ static uint8_t VULKAN_INTERNAL_CreateTexture(
 	imageCreateInfo.arrayLayers = layerCount;
 	imageCreateInfo.samples = samples;
 	imageCreateInfo.tiling = tiling;
-	imageCreateInfo.usage = usage;
+	imageCreateInfo.usage = imageUsageFlags;
 	// FIXME: would this interfere with pixel data sharing?
 	imageCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 	imageCreateInfo.queueFamilyIndexCount = 0;
@@ -3876,6 +3886,7 @@ static uint8_t VULKAN_INTERNAL_CreateTexture(
 	texture->levelCount = levelCount;
 	texture->layerCount = layerCount;
 	texture->resourceAccessType = RESOURCE_ACCESS_NONE;
+	texture->usageFlags = textureUsageFlags;
 
 	return 1;
 }
@@ -4009,19 +4020,19 @@ static REFRESH_Texture* VULKAN_CreateTexture2D(
 	uint32_t width,
 	uint32_t height,
 	uint32_t levelCount,
-	uint8_t canBeRenderTarget
+	REFRESH_TextureUsageFlags usageFlags
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VulkanTexture *result;
-	uint32_t usageFlags = (
+	VkImageUsageFlags imageUsageFlags = (
 		VK_IMAGE_USAGE_SAMPLED_BIT |
 		VK_IMAGE_USAGE_TRANSFER_DST_BIT |
 		VK_IMAGE_USAGE_TRANSFER_SRC_BIT
 	);
 
-	if (canBeRenderTarget)
+	if (usageFlags & REFRESH_TEXTUREUSAGE_COLOR_TARGET_BIT)
 	{
-		usageFlags |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+		imageUsageFlags |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 	}
 
 	result = (VulkanTexture*) SDL_malloc(sizeof(VulkanTexture));
@@ -4038,6 +4049,7 @@ static REFRESH_Texture* VULKAN_CreateTexture2D(
 		VK_IMAGE_ASPECT_COLOR_BIT,
 		VK_IMAGE_TILING_OPTIMAL,
 		VK_IMAGE_TYPE_2D,
+		imageUsageFlags,
 		usageFlags,
 		result
 	);
@@ -4052,19 +4064,19 @@ static REFRESH_Texture* VULKAN_CreateTexture3D(
 	uint32_t height,
 	uint32_t depth,
 	uint32_t levelCount,
-	uint8_t canBeRenderTarget
+	REFRESH_TextureUsageFlags usageFlags
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VulkanTexture *result;
-	uint32_t usageFlags = (
+	VkImageUsageFlags imageUsageFlags = (
 		VK_IMAGE_USAGE_SAMPLED_BIT |
 		VK_IMAGE_USAGE_TRANSFER_DST_BIT |
 		VK_IMAGE_USAGE_TRANSFER_SRC_BIT
 	);
 
-	if (canBeRenderTarget)
+	if (usageFlags & REFRESH_TEXTUREUSAGE_COLOR_TARGET_BIT)
 	{
-		usageFlags |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+		imageUsageFlags |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 	}
 
 	result = (VulkanTexture*) SDL_malloc(sizeof(VulkanTexture));
@@ -4081,6 +4093,7 @@ static REFRESH_Texture* VULKAN_CreateTexture3D(
 		VK_IMAGE_ASPECT_COLOR_BIT,
 		VK_IMAGE_TILING_OPTIMAL,
 		VK_IMAGE_TYPE_3D,
+		imageUsageFlags,
 		usageFlags,
 		result
 	);
@@ -4093,19 +4106,19 @@ static REFRESH_Texture* VULKAN_CreateTextureCube(
 	REFRESH_SurfaceFormat format,
 	uint32_t size,
 	uint32_t levelCount,
-	uint8_t canBeRenderTarget
+	REFRESH_TextureUsageFlags usageFlags
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VulkanTexture *result;
-	uint32_t usageFlags = (
+	VkImageUsageFlags imageUsageFlags = (
 		VK_IMAGE_USAGE_SAMPLED_BIT |
 		VK_IMAGE_USAGE_TRANSFER_DST_BIT |
 		VK_IMAGE_USAGE_TRANSFER_SRC_BIT
 	);
 
-	if (canBeRenderTarget)
+	if (usageFlags & REFRESH_TEXTUREUSAGE_COLOR_TARGET_BIT)
 	{
-		usageFlags |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+		imageUsageFlags |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 	}
 
 	result = (VulkanTexture*) SDL_malloc(sizeof(VulkanTexture));
@@ -4122,6 +4135,7 @@ static REFRESH_Texture* VULKAN_CreateTextureCube(
 		VK_IMAGE_ASPECT_COLOR_BIT,
 		VK_IMAGE_TILING_OPTIMAL,
 		VK_IMAGE_TYPE_2D,
+		imageUsageFlags,
 		usageFlags,
 		result
 	);
@@ -4164,6 +4178,7 @@ static REFRESH_ColorTarget* VULKAN_CreateColorTarget(
 			VK_IMAGE_TILING_OPTIMAL,
 			VK_IMAGE_TYPE_2D,
 			VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+			REFRESH_TEXTUREUSAGE_COLOR_TARGET_BIT,
 			colorTarget->multisampleTexture
 		);
 		colorTarget->multisampleCount = multisampleCount;
@@ -4402,6 +4417,37 @@ static void VULKAN_SetTextureData2D(
 		1,
 		&imageCopy
 	));
+
+	if (vulkanTexture->usageFlags & REFRESH_TEXTUREUSAGE_VERTEX_SAMPLER_BIT)
+	{
+		VULKAN_INTERNAL_ImageMemoryBarrier(
+			renderer,
+			RESOURCE_ACCESS_VERTEX_SHADER_READ_SAMPLED_IMAGE,
+			VK_IMAGE_ASPECT_COLOR_BIT,
+			0,
+			vulkanTexture->layerCount,
+			0,
+			vulkanTexture->levelCount,
+			0,
+			vulkanTexture->image,
+			&vulkanTexture->resourceAccessType
+		);
+	}
+	else if (vulkanTexture->usageFlags & REFRESH_TEXTUREUSAGE_FRAGMENT_SAMPLER_BIT)
+	{
+		VULKAN_INTERNAL_ImageMemoryBarrier(
+			renderer,
+			RESOURCE_ACCESS_FRAGMENT_SHADER_READ_SAMPLED_IMAGE,
+			VK_IMAGE_ASPECT_COLOR_BIT,
+			0,
+			vulkanTexture->layerCount,
+			0,
+			vulkanTexture->levelCount,
+			0,
+			vulkanTexture->image,
+			&vulkanTexture->resourceAccessType
+		);
+	}
 }
 
 static void VULKAN_SetTextureData3D(
@@ -4482,6 +4528,37 @@ static void VULKAN_SetTextureData3D(
 		1,
 		&imageCopy
 	));
+
+	if (vulkanTexture->usageFlags & REFRESH_TEXTUREUSAGE_VERTEX_SAMPLER_BIT)
+	{
+		VULKAN_INTERNAL_ImageMemoryBarrier(
+			renderer,
+			RESOURCE_ACCESS_VERTEX_SHADER_READ_SAMPLED_IMAGE,
+			VK_IMAGE_ASPECT_COLOR_BIT,
+			0,
+			vulkanTexture->layerCount,
+			0,
+			vulkanTexture->levelCount,
+			0,
+			vulkanTexture->image,
+			&vulkanTexture->resourceAccessType
+		);
+	}
+	else if (vulkanTexture->usageFlags & REFRESH_TEXTUREUSAGE_FRAGMENT_SAMPLER_BIT)
+	{
+		VULKAN_INTERNAL_ImageMemoryBarrier(
+			renderer,
+			RESOURCE_ACCESS_FRAGMENT_SHADER_READ_SAMPLED_IMAGE,
+			VK_IMAGE_ASPECT_COLOR_BIT,
+			0,
+			vulkanTexture->layerCount,
+			0,
+			vulkanTexture->levelCount,
+			0,
+			vulkanTexture->image,
+			&vulkanTexture->resourceAccessType
+		);
+	}
 }
 
 static void VULKAN_SetTextureDataCube(
@@ -4561,6 +4638,37 @@ static void VULKAN_SetTextureDataCube(
 		1,
 		&imageCopy
 	));
+
+	if (vulkanTexture->usageFlags & REFRESH_TEXTUREUSAGE_VERTEX_SAMPLER_BIT)
+	{
+		VULKAN_INTERNAL_ImageMemoryBarrier(
+			renderer,
+			RESOURCE_ACCESS_VERTEX_SHADER_READ_SAMPLED_IMAGE,
+			VK_IMAGE_ASPECT_COLOR_BIT,
+			0,
+			vulkanTexture->layerCount,
+			0,
+			vulkanTexture->levelCount,
+			0,
+			vulkanTexture->image,
+			&vulkanTexture->resourceAccessType
+		);
+	}
+	else if (vulkanTexture->usageFlags & REFRESH_TEXTUREUSAGE_FRAGMENT_SAMPLER_BIT)
+	{
+		VULKAN_INTERNAL_ImageMemoryBarrier(
+			renderer,
+			RESOURCE_ACCESS_FRAGMENT_SHADER_READ_SAMPLED_IMAGE,
+			VK_IMAGE_ASPECT_COLOR_BIT,
+			0,
+			vulkanTexture->layerCount,
+			0,
+			vulkanTexture->levelCount,
+			0,
+			vulkanTexture->image,
+			&vulkanTexture->resourceAccessType
+		);
+	}
 }
 
 static void VULKAN_SetTextureDataYUV(
@@ -4729,6 +4837,37 @@ static void VULKAN_SetTextureDataYUV(
 		1,
 		&imageCopy
 	));
+
+	if (tex->usageFlags & REFRESH_TEXTUREUSAGE_VERTEX_SAMPLER_BIT)
+	{
+		VULKAN_INTERNAL_ImageMemoryBarrier(
+			renderer,
+			RESOURCE_ACCESS_VERTEX_SHADER_READ_SAMPLED_IMAGE,
+			VK_IMAGE_ASPECT_COLOR_BIT,
+			0,
+			tex->layerCount,
+			0,
+			tex->levelCount,
+			0,
+			tex->image,
+			&tex->resourceAccessType
+		);
+	}
+	else if (tex->usageFlags & REFRESH_TEXTUREUSAGE_FRAGMENT_SAMPLER_BIT)
+	{
+		VULKAN_INTERNAL_ImageMemoryBarrier(
+			renderer,
+			RESOURCE_ACCESS_FRAGMENT_SHADER_READ_SAMPLED_IMAGE,
+			VK_IMAGE_ASPECT_COLOR_BIT,
+			0,
+			tex->layerCount,
+			0,
+			tex->levelCount,
+			0,
+			tex->image,
+			&tex->resourceAccessType
+		);
+	}
 }
 
 static void VULKAN_INTERNAL_SetBufferData(
@@ -5312,19 +5451,59 @@ static void VULKAN_BeginRenderPass(
 		VK_SUBPASS_CONTENTS_INLINE
 	));
 
+	renderer->currentFramebuffer = vulkanFramebuffer;
+
 	SDL_stack_free(clearValues);
 }
 
 static void VULKAN_EndRenderPass(
 	REFRESH_Renderer *driverData
 ) {
+	uint32_t i;
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	VulkanTexture *currentTexture;
 
 	RECORD_CMD(renderer->vkCmdEndRenderPass(
 		renderer->currentCommandBuffer
 	));
 
+	for (i = 0; i < renderer->currentFramebuffer->colorTargetCount; i += 1)
+	{
+		currentTexture = renderer->currentFramebuffer->colorTargets[i]->texture;
+		if (currentTexture->usageFlags & REFRESH_TEXTUREUSAGE_VERTEX_SAMPLER_BIT)
+		{
+			VULKAN_INTERNAL_ImageMemoryBarrier(
+				renderer,
+				RESOURCE_ACCESS_VERTEX_SHADER_READ_SAMPLED_IMAGE,
+				VK_IMAGE_ASPECT_COLOR_BIT,
+				0,
+				currentTexture->layerCount,
+				0,
+				currentTexture->levelCount,
+				0,
+				currentTexture->image,
+				&currentTexture->resourceAccessType
+			);
+		}
+		else if (currentTexture->usageFlags & REFRESH_TEXTUREUSAGE_FRAGMENT_SAMPLER_BIT)
+		{
+			VULKAN_INTERNAL_ImageMemoryBarrier(
+				renderer,
+				RESOURCE_ACCESS_FRAGMENT_SHADER_READ_SAMPLED_IMAGE,
+				VK_IMAGE_ASPECT_COLOR_BIT,
+				0,
+				currentTexture->layerCount,
+				0,
+				currentTexture->levelCount,
+				0,
+				currentTexture->image,
+				&currentTexture->resourceAccessType
+			);
+		}
+	}
+
 	renderer->currentGraphicsPipeline = NULL;
+	renderer->currentFramebuffer = NULL;
 }
 
 static void VULKAN_BindGraphicsPipeline(
@@ -5426,34 +5605,6 @@ static void VULKAN_BindIndexBuffer(
 		offset,
 		RefreshToVK_IndexType[indexElementSize]
 	));
-}
-
-static void VULKAN_TextureLayoutTransition(
-	REFRESH_Renderer *driverData,
-	REFRESH_TextureLayout layout,
-	REFRESH_Texture **pTextures,
-	uint32_t textureCount
-) {
-	uint32_t i;
-	VulkanTexture* currentTexture;
-	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
-
-	for (i = 0; i < textureCount; i += 1)
-	{
-		currentTexture = (VulkanTexture*) pTextures[i];
-		VULKAN_INTERNAL_ImageMemoryBarrier(
-			renderer,
-			RefreshToVK_ImageLayout[layout],
-			VK_IMAGE_ASPECT_COLOR_BIT,
-			0,
-			currentTexture->layerCount,
-			0,
-			currentTexture->levelCount,
-			0,
-			currentTexture->image,
-			&currentTexture->resourceAccessType
-		);
-	}
 }
 
 static void VULKAN_QueuePresent(
@@ -6999,6 +7150,10 @@ static REFRESH_Device* VULKAN_CreateDevice(
 
 	renderer->descriptorPools = NULL;
 	renderer->descriptorPoolCount = 0;
+
+	/* State tracking */
+	renderer->currentGraphicsPipeline = NULL;
+	renderer->currentFramebuffer = NULL;
 
     return result;
 }

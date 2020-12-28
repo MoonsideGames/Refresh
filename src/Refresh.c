@@ -281,7 +281,7 @@ REFRESH_Texture* REFRESH_CreateTexture2D(
 	uint32_t width,
 	uint32_t height,
 	uint32_t levelCount,
-    uint8_t canBeRenderTarget
+    REFRESH_TextureUsageFlags usageFlags
 ) {
     NULL_RETURN_NULL(device);
     return device->CreateTexture2D(
@@ -290,7 +290,7 @@ REFRESH_Texture* REFRESH_CreateTexture2D(
         width,
         height,
         levelCount,
-        canBeRenderTarget
+        usageFlags
     );
 }
 
@@ -301,7 +301,7 @@ REFRESH_Texture* REFRESH_CreateTexture3D(
 	uint32_t height,
 	uint32_t depth,
 	uint32_t levelCount,
-    uint8_t canBeRenderTarget
+    REFRESH_TextureUsageFlags usageFlags
 ) {
     NULL_RETURN_NULL(device);
     return device->CreateTexture3D(
@@ -311,7 +311,7 @@ REFRESH_Texture* REFRESH_CreateTexture3D(
         height,
         depth,
         levelCount,
-        canBeRenderTarget
+        usageFlags
     );
 }
 
@@ -320,7 +320,7 @@ REFRESH_Texture* REFRESH_CreateTextureCube(
 	REFRESH_SurfaceFormat format,
 	uint32_t size,
 	uint32_t levelCount,
-    uint8_t canBeRenderTarget
+    REFRESH_TextureUsageFlags usageFlags
 ) {
     NULL_RETURN_NULL(device);
     return device->CreateTextureCube(
@@ -328,7 +328,7 @@ REFRESH_Texture* REFRESH_CreateTextureCube(
         format,
         size,
         levelCount,
-        canBeRenderTarget
+        usageFlags
     );
 }
 
@@ -808,21 +808,6 @@ void REFRESH_BindIndexBuffer(
         buffer,
         offset,
         indexElementSize
-    );
-}
-
-void REFRESH_TextureLayoutTransition(
-    REFRESH_Device *device,
-    REFRESH_TextureLayout layout,
-    REFRESH_Texture **pTextures,
-    uint32_t textureCount
-) {
-    NULL_RETURN(device);
-    device->TextureLayoutTransition(
-        device->driverData,
-        layout,
-        pTextures,
-        textureCount
     );
 }
 

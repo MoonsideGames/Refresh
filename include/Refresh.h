@@ -141,15 +141,14 @@ typedef enum REFRESH_DepthFormat
     REFRESH_DEPTHFORMAT_D32_SFLOAT_S8_UINT
 } REFRESH_DepthFormat;
 
-typedef enum REFRESH_TextureLayout
+typedef enum REFRESH_TextureUsageFlagBits
 {
-	REFRESH_TEXTURELAYOUT_READ,
-	REFRESH_TEXTURELAYOUT_COLOR_TARGET,
-	REFRESH_TEXTURELAYOUT_DEPTHSTENCIL_TARGET,
-	REFRESH_TEXTURELAYOUT_VERTEX_SAMPLER,
-	REFRESH_TEXTURELAYOUT_FRAGMENT_SAMPLER,
-	REFRESH_TEXTURELAYOUT_WRITE
-} REFRESH_TextureLayout;
+	REFRESH_TEXTUREUSAGE_VERTEX_SAMPLER_BIT   = 0x00000001,
+	REFRESH_TEXTUREUSAGE_FRAGMENT_SAMPLER_BIT = 0x00000002,
+	REFRESH_TEXTUREUSAGE_COLOR_TARGET_BIT     = 0x00000004
+} REFRESH_TextureUsageFlagBits;
+
+typedef uint32_t REFRESH_TextureUsageFlags;
 
 typedef enum REFRESH_SampleCount
 {
@@ -733,8 +732,9 @@ REFRESHAPI REFRESH_ShaderModule* REFRESH_CreateShaderModule(
  * format:		The pixel format of the texture data.
  * width:		The width of the texture image.
  * height: 		The height of the texture image.
- * levelCount: 	The number of mipmap levels to allocate.
- *
+ * levelCount:	The number of mipmap levels to allocate.
+ * usageFlags:	Specifies how the texture will be used.
+ * 
  * Returns an allocated REFRESH_Texture* object. Note that the contents of
  * the texture are undefined until SetData is called.
  */
@@ -744,7 +744,7 @@ REFRESHAPI REFRESH_Texture* REFRESH_CreateTexture2D(
 	uint32_t width,
 	uint32_t height,
 	uint32_t levelCount,
-	uint8_t canBeRenderTarget
+	REFRESH_TextureUsageFlags usageFlags
 );
 
 /* Creates a 3D texture.
@@ -754,6 +754,7 @@ REFRESHAPI REFRESH_Texture* REFRESH_CreateTexture2D(
  * height: 		The height of the texture image.
  * depth: 		The depth of the texture image.
  * levelCount: 	The number of mipmap levels to allocate.
+ * usageFlags:	Specifies how the texture will be used.
  *
  * Returns an allocated REFRESH_Texture* object. Note that the contents of
  * the texture are undefined until SetData is called.
@@ -765,7 +766,7 @@ REFRESHAPI REFRESH_Texture* REFRESH_CreateTexture3D(
 	uint32_t height,
 	uint32_t depth,
 	uint32_t levelCount,
-	uint8_t canBeRenderTarget
+	REFRESH_TextureUsageFlags usageFlags
 );
 
 /* Creates a texture cube.
@@ -773,7 +774,8 @@ REFRESHAPI REFRESH_Texture* REFRESH_CreateTexture3D(
  * format:		The pixel format of the texture data.
  * size: 		The length of the cube side.
  * levelCount: 	The number of mipmap levels to allocate.
- *
+ * usageFlags:	Specifies how the texture will be used.
+ * 
  * Returns an allocated REFRESH_Texture* object. Note that the contents of
  * the texture are undefined until SetData is called.
  */
@@ -782,7 +784,7 @@ REFRESHAPI REFRESH_Texture* REFRESH_CreateTextureCube(
 	REFRESH_SurfaceFormat format,
 	uint32_t size,
 	uint32_t levelCount,
-	uint8_t canBeRenderTarget
+	REFRESH_TextureUsageFlags usageFlags
 );
 
 /* Creates a color target.
@@ -1261,24 +1263,6 @@ REFRESHAPI void REFRESH_BindIndexBuffer(
 	REFRESH_Buffer *buffer,
 	uint64_t offset,
 	REFRESH_IndexElementSize indexElementSize
-);
-
-/* Transitions */
-
-/* Performs a texture layout transition.
- * Texture layouts must be transitioned for different texture use cases.
- *
- * NOTE: It is an error to perform a layout transition in a render pass.
- * 
- * layout:			The layout to transition to.
- * pTextures:		A pointer to an array of textures to transition.
- * textureCount:	The number of textures in the array to transition.
- */
-REFRESHAPI void REFRESH_TextureLayoutTransition(
-	REFRESH_Device *device,
-	REFRESH_TextureLayout layout,
-	REFRESH_Texture **pTextures,
-	uint32_t textureCount
 );
 
 /* Submission/Presentation */
