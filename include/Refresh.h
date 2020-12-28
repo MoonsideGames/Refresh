@@ -141,6 +141,16 @@ typedef enum REFRESH_DepthFormat
     REFRESH_DEPTHFORMAT_D32_SFLOAT_S8_UINT
 } REFRESH_DepthFormat;
 
+typedef enum REFRESH_TextureLayout
+{
+	REFRESH_TEXTURELAYOUT_READ,
+	REFRESH_TEXTURELAYOUT_COLOR_TARGET,
+	REFRESH_TEXTURELAYOUT_DEPTHSTENCIL_TARGET,
+	REFRESH_TEXTURELAYOUT_VERTEX_SAMPLER,
+	REFRESH_TEXTURELAYOUT_FRAGMENT_SAMPLER,
+	REFRESH_TEXTURELAYOUT_WRITE
+} REFRESH_TextureLayout;
+
 typedef enum REFRESH_SampleCount
 {
 	REFRESH_SAMPLECOUNT_1,
@@ -1251,6 +1261,24 @@ REFRESHAPI void REFRESH_BindIndexBuffer(
 	REFRESH_Buffer *buffer,
 	uint64_t offset,
 	REFRESH_IndexElementSize indexElementSize
+);
+
+/* Transitions */
+
+/* Performs a texture layout transition.
+ * Texture layouts must be transitioned for different texture use cases.
+ *
+ * NOTE: It is an error to perform a layout transition in a render pass.
+ * 
+ * layout:			The layout to transition to.
+ * pTextures:		A pointer to an array of textures to transition.
+ * textureCount:	The number of textures in the array to transition.
+ */
+REFRESHAPI void REFRESH_TextureLayoutTransition(
+	REFRESH_Device *device,
+	REFRESH_TextureLayout layout,
+	REFRESH_Texture **pTextures,
+	uint32_t textureCount
 );
 
 /* Submission/Presentation */

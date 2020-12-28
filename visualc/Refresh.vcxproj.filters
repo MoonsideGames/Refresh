@@ -7,6 +7,9 @@
     <ClCompile Include="..\src\Refresh_Driver_Vulkan.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\src\Refresh_Image.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\include\Refresh.h">
@@ -16,6 +19,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\src\Refresh_Driver_Vulkan_vkfuncs.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\Refresh_Image.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

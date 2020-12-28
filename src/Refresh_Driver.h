@@ -493,6 +493,13 @@ struct REFRESH_Device
         REFRESH_IndexElementSize indexElementSize
     );
 
+    void (*TextureLayoutTransition)(
+        REFRESH_Renderer *driverData,
+        REFRESH_TextureLayout layout,
+        REFRESH_Texture **pTextures,
+        uint32_t textureCount
+    );
+
     void(*QueuePresent)(
         REFRESH_Renderer *driverData,
         REFRESH_TextureSlice *textureSlice,
@@ -555,6 +562,7 @@ struct REFRESH_Device
     ASSIGN_DRIVER_FUNC(BindGraphicsPipeline, name) \
     ASSIGN_DRIVER_FUNC(BindVertexBuffers, name) \
     ASSIGN_DRIVER_FUNC(BindIndexBuffer, name) \
+    ASSIGN_DRIVER_FUNC(TextureLayoutTransition, name) \
     ASSIGN_DRIVER_FUNC(QueuePresent, name) \
     ASSIGN_DRIVER_FUNC(Submit, name)
 

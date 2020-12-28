@@ -85,9 +85,11 @@
   <ItemGroup>
     <ClCompile Include="..\src\Refresh.c" />
     <ClCompile Include="..\src\Refresh_Driver_Vulkan.c" />
+    <ClCompile Include="..\src\Refresh_Image.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\include\Refresh.h" />
+    <ClInclude Include="..\include\Refresh_Image.h" />
     <ClInclude Include="..\src\Refresh_Driver.h" />
     <ClInclude Include="..\src\Refresh_Driver_Vulkan_vkfuncs.h" />
   </ItemGroup>

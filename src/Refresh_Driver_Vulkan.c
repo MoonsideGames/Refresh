@@ -188,6 +188,16 @@ static VkFormat RefreshToVK_DepthFormat[] =
     VK_FORMAT_D32_SFLOAT_S8_UINT
 };
 
+static VulkanResourceAccessType RefreshToVK_ImageLayout[] =
+{
+	RESOURCE_ACCESS_TRANSFER_READ,
+	RESOURCE_ACCESS_COLOR_ATTACHMENT_READ_WRITE,
+	RESOURCE_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_WRITE,
+	RESOURCE_ACCESS_VERTEX_SHADER_READ_SAMPLED_IMAGE,
+	RESOURCE_ACCESS_FRAGMENT_SHADER_READ_SAMPLED_IMAGE,
+	RESOURCE_ACCESS_TRANSFER_WRITE
+};
+
 static VkFormat RefreshToVK_VertexFormat[] =
 {
 	VK_FORMAT_R32_SFLOAT,			/* SINGLE */
@@ -5416,6 +5426,34 @@ static void VULKAN_BindIndexBuffer(
 		offset,
 		RefreshToVK_IndexType[indexElementSize]
 	));
+}
+
+static void VULKAN_TextureLayoutTransition(
+	REFRESH_Renderer *driverData,
+	REFRESH_TextureLayout layout,
+	REFRESH_Texture **pTextures,
+	uint32_t textureCount
+) {
+	uint32_t i;
+	VulkanTexture* currentTexture;
+	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
+
+	for (i = 0; i < textureCount; i += 1)
+	{
+		currentTexture = (VulkanTexture*) pTextures[i];
+		VULKAN_INTERNAL_ImageMemoryBarrier(
+			renderer,
+			RefreshToVK_ImageLayout[layout],
+			VK_IMAGE_ASPECT_COLOR_BIT,
+			0,
+			currentTexture->layerCount,
+			0,
+			currentTexture->levelCount,
+			0,
+			currentTexture->image,
+			&currentTexture->resourceAccessType
+		);
+	}
 }
 
 static void VULKAN_QueuePresent(

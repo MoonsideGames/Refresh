@@ -811,6 +811,21 @@ void REFRESH_BindIndexBuffer(
     );
 }
 
+void REFRESH_TextureLayoutTransition(
+    REFRESH_Device *device,
+    REFRESH_TextureLayout layout,
+    REFRESH_Texture **pTextures,
+    uint32_t textureCount
+) {
+    NULL_RETURN(device);
+    device->TextureLayoutTransition(
+        device->driverData,
+        layout,
+        pTextures,
+        textureCount
+    );
+}
+
 void REFRESH_QueuePresent(
     REFRESH_Device *device,
     REFRESH_TextureSlice* textureSlice,
