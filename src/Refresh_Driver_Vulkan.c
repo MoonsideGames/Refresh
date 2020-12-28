@@ -1031,6 +1031,8 @@ typedef struct VulkanRenderer
 
 	VkDescriptorSetLayout vertexParamLayout;
 	VkDescriptorSetLayout fragmentParamLayout;
+	VulkanBuffer *dummyVertexUniformBuffer;
+	VulkanBuffer *dummyFragmentUniformBuffer;
 
 	VulkanBuffer *textureStagingBuffer;
 
@@ -3528,13 +3530,31 @@ static REFRESH_GraphicsPipeline* VULKAN_CreateGraphicsPipeline(
 		&graphicsPipeline->fragmentUBODescriptorSet
 	);
 
-	vertexUniformBufferInfo.buffer = renderer->vertexUBO->subBuffers[0]->buffer;
-	vertexUniformBufferInfo.offset = 0;
-	vertexUniformBufferInfo.range = graphicsPipeline->vertexUBOBlockSize;
+	if (graphicsPipeline->vertexUBOBlockSize == 0)
+	{
+		vertexUniformBufferInfo.buffer = renderer->dummyVertexUniformBuffer->subBuffers[0]->buffer;
+		vertexUniformBufferInfo.offset = 0;
+		vertexUniformBufferInfo.range = renderer->dummyVertexUniformBuffer->subBuffers[0]->size;
+	}
+	else
+	{
+		vertexUniformBufferInfo.buffer = renderer->vertexUBO->subBuffers[0]->buffer;
+		vertexUniformBufferInfo.offset = 0;
+		vertexUniformBufferInfo.range = graphicsPipeline->vertexUBOBlockSize;
+	}
 
-	fragmentUniformBufferInfo.buffer = renderer->fragmentUBO->subBuffers[0]->buffer;
-	fragmentUniformBufferInfo.offset = 0;
-	fragmentUniformBufferInfo.range = graphicsPipeline->fragmentUBOBlockSize;
+	if (graphicsPipeline->fragmentUBOBlockSize == 0)
+	{
+		fragmentUniformBufferInfo.buffer = renderer->dummyFragmentUniformBuffer->subBuffers[0]->buffer;
+		fragmentUniformBufferInfo.offset = 0;
+		fragmentUniformBufferInfo.range = renderer->dummyFragmentUniformBuffer->subBuffers[0]->size;
+	}
+	else
+	{
+		fragmentUniformBufferInfo.buffer = renderer->fragmentUBO->subBuffers[0]->buffer;
+		fragmentUniformBufferInfo.offset = 0;
+		fragmentUniformBufferInfo.range = graphicsPipeline->fragmentUBOBlockSize;
+	}
 
 	uboWriteDescriptorSets[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 	uboWriteDescriptorSets[0].pNext = NULL;
@@ -6667,8 +6687,7 @@ static REFRESH_Device* VULKAN_CreateDevice(
 	/* Variables: UBO Creation */
 	VkDescriptorPoolCreateInfo defaultDescriptorPoolInfo;
 	VkDescriptorPoolSize poolSizes[2];
-	VkDescriptorSetAllocateInfo emptyVertexSamplerDescriptorAllocateInfo;
-	VkDescriptorSetAllocateInfo emptyFragmentSamplerDescriptorAllocateInfo;
+	VkDescriptorSetAllocateInfo descriptorAllocateInfo;
 
     result = (REFRESH_Device*) SDL_malloc(sizeof(REFRESH_Device));
     ASSIGN_DRIVER(VULKAN)
@@ -7076,27 +7095,23 @@ static REFRESH_Device* VULKAN_CreateDevice(
 		&renderer->defaultDescriptorPool
 	);
 
-	emptyVertexSamplerDescriptorAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-	emptyVertexSamplerDescriptorAllocateInfo.pNext = NULL;
-	emptyVertexSamplerDescriptorAllocateInfo.descriptorPool = renderer->defaultDescriptorPool;
-	emptyVertexSamplerDescriptorAllocateInfo.descriptorSetCount = 1;
-	emptyVertexSamplerDescriptorAllocateInfo.pSetLayouts = &renderer->emptyVertexSamplerLayout;
+	descriptorAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+	descriptorAllocateInfo.pNext = NULL;
+	descriptorAllocateInfo.descriptorPool = renderer->defaultDescriptorPool;
+	descriptorAllocateInfo.descriptorSetCount = 1;
+	descriptorAllocateInfo.pSetLayouts = &renderer->emptyVertexSamplerLayout;
 
 	renderer->vkAllocateDescriptorSets(
 		renderer->logicalDevice,
-		&emptyVertexSamplerDescriptorAllocateInfo,
+		&descriptorAllocateInfo,
 		&renderer->emptyVertexSamplerDescriptorSet
 	);
 
-	emptyFragmentSamplerDescriptorAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-	emptyFragmentSamplerDescriptorAllocateInfo.pNext = NULL;
-	emptyFragmentSamplerDescriptorAllocateInfo.descriptorPool = renderer->defaultDescriptorPool;
-	emptyFragmentSamplerDescriptorAllocateInfo.descriptorSetCount = 1;
-	emptyFragmentSamplerDescriptorAllocateInfo.pSetLayouts = &renderer->emptyFragmentSamplerLayout;
+	descriptorAllocateInfo.pSetLayouts = &renderer->emptyFragmentSamplerLayout;
 
 	renderer->vkAllocateDescriptorSets(
 		renderer->logicalDevice,
-		&emptyFragmentSamplerDescriptorAllocateInfo,
+		&descriptorAllocateInfo,
 		&renderer->emptyFragmentSamplerDescriptorSet
 	);
 
@@ -7127,6 +7142,36 @@ static REFRESH_Device* VULKAN_CreateDevice(
 		renderer->textureStagingBuffer
 	)) {
 		REFRESH_LogError("Failed to create texture staging buffer!");
+		return NULL;
+	}
+
+	/* Dummy Uniform Buffers */
+
+	renderer->dummyVertexUniformBuffer = (VulkanBuffer*) SDL_malloc(sizeof(VulkanBuffer));
+
+	if (!VULKAN_INTERNAL_CreateBuffer(
+		renderer,
+		16,
+		RESOURCE_ACCESS_VERTEX_SHADER_READ_UNIFORM_BUFFER,
+		VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+		1,
+		renderer->dummyVertexUniformBuffer
+	)) {
+		REFRESH_LogError("Failed to create dummy vertex uniform buffer!");
+		return NULL;
+	}
+
+	renderer->dummyFragmentUniformBuffer = (VulkanBuffer*) SDL_malloc(sizeof(VulkanBuffer));
+
+	if (!VULKAN_INTERNAL_CreateBuffer(
+		renderer,
+		16,
+		RESOURCE_ACCESS_FRAGMENT_SHADER_READ_UNIFORM_BUFFER,
+		VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+		1,
+		renderer->dummyFragmentUniformBuffer
+	)) {
+		REFRESH_LogError("Failed to create dummy fragment uniform buffer!");
 		return NULL;
 	}
 
