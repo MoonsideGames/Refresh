@@ -1058,6 +1058,17 @@ typedef struct VulkanRenderer
 
 	SDL_mutex *allocatorLock;
 	SDL_mutex *commandLock;
+	SDL_mutex *disposeLock;
+
+	/* Deferred destroy storage */
+
+	VulkanTexture **texturesToDestroy;
+	uint32_t texturesToDestroyCount;
+	uint32_t texturesToDestroyCapacity;
+
+	VulkanTexture **submittedTexturesToDestroy;
+	uint32_t submittedTexturesToDestroyCount;
+	uint32_t submittedTexturesToDestroyCapacity;
 
     #define VULKAN_INSTANCE_FUNCTION(ext, ret, func, params) \
 		vkfntype_##func func;
@@ -1853,9 +1864,47 @@ static void VULKAN_INTERNAL_DestroySwapchain(VulkanRenderer* renderer)
 	);
 }
 
-static void VULKAN_INTERNAL_PerformDeferredDestroys(VulkanRenderer* renderer)
-{
-	/* TODO */
+static void VULKAN_INTERNAL_DestroyTexture(
+	VulkanRenderer* renderer,
+	VulkanTexture* texture
+) {
+	if (texture->allocation->dedicated)
+	{
+		renderer->vkFreeMemory(
+			renderer->logicalDevice,
+			texture->allocation->memory,
+			NULL
+		);
+
+		SDL_free(texture->allocation->freeRegions);
+		SDL_free(texture->allocation);
+	}
+	else
+	{
+		SDL_LockMutex(renderer->allocatorLock);
+
+		VULKAN_INTERNAL_NewMemoryFreeRegion(
+			texture->allocation,
+			texture->offset,
+			texture->memorySize
+		);
+
+		SDL_UnlockMutex(renderer->allocatorLock);
+	}
+
+	renderer->vkDestroyImageView(
+		renderer->logicalDevice,
+		texture->view,
+		NULL
+	);
+
+	renderer->vkDestroyImage(
+		renderer->logicalDevice,
+		texture->image,
+		NULL
+	);
+
+	SDL_free(texture);
 }
 
 static void VULKAN_INTERNAL_DestroyTextureStagingBuffer(
@@ -1872,6 +1921,11 @@ static void VULKAN_INTERNAL_DestroySamplerDescriptorSetCache(
 	SamplerDescriptorSetCache* cache
 ) {
 	uint32_t i;
+
+	if (cache == NULL)
+	{
+		return;
+	}
 
 	for (i = 0; i < cache->samplerDescriptorPoolCount; i += 1)
 	{
@@ -1892,6 +1946,47 @@ static void VULKAN_INTERNAL_DestroySamplerDescriptorSetCache(
 	}
 
 	SDL_free(cache);
+}
+
+static void VULKAN_INTERNAL_PerformDeferredDestroys(VulkanRenderer* renderer)
+{
+	uint32_t i;
+
+	/* Destroy submitted resources */
+
+	SDL_LockMutex(renderer->disposeLock);
+
+	for (i = 0; i < renderer->submittedTexturesToDestroyCount; i += 1)
+	{
+		VULKAN_INTERNAL_DestroyTexture(
+			renderer,
+			renderer->submittedTexturesToDestroy[i]
+		);
+	}
+	renderer->submittedTexturesToDestroyCount = 0;
+
+	/* Re-size submitted destroy lists */
+
+	if (renderer->submittedTexturesToDestroyCapacity < renderer->texturesToDestroyCount)
+	{
+		renderer->submittedTexturesToDestroy = SDL_realloc(
+			renderer->submittedTexturesToDestroy,
+			sizeof(VulkanTexture*) * renderer->texturesToDestroyCount
+		);
+
+		renderer->submittedTexturesToDestroyCapacity = renderer->texturesToDestroyCount;
+	}
+
+	/* Rotate destroy lists */
+
+	for (i = 0; i < renderer->texturesToDestroyCount; i += 1)
+	{
+		renderer->submittedTexturesToDestroy[i] = renderer->texturesToDestroy[i];
+	}
+	renderer->submittedTexturesToDestroyCount = renderer->texturesToDestroyCount;
+	renderer->texturesToDestroyCount = 0;
+
+	SDL_UnlockMutex(renderer->disposeLock);
 }
 
 /* Swapchain */
@@ -2684,6 +2779,7 @@ static void VULKAN_DestroyDevice(
 
 	SDL_DestroyMutex(renderer->commandLock);
 	SDL_DestroyMutex(renderer->allocatorLock);
+	SDL_DestroyMutex(renderer->disposeLock);
 
 	SDL_free(renderer->buffersInUse);
 
@@ -5508,7 +5604,25 @@ static void VULKAN_AddDisposeTexture(
 	REFRESH_Renderer *driverData,
 	REFRESH_Texture *texture
 ) {
-    SDL_assert(0);
+	VulkanRenderer* renderer = (VulkanRenderer*)driverData;
+	VulkanTexture* vulkanTexture = (VulkanTexture*)texture;
+
+	SDL_LockMutex(renderer->disposeLock);
+	
+	if (renderer->texturesToDestroyCount + 1 >= renderer->texturesToDestroyCapacity)
+	{
+		renderer->texturesToDestroyCapacity *= 2;
+
+		renderer->texturesToDestroy = SDL_realloc(
+			renderer->texturesToDestroy,
+			sizeof(VulkanTexture*) * renderer->texturesToDestroyCapacity
+		);
+	}
+
+	renderer->texturesToDestroy[renderer->texturesToDestroyCount] = vulkanTexture;
+	renderer->texturesToDestroyCount += 1;
+
+	SDL_UnlockMutex(renderer->disposeLock);
 }
 
 static void VULKAN_AddDisposeSampler(
@@ -7083,6 +7197,7 @@ static REFRESH_Device* VULKAN_CreateDevice(
 
 	renderer->allocatorLock = SDL_CreateMutex();
 	renderer->commandLock = SDL_CreateMutex();
+	renderer->disposeLock = SDL_CreateMutex();
 
 	/*
 	 * Create command pool and buffers
@@ -7397,8 +7512,27 @@ static REFRESH_Device* VULKAN_CreateDevice(
 	renderer->descriptorPoolCount = 0;
 
 	/* State tracking */
+
 	renderer->currentGraphicsPipeline = NULL;
 	renderer->currentFramebuffer = NULL;
+
+	/* Deferred destroy storage */
+
+	renderer->texturesToDestroyCapacity = 16;
+	renderer->texturesToDestroyCount = 0;
+
+	renderer->texturesToDestroy = (VulkanTexture**)SDL_malloc(
+		sizeof(VulkanTexture*) *
+		renderer->texturesToDestroyCapacity
+	);
+
+	renderer->submittedTexturesToDestroyCapacity = 16;
+	renderer->submittedTexturesToDestroyCount = 0;
+
+	renderer->submittedTexturesToDestroy = (VulkanTexture**)SDL_malloc(
+		sizeof(VulkanTexture*) *
+		renderer->submittedTexturesToDestroyCapacity
+	);
 
     return result;
 }
