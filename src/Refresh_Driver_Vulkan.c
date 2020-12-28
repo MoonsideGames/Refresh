@@ -1774,8 +1774,8 @@ static void VULKAN_INTERNAL_ImageMemoryBarrier(
 /* Resource Disposal */
 
 static void VULKAN_INTERNAL_DestroyBuffer(
-	VulkanRenderer *renderer,
-	VulkanBuffer *buffer
+	VulkanRenderer* renderer,
+	VulkanBuffer* buffer
 ) {
 	uint32_t i;
 
@@ -1856,6 +1856,42 @@ static void VULKAN_INTERNAL_DestroySwapchain(VulkanRenderer* renderer)
 static void VULKAN_INTERNAL_PerformDeferredDestroys(VulkanRenderer* renderer)
 {
 	/* TODO */
+}
+
+static void VULKAN_INTERNAL_DestroyTextureStagingBuffer(
+	VulkanRenderer* renderer
+) {
+	VULKAN_INTERNAL_DestroyBuffer(
+		renderer,
+		renderer->textureStagingBuffer
+	);
+}
+
+static void VULKAN_INTERNAL_DestroySamplerDescriptorSetCache(
+	VulkanRenderer* renderer,
+	SamplerDescriptorSetCache* cache
+) {
+	uint32_t i;
+
+	for (i = 0; i < cache->samplerDescriptorPoolCount; i += 1)
+	{
+		renderer->vkDestroyDescriptorPool(
+			renderer->logicalDevice,
+			cache->samplerDescriptorPools[i],
+			NULL
+		);
+	}
+
+	SDL_free(cache->samplerDescriptorPools);
+	SDL_free(cache->inactiveDescriptorSets);
+	SDL_free(cache->elements);
+
+	for (i = 0; i < NUM_DESCRIPTOR_SET_HASH_BUCKETS; i += 1)
+	{
+		SDL_free(cache->buckets[i].elements);
+	}
+
+	SDL_free(cache);
 }
 
 /* Swapchain */
@@ -2499,7 +2535,167 @@ static void VULKAN_INTERNAL_EndCommandBuffer(
 static void VULKAN_DestroyDevice(
     REFRESH_Device *device
 ) {
-    SDL_assert(0);
+	VulkanRenderer* renderer = (VulkanRenderer*) device->driverData;
+	VkResult waitResult;
+	PipelineLayoutHashArray pipelineLayoutHashArray;
+	VulkanMemorySubAllocator *allocator;
+	uint32_t i, j, k;
+
+	VULKAN_Submit(device->driverData);
+
+	waitResult = renderer->vkDeviceWaitIdle(renderer->logicalDevice);
+
+	if (waitResult != VK_SUCCESS)
+	{
+		LogVulkanResult("vkDeviceWaitIdle", waitResult);
+	}
+
+	VULKAN_INTERNAL_DestroyBuffer(renderer, renderer->dummyVertexUniformBuffer);
+	VULKAN_INTERNAL_DestroyBuffer(renderer, renderer->dummyFragmentUniformBuffer);
+
+	/* We have to do this twice so the rotation happens correctly */
+	VULKAN_INTERNAL_PerformDeferredDestroys(renderer);
+	VULKAN_INTERNAL_PerformDeferredDestroys(renderer);
+
+	VULKAN_INTERNAL_DestroyTextureStagingBuffer(renderer);
+
+	renderer->vkDestroySemaphore(
+		renderer->logicalDevice,
+		renderer->imageAvailableSemaphore,
+		NULL
+	);
+
+	renderer->vkDestroySemaphore(
+		renderer->logicalDevice,
+		renderer->renderFinishedSemaphore,
+		NULL
+	);
+
+	renderer->vkDestroyFence(
+		renderer->logicalDevice,
+		renderer->inFlightFence,
+		NULL
+	);
+
+	renderer->vkDestroyCommandPool(
+		renderer->logicalDevice,
+		renderer->commandPool,
+		NULL
+	);
+
+	for (i = 0; i < NUM_PIPELINE_LAYOUT_BUCKETS; i += 1)
+	{
+		pipelineLayoutHashArray = renderer->pipelineLayoutHashTable.buckets[i];
+		for (j = 0; j < pipelineLayoutHashArray.count; j += 1)
+		{
+			VULKAN_INTERNAL_DestroySamplerDescriptorSetCache(
+				renderer,
+				pipelineLayoutHashArray.elements[j].value->vertexSamplerDescriptorSetCache
+			);
+
+			VULKAN_INTERNAL_DestroySamplerDescriptorSetCache(
+				renderer,
+				pipelineLayoutHashArray.elements[j].value->fragmentSamplerDescriptorSetCache
+			);
+
+			renderer->vkDestroyPipelineLayout(
+				renderer->logicalDevice,
+				pipelineLayoutHashArray.elements[j].value->pipelineLayout,
+				NULL
+			);
+		}
+
+		if (pipelineLayoutHashArray.elements != NULL)
+		{
+			SDL_free(pipelineLayoutHashArray.elements);
+		}
+	}
+
+	renderer->vkDestroyDescriptorPool(
+		renderer->logicalDevice,
+		renderer->defaultDescriptorPool,
+		NULL
+	);
+
+	for (i = 0; i < NUM_DESCRIPTOR_SET_LAYOUT_BUCKETS; i += 1)
+	{
+		for (j = 0; j < renderer->samplerDescriptorSetLayoutHashTable.buckets[i].count; j += 1)
+		{
+			renderer->vkDestroyDescriptorSetLayout(
+				renderer->logicalDevice,
+				renderer->samplerDescriptorSetLayoutHashTable.buckets[i].elements[j].value,
+				NULL
+			);
+		}
+
+		SDL_free(renderer->samplerDescriptorSetLayoutHashTable.buckets[i].elements);
+	}
+
+	renderer->vkDestroyDescriptorSetLayout(
+		renderer->logicalDevice,
+		renderer->emptyVertexSamplerLayout,
+		NULL
+	);
+
+	renderer->vkDestroyDescriptorSetLayout(
+		renderer->logicalDevice,
+		renderer->emptyFragmentSamplerLayout,
+		NULL
+	);
+
+	VULKAN_INTERNAL_DestroySwapchain(renderer);
+
+	if (!renderer->headless)
+	{
+		renderer->vkDestroySurfaceKHR(
+			renderer->instance,
+			renderer->surface,
+			NULL
+		);
+	}
+
+	for (i = 0; i < VK_MAX_MEMORY_TYPES; i += 1)
+	{
+		allocator = &renderer->memoryAllocator->subAllocators[i];
+
+		for (j = 0; j < allocator->allocationCount; j += 1)
+		{
+			for (k = 0; k < allocator->allocations[j]->freeRegionCount; k += 1)
+			{
+				SDL_free(allocator->allocations[j]->freeRegions[k]);
+			}
+
+			SDL_free(allocator->allocations[j]->freeRegions);
+
+			renderer->vkFreeMemory(
+				renderer->logicalDevice,
+				allocator->allocations[j]->memory,
+				NULL
+			);
+
+			SDL_free(allocator->allocations[j]);
+		}
+
+		SDL_free(allocator->allocations);
+		SDL_free(allocator->sortedFreeRegions);
+	}
+
+	SDL_free(renderer->memoryAllocator);
+
+	SDL_DestroyMutex(renderer->commandLock);
+	SDL_DestroyMutex(renderer->allocatorLock);
+
+	SDL_free(renderer->buffersInUse);
+
+	SDL_free(renderer->inactiveCommandBuffers);
+	SDL_free(renderer->activeCommandBuffers);
+	SDL_free(renderer->submittedCommandBuffers);
+
+	renderer->vkDestroyDevice(renderer->logicalDevice, NULL);
+	renderer->vkDestroyInstance(renderer->instance, NULL);
+
+	SDL_free(renderer);
+	SDL_free(device);
 }
 
 static void VULKAN_Clear(
@@ -4326,15 +4522,6 @@ static REFRESH_Buffer* VULKAN_CreateIndexBuffer(
 }
 
 /* Setters */
-
-static void VULKAN_INTERNAL_DestroyTextureStagingBuffer(
-	VulkanRenderer *renderer
-) {
-	VULKAN_INTERNAL_DestroyBuffer(
-		renderer,
-		renderer->textureStagingBuffer
-	);
-}
 
 static void VULKAN_INTERNAL_MaybeExpandStagingBuffer(
 	VulkanRenderer *renderer,
