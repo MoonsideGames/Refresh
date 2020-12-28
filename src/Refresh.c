@@ -554,14 +554,12 @@ void REFRESH_PushFragmentShaderParams(
 
 void REFRESH_SetVertexSamplers(
 	REFRESH_Device *device,
-    REFRESH_GraphicsPipeline *pipeline,
 	REFRESH_Texture **pTextures,
 	REFRESH_Sampler **pSamplers
 ) {
     NULL_RETURN(device);
     device->SetVertexSamplers(
         device->driverData,
-        pipeline,
         pTextures,
         pSamplers
     );
@@ -569,14 +567,12 @@ void REFRESH_SetVertexSamplers(
 
 void REFRESH_SetFragmentSamplers(
 	REFRESH_Device *device,
-    REFRESH_GraphicsPipeline *pipeline,
 	REFRESH_Texture **pTextures,
 	REFRESH_Sampler **pSamplers
 ) {
     NULL_RETURN(device);
     device->SetFragmentSamplers(
         device->driverData,
-        pipeline,
         pTextures,
         pSamplers
     );

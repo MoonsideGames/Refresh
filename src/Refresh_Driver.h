@@ -368,14 +368,12 @@ struct REFRESH_Device
 
     void(*SetVertexSamplers)(
         REFRESH_Renderer *driverData,
-        REFRESH_GraphicsPipeline *pipeline,
         REFRESH_Texture **pTextures,
         REFRESH_Sampler **pSamplers
     );
 
     void(*SetFragmentSamplers)(
         REFRESH_Renderer *driverData,
-        REFRESH_GraphicsPipeline *pipeline,
         REFRESH_Texture **pTextures,
         REFRESH_Sampler **pSamplers
     );

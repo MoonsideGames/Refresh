@@ -5026,7 +5026,6 @@ static VkDescriptorSet VULKAN_INTERNAL_FetchSamplerDescriptorSet(
 
 static void VULKAN_SetVertexSamplers(
 	REFRESH_Renderer *driverData,
-	REFRESH_GraphicsPipeline *pipeline,
 	REFRESH_Texture **pTextures,
 	REFRESH_Sampler **pSamplers
 ) {
@@ -5034,7 +5033,7 @@ static void VULKAN_SetVertexSamplers(
 	uint32_t i, samplerCount;
 
 	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
-	VulkanGraphicsPipeline *graphicsPipeline = (VulkanGraphicsPipeline*) pipeline;
+	VulkanGraphicsPipeline *graphicsPipeline = renderer->currentGraphicsPipeline;
 	SamplerDescriptorSetData vertexSamplerDescriptorSetData;
 
 	if (graphicsPipeline->pipelineLayout->vertexSamplerDescriptorSetCache == NULL)
@@ -5061,7 +5060,6 @@ static void VULKAN_SetVertexSamplers(
 
 static void VULKAN_SetFragmentSamplers(
 	REFRESH_Renderer *driverData,
-	REFRESH_GraphicsPipeline *pipeline,
 	REFRESH_Texture **pTextures,
 	REFRESH_Sampler **pSamplers
 ) {
@@ -5069,7 +5067,7 @@ static void VULKAN_SetFragmentSamplers(
 	uint32_t i, samplerCount;
 
 	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
-	VulkanGraphicsPipeline *graphicsPipeline = (VulkanGraphicsPipeline*) pipeline;
+	VulkanGraphicsPipeline *graphicsPipeline = renderer->currentGraphicsPipeline;
 	SamplerDescriptorSetData fragmentSamplerDescriptorSetData;
 
 	if (graphicsPipeline->pipelineLayout->fragmentSamplerDescriptorSetCache == NULL)

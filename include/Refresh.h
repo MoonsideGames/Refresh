@@ -995,15 +995,13 @@ REFRESHAPI void REFRESH_PushFragmentShaderParams(
  *
  * NOTE:
  * 		The length of the passed arrays must be equal to the number
- * 		of sampler bindings specified by the shader.
+ * 		of sampler bindings specified by the pipeline.
  *
- * pipeline:	The graphics pipeline to push shader data to.
  * textures:	A pointer to an array of textures.
  * samplers:	A pointer to an array of samplers.
  */
 REFRESHAPI void REFRESH_SetVertexSamplers(
 	REFRESH_Device *device,
-	REFRESH_GraphicsPipeline *pipeline,
 	REFRESH_Texture **pTextures,
 	REFRESH_Sampler **pSamplers
 );
@@ -1012,15 +1010,13 @@ REFRESHAPI void REFRESH_SetVertexSamplers(
  *
  * NOTE:
  *		The length of the passed arrays must be equal to the number
- * 		of sampler bindings specified by the shader.
+ * 		of sampler bindings specified by the pipeline.
  *
- * pipeline:	The graphics pipeline to push shader data to.
  * textures: 	A pointer to an array of textures.
  * samplers:	A pointer to an array of samplers.
  */
 REFRESHAPI void REFRESH_SetFragmentSamplers(
 	REFRESH_Device *device,
-	REFRESH_GraphicsPipeline *pipeline,
 	REFRESH_Texture **pTextures,
 	REFRESH_Sampler **pSamplers
 );
