@@ -45,12 +45,14 @@ add_definitions(
 add_library(Refresh
 	# Public Headers
 	include/Refresh.h
+	include/Refresh_Image.h
 	# Internal Headers
 	src/Refresh_Driver.h
 	src/Refresh_Driver_Vulkan_vkfuncs.h
 	# Source Files
 	src/Refresh.c
 	src/Refresh_Driver_Vulkan.c
+	src/Refresh_Image.c
 )
 
 # Build flags

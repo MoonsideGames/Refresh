@@ -2896,10 +2896,25 @@ static SamplerDescriptorSetCache* VULKAN_INTERNAL_CreateSamplerDescriptorSetCach
 	VkDescriptorSetLayout descriptorSetLayout,
 	uint32_t samplerBindingCount
 ) {
-	SamplerDescriptorSetCache *samplerDescriptorSetCache = SDL_malloc(sizeof(samplerDescriptorSetCache));
+	uint32_t i;
+	SamplerDescriptorSetCache *samplerDescriptorSetCache = SDL_malloc(sizeof(SamplerDescriptorSetCache));
+
+	samplerDescriptorSetCache->elements = SDL_malloc(sizeof(SamplerDescriptorSetHashMap) * 16);
+	samplerDescriptorSetCache->count = 0;
+	samplerDescriptorSetCache->capacity = 16;
+
+	for (i = 0; i < NUM_DESCRIPTOR_SET_HASH_BUCKETS; i += 1)
+	{
+		samplerDescriptorSetCache->buckets[i].elements = NULL;
+		samplerDescriptorSetCache->buckets[i].count = 0;
+		samplerDescriptorSetCache->buckets[i].capacity = 0;
+	}
 
 	samplerDescriptorSetCache->descriptorSetLayout = descriptorSetLayout;
 	samplerDescriptorSetCache->samplerBindingCount = samplerBindingCount;
+
+	samplerDescriptorSetCache->samplerDescriptorPools = SDL_malloc(sizeof(VkDescriptorPool));
+	samplerDescriptorSetCache->samplerDescriptorPoolCount = 1;
 
 	VULKAN_INTERNAL_CreateSamplerDescriptorPool(
 		renderer,
@@ -5057,7 +5072,7 @@ static void VULKAN_SetFragmentSamplers(
 	VulkanGraphicsPipeline *graphicsPipeline = (VulkanGraphicsPipeline*) pipeline;
 	SamplerDescriptorSetData fragmentSamplerDescriptorSetData;
 
-	if (graphicsPipeline->pipelineLayout->vertexSamplerDescriptorSetCache == NULL)
+	if (graphicsPipeline->pipelineLayout->fragmentSamplerDescriptorSetCache == NULL)
 	{
 		return;
 	}
@@ -5067,6 +5082,20 @@ static void VULKAN_SetFragmentSamplers(
 	for (i = 0; i < samplerCount; i += 1)
 	{
 		currentTexture = (VulkanTexture*) pTextures[i];
+
+		VULKAN_INTERNAL_ImageMemoryBarrier(
+			renderer,
+			RESOURCE_ACCESS_FRAGMENT_SHADER_READ_SAMPLED_IMAGE,
+			VK_IMAGE_ASPECT_COLOR_BIT,
+			0,
+			currentTexture->layerCount,
+			0,
+			currentTexture->levelCount,
+			0,
+			currentTexture->image,
+			&currentTexture->resourceAccessType
+		);
+
 		fragmentSamplerDescriptorSetData.descriptorImageInfo[i].imageView = currentTexture->view;
 		fragmentSamplerDescriptorSetData.descriptorImageInfo[i].sampler = (VkSampler) pSamplers[i];
 		fragmentSamplerDescriptorSetData.descriptorImageInfo[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
