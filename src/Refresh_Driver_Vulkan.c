@@ -769,54 +769,54 @@ typedef struct VulkanFramebuffer
 
 #define NUM_DESCRIPTOR_SET_LAYOUT_BUCKETS 1031
 
-typedef struct SamplerDescriptorSetLayoutHash
+typedef struct DescriptorSetLayoutHash
 {
-	VkDescriptorType descriptorType; // FIXME: unnecessary
-	uint32_t samplerBindingCount;
+	VkDescriptorType descriptorType;
+	uint32_t bindingCount;
 	VkShaderStageFlagBits stageFlag;
-} SamplerDescriptorSetLayoutHash;
+} DescriptorSetLayoutHash;
 
-typedef struct SamplerDescriptorSetLayoutHashMap
+typedef struct DescriptorSetLayoutHashMap
 {
-	SamplerDescriptorSetLayoutHash key;
+	DescriptorSetLayoutHash key;
 	VkDescriptorSetLayout value;
-} SamplerDescriptorSetLayoutHashMap;
+} DescriptorSetLayoutHashMap;
 
-typedef struct SamplerDescriptorSetLayoutHashArray
+typedef struct DescriptorSetLayoutHashArray
 {
-	SamplerDescriptorSetLayoutHashMap *elements;
+	DescriptorSetLayoutHashMap *elements;
 	int32_t count;
 	int32_t capacity;
-} SamplerDescriptorSetLayoutHashArray;
+} DescriptorSetLayoutHashArray;
 
-typedef struct SamplerDescriptorSetLayoutHashTable
+typedef struct DescriptorSetLayoutHashTable
 {
-	SamplerDescriptorSetLayoutHashArray buckets[NUM_DESCRIPTOR_SET_LAYOUT_BUCKETS];
-} SamplerDescriptorSetLayoutHashTable;
+	DescriptorSetLayoutHashArray buckets[NUM_DESCRIPTOR_SET_LAYOUT_BUCKETS];
+} DescriptorSetLayoutHashTable;
 
-static inline uint64_t SamplerDescriptorSetLayoutHashTable_GetHashCode(SamplerDescriptorSetLayoutHash key)
+static inline uint64_t DescriptorSetLayoutHashTable_GetHashCode(DescriptorSetLayoutHash key)
 {
 	const uint64_t HASH_FACTOR = 97;
 	uint64_t result = 1;
 	result = result * HASH_FACTOR + key.descriptorType;
-	result = result * HASH_FACTOR + key.samplerBindingCount;
+	result = result * HASH_FACTOR + key.bindingCount;
 	result = result * HASH_FACTOR + key.stageFlag;
 	return result;
 }
 
-static inline VkDescriptorSetLayout SamplerDescriptorSetLayoutHashTable_Fetch(
-	SamplerDescriptorSetLayoutHashTable *table,
-	SamplerDescriptorSetLayoutHash key
+static inline VkDescriptorSetLayout DescriptorSetLayoutHashTable_Fetch(
+	DescriptorSetLayoutHashTable *table,
+	DescriptorSetLayoutHash key
 ) {
 	int32_t i;
-	uint64_t hashcode = SamplerDescriptorSetLayoutHashTable_GetHashCode(key);
-	SamplerDescriptorSetLayoutHashArray *arr = &table->buckets[hashcode % NUM_DESCRIPTOR_SET_LAYOUT_BUCKETS];
+	uint64_t hashcode = DescriptorSetLayoutHashTable_GetHashCode(key);
+	DescriptorSetLayoutHashArray *arr = &table->buckets[hashcode % NUM_DESCRIPTOR_SET_LAYOUT_BUCKETS];
 
 	for (i = 0; i < arr->count; i += 1)
 	{
-		const SamplerDescriptorSetLayoutHash *e = &arr->elements[i].key;
+		const DescriptorSetLayoutHash *e = &arr->elements[i].key;
 		if (    key.descriptorType == e->descriptorType &&
-			key.samplerBindingCount == e->samplerBindingCount &&
+			key.bindingCount == e->bindingCount &&
 			key.stageFlag == e->stageFlag   )
 		{
 			return arr->elements[i].value;
@@ -826,89 +826,19 @@ static inline VkDescriptorSetLayout SamplerDescriptorSetLayoutHashTable_Fetch(
 	return VK_NULL_HANDLE;
 }
 
-static inline void SamplerDescriptorSetLayoutHashTable_Insert(
-	SamplerDescriptorSetLayoutHashTable *table,
-	SamplerDescriptorSetLayoutHash key,
+static inline void DescriptorSetLayoutHashTable_Insert(
+	DescriptorSetLayoutHashTable *table,
+	DescriptorSetLayoutHash key,
 	VkDescriptorSetLayout value
 ) {
-	uint64_t hashcode = SamplerDescriptorSetLayoutHashTable_GetHashCode(key);
-	SamplerDescriptorSetLayoutHashArray *arr = &table->buckets[hashcode % NUM_DESCRIPTOR_SET_LAYOUT_BUCKETS];
+	uint64_t hashcode = DescriptorSetLayoutHashTable_GetHashCode(key);
+	DescriptorSetLayoutHashArray *arr = &table->buckets[hashcode % NUM_DESCRIPTOR_SET_LAYOUT_BUCKETS];
 
-	SamplerDescriptorSetLayoutHashMap map;
+	DescriptorSetLayoutHashMap map;
 	map.key = key;
 	map.value = value;
 
-	EXPAND_ELEMENTS_IF_NEEDED(arr, 4, SamplerDescriptorSetLayoutHashMap);
-
-	arr->elements[arr->count] = map;
-	arr->count += 1;
-}
-
-/* FIXME: we can probably just index this by count */
-typedef struct ComputeBufferDescriptorSetLayoutHash
-{
-	uint32_t bindingCount;
-} ComputeBufferDescriptorSetLayoutHash;
-
-typedef struct ComputeBufferDescriptorSetLayoutHashMap
-{
-	ComputeBufferDescriptorSetLayoutHash key;
-	VkDescriptorSetLayout value;
-} ComputeBufferDescriptorSetLayoutHashMap;
-
-typedef struct ComputeBufferDescriptorSetLayoutHashArray
-{
-	ComputeBufferDescriptorSetLayoutHashMap *elements;
-	int32_t count;
-	int32_t capacity;
-} ComputeBufferDescriptorSetLayoutHashArray;
-
-typedef struct ComputeBufferDescriptorSetLayoutHashTable
-{
-	ComputeBufferDescriptorSetLayoutHashArray buckets[NUM_DESCRIPTOR_SET_LAYOUT_BUCKETS];
-} ComputeBufferDescriptorSetLayoutHashTable;
-
-static inline uint64_t ComputeBufferDescriptorSetLayoutHashTable_GetHashCode(ComputeBufferDescriptorSetLayoutHash key)
-{
-	const uint64_t HASH_FACTOR = 97;
-	uint64_t result = 1;
-	result = result * HASH_FACTOR + key.bindingCount;
-	return result;
-}
-
-static inline VkDescriptorSetLayout ComputeBufferDescriptorSetLayoutHashTable_Fetch(
-	ComputeBufferDescriptorSetLayoutHashTable *table,
-	ComputeBufferDescriptorSetLayoutHash key
-) {
-	int32_t i;
-	uint64_t hashcode = ComputeBufferDescriptorSetLayoutHashTable_GetHashCode(key);
-	ComputeBufferDescriptorSetLayoutHashArray *arr = &table->buckets[hashcode % NUM_DESCRIPTOR_SET_LAYOUT_BUCKETS];
-
-	for (i = 0; i < arr->count; i += 1)
-	{
-		const ComputeBufferDescriptorSetLayoutHash *e = &arr->elements[i].key;
-		if (key.bindingCount == e->bindingCount)
-		{
-			return arr->elements[i].value;
-		}
-	}
-
-	return VK_NULL_HANDLE;
-}
-
-static inline void ComputeBufferDescriptorSetLayoutHashTable_Insert(
-	ComputeBufferDescriptorSetLayoutHashTable *table,
-	ComputeBufferDescriptorSetLayoutHash key,
-	VkDescriptorSetLayout value
-) {
-	uint64_t hashcode = ComputeBufferDescriptorSetLayoutHashTable_GetHashCode(key);
-	ComputeBufferDescriptorSetLayoutHashArray *arr = &table->buckets[hashcode % NUM_DESCRIPTOR_SET_LAYOUT_BUCKETS];
-
-	ComputeBufferDescriptorSetLayoutHashMap map;
-	map.key = key;
-	map.value = value;
-
-	EXPAND_ELEMENTS_IF_NEEDED(arr, 4, ComputeBufferDescriptorSetLayoutHashMap)
+	EXPAND_ELEMENTS_IF_NEEDED(arr, 4, DescriptorSetLayoutHashMap);
 
 	arr->elements[arr->count] = map;
 	arr->count += 1;
@@ -1185,8 +1115,7 @@ typedef struct VulkanRenderer
 	VulkanGraphicsPipeline *currentGraphicsPipeline;
 	VulkanFramebuffer *currentFramebuffer;
 
-	SamplerDescriptorSetLayoutHashTable samplerDescriptorSetLayoutHashTable;
-	ComputeBufferDescriptorSetLayoutHashTable computeBufferDescriptorSetLayoutHashTable;
+	DescriptorSetLayoutHashTable descriptorSetLayoutHashTable;
 
 	GraphicsPipelineLayoutHashTable graphicsPipelineLayoutHashTable;
 	ComputePipelineLayoutHashTable computePipelineLayoutHashTable;
@@ -3336,16 +3265,16 @@ static void VULKAN_DestroyDevice(
 
 	for (i = 0; i < NUM_DESCRIPTOR_SET_LAYOUT_BUCKETS; i += 1)
 	{
-		for (j = 0; j < renderer->samplerDescriptorSetLayoutHashTable.buckets[i].count; j += 1)
+		for (j = 0; j < renderer->descriptorSetLayoutHashTable.buckets[i].count; j += 1)
 		{
 			renderer->vkDestroyDescriptorSetLayout(
 				renderer->logicalDevice,
-				renderer->samplerDescriptorSetLayoutHashTable.buckets[i].elements[j].value,
+				renderer->descriptorSetLayoutHashTable.buckets[i].elements[j].value,
 				NULL
 			);
 		}
 
-		SDL_free(renderer->samplerDescriptorSetLayoutHashTable.buckets[i].elements);
+		SDL_free(renderer->descriptorSetLayoutHashTable.buckets[i].elements);
 	}
 
 	renderer->vkDestroyDescriptorSetLayout(
@@ -3992,12 +3921,13 @@ static SamplerDescriptorSetCache* VULKAN_INTERNAL_CreateSamplerDescriptorSetCach
 	return samplerDescriptorSetCache;
 }
 
-static VkDescriptorSetLayout VULKAN_INTERNAL_FetchSamplerDescriptorSetLayout(
+static VkDescriptorSetLayout VULKAN_INTERNAL_FetchDescriptorSetLayout(
 	VulkanRenderer *renderer,
-	VkShaderStageFlagBits shaderStageFlagBit,
-	uint32_t samplerBindingCount
+	VkDescriptorType descriptorType,
+	uint32_t bindingCount,
+	VkShaderStageFlagBits shaderStageFlagBit
 ) {
-	SamplerDescriptorSetLayoutHash descriptorSetLayoutHash;
+	DescriptorSetLayoutHash descriptorSetLayoutHash;
 	VkDescriptorSetLayout descriptorSetLayout;
 
 	VkDescriptorSetLayoutBinding setLayoutBindings[MAX_TEXTURE_SAMPLERS];
@@ -4006,7 +3936,7 @@ static VkDescriptorSetLayout VULKAN_INTERNAL_FetchSamplerDescriptorSetLayout(
 	VkResult vulkanResult;
 	uint32_t i;
 
-	if (samplerBindingCount == 0)
+	if (bindingCount == 0)
 	{
 		if (shaderStageFlagBit == VK_SHADER_STAGE_VERTEX_BIT)
 		{
@@ -4016,6 +3946,10 @@ static VkDescriptorSetLayout VULKAN_INTERNAL_FetchSamplerDescriptorSetLayout(
 		{
 			return renderer->emptyFragmentSamplerLayout;
 		}
+		else if (shaderStageFlagBit == VK_SHADER_STAGE_COMPUTE_BIT)
+		{
+			return renderer->emptyComputeBufferDescriptorSetLayout;
+		}
 		else
 		{
 			REFRESH_LogError("Invalid shader stage flag bit: ", shaderStageFlagBit);
@@ -4024,11 +3958,11 @@ static VkDescriptorSetLayout VULKAN_INTERNAL_FetchSamplerDescriptorSetLayout(
 	}
 
 	descriptorSetLayoutHash.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	descriptorSetLayoutHash.bindingCount = bindingCount;
 	descriptorSetLayoutHash.stageFlag = shaderStageFlagBit;
-	descriptorSetLayoutHash.samplerBindingCount = samplerBindingCount;
 
-	descriptorSetLayout = SamplerDescriptorSetLayoutHashTable_Fetch(
-		&renderer->samplerDescriptorSetLayoutHashTable,
+	descriptorSetLayout = DescriptorSetLayoutHashTable_Fetch(
+		&renderer->descriptorSetLayoutHashTable,
 		descriptorSetLayoutHash
 	);
 
@@ -4037,7 +3971,7 @@ static VkDescriptorSetLayout VULKAN_INTERNAL_FetchSamplerDescriptorSetLayout(
 		return descriptorSetLayout;
 	}
 
-	for (i = 0; i < samplerBindingCount; i += 1)
+	for (i = 0; i < bindingCount; i += 1)
 	{
 		setLayoutBindings[i].binding = i;
 		setLayoutBindings[i].descriptorCount = 1;
@@ -4049,7 +3983,7 @@ static VkDescriptorSetLayout VULKAN_INTERNAL_FetchSamplerDescriptorSetLayout(
 	setLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
 	setLayoutCreateInfo.pNext = NULL;
 	setLayoutCreateInfo.flags = 0;
-	setLayoutCreateInfo.bindingCount = samplerBindingCount;
+	setLayoutCreateInfo.bindingCount = bindingCount;
 	setLayoutCreateInfo.pBindings = setLayoutBindings;
 
 	vulkanResult = renderer->vkCreateDescriptorSetLayout(
@@ -4065,8 +3999,8 @@ static VkDescriptorSetLayout VULKAN_INTERNAL_FetchSamplerDescriptorSetLayout(
 		return NULL_DESC_LAYOUT;
 	}
 
-	SamplerDescriptorSetLayoutHashTable_Insert(
-		&renderer->samplerDescriptorSetLayoutHashTable,
+	DescriptorSetLayoutHashTable_Insert(
+		&renderer->descriptorSetLayoutHashTable,
 		descriptorSetLayoutHash,
 		descriptorSetLayout
 	);
@@ -4087,16 +4021,18 @@ static VulkanGraphicsPipelineLayout* VULKAN_INTERNAL_FetchGraphicsPipelineLayout
 
 	VulkanGraphicsPipelineLayout *vulkanGraphicsPipelineLayout;
 
-	pipelineLayoutHash.vertexSamplerLayout = VULKAN_INTERNAL_FetchSamplerDescriptorSetLayout(
+	pipelineLayoutHash.vertexSamplerLayout = VULKAN_INTERNAL_FetchDescriptorSetLayout(
 		renderer,
-		VK_SHADER_STAGE_VERTEX_BIT,
-		vertexSamplerBindingCount
+		VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+		vertexSamplerBindingCount,
+		VK_SHADER_STAGE_VERTEX_BIT
 	);
 
-	pipelineLayoutHash.fragmentSamplerLayout = VULKAN_INTERNAL_FetchSamplerDescriptorSetLayout(
+	pipelineLayoutHash.fragmentSamplerLayout = VULKAN_INTERNAL_FetchDescriptorSetLayout(
 		renderer,
-		VK_SHADER_STAGE_FRAGMENT_BIT,
-		fragmentSamplerBindingCount
+		VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+		fragmentSamplerBindingCount,
+		VK_SHADER_STAGE_FRAGMENT_BIT
 	);
 
 	pipelineLayoutHash.vertexUniformLayout = renderer->vertexParamLayout;
@@ -4623,77 +4559,6 @@ static REFRESH_GraphicsPipeline* VULKAN_CreateGraphicsPipeline(
 	return (REFRESH_GraphicsPipeline*) graphicsPipeline;
 }
 
-static VkDescriptorSetLayout VULKAN_INTERNAL_FetchComputeBufferDescriptorSetLayout(
-	VulkanRenderer *renderer,
-	uint32_t bindingCount
-) {
-	ComputeBufferDescriptorSetLayoutHash descriptorSetLayoutHash;
-	VkDescriptorSetLayout descriptorSetLayout;
-
-	VkDescriptorSetLayoutBinding *setLayoutBindings;
-	VkDescriptorSetLayoutCreateInfo setLayoutCreateInfo;
-
-	VkResult vulkanResult;
-	uint32_t i;
-
-	if (bindingCount == 0)
-	{
-		return renderer->emptyComputeBufferDescriptorSetLayout;
-	}
-
-	descriptorSetLayoutHash.bindingCount = bindingCount;
-
-	descriptorSetLayout = ComputeBufferDescriptorSetLayoutHashTable_Fetch(
-		&renderer->computeBufferDescriptorSetLayoutHashTable,
-		descriptorSetLayoutHash
-	);
-
-	if (descriptorSetLayout != VK_NULL_HANDLE)
-	{
-		return descriptorSetLayout;
-	}
-
-	setLayoutBindings = SDL_stack_alloc(VkDescriptorSetLayoutBinding, bindingCount);
-
-	for (i = 0; i < bindingCount; i += 1)
-	{
-		setLayoutBindings[i].binding = i;
-		setLayoutBindings[i].descriptorCount = 1;
-		setLayoutBindings[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-		setLayoutBindings[i].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-		setLayoutBindings[i].pImmutableSamplers = NULL;
-	}
-
-	setLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-	setLayoutCreateInfo.pNext = NULL;
-	setLayoutCreateInfo.flags = 0;
-	setLayoutCreateInfo.bindingCount = bindingCount;
-	setLayoutCreateInfo.pBindings = setLayoutBindings;
-
-	vulkanResult = renderer->vkCreateDescriptorSetLayout(
-		renderer->logicalDevice,
-		&setLayoutCreateInfo,
-		NULL,
-		&descriptorSetLayout
-	);
-
-	if (vulkanResult != VK_SUCCESS)
-	{
-		LogVulkanResult("vkCreateDescriptorSetLayout", vulkanResult);
-		SDL_stack_free(setLayoutBindings);
-		return NULL_DESC_LAYOUT;
-	}
-
-	ComputeBufferDescriptorSetLayoutHashTable_Insert(
-		&renderer->computeBufferDescriptorSetLayoutHashTable,
-		descriptorSetLayoutHash,
-		descriptorSetLayout
-	);
-
-	SDL_stack_free(setLayoutBindings);
-	return descriptorSetLayout;
-}
-
 static VulkanComputePipelineLayout* VULKAN_INTERNAL_FetchComputePipelineLayout(
 	VulkanRenderer *renderer,
 	uint32_t bufferBindingCount,
@@ -4705,14 +4570,18 @@ static VulkanComputePipelineLayout* VULKAN_INTERNAL_FetchComputePipelineLayout(
 	ComputePipelineLayoutHash pipelineLayoutHash;
 	VulkanComputePipelineLayout *vulkanComputePipelineLayout;
 
-	pipelineLayoutHash.bufferLayout = VULKAN_INTERNAL_FetchComputeBufferDescriptorSetLayout(
+	pipelineLayoutHash.bufferLayout = VULKAN_INTERNAL_FetchDescriptorSetLayout(
 		renderer,
-		bufferBindingCount
+		VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+		bufferBindingCount,
+		VK_SHADER_STAGE_COMPUTE_BIT
 	);
 
-	pipelineLayoutHash.imageLayout = VULKAN_INTERNAL_FetchComputeImageDescriptorSetLayout(
+	pipelineLayoutHash.imageLayout = VULKAN_INTERNAL_FetchDescriptorSetLayout(
 		renderer,
-		imageBindingCount
+		VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+		imageBindingCount,
+		VK_SHADER_STAGE_COMPUTE_BIT
 	);
 
 	vulkanComputePipelineLayout = ComputePipelineLayoutHashArray_Fetch(
@@ -8505,16 +8374,9 @@ static REFRESH_Device* VULKAN_CreateDevice(
 
 	for (i = 0; i < NUM_DESCRIPTOR_SET_LAYOUT_BUCKETS; i += 1)
 	{
-		renderer->samplerDescriptorSetLayoutHashTable.buckets[i].elements = NULL;
-		renderer->samplerDescriptorSetLayoutHashTable.buckets[i].count = 0;
-		renderer->samplerDescriptorSetLayoutHashTable.buckets[i].capacity = 0;
-	}
-
-	for (i = 0; i < NUM_DESCRIPTOR_SET_LAYOUT_BUCKETS; i += 1)
-	{
-		renderer->computeBufferDescriptorSetLayoutHashTable.buckets[i].elements = NULL;
-		renderer->computeBufferDescriptorSetLayoutHashTable.buckets[i].count = 0;
-		renderer->computeBufferDescriptorSetLayoutHashTable.buckets[i].capacity = 0;
+		renderer->descriptorSetLayoutHashTable.buckets[i].elements = NULL;
+		renderer->descriptorSetLayoutHashTable.buckets[i].count = 0;
+		renderer->descriptorSetLayoutHashTable.buckets[i].capacity = 0;
 	}
 
 	/* Descriptor Pools */
