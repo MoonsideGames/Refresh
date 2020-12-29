@@ -1017,7 +1017,7 @@ REFRESHAPI uint32_t REFRESH_PushVertexShaderParams(
 REFRESHAPI uint32_t REFRESH_PushFragmentShaderParams(
 	REFRESH_Device *device,
 	void *data,
-	uint32_t elementCount
+	uint32_t paramBlockCount
 );
 
 /* Sets textures/samplers for use with the currently bound vertex shader.
