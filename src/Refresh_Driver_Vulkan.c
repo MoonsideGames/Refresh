@@ -91,7 +91,7 @@ static uint32_t deviceExtensionCount = SDL_arraysize(deviceExtensionNames);
 #define NULL_PIPELINE_LAYOUT (VkPipelineLayout) 0
 #define NULL_RENDER_PASS (REFRESH_RenderPass*) 0
 
-#define EXPAND_ARRAY_IF_NEEDED(arr, initialValue, type)	\
+#define EXPAND_ELEMENTS_IF_NEEDED(arr, initialValue, type)	\
 	if (arr->count == arr->capacity)		\
 	{						\
 		if (arr->capacity == 0)			\
@@ -106,6 +106,16 @@ static uint32_t deviceExtensionCount = SDL_arraysize(deviceExtensionNames);
 			arr->elements,			\
 			arr->capacity * sizeof(type)	\
 		);					\
+	}
+
+#define EXPAND_ARRAY_IF_NEEDED(arr, type, newCount, capacity, newCapacity)	\
+	if (newCount >= capacity)												\
+	{																		\
+		capacity = newCapacity;												\
+		arr = (type*) SDL_realloc(											\
+			arr,															\
+			sizeof(type) * capacity											\
+		);																	\
 	}
 
 /* Enums */
@@ -186,16 +196,6 @@ static VkFormat RefreshToVK_DepthFormat[] =
     VK_FORMAT_D16_UNORM_S8_UINT,
     VK_FORMAT_D24_UNORM_S8_UINT,
     VK_FORMAT_D32_SFLOAT_S8_UINT
-};
-
-static VulkanResourceAccessType RefreshToVK_ImageLayout[] =
-{
-	RESOURCE_ACCESS_TRANSFER_READ,
-	RESOURCE_ACCESS_COLOR_ATTACHMENT_READ_WRITE,
-	RESOURCE_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_WRITE,
-	RESOURCE_ACCESS_VERTEX_SHADER_READ_SAMPLED_IMAGE,
-	RESOURCE_ACCESS_FRAGMENT_SHADER_READ_SAMPLED_IMAGE,
-	RESOURCE_ACCESS_TRANSFER_WRITE
 };
 
 static VkFormat RefreshToVK_VertexFormat[] =
@@ -811,7 +811,7 @@ static inline void SamplerDescriptorSetLayoutHashTable_Insert(
 	map.key = key;
 	map.value = value;
 
-	EXPAND_ARRAY_IF_NEEDED(arr, 4, SamplerDescriptorSetLayoutHashMap);
+	EXPAND_ELEMENTS_IF_NEEDED(arr, 4, SamplerDescriptorSetLayoutHashMap);
 
 	arr->elements[arr->count] = map;
 	arr->count += 1;
@@ -891,7 +891,7 @@ static inline void PipelineLayoutHashArray_Insert(
 	map.key = key;
 	map.value = value;
 
-	EXPAND_ARRAY_IF_NEEDED(arr, 4, PipelineLayoutHashMap)
+	EXPAND_ELEMENTS_IF_NEEDED(arr, 4, PipelineLayoutHashMap)
 
 	arr->elements[arr->count] = map;
 	arr->count += 1;
@@ -1062,6 +1062,14 @@ typedef struct VulkanRenderer
 
 	/* Deferred destroy storage */
 
+	VulkanColorTarget **colorTargetsToDestroy;
+	uint32_t colorTargetsToDestroyCount;
+	uint32_t colorTargetsToDestroyCapacity;
+
+	VulkanColorTarget **submittedColorTargetsToDestroy;
+	uint32_t submittedColorTargetsToDestroyCount;
+	uint32_t submittedColorTargetsToDestroyCapacity;
+
 	VulkanTexture **texturesToDestroy;
 	uint32_t texturesToDestroyCount;
 	uint32_t texturesToDestroyCapacity;
@@ -1069,6 +1077,22 @@ typedef struct VulkanRenderer
 	VulkanTexture **submittedTexturesToDestroy;
 	uint32_t submittedTexturesToDestroyCount;
 	uint32_t submittedTexturesToDestroyCapacity;
+
+	VulkanBuffer **buffersToDestroy;
+	uint32_t buffersToDestroyCount;
+	uint32_t buffersToDestroyCapacity;
+
+	VulkanBuffer **submittedBuffersToDestroy;
+	uint32_t submittedBuffersToDestroyCount;
+	uint32_t submittedBuffersToDestroyCapacity;
+
+	VulkanGraphicsPipeline **graphicsPipelinesToDestroy;
+	uint32_t graphicsPipelinesToDestroyCount;
+	uint32_t graphicsPipelinesToDestroyCapacity;
+
+	VulkanGraphicsPipeline **submittedGraphicsPipelinesToDestroy;
+	uint32_t submittedGraphicsPipelinesToDestroyCount;
+	uint32_t submittedGraphicsPipelinesToDestroyCapacity;
 
     #define VULKAN_INSTANCE_FUNCTION(ext, ret, func, params) \
 		vkfntype_##func func;
@@ -1784,6 +1808,102 @@ static void VULKAN_INTERNAL_ImageMemoryBarrier(
 
 /* Resource Disposal */
 
+static void VULKAN_INTERNAL_RemoveBuffer(
+	REFRESH_Renderer *driverData,
+	REFRESH_Buffer *buffer
+) {
+	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	VulkanBuffer *vulkanBuffer = (VulkanBuffer*) buffer;
+
+	SDL_LockMutex(renderer->disposeLock);
+
+	/* Queue buffer for destruction */
+	if (renderer->buffersToDestroyCount + 1 >= renderer->buffersToDestroyCapacity)
+	{
+		renderer->buffersToDestroyCapacity *= 2;
+
+		renderer->buffersToDestroy = SDL_realloc(
+			renderer->buffersToDestroy,
+			sizeof(VulkanBuffer*) * renderer->buffersToDestroyCapacity
+		);
+	}
+
+	renderer->buffersToDestroy[
+		renderer->buffersToDestroyCount
+	] = vulkanBuffer;
+	renderer->buffersToDestroyCount += 1;
+
+	SDL_UnlockMutex(renderer->disposeLock);
+}
+
+static void VULKAN_INTERNAL_DestroyTexture(
+	VulkanRenderer* renderer,
+	VulkanTexture* texture
+) {
+	if (texture->allocation->dedicated)
+	{
+		renderer->vkFreeMemory(
+			renderer->logicalDevice,
+			texture->allocation->memory,
+			NULL
+		);
+
+		SDL_free(texture->allocation->freeRegions);
+		SDL_free(texture->allocation);
+	}
+	else
+	{
+		SDL_LockMutex(renderer->allocatorLock);
+
+		VULKAN_INTERNAL_NewMemoryFreeRegion(
+			texture->allocation,
+			texture->offset,
+			texture->memorySize
+		);
+
+		SDL_UnlockMutex(renderer->allocatorLock);
+	}
+
+	renderer->vkDestroyImageView(
+		renderer->logicalDevice,
+		texture->view,
+		NULL
+	);
+
+	renderer->vkDestroyImage(
+		renderer->logicalDevice,
+		texture->image,
+		NULL
+	);
+
+	SDL_free(texture);
+}
+
+static void VULKAN_INTERNAL_DestroyColorTarget(
+	VulkanRenderer *renderer,
+	VulkanColorTarget *colorTarget
+) {
+	renderer->vkDestroyImageView(
+		renderer->logicalDevice,
+		colorTarget->view,
+		NULL
+	);
+
+	/* The texture is not owned by the ColorTarget
+	 * so we don't free it here
+	 * But the multisampleTexture is!
+	 */
+	if (colorTarget->multisampleTexture != NULL)
+	{
+		VULKAN_INTERNAL_DestroyTexture(
+			renderer,
+			colorTarget->multisampleTexture
+		);
+	}
+
+	SDL_free(colorTarget);
+}
+
 static void VULKAN_INTERNAL_DestroyBuffer(
 	VulkanRenderer* renderer,
 	VulkanBuffer* buffer
@@ -1837,6 +1957,30 @@ static void VULKAN_INTERNAL_DestroyBuffer(
 	SDL_free(buffer);
 }
 
+static void VULKAN_INTERNAL_DestroyGraphicsPipeline(
+	VulkanRenderer *renderer,
+	VulkanGraphicsPipeline *graphicsPipeline
+) {
+	VkDescriptorSet descriptorSets[2];
+	descriptorSets[0] = graphicsPipeline->vertexUBODescriptorSet;
+	descriptorSets[1] = graphicsPipeline->fragmentUBODescriptorSet;
+
+	renderer->vkFreeDescriptorSets(
+		renderer->logicalDevice,
+		renderer->defaultDescriptorPool,
+		2,
+		descriptorSets
+	);
+
+	renderer->vkDestroyPipeline(
+		renderer->logicalDevice,
+		graphicsPipeline->pipeline,
+		NULL
+	);
+
+	SDL_free(graphicsPipeline);
+}
+
 static void VULKAN_INTERNAL_DestroySwapchain(VulkanRenderer* renderer)
 {
 	uint32_t i;
@@ -1862,49 +2006,6 @@ static void VULKAN_INTERNAL_DestroySwapchain(VulkanRenderer* renderer)
 		renderer->swapChain,
 		NULL
 	);
-}
-
-static void VULKAN_INTERNAL_DestroyTexture(
-	VulkanRenderer* renderer,
-	VulkanTexture* texture
-) {
-	if (texture->allocation->dedicated)
-	{
-		renderer->vkFreeMemory(
-			renderer->logicalDevice,
-			texture->allocation->memory,
-			NULL
-		);
-
-		SDL_free(texture->allocation->freeRegions);
-		SDL_free(texture->allocation);
-	}
-	else
-	{
-		SDL_LockMutex(renderer->allocatorLock);
-
-		VULKAN_INTERNAL_NewMemoryFreeRegion(
-			texture->allocation,
-			texture->offset,
-			texture->memorySize
-		);
-
-		SDL_UnlockMutex(renderer->allocatorLock);
-	}
-
-	renderer->vkDestroyImageView(
-		renderer->logicalDevice,
-		texture->view,
-		NULL
-	);
-
-	renderer->vkDestroyImage(
-		renderer->logicalDevice,
-		texture->image,
-		NULL
-	);
-
-	SDL_free(texture);
 }
 
 static void VULKAN_INTERNAL_DestroyTextureStagingBuffer(
@@ -1948,13 +2049,22 @@ static void VULKAN_INTERNAL_DestroySamplerDescriptorSetCache(
 	SDL_free(cache);
 }
 
-static void VULKAN_INTERNAL_PerformDeferredDestroys(VulkanRenderer* renderer)
+static void VULKAN_INTERNAL_PostSubmitCleanup(VulkanRenderer* renderer)
 {
-	uint32_t i;
+	uint32_t i, j;
 
 	/* Destroy submitted resources */
 
 	SDL_LockMutex(renderer->disposeLock);
+
+	for (i = 0; i < renderer->submittedColorTargetsToDestroyCount; i += 1)
+	{
+		VULKAN_INTERNAL_DestroyColorTarget(
+			renderer,
+			renderer->submittedColorTargetsToDestroy[i]
+		);
+	}
+	renderer->submittedColorTargetsToDestroyCount = 0;
 
 	for (i = 0; i < renderer->submittedTexturesToDestroyCount; i += 1)
 	{
@@ -1965,19 +2075,66 @@ static void VULKAN_INTERNAL_PerformDeferredDestroys(VulkanRenderer* renderer)
 	}
 	renderer->submittedTexturesToDestroyCount = 0;
 
+	for (i = 0; i < renderer->submittedBuffersToDestroyCount; i += 1)
+	{
+		VULKAN_INTERNAL_DestroyBuffer(
+			renderer,
+			renderer->submittedBuffersToDestroy[i]
+		);
+	}
+	renderer->submittedBuffersToDestroyCount = 0;
+
+	for (i = 0; i < renderer->submittedGraphicsPipelinesToDestroyCount; i += 1)
+	{
+		VULKAN_INTERNAL_DestroyGraphicsPipeline(
+			renderer,
+			renderer->submittedGraphicsPipelinesToDestroy[i]
+		);
+	}
+	renderer->submittedGraphicsPipelinesToDestroyCount = 0;
+
 	/* Re-size submitted destroy lists */
 
-	if (renderer->submittedTexturesToDestroyCapacity < renderer->texturesToDestroyCount)
-	{
-		renderer->submittedTexturesToDestroy = SDL_realloc(
-			renderer->submittedTexturesToDestroy,
-			sizeof(VulkanTexture*) * renderer->texturesToDestroyCount
-		);
+	EXPAND_ARRAY_IF_NEEDED(
+		renderer->submittedColorTargetsToDestroy,
+		VulkanColorTarget*,
+		renderer->colorTargetsToDestroyCount,
+		renderer->submittedColorTargetsToDestroyCapacity,
+		renderer->colorTargetsToDestroyCount
+	)
 
-		renderer->submittedTexturesToDestroyCapacity = renderer->texturesToDestroyCount;
-	}
+	EXPAND_ARRAY_IF_NEEDED(
+		renderer->submittedTexturesToDestroy,
+		VulkanTexture*,
+		renderer->texturesToDestroyCount,
+		renderer->submittedTexturesToDestroyCapacity,
+		renderer->texturesToDestroyCount
+	)
+
+	EXPAND_ARRAY_IF_NEEDED(
+		renderer->submittedBuffersToDestroy,
+		VulkanBuffer*,
+		renderer->buffersToDestroyCount,
+		renderer->submittedBuffersToDestroyCapacity,
+		renderer->buffersToDestroyCount
+	)
+
+	EXPAND_ARRAY_IF_NEEDED(
+		renderer->submittedGraphicsPipelinesToDestroy,
+		VulkanGraphicsPipeline*,
+		renderer->graphicsPipelinesToDestroyCount,
+		renderer->submittedGraphicsPipelinesToDestroyCapacity,
+		renderer->graphicsPipelinesToDestroyCount
+	)
 
 	/* Rotate destroy lists */
+
+	for (i = 0; i < renderer->colorTargetsToDestroyCount; i += 1)
+	{
+		renderer->submittedColorTargetsToDestroy[i] = renderer->colorTargetsToDestroy[i];
+	}
+	renderer->submittedColorTargetsToDestroyCount = renderer->colorTargetsToDestroyCount;
+	renderer->colorTargetsToDestroyCount = 0;
 
 	for (i = 0; i < renderer->texturesToDestroyCount; i += 1)
 	{
@@ -1986,7 +2143,72 @@ static void VULKAN_INTERNAL_PerformDeferredDestroys(VulkanRenderer* renderer)
 	renderer->submittedTexturesToDestroyCount = renderer->texturesToDestroyCount;
 	renderer->texturesToDestroyCount = 0;
 
+	for (i = 0; i < renderer->buffersToDestroyCount; i += 1)
+	{
+		renderer->submittedBuffersToDestroy[i] = renderer->buffersToDestroy[i];
+	}
+	renderer->submittedBuffersToDestroyCount = renderer->buffersToDestroyCount;
+	renderer->buffersToDestroyCount = 0;
+
+	for (i = 0; i < renderer->graphicsPipelinesToDestroyCount; i += 1)
+	{
+		renderer->submittedGraphicsPipelinesToDestroy[i] = renderer->graphicsPipelinesToDestroy[i];
+	}
+	renderer->submittedGraphicsPipelinesToDestroyCount = renderer->graphicsPipelinesToDestroyCount;
+	renderer->graphicsPipelinesToDestroyCount = 0;
+
 	SDL_UnlockMutex(renderer->disposeLock);
+
+	/* Increment the frame index */
+	/* FIXME: need a better name, and to get rid of the magic value % 2 */
+	renderer->frameIndex = (renderer->frameIndex + 1) % 2;
+
+	/* Mark sub buffers of previously submitted buffers as unbound */
+	for (i = 0; i < renderer->submittedBufferCount; i += 1)
+	{
+		if (renderer->submittedBuffers[i] != NULL)
+		{
+			renderer->submittedBuffers[i]->boundSubmitted = 0;
+
+			for (j = 0; j < renderer->submittedBuffers[i]->subBufferCount; j += 1)
+			{
+				if (renderer->submittedBuffers[i]->subBuffers[j]->bound == renderer->frameIndex)
+				{
+					renderer->submittedBuffers[i]->subBuffers[j]->bound = -1;
+				}
+			}
+
+			renderer->submittedBuffers[i] = NULL;
+		}
+	}
+
+	renderer->submittedBufferCount = 0;
+
+	/* Mark currently bound buffers as submitted buffers */
+	if (renderer->buffersInUseCount > renderer->submittedBufferCapacity)
+	{
+		renderer->submittedBuffers = SDL_realloc(
+			renderer->submittedBuffers,
+			sizeof(VulkanBuffer*) * renderer->buffersInUseCount
+		);
+
+		renderer->submittedBufferCapacity = renderer->buffersInUseCount;
+	}
+
+	for (i = 0; i < renderer->buffersInUseCount; i += 1)
+	{
+		if (renderer->buffersInUse[i] != NULL)
+		{
+			renderer->buffersInUse[i]->bound = 0;
+			renderer->buffersInUse[i]->boundSubmitted = 1;
+
+			renderer->submittedBuffers[i] = renderer->buffersInUse[i];
+			renderer->buffersInUse[i] = NULL;
+		}
+	}
+
+	renderer->submittedBufferCount = renderer->buffersInUseCount;
+	renderer->buffersInUseCount = 0;
 }
 
 /* Swapchain */
@@ -2647,10 +2869,12 @@ static void VULKAN_DestroyDevice(
 
 	VULKAN_INTERNAL_DestroyBuffer(renderer, renderer->dummyVertexUniformBuffer);
 	VULKAN_INTERNAL_DestroyBuffer(renderer, renderer->dummyFragmentUniformBuffer);
+	VULKAN_INTERNAL_DestroyBuffer(renderer, renderer->vertexUBO);
+	VULKAN_INTERNAL_DestroyBuffer(renderer, renderer->fragmentUBO);
 
 	/* We have to do this twice so the rotation happens correctly */
-	VULKAN_INTERNAL_PerformDeferredDestroys(renderer);
-	VULKAN_INTERNAL_PerformDeferredDestroys(renderer);
+	VULKAN_INTERNAL_PostSubmitCleanup(renderer);
+	VULKAN_INTERNAL_PostSubmitCleanup(renderer);
 
 	VULKAN_INTERNAL_DestroyTextureStagingBuffer(renderer);
 
@@ -2735,6 +2959,18 @@ static void VULKAN_DestroyDevice(
 	renderer->vkDestroyDescriptorSetLayout(
 		renderer->logicalDevice,
 		renderer->emptyFragmentSamplerLayout,
+		NULL
+	);
+
+	renderer->vkDestroyDescriptorSetLayout(
+		renderer->logicalDevice,
+		renderer->vertexParamLayout,
+		NULL
+	);
+
+	renderer->vkDestroyDescriptorSetLayout(
+		renderer->logicalDevice,
+		renderer->fragmentParamLayout,
 		NULL
 	);
 
@@ -5455,7 +5691,7 @@ static VkDescriptorSet VULKAN_INTERNAL_FetchSamplerDescriptorSet(
 		NULL
 	);
 
-	EXPAND_ARRAY_IF_NEEDED(arr, 2, uint32_t)
+	EXPAND_ELEMENTS_IF_NEEDED(arr, 2, uint32_t)
 	arr->elements[arr->count] = samplerDescriptorSetCache->count;
 	arr->count += 1;
 
@@ -5608,16 +5844,14 @@ static void VULKAN_AddDisposeTexture(
 	VulkanTexture* vulkanTexture = (VulkanTexture*)texture;
 
 	SDL_LockMutex(renderer->disposeLock);
-	
-	if (renderer->texturesToDestroyCount + 1 >= renderer->texturesToDestroyCapacity)
-	{
-		renderer->texturesToDestroyCapacity *= 2;
 
-		renderer->texturesToDestroy = SDL_realloc(
-			renderer->texturesToDestroy,
-			sizeof(VulkanTexture*) * renderer->texturesToDestroyCapacity
-		);
-	}
+	EXPAND_ARRAY_IF_NEEDED(
+		renderer->texturesToDestroy,
+		VulkanTexture*,
+		renderer->texturesToDestroyCount,
+		renderer->texturesToDestroyCapacity,
+		renderer->texturesToDestroyCapacity * 2
+	)
 
 	renderer->texturesToDestroy[renderer->texturesToDestroyCount] = vulkanTexture;
 	renderer->texturesToDestroyCount += 1;
@@ -5636,21 +5870,38 @@ static void VULKAN_AddDisposeVertexBuffer(
 	REFRESH_Renderer *driverData,
 	REFRESH_Buffer *buffer
 ) {
-    SDL_assert(0);
+	VULKAN_INTERNAL_RemoveBuffer(driverData, buffer);
 }
 
 static void VULKAN_AddDisposeIndexBuffer(
 	REFRESH_Renderer *driverData,
 	REFRESH_Buffer *buffer
 ) {
-    SDL_assert(0);
+	VULKAN_INTERNAL_RemoveBuffer(driverData, buffer);
 }
 
 static void VULKAN_AddDisposeColorTarget(
 	REFRESH_Renderer *driverData,
 	REFRESH_ColorTarget *colorTarget
 ) {
-    SDL_assert(0);
+	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	VulkanColorTarget *vulkanColorTarget = (VulkanColorTarget*) colorTarget;
+
+	SDL_LockMutex(renderer->disposeLock);
+
+	EXPAND_ARRAY_IF_NEEDED(
+		renderer->colorTargetsToDestroy,
+		VulkanColorTarget*,
+		renderer->colorTargetsToDestroyCount,
+		renderer->colorTargetsToDestroyCapacity,
+		renderer->colorTargetsToDestroyCapacity * 2
+	)
+
+	renderer->colorTargetsToDestroy[renderer->colorTargetsToDestroyCount] = vulkanColorTarget;
+	renderer->colorTargetsToDestroyCount += 1;
+
+	SDL_UnlockMutex(renderer->disposeLock);
+
 }
 
 static void VULKAN_AddDisposeDepthStencilTarget(
@@ -5685,7 +5936,23 @@ static void VULKAN_AddDisposeGraphicsPipeline(
 	REFRESH_Renderer *driverData,
 	REFRESH_GraphicsPipeline *graphicsPipeline
 ) {
-    SDL_assert(0);
+	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	VulkanGraphicsPipeline *vulkanGraphicsPipeline = (VulkanGraphicsPipeline*) graphicsPipeline;
+
+	SDL_LockMutex(renderer->disposeLock);
+
+	EXPAND_ARRAY_IF_NEEDED(
+		renderer->graphicsPipelinesToDestroy,
+		VulkanGraphicsPipeline*,
+		renderer->graphicsPipelinesToDestroyCount,
+		renderer->graphicsPipelinesToDestroyCapacity,
+		renderer->graphicsPipelinesToDestroyCapacity * 2
+	)
+
+	renderer->graphicsPipelinesToDestroy[renderer->graphicsPipelinesToDestroyCount] = vulkanGraphicsPipeline;
+	renderer->graphicsPipelinesToDestroyCount += 1;
+
+	SDL_UnlockMutex(renderer->disposeLock);
 }
 
 static void VULKAN_BeginRenderPass(
@@ -6188,7 +6455,7 @@ static void VULKAN_Submit(
 	VulkanRenderer* renderer = (VulkanRenderer*)driverData;
 	VkSubmitInfo submitInfo;
 	VkResult vulkanResult, presentResult = VK_SUCCESS;
-	uint32_t i, j;
+	uint32_t i;
 	uint8_t present;
 
 	VkPipelineStageFlags waitStages = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
@@ -6244,56 +6511,7 @@ static void VULKAN_Submit(
 		return;
 	}
 
-	VULKAN_INTERNAL_PerformDeferredDestroys(renderer);
-
-	renderer->frameIndex = (renderer->frameIndex + 1) % 2;
-
-	/* Mark sub buffers of previously submitted buffers as unbound */
-	for (i = 0; i < renderer->submittedBufferCount; i += 1)
-	{
-		if (renderer->submittedBuffers[i] != NULL)
-		{
-			renderer->submittedBuffers[i]->boundSubmitted = 0;
-
-			for (j = 0; j < renderer->submittedBuffers[i]->subBufferCount; j += 1)
-			{
-				if (renderer->submittedBuffers[i]->subBuffers[j]->bound == renderer->frameIndex)
-				{
-					renderer->submittedBuffers[i]->subBuffers[j]->bound = -1;
-				}
-			}
-
-			renderer->submittedBuffers[i] = NULL;
-		}
-	}
-
-	renderer->submittedBufferCount = 0;
-
-	/* Mark currently bound buffers as submitted buffers */
-	if (renderer->buffersInUseCount > renderer->submittedBufferCapacity)
-	{
-		renderer->submittedBuffers = SDL_realloc(
-			renderer->submittedBuffers,
-			sizeof(VulkanBuffer*) * renderer->buffersInUseCount
-		);
-
-		renderer->submittedBufferCapacity = renderer->buffersInUseCount;
-	}
-
-	for (i = 0; i < renderer->buffersInUseCount; i += 1)
-	{
-		if (renderer->buffersInUse[i] != NULL)
-		{
-			renderer->buffersInUse[i]->bound = 0;
-			renderer->buffersInUse[i]->boundSubmitted = 1;
-
-			renderer->submittedBuffers[i] = renderer->buffersInUse[i];
-			renderer->buffersInUse[i] = NULL;
-		}
-	}
-
-	renderer->submittedBufferCount = renderer->buffersInUseCount;
-	renderer->buffersInUseCount = 0;
+	VULKAN_INTERNAL_PostSubmitCleanup(renderer);
 
 	/* Reset the previously submitted command buffers */
 	for (i = 0; i < renderer->submittedCommandBufferCount; i += 1)
@@ -7272,7 +7490,7 @@ static REFRESH_Device* VULKAN_CreateDevice(
 		UBO_ACTUAL_SIZE,
 		RESOURCE_ACCESS_VERTEX_SHADER_READ_UNIFORM_BUFFER,
 		VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-		SUB_BUFFER_COUNT,
+		1,
 		renderer->vertexUBO
 	)) {
 		REFRESH_LogError("Failed to create vertex UBO!");
@@ -7286,7 +7504,7 @@ static REFRESH_Device* VULKAN_CreateDevice(
 		UBO_ACTUAL_SIZE,
 		RESOURCE_ACCESS_FRAGMENT_SHADER_READ_UNIFORM_BUFFER,
 		VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-		SUB_BUFFER_COUNT,
+		1,
 		renderer->fragmentUBO
 	)) {
 		REFRESH_LogError("Failed to create fragment UBO!");
@@ -7398,7 +7616,7 @@ static REFRESH_Device* VULKAN_CreateDevice(
 
 	defaultDescriptorPoolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
 	defaultDescriptorPoolInfo.pNext = NULL;
-	defaultDescriptorPoolInfo.flags = 0;
+	defaultDescriptorPoolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
 	defaultDescriptorPoolInfo.maxSets = UBO_POOL_SIZE + 2;
 	defaultDescriptorPoolInfo.poolSizeCount = 2;
 	defaultDescriptorPoolInfo.pPoolSizes = poolSizes;
@@ -7518,6 +7736,22 @@ static REFRESH_Device* VULKAN_CreateDevice(
 
 	/* Deferred destroy storage */
 
+	renderer->colorTargetsToDestroyCapacity = 16;
+	renderer->colorTargetsToDestroyCount = 0;
+
+	renderer->colorTargetsToDestroy = (VulkanColorTarget**) SDL_malloc(
+		sizeof(VulkanColorTarget*) *
+		renderer->colorTargetsToDestroyCapacity
+	);
+
+	renderer->submittedColorTargetsToDestroyCapacity = 16;
+	renderer->submittedColorTargetsToDestroyCount = 0;
+
+	renderer->submittedColorTargetsToDestroy = (VulkanColorTarget**) SDL_malloc(
+		sizeof(VulkanColorTarget*) *
+		renderer->submittedColorTargetsToDestroyCapacity
+	);
+
 	renderer->texturesToDestroyCapacity = 16;
 	renderer->texturesToDestroyCount = 0;
 
@@ -7532,6 +7766,38 @@ static REFRESH_Device* VULKAN_CreateDevice(
 	renderer->submittedTexturesToDestroy = (VulkanTexture**)SDL_malloc(
 		sizeof(VulkanTexture*) *
 		renderer->submittedTexturesToDestroyCapacity
+	);
+
+	renderer->buffersToDestroyCapacity = 16;
+	renderer->buffersToDestroyCount = 0;
+
+	renderer->buffersToDestroy = (VulkanBuffer**) SDL_malloc(
+		sizeof(VulkanBuffer*) *
+		renderer->buffersToDestroyCapacity
+	);
+
+	renderer->submittedBuffersToDestroyCapacity = 16;
+	renderer->submittedBuffersToDestroyCount = 0;
+
+	renderer->submittedBuffersToDestroy = (VulkanBuffer**) SDL_malloc(
+		sizeof(VulkanBuffer*) *
+		renderer->submittedBuffersToDestroyCapacity
+	);
+
+	renderer->graphicsPipelinesToDestroyCapacity = 16;
+	renderer->graphicsPipelinesToDestroyCount = 0;
+
+	renderer->graphicsPipelinesToDestroy = (VulkanGraphicsPipeline**) SDL_malloc(
+		sizeof(VulkanGraphicsPipeline*) *
+		renderer->graphicsPipelinesToDestroyCapacity
+	);
+
+	renderer->submittedGraphicsPipelinesToDestroyCapacity = 16;
+	renderer->submittedGraphicsPipelinesToDestroyCount = 0;
+
+	renderer->submittedGraphicsPipelinesToDestroy = (VulkanGraphicsPipeline**) SDL_malloc(
+		sizeof(VulkanGraphicsPipeline*) *
+		renderer->submittedGraphicsPipelinesToDestroyCapacity
 	);
 
     return result;
