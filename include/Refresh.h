@@ -64,6 +64,7 @@ typedef struct REFRESH_DepthStencilTarget REFRESH_DepthStencilTarget;
 typedef struct REFRESH_Framebuffer REFRESH_Framebuffer;
 typedef struct REFRESH_ShaderModule REFRESH_ShaderModule;
 typedef struct REFRESH_RenderPass REFRESH_RenderPass;
+typedef struct REFRESH_ComputePipeline REFRESH_ComputePipeline;
 typedef struct REFRESH_GraphicsPipeline REFRESH_GraphicsPipeline;
 
 typedef enum REFRESH_PresentMode
@@ -454,11 +455,17 @@ typedef struct REFRESH_ColorTargetBlendState
 	REFRESH_ColorComponentFlags colorWriteMask;
 } REFRESH_ColorTargetBlendState;
 
-typedef struct REFRESH_PipelineLayoutCreateInfo
+typedef struct REFRESH_ComputePipelineLayoutCreateInfo
+{
+	uint32_t bufferBindingCount;
+	uint32_t imageBindingCount;
+} REFRESH_ComputePipelineLayoutCreateInfo;
+
+typedef struct REFRESH_GraphicsPipelineLayoutCreateInfo
 {
 	uint32_t vertexSamplerBindingCount;
 	uint32_t fragmentSamplerBindingCount;
-} REFRESH_PipelineLayoutCreateInfo;
+} REFRESH_GraphicsPipelineLayoutCreateInfo;
 
 typedef struct REFRESH_ColorTargetDescription
 {
@@ -492,12 +499,18 @@ typedef struct REFRESH_ShaderModuleCreateInfo
 
 /* Pipeline state structures */
 
-typedef struct REFRESH_ShaderStageState
+typedef struct REFRESH_ComputeShaderStageState
+{
+	REFRESH_ShaderModule *shaderModule;
+	const char* entryPointName;
+} REFRESH_ComputeShaderStageState;
+
+typedef struct REFRESH_GraphicsShaderStageState
 {
 	REFRESH_ShaderModule *shaderModule;
 	const char* entryPointName;
 	uint64_t uniformBufferSize;
-} REFRESH_ShaderStageState;
+} REFRESH_GraphicsShaderStageState;
 
 typedef struct REFRESH_TopologyState
 {
@@ -553,10 +566,16 @@ typedef struct REFRESH_ColorBlendState
 	float blendConstants[4];
 } REFRESH_ColorBlendState;
 
+typedef struct REFRESH_ComputePipelineCreateInfo
+{
+	REFRESH_ComputeShaderStageState computeShaderState;
+	REFRESH_ComputePipelineLayoutCreateInfo pipelineLayoutCreateInfo;
+} REFRESH_ComputePipelineCreateInfo;
+
 typedef struct REFRESH_GraphicsPipelineCreateInfo
 {
-	REFRESH_ShaderStageState vertexShaderState;
-	REFRESH_ShaderStageState fragmentShaderState;
+	REFRESH_GraphicsShaderStageState vertexShaderState;
+	REFRESH_GraphicsShaderStageState fragmentShaderState;
 	REFRESH_VertexInputState vertexInputState;
 	REFRESH_TopologyState topologyState;
 	REFRESH_ViewportState viewportState;
@@ -564,7 +583,7 @@ typedef struct REFRESH_GraphicsPipelineCreateInfo
 	REFRESH_MultisampleState multisampleState;
 	REFRESH_DepthStencilState depthStencilState;
 	REFRESH_ColorBlendState colorBlendState;
-	REFRESH_PipelineLayoutCreateInfo pipelineLayoutCreateInfo;
+	REFRESH_GraphicsPipelineLayoutCreateInfo pipelineLayoutCreateInfo;
 	REFRESH_RenderPass *renderPass;
 } REFRESH_GraphicsPipelineCreateInfo;
 
@@ -718,7 +737,13 @@ REFRESHAPI REFRESH_RenderPass* REFRESH_CreateRenderPass(
 	REFRESH_RenderPassCreateInfo *renderPassCreateInfo
 );
 
-/* Returns an allocated Pipeline* object. */
+/* Returns an allocated ComputePipeline* object. */
+REFRESHAPI REFRESH_ComputePipeline* REFRESH_CreateComputePipeline(
+	REFRESH_Device *device,
+	REFRESH_ComputePipelineCreateInfo *pipelineCreateInfo
+);
+
+/* Returns an allocated GraphicsPipeline* object. */
 REFRESHAPI REFRESH_GraphicsPipeline* REFRESH_CreateGraphicsPipeline(
 	REFRESH_Device *device,
 	REFRESH_GraphicsPipelineCreateInfo *pipelineCreateInfo
@@ -1209,6 +1234,18 @@ REFRESHAPI void REFRESH_AddDisposeShaderModule(
 REFRESHAPI void REFRESH_AddDisposeRenderPass(
 	REFRESH_Device *device,
 	REFRESH_RenderPass *renderPass
+);
+
+/* Sends a compute pipeline to be destroyed by the renderer. Note that we call it
+ * "AddDispose" because it may not be immediately destroyed by the renderer if
+ * this is not called from the main thread (for example, if a garbage collector
+ * deletes the resource instead of the programmer).
+ *
+ * computePipeline: The REFRESH_ComputePipeline to be destroyed.
+ */
+REFRESHAPI void REFRESH_AddDisposeComputePipeline(
+	REFRESH_Device *device,
+	REFRESH_ComputePipeline *computePipeline
 );
 
 /* Sends a graphics pipeline to be destroyed by the renderer. Note that we call it
