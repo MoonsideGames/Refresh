@@ -186,7 +186,9 @@ struct REFRESH_Device
         uint32_t primitiveCount,
         uint32_t instanceCount,
         REFRESH_Buffer *indices,
-        REFRESH_IndexElementSize indexElementSize
+        REFRESH_IndexElementSize indexElementSize,
+        uint32_t vertexParamOffset,
+        uint32_t fragmentParamOffset
 	);
 
 	void (*DrawIndexedPrimitives)(
@@ -197,13 +199,17 @@ struct REFRESH_Device
         uint32_t startIndex,
         uint32_t primitiveCount,
         REFRESH_Buffer *indices,
-        REFRESH_IndexElementSize indexElementSize
+        REFRESH_IndexElementSize indexElementSize,
+        uint32_t vertexParamOffset,
+        uint32_t fragmentParamOffset
 	);
 
 	void (*DrawPrimitives)(
 	    REFRESH_Renderer *driverData,
         uint32_t vertexStart,
-        uint32_t primitiveCount
+        uint32_t primitiveCount,
+        uint32_t vertexParamOffset,
+        uint32_t fragmentParamOffset
 	);
 
     /* State Creation */
@@ -354,13 +360,13 @@ struct REFRESH_Device
         uint32_t dataLength
     );
 
-    void(*PushVertexShaderParams)(
+    uint32_t(*PushVertexShaderParams)(
         REFRESH_Renderer *driverData,
         void *data,
         uint32_t elementCount
     );
 
-    void(*PushFragmentShaderParams)(
+    uint32_t(*PushFragmentShaderParams)(
         REFRESH_Renderer *driverData,
         void *data,
         uint32_t elementCount

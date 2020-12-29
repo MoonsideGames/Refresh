@@ -3192,7 +3192,9 @@ static void VULKAN_DrawInstancedPrimitives(
 	uint32_t primitiveCount,
 	uint32_t instanceCount,
 	REFRESH_Buffer *indices,
-	REFRESH_IndexElementSize indexElementSize
+	REFRESH_IndexElementSize indexElementSize,
+	uint32_t vertexParamOffset,
+	uint32_t fragmentParamOffset
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VkDescriptorSet descriptorSets[4];
@@ -3203,8 +3205,8 @@ static void VULKAN_DrawInstancedPrimitives(
 	descriptorSets[2] = renderer->currentGraphicsPipeline->vertexUBODescriptorSet;
 	descriptorSets[3] = renderer->currentGraphicsPipeline->fragmentUBODescriptorSet;
 
-	dynamicOffsets[0] = renderer->vertexUBOOffset;
-	dynamicOffsets[1] = renderer->fragmentUBOOffset;
+	dynamicOffsets[0] = vertexParamOffset;
+	dynamicOffsets[1] = fragmentParamOffset;
 
 	RECORD_CMD(renderer->vkCmdBindDescriptorSets(
 		renderer->currentCommandBuffer,
@@ -3238,7 +3240,9 @@ static void VULKAN_DrawIndexedPrimitives(
 	uint32_t startIndex,
 	uint32_t primitiveCount,
 	REFRESH_Buffer *indices,
-	REFRESH_IndexElementSize indexElementSize
+	REFRESH_IndexElementSize indexElementSize,
+	uint32_t vertexParamOffset,
+	uint32_t fragmentParamOffset
 ) {
 	VULKAN_DrawInstancedPrimitives(
 		driverData,
@@ -3249,14 +3253,18 @@ static void VULKAN_DrawIndexedPrimitives(
 		primitiveCount,
 		1,
 		indices,
-		indexElementSize
+		indexElementSize,
+		vertexParamOffset,
+		fragmentParamOffset
 	);
 }
 
 static void VULKAN_DrawPrimitives(
 	REFRESH_Renderer *driverData,
 	uint32_t vertexStart,
-	uint32_t primitiveCount
+	uint32_t primitiveCount,
+	uint32_t vertexUniformBufferOffset,
+	uint32_t fragmentUniformBufferOffset
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VkDescriptorSet descriptorSets[4];
@@ -3267,8 +3275,8 @@ static void VULKAN_DrawPrimitives(
 	descriptorSets[2] = renderer->currentGraphicsPipeline->vertexUBODescriptorSet;
 	descriptorSets[3] = renderer->currentGraphicsPipeline->fragmentUBODescriptorSet;
 
-	dynamicOffsets[0] = renderer->vertexUBOOffset;
-	dynamicOffsets[1] = renderer->fragmentUBOOffset;
+	dynamicOffsets[0] = vertexUniformBufferOffset;
+	dynamicOffsets[1] = fragmentUniformBufferOffset;
 
 	RECORD_CMD(renderer->vkCmdBindDescriptorSets(
 		renderer->currentCommandBuffer,
@@ -5663,7 +5671,7 @@ static void VULKAN_SetIndexBufferData(
 	);
 }
 
-static void VULKAN_PushVertexShaderParams(
+static uint32_t VULKAN_PushVertexShaderParams(
 	REFRESH_Renderer *driverData,
 	void *data,
 	uint32_t elementCount
@@ -5679,7 +5687,7 @@ static void VULKAN_PushVertexShaderParams(
 		UBO_BUFFER_SIZE * (renderer->frameIndex + 1)
 	) {
 		REFRESH_LogError("Vertex UBO overflow!");
-		return;
+		return 0;
 	}
 
 	VULKAN_INTERNAL_SetBufferData(
@@ -5689,9 +5697,11 @@ static void VULKAN_PushVertexShaderParams(
 		data,
 		elementCount * renderer->currentGraphicsPipeline->vertexUBOBlockSize
 	);
+
+	return renderer->vertexUBOOffset;
 }
 
-static void VULKAN_PushFragmentShaderParams(
+static uint32_t VULKAN_PushFragmentShaderParams(
 	REFRESH_Renderer *driverData,
 	void *data,
 	uint32_t elementCount
@@ -5707,7 +5717,7 @@ static void VULKAN_PushFragmentShaderParams(
 		UBO_BUFFER_SIZE * (renderer->frameIndex + 1)
 	) {
 		REFRESH_LogError("Fragment UBO overflow!");
-		return;
+		return 0;
 	}
 
 	VULKAN_INTERNAL_SetBufferData(
@@ -5717,6 +5727,8 @@ static void VULKAN_PushFragmentShaderParams(
 		data,
 		elementCount * renderer->currentGraphicsPipeline->fragmentUBOBlockSize
 	);
+
+	return renderer->fragmentUBOOffset;
 }
 
 static inline uint8_t SamplerDescriptorSetDataEqual(

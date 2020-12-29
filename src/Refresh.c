@@ -167,7 +167,9 @@ void REFRESH_DrawIndexedPrimitives(
 	uint32_t startIndex,
 	uint32_t primitiveCount,
 	REFRESH_Buffer *indices,
-	REFRESH_IndexElementSize indexElementSize
+	REFRESH_IndexElementSize indexElementSize,
+    uint32_t vertexParamOffset,
+	uint32_t fragmentParamOffset
 ) {
     NULL_RETURN(device);
     device->DrawIndexedPrimitives(
@@ -178,7 +180,9 @@ void REFRESH_DrawIndexedPrimitives(
         startIndex,
         primitiveCount,
         indices,
-        indexElementSize
+        indexElementSize,
+        vertexParamOffset,
+        fragmentParamOffset
     );
 }
 
@@ -191,7 +195,9 @@ void REFRESH_DrawInstancedPrimitives(
 	uint32_t primitiveCount,
 	uint32_t instanceCount,
 	REFRESH_Buffer *indices,
-	REFRESH_IndexElementSize indexElementSize
+	REFRESH_IndexElementSize indexElementSize,
+    uint32_t vertexParamOffset,
+	uint32_t fragmentParamOffset
 ) {
     NULL_RETURN(device);
     device->DrawInstancedPrimitives(
@@ -203,20 +209,26 @@ void REFRESH_DrawInstancedPrimitives(
         primitiveCount,
         instanceCount,
         indices,
-        indexElementSize
+        indexElementSize,
+        vertexParamOffset,
+        fragmentParamOffset
     );
 }
 
 void REFRESH_DrawPrimitives(
 	REFRESH_Device *device,
 	uint32_t vertexStart,
-	uint32_t primitiveCount
+	uint32_t primitiveCount,
+    uint32_t vertexParamOffset,
+	uint32_t fragmentParamOffset
 ) {
     NULL_RETURN(device);
     device->DrawPrimitives(
         device->driverData,
         vertexStart,
-        primitiveCount
+        primitiveCount,
+        vertexParamOffset,
+        fragmentParamOffset
     );
 }
 
@@ -526,26 +538,26 @@ void REFRESH_SetIndexBufferData(
     );
 }
 
-void REFRESH_PushVertexShaderParams(
+uint32_t REFRESH_PushVertexShaderParams(
 	REFRESH_Device *device,
 	void *data,
 	uint32_t elementCount
 ) {
-    NULL_RETURN(device);
-    device->PushVertexShaderParams(
+    if (device == NULL) { return 0; }
+    return device->PushVertexShaderParams(
         device->driverData,
         data,
         elementCount
     );
 }
 
-void REFRESH_PushFragmentShaderParams(
+uint32_t REFRESH_PushFragmentShaderParams(
 	REFRESH_Device *device,
 	void *data,
 	uint32_t elementCount
 ) {
-    NULL_RETURN(device);
-    device->PushFragmentShaderParams(
+    if (device == NULL) { return 0; }
+    return device->PushFragmentShaderParams(
         device->driverData,
         data,
         elementCount

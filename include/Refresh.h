@@ -650,6 +650,8 @@ REFRESHAPI void REFRESH_Clear(
  * instanceCount:		The number of instances that will be drawn.
  * indices:				The index buffer to bind for this draw call.
  * indexElementSize:	The size of the index type for this index buffer.
+ * vertexParamOffset:	The offset of the vertex shader param data.
+ * fragmentParamOffset:	The offset of the fragment shader param data.
  */
 REFRESHAPI void REFRESH_DrawInstancedPrimitives(
 	REFRESH_Device *device,
@@ -660,7 +662,9 @@ REFRESHAPI void REFRESH_DrawInstancedPrimitives(
 	uint32_t primitiveCount,
 	uint32_t instanceCount,
 	REFRESH_Buffer *indices,
-	REFRESH_IndexElementSize indexElementSize
+	REFRESH_IndexElementSize indexElementSize,
+	uint32_t vertexParamOffset,
+	uint32_t fragmentParamOffset
 );
 
 /* Draws data from vertex/index buffers.
@@ -672,6 +676,8 @@ REFRESHAPI void REFRESH_DrawInstancedPrimitives(
  * primitiveCount:		The number of primitives to draw.
  * indices:				The index buffer to bind for this draw call.
  * indexElementSize:	The size of the index type for this index buffer.
+ * vertexParamOffset:	The offset of the vertex shader param data.
+ * fragmentParamOffset:	The offset of the fragment shader param data.
  */
 REFRESHAPI void REFRESH_DrawIndexedPrimitives(
 	REFRESH_Device *device,
@@ -681,18 +687,24 @@ REFRESHAPI void REFRESH_DrawIndexedPrimitives(
 	uint32_t startIndex,
 	uint32_t primitiveCount,
 	REFRESH_Buffer *indices,
-	REFRESH_IndexElementSize indexElementSize
+	REFRESH_IndexElementSize indexElementSize,
+	uint32_t vertexParamOffset,
+	uint32_t fragmentParamOffset
 );
 
 /* Draws data from vertex buffers.
  *
- * vertexStart:			The starting offset to read from the vertex buffer.
- * primitiveCount:		The number of primitives to draw.
+ * vertexStart:				The starting offset to read from the vertex buffer.
+ * primitiveCount:			The number of primitives to draw.
+ * vertexParamOffset:		The offset of the vertex shader param data.
+ * fragmentParamOffset:		The offset of the fragment shader param data.
  */
 REFRESHAPI void REFRESH_DrawPrimitives(
 	REFRESH_Device *device,
 	uint32_t vertexStart,
-	uint32_t primitiveCount
+	uint32_t primitiveCount,
+	uint32_t vertexParamOffset,
+	uint32_t fragmentParamOffset
 );
 
 /* State Creation */
@@ -734,7 +746,7 @@ REFRESHAPI REFRESH_ShaderModule* REFRESH_CreateShaderModule(
  * height: 		The height of the texture image.
  * levelCount:	The number of mipmap levels to allocate.
  * usageFlags:	Specifies how the texture will be used.
- * 
+ *
  * Returns an allocated REFRESH_Texture* object. Note that the contents of
  * the texture are undefined until SetData is called.
  */
@@ -775,7 +787,7 @@ REFRESHAPI REFRESH_Texture* REFRESH_CreateTexture3D(
  * size: 		The length of the cube side.
  * levelCount: 	The number of mipmap levels to allocate.
  * usageFlags:	Specifies how the texture will be used.
- * 
+ *
  * Returns an allocated REFRESH_Texture* object. Note that the contents of
  * the texture are undefined until SetData is called.
  */
@@ -973,31 +985,33 @@ REFRESHAPI void REFRESH_SetIndexBufferData(
 	uint32_t dataLength
 );
 
-/* Pushes vertex shader params for subsequent draw calls.
+/* Pushes vertex shader params to the device.
+ * Returns a starting offset value to be used with draw calls.
  *
  * NOTE:
  * 		A pipeline must be bound.
  * 		Will use the block size of the currently bound vertex shader.
  *
  * data: 				The client data to write into the buffer.
- * elementCount: 		The number of elements from the client buffer to write.
+ * paramBlockCount: 	The number of param-sized blocks from the client buffer to write.
  */
-REFRESHAPI void REFRESH_PushVertexShaderParams(
+REFRESHAPI uint32_t REFRESH_PushVertexShaderParams(
 	REFRESH_Device *device,
 	void *data,
-	uint32_t elementCount
+	uint32_t paramBlockCount
 );
 
-/* Pushes fragment shader params for subsequent draw calls.
+/* Pushes fragment shader params to the device.
+ * Returns a starting offset value to be used with draw calls.
  *
  * NOTE:
  * 		A pipeline must be bound.
  * 		Will use the block size of the currently bound fragment shader.
  *
  * data: 				The client data to write into the buffer.
- * elementCount: 		The number of elements from the client buffer to write.
+ * paramBlockCount: 	The number of param-sized blocks from the client buffer to write.
  */
-REFRESHAPI void REFRESH_PushFragmentShaderParams(
+REFRESHAPI uint32_t REFRESH_PushFragmentShaderParams(
 	REFRESH_Device *device,
 	void *data,
 	uint32_t elementCount
