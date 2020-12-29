@@ -1063,7 +1063,6 @@ REFRESHAPI void REFRESH_SetFragmentSamplers(
  * h:		The height of the subregion being read.
  * level:	The mipmap level being read.
  * data:	The pointer being filled with the image data.
- * dataLength:	The size of the image data in bytes.
  */
 REFRESHAPI void REFRESH_GetTextureData2D(
 	REFRESH_Device *device,
@@ -1073,8 +1072,7 @@ REFRESHAPI void REFRESH_GetTextureData2D(
 	uint32_t w,
 	uint32_t h,
 	uint32_t level,
-	void* data,
-	uint32_t dataLength
+	void* data
 );
 
 /* Pulls image data from a single face of a texture cube object into client
@@ -1082,15 +1080,14 @@ REFRESHAPI void REFRESH_GetTextureData2D(
  * point, don't call this unless there's absolutely no other way to use the
  * image data!
  *
- * texture:	The texture object being read.
- * x:		The x offset of the subregion being read.
- * y:		The y offset of the subregion being read.
- * w:		The width of the subregion being read.
- * h:		The height of the subregion being read.
+ * texture:		The texture object being read.
+ * x:			The x offset of the subregion being read.
+ * y:			The y offset of the subregion being read.
+ * w:			The width of the subregion being read.
+ * h:			The height of the subregion being read.
  * cubeMapFace:	The face of the cube being read.
- * level:	The mipmap level being read.
- * data:	The pointer being filled with the image data.
- * dataLength:	The size of the image data in bytes.
+ * level:		The mipmap level being read.
+ * data:		The pointer being filled with the image data.
  */
 REFRESHAPI void REFRESH_GetTextureDataCube(
 	REFRESH_Device *device,
@@ -1101,8 +1098,7 @@ REFRESHAPI void REFRESH_GetTextureDataCube(
 	uint32_t h,
 	REFRESH_CubeMapFace cubeMapFace,
 	uint32_t level,
-	void* data,
-	uint32_t dataLength
+	void* data
 );
 
 /* Disposal */

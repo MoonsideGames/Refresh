@@ -713,8 +713,14 @@ typedef struct VulkanTexture
 	uint32_t layerCount;
 	uint32_t levelCount;
 	VkFormat format;
+	REFRESH_SurfaceFormat refreshFormat;
 	VulkanResourceAccessType resourceAccessType;
 	REFRESH_TextureUsageFlags usageFlags;
+	REFRESHNAMELESS union
+	{
+		REFRESH_SurfaceFormat colorFormat;
+		REFRESH_DepthFormat depthStencilFormat;
+	};
 } VulkanTexture;
 
 typedef struct VulkanColorTarget
@@ -4805,6 +4811,7 @@ static REFRESH_Texture* VULKAN_CreateTexture2D(
 		usageFlags,
 		result
 	);
+	result->colorFormat = format;
 
 	return (REFRESH_Texture*) result;
 }
@@ -4849,6 +4856,7 @@ static REFRESH_Texture* VULKAN_CreateTexture3D(
 		usageFlags,
 		result
 	);
+	result->colorFormat = format;
 
 	return (REFRESH_Texture*) result;
 }
@@ -4891,6 +4899,7 @@ static REFRESH_Texture* VULKAN_CreateTextureCube(
 		usageFlags,
 		result
 	);
+	result->colorFormat = format;
 
 	return (REFRESH_Texture*) result;
 }
@@ -4925,7 +4934,7 @@ static REFRESH_ColorTarget* VULKAN_CreateColorTarget(
 			0,
 			RefreshToVK_SampleCount[multisampleCount],
 			1,
-			RefreshToVK_SurfaceFormat[colorTarget->texture->format],
+			colorTarget->texture->format,
 			VK_IMAGE_ASPECT_COLOR_BIT,
 			VK_IMAGE_TILING_OPTIMAL,
 			VK_IMAGE_TYPE_2D,
@@ -4933,6 +4942,7 @@ static REFRESH_ColorTarget* VULKAN_CreateColorTarget(
 			REFRESH_TEXTUREUSAGE_COLOR_TARGET_BIT,
 			colorTarget->multisampleTexture
 		);
+		colorTarget->multisampleTexture->colorFormat = colorTarget->texture->colorFormat;
 		colorTarget->multisampleCount = multisampleCount;
 
 		VULKAN_INTERNAL_ImageMemoryBarrier(
@@ -5027,6 +5037,7 @@ static REFRESH_DepthStencilTarget* VULKAN_CreateDepthStencilTarget(
 		0,
 		texture
 	);
+	texture->depthStencilFormat = format;
 
 	depthStencilTarget->texture = texture;
 	depthStencilTarget->view = texture->view;
@@ -5960,6 +5971,124 @@ static void VULKAN_SetFragmentSamplers(
 	);
 }
 
+static void VULKAN_INTERNAL_GetTextureData(
+	REFRESH_Renderer *driverData,
+	REFRESH_Texture *texture,
+	int32_t x,
+	int32_t y,
+	int32_t w,
+	int32_t h,
+	int32_t level,
+	int32_t layer,
+	void* data
+) {
+	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	VulkanTexture *vulkanTexture = (VulkanTexture*) texture;
+	VulkanResourceAccessType prevResourceAccess;
+	VkBufferImageCopy imageCopy;
+	uint8_t *dataPtr = (uint8_t*) data;
+	uint8_t *mapPointer;
+	VkResult vulkanResult;
+	uint32_t dataLength = BytesPerImage(w, h, vulkanTexture->colorFormat);
+
+	VULKAN_INTERNAL_MaybeExpandStagingBuffer(renderer, dataLength);
+
+	/* Cache this so we can restore it later */
+	prevResourceAccess = vulkanTexture->resourceAccessType;
+
+	VULKAN_INTERNAL_ImageMemoryBarrier(
+		renderer,
+		RESOURCE_ACCESS_TRANSFER_READ,
+		VK_IMAGE_ASPECT_COLOR_BIT,
+		0,
+		vulkanTexture->layerCount,
+		0,
+		vulkanTexture->levelCount,
+		0,
+		vulkanTexture->image,
+		&vulkanTexture->resourceAccessType
+	);
+
+	/* Save texture data to staging buffer */
+
+	imageCopy.imageExtent.width = w;
+	imageCopy.imageExtent.height = h;
+	imageCopy.imageExtent.depth = 1;
+	imageCopy.bufferRowLength = w;
+	imageCopy.bufferImageHeight = h;
+	imageCopy.imageOffset.x = x;
+	imageCopy.imageOffset.y = y;
+	imageCopy.imageOffset.z = 0;
+	imageCopy.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	imageCopy.imageSubresource.baseArrayLayer = layer;
+	imageCopy.imageSubresource.layerCount = 1;
+	imageCopy.imageSubresource.mipLevel = level;
+	imageCopy.bufferOffset = 0;
+
+	RECORD_CMD(renderer->vkCmdCopyImageToBuffer(
+		renderer->currentCommandBuffer,
+		vulkanTexture->image,
+		AccessMap[vulkanTexture->resourceAccessType].imageLayout,
+		renderer->textureStagingBuffer->subBuffers[0]->buffer,
+		1,
+		&imageCopy
+	));
+
+	/* Restore the image layout and wait for completion of the render pass */
+
+	VULKAN_INTERNAL_ImageMemoryBarrier(
+		renderer,
+		prevResourceAccess,
+		VK_IMAGE_ASPECT_COLOR_BIT,
+		0,
+		vulkanTexture->layerCount,
+		0,
+		vulkanTexture->levelCount,
+		0,
+		vulkanTexture->image,
+		&vulkanTexture->resourceAccessType
+	);
+
+	/* hard sync point */
+	VULKAN_Submit(driverData);
+
+	renderer->vkWaitForFences(
+		renderer->logicalDevice,
+		1,
+		&renderer->inFlightFence,
+		VK_TRUE,
+		UINT64_MAX
+	);
+
+	/* Read from staging buffer */
+
+	vulkanResult = renderer->vkMapMemory(
+		renderer->logicalDevice,
+		renderer->textureStagingBuffer->subBuffers[0]->allocation->memory,
+		renderer->textureStagingBuffer->subBuffers[0]->offset,
+		renderer->textureStagingBuffer->subBuffers[0]->size,
+		0,
+		(void**) &mapPointer
+	);
+
+	if (vulkanResult != VK_SUCCESS)
+	{
+		REFRESH_LogError("Failed to map buffer memory!");
+		return;
+	}
+
+	SDL_memcpy(
+		dataPtr,
+		mapPointer,
+		dataLength
+	);
+
+	renderer->vkUnmapMemory(
+		renderer->logicalDevice,
+		renderer->textureStagingBuffer->subBuffers[0]->allocation->memory
+	);
+}
+
 static void VULKAN_GetTextureData2D(
 	REFRESH_Renderer *driverData,
 	REFRESH_Texture *texture,
@@ -5968,10 +6097,19 @@ static void VULKAN_GetTextureData2D(
 	uint32_t w,
 	uint32_t h,
 	uint32_t level,
-	void* data,
-	uint32_t dataLength
+	void* data
 ) {
-    SDL_assert(0);
+    VULKAN_INTERNAL_GetTextureData(
+		driverData,
+		texture,
+		x,
+		y,
+		w,
+		h,
+		level,
+		0,
+		data
+	);
 }
 
 static void VULKAN_GetTextureDataCube(
@@ -5983,10 +6121,19 @@ static void VULKAN_GetTextureDataCube(
 	uint32_t h,
 	REFRESH_CubeMapFace cubeMapFace,
 	uint32_t level,
-	void* data,
-	uint32_t dataLength
+	void* data
 ) {
-    SDL_assert(0);
+    VULKAN_INTERNAL_GetTextureData(
+		driverData,
+		texture,
+		x,
+		y,
+		w,
+		h,
+		level,
+		cubeMapFace,
+		data
+	);
 }
 
 static void VULKAN_AddDisposeTexture(

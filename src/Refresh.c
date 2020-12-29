@@ -607,8 +607,7 @@ void REFRESH_GetTextureData2D(
 	uint32_t w,
 	uint32_t h,
 	uint32_t level,
-	void* data,
-	uint32_t dataLength
+	void* data
 ) {
     NULL_RETURN(device);
     device->GetTextureData2D(
@@ -619,8 +618,7 @@ void REFRESH_GetTextureData2D(
         w,
         h,
         level,
-        data,
-        dataLength
+        data
     );
 }
 
@@ -633,8 +631,7 @@ void REFRESH_GetTextureDataCube(
 	uint32_t h,
 	REFRESH_CubeMapFace cubeMapFace,
 	uint32_t level,
-	void* data,
-	uint32_t dataLength
+	void* data
 ) {
     NULL_RETURN(device);
     device->GetTextureDataCube(
@@ -646,8 +643,7 @@ void REFRESH_GetTextureDataCube(
         h,
         cubeMapFace,
         level,
-        data,
-        dataLength
+        data
     );
 }
 

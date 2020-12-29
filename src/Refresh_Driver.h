@@ -395,8 +395,7 @@ struct REFRESH_Device
         uint32_t w,
         uint32_t h,
         uint32_t level,
-        void* data,
-        uint32_t dataLength
+        void* data
     );
 
     void(*GetTextureDataCube)(
@@ -408,8 +407,7 @@ struct REFRESH_Device
         uint32_t h,
         REFRESH_CubeMapFace cubeMapFace,
         uint32_t level,
-        void* data,
-        uint32_t dataLength
+        void* data
     );
 
     /* Disposal */
