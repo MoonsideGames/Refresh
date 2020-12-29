@@ -108,14 +108,14 @@ static uint32_t deviceExtensionCount = SDL_arraysize(deviceExtensionNames);
 		);					\
 	}
 
-#define EXPAND_ARRAY_IF_NEEDED(arr, type, newCount, capacity, newCapacity)	\
-	if (newCount >= capacity)												\
-	{																		\
-		capacity = newCapacity;												\
-		arr = (type*) SDL_realloc(											\
-			arr,															\
-			sizeof(type) * capacity											\
-		);																	\
+#define EXPAND_ARRAY_IF_NEEDED(arr, elementType, newCount, capacity, newCapacity)	\
+	if (newCount >= capacity)														\
+	{																				\
+		capacity = newCapacity;														\
+		arr = (elementType*) SDL_realloc(													\
+			arr,																	\
+			sizeof(elementType) * capacity													\
+		);																			\
 	}
 
 /* Enums */
@@ -1094,6 +1094,14 @@ typedef struct VulkanRenderer
 	uint32_t submittedGraphicsPipelinesToDestroyCount;
 	uint32_t submittedGraphicsPipelinesToDestroyCapacity;
 
+	VkShaderModule *shaderModulesToDestroy;
+	uint32_t shaderModulesToDestroyCount;
+	uint32_t shaderModulesToDestroyCapacity;
+
+	VkShaderModule *submittedShaderModulesToDestroy;
+	uint32_t submittedShaderModulesToDestroyCount;
+	uint32_t submittedShaderModulesToDestroyCapacity;
+
     #define VULKAN_INSTANCE_FUNCTION(ext, ret, func, params) \
 		vkfntype_##func func;
 	#define VULKAN_DEVICE_FUNCTION(ext, ret, func, params) \
@@ -1817,16 +1825,13 @@ static void VULKAN_INTERNAL_RemoveBuffer(
 
 	SDL_LockMutex(renderer->disposeLock);
 
-	/* Queue buffer for destruction */
-	if (renderer->buffersToDestroyCount + 1 >= renderer->buffersToDestroyCapacity)
-	{
-		renderer->buffersToDestroyCapacity *= 2;
-
-		renderer->buffersToDestroy = SDL_realloc(
-			renderer->buffersToDestroy,
-			sizeof(VulkanBuffer*) * renderer->buffersToDestroyCapacity
-		);
-	}
+	EXPAND_ARRAY_IF_NEEDED(
+		renderer->buffersToDestroy,
+		VulkanBuffer*,
+		renderer->buffersToDestroyCount + 1,
+		renderer->buffersToDestroyCapacity,
+		renderer->buffersToDestroyCapacity * 2
+	)
 
 	renderer->buffersToDestroy[
 		renderer->buffersToDestroyCount
@@ -1981,6 +1986,17 @@ static void VULKAN_INTERNAL_DestroyGraphicsPipeline(
 	SDL_free(graphicsPipeline);
 }
 
+static void VULKAN_INTERNAL_DestroyShaderModule(
+	VulkanRenderer *renderer,
+	VkShaderModule shaderModule
+) {
+	renderer->vkDestroyShaderModule(
+		renderer->logicalDevice,
+		shaderModule,
+		NULL
+	);
+}
+
 static void VULKAN_INTERNAL_DestroySwapchain(VulkanRenderer* renderer)
 {
 	uint32_t i;
@@ -2093,6 +2109,15 @@ static void VULKAN_INTERNAL_PostSubmitCleanup(VulkanRenderer* renderer)
 	}
 	renderer->submittedGraphicsPipelinesToDestroyCount = 0;
 
+	for (i = 0; i < renderer->submittedShaderModulesToDestroyCount; i += 1)
+	{
+		VULKAN_INTERNAL_DestroyShaderModule(
+			renderer,
+			renderer->submittedShaderModulesToDestroy[i]
+		);
+	}
+	renderer->submittedShaderModulesToDestroyCount = 0;
+
 	/* Re-size submitted destroy lists */
 
 	EXPAND_ARRAY_IF_NEEDED(
@@ -2127,6 +2152,14 @@ static void VULKAN_INTERNAL_PostSubmitCleanup(VulkanRenderer* renderer)
 		renderer->graphicsPipelinesToDestroyCount
 	)
 
+	EXPAND_ARRAY_IF_NEEDED(
+		renderer->submittedShaderModulesToDestroy,
+		VkShaderModule,
+		renderer->shaderModulesToDestroyCount,
+		renderer->submittedShaderModulesToDestroyCapacity,
+		renderer->shaderModulesToDestroyCount
+	)
+
 	/* Rotate destroy lists */
 
 	for (i = 0; i < renderer->colorTargetsToDestroyCount; i += 1)
@@ -2156,6 +2189,13 @@ static void VULKAN_INTERNAL_PostSubmitCleanup(VulkanRenderer* renderer)
 	}
 	renderer->submittedGraphicsPipelinesToDestroyCount = renderer->graphicsPipelinesToDestroyCount;
 	renderer->graphicsPipelinesToDestroyCount = 0;
+
+	for (i = 0; i < renderer->shaderModulesToDestroyCount; i += 1)
+	{
+		renderer->submittedShaderModulesToDestroy[i] = renderer->shaderModulesToDestroy[i];
+	}
+	renderer->submittedShaderModulesToDestroyCount = renderer->shaderModulesToDestroyCount;
+	renderer->shaderModulesToDestroyCount = 0;
 
 	SDL_UnlockMutex(renderer->disposeLock);
 
@@ -5848,7 +5888,7 @@ static void VULKAN_AddDisposeTexture(
 	EXPAND_ARRAY_IF_NEEDED(
 		renderer->texturesToDestroy,
 		VulkanTexture*,
-		renderer->texturesToDestroyCount,
+		renderer->texturesToDestroyCount + 1,
 		renderer->texturesToDestroyCapacity,
 		renderer->texturesToDestroyCapacity * 2
 	)
@@ -5892,7 +5932,7 @@ static void VULKAN_AddDisposeColorTarget(
 	EXPAND_ARRAY_IF_NEEDED(
 		renderer->colorTargetsToDestroy,
 		VulkanColorTarget*,
-		renderer->colorTargetsToDestroyCount,
+		renderer->colorTargetsToDestroyCount + 1,
 		renderer->colorTargetsToDestroyCapacity,
 		renderer->colorTargetsToDestroyCapacity * 2
 	)
@@ -5901,7 +5941,6 @@ static void VULKAN_AddDisposeColorTarget(
 	renderer->colorTargetsToDestroyCount += 1;
 
 	SDL_UnlockMutex(renderer->disposeLock);
-
 }
 
 static void VULKAN_AddDisposeDepthStencilTarget(
@@ -5922,7 +5961,23 @@ static void VULKAN_AddDisposeShaderModule(
 	REFRESH_Renderer *driverData,
 	REFRESH_ShaderModule *shaderModule
 ) {
-    SDL_assert(0);
+	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	VkShaderModule vulkanShaderModule = (VkShaderModule) shaderModule;
+
+	SDL_LockMutex(renderer->disposeLock);
+
+	EXPAND_ARRAY_IF_NEEDED(
+		renderer->shaderModulesToDestroy,
+		VkShaderModule,
+		renderer->shaderModulesToDestroyCount + 1,
+		renderer->shaderModulesToDestroyCapacity,
+		renderer->shaderModulesToDestroyCapacity * 2
+	)
+
+	renderer->shaderModulesToDestroy[renderer->shaderModulesToDestroyCount] = vulkanShaderModule;
+	renderer->shaderModulesToDestroyCount += 1;
+
+	SDL_UnlockMutex(renderer->disposeLock);
 }
 
 static void VULKAN_AddDisposeRenderPass(
@@ -5944,7 +5999,7 @@ static void VULKAN_AddDisposeGraphicsPipeline(
 	EXPAND_ARRAY_IF_NEEDED(
 		renderer->graphicsPipelinesToDestroy,
 		VulkanGraphicsPipeline*,
-		renderer->graphicsPipelinesToDestroyCount,
+		renderer->graphicsPipelinesToDestroyCount + 1,
 		renderer->graphicsPipelinesToDestroyCapacity,
 		renderer->graphicsPipelinesToDestroyCapacity * 2
 	)
@@ -7798,6 +7853,22 @@ static REFRESH_Device* VULKAN_CreateDevice(
 	renderer->submittedGraphicsPipelinesToDestroy = (VulkanGraphicsPipeline**) SDL_malloc(
 		sizeof(VulkanGraphicsPipeline*) *
 		renderer->submittedGraphicsPipelinesToDestroyCapacity
+	);
+
+	renderer->shaderModulesToDestroyCapacity = 16;
+	renderer->shaderModulesToDestroyCount = 0;
+
+	renderer->shaderModulesToDestroy = (VkShaderModule*) SDL_malloc(
+		sizeof(VkShaderModule) *
+		renderer->shaderModulesToDestroyCapacity
+	);
+
+	renderer->submittedShaderModulesToDestroyCapacity = 16;
+	renderer->submittedShaderModulesToDestroyCount = 0;
+
+	renderer->submittedShaderModulesToDestroy = (VkShaderModule*) SDL_malloc(
+		sizeof(VkShaderModule) *
+		renderer->submittedShaderModulesToDestroyCapacity
 	);
 
     return result;
