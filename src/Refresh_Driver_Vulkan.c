@@ -202,7 +202,6 @@ static VkFormat RefreshToVK_DepthFormat[] =
     VK_FORMAT_D16_UNORM,
     VK_FORMAT_D32_SFLOAT,
     VK_FORMAT_D16_UNORM_S8_UINT,
-    VK_FORMAT_D24_UNORM_S8_UINT,
     VK_FORMAT_D32_SFLOAT_S8_UINT
 };
 
@@ -710,19 +709,6 @@ typedef struct VulkanTexture
 	REFRESH_TextureUsageFlags usageFlags;
 } VulkanTexture;
 
-typedef struct VulkanDepthStencilTexture
-{
-	VulkanMemoryAllocation *allocation;
-	VkDeviceSize offset;
-	VkDeviceSize memorySize;
-
-	VkImage image;
-	VkImageView view;
-	VkExtent2D dimensions;
-	VkFormat format;
-	VulkanResourceAccessType resourceAccessType;
-} VulkanDepthStencilTexture;
-
 typedef struct VulkanColorTarget
 {
 	VulkanTexture *texture;
@@ -734,7 +720,7 @@ typedef struct VulkanColorTarget
 
 typedef struct VulkanDepthStencilTarget
 {
-	VulkanDepthStencilTexture *texture;
+	VulkanTexture *texture;
 	VkImageView view;
 } VulkanDepthStencilTarget;
 
@@ -1077,6 +1063,14 @@ typedef struct VulkanRenderer
 	VulkanColorTarget **submittedColorTargetsToDestroy;
 	uint32_t submittedColorTargetsToDestroyCount;
 	uint32_t submittedColorTargetsToDestroyCapacity;
+
+	VulkanDepthStencilTarget **depthStencilTargetsToDestroy;
+	uint32_t depthStencilTargetsToDestroyCount;
+	uint32_t depthStencilTargetsToDestroyCapacity;
+
+	VulkanDepthStencilTarget **submittedDepthStencilTargetsToDestroy;
+	uint32_t submittedDepthStencilTargetsToDestroyCount;
+	uint32_t submittedDepthStencilTargetsToDestroyCapacity;
 
 	VulkanTexture **texturesToDestroy;
 	uint32_t texturesToDestroyCount;
@@ -1941,6 +1935,14 @@ static void VULKAN_INTERNAL_DestroyColorTarget(
 	SDL_free(colorTarget);
 }
 
+static void VULKAN_INTERNAL_DestroyDepthStencilTarget(
+	VulkanRenderer *renderer,
+	VulkanDepthStencilTarget *depthStencilTarget
+) {
+	VULKAN_INTERNAL_DestroyTexture(renderer, depthStencilTarget->texture);
+	SDL_free(depthStencilTarget);
+}
+
 static void VULKAN_INTERNAL_DestroyBuffer(
 	VulkanRenderer* renderer,
 	VulkanBuffer* buffer
@@ -2148,6 +2150,15 @@ static void VULKAN_INTERNAL_PostWorkCleanup(VulkanRenderer* renderer)
 	}
 	renderer->submittedColorTargetsToDestroyCount = 0;
 
+	for (i = 0; i < renderer->submittedDepthStencilTargetsToDestroyCount; i += 1)
+	{
+		VULKAN_INTERNAL_DestroyDepthStencilTarget(
+			renderer,
+			renderer->submittedDepthStencilTargetsToDestroy[i]
+		);
+	}
+	renderer->submittedDepthStencilTargetsToDestroyCount = 0;
+
 	for (i = 0; i < renderer->submittedTexturesToDestroyCount; i += 1)
 	{
 		VULKAN_INTERNAL_DestroyTexture(
@@ -2222,6 +2233,14 @@ static void VULKAN_INTERNAL_PostWorkCleanup(VulkanRenderer* renderer)
 	)
 
 	EXPAND_ARRAY_IF_NEEDED(
+		renderer->submittedDepthStencilTargetsToDestroy,
+		VulkanDepthStencilTarget*,
+		renderer->depthStencilTargetsToDestroyCount,
+		renderer->submittedDepthStencilTargetsToDestroyCapacity,
+		renderer->depthStencilTargetsToDestroyCount
+	)
+
+	EXPAND_ARRAY_IF_NEEDED(
 		renderer->submittedTexturesToDestroy,
 		VulkanTexture*,
 		renderer->texturesToDestroyCount,
@@ -2285,6 +2304,14 @@ static void VULKAN_INTERNAL_PostWorkCleanup(VulkanRenderer* renderer)
 		renderer->submittedColorTargetsToDestroyCount,
 		renderer->colorTargetsToDestroy,
 		renderer->colorTargetsToDestroyCount
+	)
+
+	MOVE_ARRAY_CONTENTS_AND_RESET(
+		i,
+		renderer->submittedDepthStencilTargetsToDestroy,
+		renderer->submittedDepthStencilTargetsToDestroyCount,
+		renderer->depthStencilTargetsToDestroy,
+		renderer->depthStencilTargetsToDestroyCount
 	)
 
 	MOVE_ARRAY_CONTENTS_AND_RESET(
@@ -4634,129 +4661,6 @@ static uint8_t VULKAN_INTERNAL_CreateTexture(
 	return 1;
 }
 
-static uint8_t VULKAN_INTERNAL_CreateTextureDepthStencil(
-	VulkanRenderer *renderer,
-	uint32_t width,
-	uint32_t height,
-	VkFormat format,
-	VulkanDepthStencilTexture *texture
-) {
-	VkResult vulkanResult;
-	VkImageCreateInfo imageCreateInfo;
-	VkImageViewCreateInfo imageViewCreateInfo;
-	uint8_t findMemoryResult;
-	uint8_t layerCount = 1;
-	VkComponentMapping swizzle = IDENTITY_SWIZZLE;
-	uint32_t usageFlags = (
-		VK_IMAGE_USAGE_SAMPLED_BIT |
-		VK_IMAGE_USAGE_TRANSFER_DST_BIT |
-		VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
-		VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
-	);
-	VkImageAspectFlags aspectFlags = VK_IMAGE_ASPECT_DEPTH_BIT;
-
-	imageCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-	imageCreateInfo.pNext = NULL;
-	imageCreateInfo.flags = 0;
-	imageCreateInfo.imageType = VK_IMAGE_TYPE_2D;
-	imageCreateInfo.format = format;
-	imageCreateInfo.extent.width = width;
-	imageCreateInfo.extent.height = height;
-	imageCreateInfo.extent.depth = 1;
-	imageCreateInfo.mipLevels = 1;
-	imageCreateInfo.arrayLayers = layerCount;
-	imageCreateInfo.samples = VK_SAMPLE_COUNT_1_BIT;
-	imageCreateInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
-	imageCreateInfo.usage = usageFlags;
-	// FIXME: would this interfere with pixel data sharing?
-	imageCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-	imageCreateInfo.queueFamilyIndexCount = 0;
-	imageCreateInfo.pQueueFamilyIndices = NULL;
-	imageCreateInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-
-	vulkanResult = renderer->vkCreateImage(
-		renderer->logicalDevice,
-		&imageCreateInfo,
-		NULL,
-		&texture->image
-	);
-
-	if (vulkanResult != VK_SUCCESS)
-	{
-		LogVulkanResult("vkCreateImage", vulkanResult);
-		REFRESH_LogError("Failed to create texture!");
-	}
-
-	findMemoryResult = VULKAN_INTERNAL_FindAvailableMemory(
-		renderer,
-		VK_NULL_HANDLE,
-		texture->image,
-		&texture->allocation,
-		&texture->offset,
-		&texture->memorySize
-	);
-
-	/* No device memory available, time to die */
-	if (findMemoryResult == 0 || findMemoryResult == 2)
-	{
-		REFRESH_LogError("Failed to find texture memory!");
-		return 0;
-	}
-
-	vulkanResult = renderer->vkBindImageMemory(
-		renderer->logicalDevice,
-		texture->image,
-		texture->allocation->memory,
-		texture->offset
-	);
-
-	if (vulkanResult != VK_SUCCESS)
-	{
-		LogVulkanResult("vkBindImageMemory", vulkanResult);
-		REFRESH_LogError("Failed to bind texture memory!");
-		return 0;
-	}
-
-	if (DepthFormatContainsStencil(format))
-	{
-		aspectFlags |= VK_IMAGE_ASPECT_STENCIL_BIT;
-	}
-
-	imageViewCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-	imageViewCreateInfo.pNext = NULL;
-	imageViewCreateInfo.flags = 0;
-	imageViewCreateInfo.image = texture->image;
-	imageViewCreateInfo.format = format;
-	imageViewCreateInfo.components = swizzle;
-	imageViewCreateInfo.subresourceRange.aspectMask = aspectFlags;
-	imageViewCreateInfo.subresourceRange.baseMipLevel = 0;
-	imageViewCreateInfo.subresourceRange.levelCount = 1;
-	imageViewCreateInfo.subresourceRange.baseArrayLayer = 0;
-	imageViewCreateInfo.subresourceRange.layerCount = layerCount;
-	imageViewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-
-	vulkanResult = renderer->vkCreateImageView(
-		renderer->logicalDevice,
-		&imageViewCreateInfo,
-		NULL,
-		&texture->view
-	);
-
-	if (vulkanResult != VK_SUCCESS)
-	{
-		LogVulkanResult("vkCreateImageView", vulkanResult);
-		REFRESH_LogError("Failed to create texture image view");
-		return 0;
-	}
-
-	texture->dimensions.width = width;
-	texture->dimensions.height = height;
-	texture->format = format;
-	texture->resourceAccessType = RESOURCE_ACCESS_NONE;
-
-	return 1;
-}
-
 static REFRESH_Texture* VULKAN_CreateTexture2D(
 	REFRESH_Renderer *driverData,
 	REFRESH_SurfaceFormat format,
@@ -4986,16 +4890,36 @@ static REFRESH_DepthStencilTarget* VULKAN_CreateDepthStencilTarget(
 			sizeof(VulkanDepthStencilTarget)
 		);
 
-	VulkanDepthStencilTexture *texture =
-		(VulkanDepthStencilTexture*) SDL_malloc(
-			sizeof(VulkanDepthStencilTexture)
-		);
+	VulkanTexture *texture =
+		(VulkanTexture*) SDL_malloc(sizeof(VulkanTexture));
 
-	VULKAN_INTERNAL_CreateTextureDepthStencil(
+	VkImageAspectFlags imageAspectFlags = VK_IMAGE_ASPECT_DEPTH_BIT;
+
+	VkImageUsageFlags imageUsageFlags =
+		VK_IMAGE_USAGE_SAMPLED_BIT |
+		VK_IMAGE_USAGE_TRANSFER_DST_BIT |
+		VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
+		VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+
+	if (DepthFormatContainsStencil(RefreshToVK_DepthFormat[format]))
+	{
+		imageAspectFlags |= VK_IMAGE_ASPECT_STENCIL_BIT;
+	}
+
+	VULKAN_INTERNAL_CreateTexture(
 		renderer,
 		width,
 		height,
+		1,
+		0,
+		VK_SAMPLE_COUNT_1_BIT,
+		1,
 		RefreshToVK_DepthFormat[format],
+		imageAspectFlags,
+		VK_IMAGE_TILING_OPTIMAL,
+		VK_IMAGE_TYPE_2D,
+		imageUsageFlags,
+		0,
 		texture
 	);
 
@@ -6121,7 +6045,23 @@ static void VULKAN_AddDisposeDepthStencilTarget(
 	REFRESH_Renderer *driverData,
 	REFRESH_DepthStencilTarget *depthStencilTarget
 ) {
-    SDL_assert(0);
+	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	VulkanDepthStencilTarget *vulkanDepthStencilTarget = (VulkanDepthStencilTarget*) depthStencilTarget;
+
+	SDL_LockMutex(renderer->disposeLock);
+
+	EXPAND_ARRAY_IF_NEEDED(
+		renderer->depthStencilTargetsToDestroy,
+		VulkanDepthStencilTarget*,
+		renderer->depthStencilTargetsToDestroyCount + 1,
+		renderer->depthStencilTargetsToDestroyCapacity,
+		renderer->depthStencilTargetsToDestroyCapacity * 2
+	)
+
+	renderer->depthStencilTargetsToDestroy[renderer->depthStencilTargetsToDestroyCount] = vulkanDepthStencilTarget;
+	renderer->depthStencilTargetsToDestroyCount += 1;
+
+	SDL_UnlockMutex(renderer->disposeLock);
 }
 
 static void VULKAN_AddDisposeFramebuffer(
@@ -8011,6 +7951,22 @@ static REFRESH_Device* VULKAN_CreateDevice(
 	renderer->submittedColorTargetsToDestroy = (VulkanColorTarget**) SDL_malloc(
 		sizeof(VulkanColorTarget*) *
 		renderer->submittedColorTargetsToDestroyCapacity
+	);
+
+	renderer->depthStencilTargetsToDestroyCapacity = 16;
+	renderer->depthStencilTargetsToDestroyCount = 0;
+
+	renderer->depthStencilTargetsToDestroy = (VulkanDepthStencilTarget**) SDL_malloc(
+		sizeof(VulkanDepthStencilTarget*) *
+		renderer->depthStencilTargetsToDestroyCapacity
+	);
+
+	renderer->submittedDepthStencilTargetsToDestroyCapacity = 16;
+	renderer->submittedDepthStencilTargetsToDestroyCount = 0;
+
+	renderer->submittedDepthStencilTargetsToDestroy = (VulkanDepthStencilTarget**) SDL_malloc(
+		sizeof(VulkanDepthStencilTarget*) *
+		renderer->submittedDepthStencilTargetsToDestroyCapacity
 	);
 
 	renderer->texturesToDestroyCapacity = 16;

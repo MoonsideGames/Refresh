@@ -137,7 +137,6 @@ typedef enum REFRESH_DepthFormat
 	REFRESH_DEPTHFORMAT_D16_UNORM,
 	REFRESH_DEPTHFORMAT_D32_SFLOAT,
     REFRESH_DEPTHFORMAT_D16_UNORM_S8_UINT,
-    REFRESH_DEPTHFORMAT_D24_UNORM_S8_UINT,
     REFRESH_DEPTHFORMAT_D32_SFLOAT_S8_UINT
 } REFRESH_DepthFormat;
 
@@ -470,20 +469,20 @@ typedef struct REFRESH_ColorTargetDescription
 	REFRESH_StoreOp storeOp;
 } REFRESH_ColorTargetDescription;
 
-typedef struct REFRESH_DepthTargetDescription
+typedef struct REFRESH_DepthStencilTargetDescription
 {
 	REFRESH_DepthFormat depthFormat;
 	REFRESH_LoadOp loadOp;
 	REFRESH_StoreOp storeOp;
 	REFRESH_LoadOp stencilLoadOp;
 	REFRESH_StoreOp stencilStoreOp;
-} REFRESH_DepthTargetDescription;
+} REFRESH_DepthStencilTargetDescription;
 
 typedef struct REFRESH_RenderPassCreateInfo
 {
 	const REFRESH_ColorTargetDescription *colorTargetDescriptions;
 	uint32_t colorTargetCount;
-	const REFRESH_DepthTargetDescription *depthTargetDescription; /* can be NULL */
+	const REFRESH_DepthStencilTargetDescription *depthTargetDescription; /* can be NULL */
 } REFRESH_RenderPassCreateInfo;
 
 typedef struct REFRESH_ShaderModuleCreateInfo
