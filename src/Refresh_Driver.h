@@ -220,6 +220,11 @@ struct REFRESH_Device
         REFRESH_RenderPassCreateInfo *renderPassCreateInfo
     );
 
+    REFRESH_ComputePipeline* (*CreateComputePipeline)(
+        REFRESH_Renderer *driverData,
+        REFRESH_ComputePipelineCreateInfo *pipelineCreateInfo
+    );
+
     REFRESH_GraphicsPipeline* (*CreateGraphicsPipeline)(
         REFRESH_Renderer *driverData,
         REFRESH_GraphicsPipelineCreateInfo *pipelineCreateInfo
@@ -457,6 +462,11 @@ struct REFRESH_Device
         REFRESH_RenderPass *renderPass
     );
 
+    void(*AddDisposeComputePipeline)(
+        REFRESH_Renderer *driverData,
+        REFRESH_ComputePipeline *computePipeline
+    );
+
     void(*AddDisposeGraphicsPipeline)(
         REFRESH_Renderer *driverData,
         REFRESH_GraphicsPipeline *graphicsPipeline
@@ -522,6 +532,7 @@ struct REFRESH_Device
 	ASSIGN_DRIVER_FUNC(DrawInstancedPrimitives, name) \
 	ASSIGN_DRIVER_FUNC(DrawPrimitives, name) \
     ASSIGN_DRIVER_FUNC(CreateRenderPass, name) \
+    ASSIGN_DRIVER_FUNC(CreateComputePipeline, name) \
     ASSIGN_DRIVER_FUNC(CreateGraphicsPipeline, name) \
     ASSIGN_DRIVER_FUNC(CreateSampler, name) \
     ASSIGN_DRIVER_FUNC(CreateFramebuffer, name) \
@@ -554,6 +565,7 @@ struct REFRESH_Device
     ASSIGN_DRIVER_FUNC(AddDisposeFramebuffer, name) \
     ASSIGN_DRIVER_FUNC(AddDisposeShaderModule, name) \
     ASSIGN_DRIVER_FUNC(AddDisposeRenderPass, name) \
+    ASSIGN_DRIVER_FUNC(AddDisposeComputePipeline, name) \
     ASSIGN_DRIVER_FUNC(AddDisposeGraphicsPipeline, name) \
     ASSIGN_DRIVER_FUNC(BeginRenderPass, name) \
     ASSIGN_DRIVER_FUNC(EndRenderPass, name) \

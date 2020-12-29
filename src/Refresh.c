@@ -252,6 +252,17 @@ REFRESH_RenderPass* REFRESH_CreateRenderPass(
     );
 }
 
+REFRESH_ComputePipeline* REFRESH_CreateComputePipeline(
+    REFRESH_Device *device,
+    REFRESH_ComputePipelineCreateInfo *pipelineCreateInfo
+) {
+    NULL_RETURN_NULL(device);
+    return device->CreateComputePipeline(
+        device->driverData,
+        pipelineCreateInfo
+    );
+}
+
 REFRESH_GraphicsPipeline* REFRESH_CreateGraphicsPipeline(
 	REFRESH_Device *device,
 	REFRESH_GraphicsPipelineCreateInfo *pipelineCreateInfo
@@ -743,6 +754,17 @@ void REFRESH_AddDisposeRenderPass(
     device->AddDisposeRenderPass(
         device->driverData,
         renderPass
+    );
+}
+
+void REFRESH_AddDisposeComputePipeline(
+	REFRESH_Device *device,
+	REFRESH_ComputePipeline *computePipeline
+) {
+    NULL_RETURN(device);
+    device->AddDisposeComputePipeline(
+        device->driverData,
+        computePipeline
     );
 }
 
