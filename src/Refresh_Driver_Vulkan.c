@@ -118,6 +118,14 @@ static uint32_t deviceExtensionCount = SDL_arraysize(deviceExtensionNames);
 		);																			\
 	}
 
+#define MOVE_ARRAY_CONTENTS_AND_RESET(i, dstArr, dstCount, srcArr, srcCount)	\
+	for (i = 0; i < srcCount; i += 1)											\
+	{																			\
+		dstArr[i] = srcArr[i];													\
+	}																			\
+	dstCount = srcCount;														\
+	srcCount = 0;
+
 /* Enums */
 
 typedef enum VulkanResourceAccessType
@@ -1102,6 +1110,14 @@ typedef struct VulkanRenderer
 	uint32_t submittedShaderModulesToDestroyCount;
 	uint32_t submittedShaderModulesToDestroyCapacity;
 
+	VkSampler *samplersToDestroy;
+	uint32_t samplersToDestroyCount;
+	uint32_t samplersToDestroyCapacity;
+
+	VkSampler *submittedSamplersToDestroy;
+	uint32_t submittedSamplersToDestroyCount;
+	uint32_t submittedSamplersToDestroyCapacity;
+
     #define VULKAN_INSTANCE_FUNCTION(ext, ret, func, params) \
 		vkfntype_##func func;
 	#define VULKAN_DEVICE_FUNCTION(ext, ret, func, params) \
@@ -1997,6 +2013,17 @@ static void VULKAN_INTERNAL_DestroyShaderModule(
 	);
 }
 
+static void VULKAN_INTERNAL_DestroySampler(
+	VulkanRenderer *renderer,
+	VkSampler sampler
+) {
+	renderer->vkDestroySampler(
+		renderer->logicalDevice,
+		sampler,
+		NULL
+	);
+}
+
 static void VULKAN_INTERNAL_DestroySwapchain(VulkanRenderer* renderer)
 {
 	uint32_t i;
@@ -2118,6 +2145,15 @@ static void VULKAN_INTERNAL_PostSubmitCleanup(VulkanRenderer* renderer)
 	}
 	renderer->submittedShaderModulesToDestroyCount = 0;
 
+	for (i = 0; i < renderer->submittedSamplersToDestroyCount; i += 1)
+	{
+		VULKAN_INTERNAL_DestroySampler(
+			renderer,
+			renderer->submittedSamplersToDestroy[i]
+		);
+	}
+	renderer->submittedSamplersToDestroyCount = 0;
+
 	/* Re-size submitted destroy lists */
 
 	EXPAND_ARRAY_IF_NEEDED(
@@ -2160,42 +2196,63 @@ static void VULKAN_INTERNAL_PostSubmitCleanup(VulkanRenderer* renderer)
 		renderer->shaderModulesToDestroyCount
 	)
 
+	EXPAND_ARRAY_IF_NEEDED(
+		renderer->submittedSamplersToDestroy,
+		VkSampler,
+		renderer->samplersToDestroyCount,
+		renderer->submittedSamplersToDestroyCapacity,
+		renderer->samplersToDestroyCount
+	)
+
 	/* Rotate destroy lists */
 
-	for (i = 0; i < renderer->colorTargetsToDestroyCount; i += 1)
-	{
-		renderer->submittedColorTargetsToDestroy[i] = renderer->colorTargetsToDestroy[i];
-	}
-	renderer->submittedColorTargetsToDestroyCount = renderer->colorTargetsToDestroyCount;
-	renderer->colorTargetsToDestroyCount = 0;
+	MOVE_ARRAY_CONTENTS_AND_RESET(
+		i,
+		renderer->submittedColorTargetsToDestroy,
+		renderer->submittedColorTargetsToDestroyCount,
+		renderer->colorTargetsToDestroy,
+		renderer->colorTargetsToDestroyCount
+	)
 
-	for (i = 0; i < renderer->texturesToDestroyCount; i += 1)
-	{
-		renderer->submittedTexturesToDestroy[i] = renderer->texturesToDestroy[i];
-	}
-	renderer->submittedTexturesToDestroyCount = renderer->texturesToDestroyCount;
-	renderer->texturesToDestroyCount = 0;
+	MOVE_ARRAY_CONTENTS_AND_RESET(
+		i,
+		renderer->submittedTexturesToDestroy,
+		renderer->submittedTexturesToDestroyCount,
+		renderer->texturesToDestroy,
+		renderer->texturesToDestroyCount
+	)
 
-	for (i = 0; i < renderer->buffersToDestroyCount; i += 1)
-	{
-		renderer->submittedBuffersToDestroy[i] = renderer->buffersToDestroy[i];
-	}
-	renderer->submittedBuffersToDestroyCount = renderer->buffersToDestroyCount;
-	renderer->buffersToDestroyCount = 0;
+	MOVE_ARRAY_CONTENTS_AND_RESET(
+		i,
+		renderer->submittedBuffersToDestroy,
+		renderer->submittedBuffersToDestroyCount,
+		renderer->buffersToDestroy,
+		renderer->buffersToDestroyCount
+	)
 
-	for (i = 0; i < renderer->graphicsPipelinesToDestroyCount; i += 1)
-	{
-		renderer->submittedGraphicsPipelinesToDestroy[i] = renderer->graphicsPipelinesToDestroy[i];
-	}
-	renderer->submittedGraphicsPipelinesToDestroyCount = renderer->graphicsPipelinesToDestroyCount;
-	renderer->graphicsPipelinesToDestroyCount = 0;
+	MOVE_ARRAY_CONTENTS_AND_RESET(
+		i,
+		renderer->submittedGraphicsPipelinesToDestroy,
+		renderer->submittedGraphicsPipelinesToDestroyCount,
+		renderer->graphicsPipelinesToDestroy,
+		renderer->graphicsPipelinesToDestroyCount
+	)
 
-	for (i = 0; i < renderer->shaderModulesToDestroyCount; i += 1)
-	{
-		renderer->submittedShaderModulesToDestroy[i] = renderer->shaderModulesToDestroy[i];
-	}
-	renderer->submittedShaderModulesToDestroyCount = renderer->shaderModulesToDestroyCount;
-	renderer->shaderModulesToDestroyCount = 0;
+	MOVE_ARRAY_CONTENTS_AND_RESET(
+		i,
+		renderer->submittedShaderModulesToDestroy,
+		renderer->submittedShaderModulesToDestroyCount,
+		renderer->shaderModulesToDestroy,
+		renderer->shaderModulesToDestroyCount
+	)
+
+	MOVE_ARRAY_CONTENTS_AND_RESET(
+		i,
+		renderer->submittedSamplersToDestroy,
+		renderer->submittedSamplersToDestroyCount,
+		renderer->samplersToDestroy,
+		renderer->samplersToDestroyCount
+	)
 
 	SDL_UnlockMutex(renderer->disposeLock);
 
@@ -5903,7 +5960,23 @@ static void VULKAN_AddDisposeSampler(
 	REFRESH_Renderer *driverData,
 	REFRESH_Sampler *sampler
 ) {
-    SDL_assert(0);
+	VulkanRenderer* renderer = (VulkanRenderer*)driverData;
+	VkSampler vulkanSampler = (VkSampler) sampler;
+
+	SDL_LockMutex(renderer->disposeLock);
+
+	EXPAND_ARRAY_IF_NEEDED(
+		renderer->samplersToDestroy,
+		VkSampler,
+		renderer->samplersToDestroyCount + 1,
+		renderer->samplersToDestroyCapacity,
+		renderer->samplersToDestroyCapacity * 2
+	)
+
+	renderer->samplersToDestroy[renderer->samplersToDestroyCount] = vulkanSampler;
+	renderer->samplersToDestroyCount += 1;
+
+	SDL_UnlockMutex(renderer->disposeLock);
 }
 
 static void VULKAN_AddDisposeVertexBuffer(
@@ -7869,6 +7942,22 @@ static REFRESH_Device* VULKAN_CreateDevice(
 	renderer->submittedShaderModulesToDestroy = (VkShaderModule*) SDL_malloc(
 		sizeof(VkShaderModule) *
 		renderer->submittedShaderModulesToDestroyCapacity
+	);
+
+	renderer->samplersToDestroyCapacity = 16;
+	renderer->samplersToDestroyCount = 0;
+
+	renderer->samplersToDestroy = (VkSampler*) SDL_malloc(
+		sizeof(VkSampler) *
+		renderer->samplersToDestroyCapacity
+	);
+
+	renderer->submittedSamplersToDestroyCapacity = 16;
+	renderer->submittedSamplersToDestroyCount = 0;
+
+	renderer->submittedSamplersToDestroy = (VkSampler*) SDL_malloc(
+		sizeof(VkSampler) *
+		renderer->submittedSamplersToDestroyCapacity
 	);
 
     return result;
