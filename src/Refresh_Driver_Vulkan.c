@@ -140,6 +140,7 @@ typedef enum VulkanResourceAccessType
 	RESOURCE_ACCESS_FRAGMENT_SHADER_READ_SAMPLED_IMAGE,
 	RESOURCE_ACCESS_FRAGMENT_SHADER_READ_COLOR_ATTACHMENT,
 	RESOURCE_ACCESS_FRAGMENT_SHADER_READ_DEPTH_STENCIL_ATTACHMENT,
+	RESOURCE_ACCESS_ANY_SHADER_READ_SAMPLED_IMAGE,
 	RESOURCE_ACCESS_COLOR_ATTACHMENT_READ,
 	RESOURCE_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ,
 	RESOURCE_ACCESS_TRANSFER_READ,
@@ -506,6 +507,13 @@ static const VulkanResourceAccessInfo AccessMap[RESOURCE_ACCESS_TYPES_COUNT] =
 		VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
 		VK_ACCESS_INPUT_ATTACHMENT_READ_BIT,
 		VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
+	},
+
+	/* RESOURCE_ACCESS_ANY_SHADER_READ_SAMPLED_IMAGE */
+	{
+		VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+		VK_ACCESS_SHADER_READ_BIT,
+		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
 	},
 
 	/* RESOURCE_ACCESS_COLOR_ATTACHMENT_READ */
@@ -4528,13 +4536,6 @@ static uint8_t VULKAN_INTERNAL_CreateTexture(
 	uint8_t layerCount = isCube ? 6 : 1;
 	VkComponentMapping swizzle = IDENTITY_SWIZZLE;
 
-	if ((textureUsageFlags & REFRESH_TEXTUREUSAGE_VERTEX_SAMPLER_BIT) &&
-		(textureUsageFlags & REFRESH_TEXTUREUSAGE_FRAGMENT_SAMPLER_BIT))
-	{
-		REFRESH_LogError("Cannot use a texture for both vertex and fragment sampling.");
-		return 0;
-	}
-
 	if (isCube)
 	{
 		imageCreateFlags |= VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
@@ -5076,26 +5077,11 @@ static void VULKAN_SetTextureData2D(
 		&imageCopy
 	));
 
-	if (vulkanTexture->usageFlags & REFRESH_TEXTUREUSAGE_VERTEX_SAMPLER_BIT)
+	if (vulkanTexture->usageFlags & REFRESH_TEXTUREUSAGE_SAMPLER_BIT)
 	{
 		VULKAN_INTERNAL_ImageMemoryBarrier(
 			renderer,
-			RESOURCE_ACCESS_VERTEX_SHADER_READ_SAMPLED_IMAGE,
-			VK_IMAGE_ASPECT_COLOR_BIT,
-			0,
-			vulkanTexture->layerCount,
-			0,
-			vulkanTexture->levelCount,
-			0,
-			vulkanTexture->image,
-			&vulkanTexture->resourceAccessType
-		);
-	}
-	else if (vulkanTexture->usageFlags & REFRESH_TEXTUREUSAGE_FRAGMENT_SAMPLER_BIT)
-	{
-		VULKAN_INTERNAL_ImageMemoryBarrier(
-			renderer,
-			RESOURCE_ACCESS_FRAGMENT_SHADER_READ_SAMPLED_IMAGE,
+			RESOURCE_ACCESS_ANY_SHADER_READ_SAMPLED_IMAGE,
 			VK_IMAGE_ASPECT_COLOR_BIT,
 			0,
 			vulkanTexture->layerCount,
@@ -5190,26 +5176,11 @@ static void VULKAN_SetTextureData3D(
 		&imageCopy
 	));
 
-	if (vulkanTexture->usageFlags & REFRESH_TEXTUREUSAGE_VERTEX_SAMPLER_BIT)
+	if (vulkanTexture->usageFlags & REFRESH_TEXTUREUSAGE_SAMPLER_BIT)
 	{
 		VULKAN_INTERNAL_ImageMemoryBarrier(
 			renderer,
-			RESOURCE_ACCESS_VERTEX_SHADER_READ_SAMPLED_IMAGE,
-			VK_IMAGE_ASPECT_COLOR_BIT,
-			0,
-			vulkanTexture->layerCount,
-			0,
-			vulkanTexture->levelCount,
-			0,
-			vulkanTexture->image,
-			&vulkanTexture->resourceAccessType
-		);
-	}
-	else if (vulkanTexture->usageFlags & REFRESH_TEXTUREUSAGE_FRAGMENT_SAMPLER_BIT)
-	{
-		VULKAN_INTERNAL_ImageMemoryBarrier(
-			renderer,
-			RESOURCE_ACCESS_FRAGMENT_SHADER_READ_SAMPLED_IMAGE,
+			RESOURCE_ACCESS_ANY_SHADER_READ_SAMPLED_IMAGE,
 			VK_IMAGE_ASPECT_COLOR_BIT,
 			0,
 			vulkanTexture->layerCount,
@@ -5303,26 +5274,11 @@ static void VULKAN_SetTextureDataCube(
 		&imageCopy
 	));
 
-	if (vulkanTexture->usageFlags & REFRESH_TEXTUREUSAGE_VERTEX_SAMPLER_BIT)
+	if (vulkanTexture->usageFlags & REFRESH_TEXTUREUSAGE_SAMPLER_BIT)
 	{
 		VULKAN_INTERNAL_ImageMemoryBarrier(
 			renderer,
-			RESOURCE_ACCESS_VERTEX_SHADER_READ_SAMPLED_IMAGE,
-			VK_IMAGE_ASPECT_COLOR_BIT,
-			0,
-			vulkanTexture->layerCount,
-			0,
-			vulkanTexture->levelCount,
-			0,
-			vulkanTexture->image,
-			&vulkanTexture->resourceAccessType
-		);
-	}
-	else if (vulkanTexture->usageFlags & REFRESH_TEXTUREUSAGE_FRAGMENT_SAMPLER_BIT)
-	{
-		VULKAN_INTERNAL_ImageMemoryBarrier(
-			renderer,
-			RESOURCE_ACCESS_FRAGMENT_SHADER_READ_SAMPLED_IMAGE,
+			RESOURCE_ACCESS_ANY_SHADER_READ_SAMPLED_IMAGE,
 			VK_IMAGE_ASPECT_COLOR_BIT,
 			0,
 			vulkanTexture->layerCount,
@@ -5505,26 +5461,11 @@ static void VULKAN_SetTextureDataYUV(
 		&imageCopy
 	));
 
-	if (tex->usageFlags & REFRESH_TEXTUREUSAGE_VERTEX_SAMPLER_BIT)
+	if (tex->usageFlags & REFRESH_TEXTUREUSAGE_SAMPLER_BIT)
 	{
 		VULKAN_INTERNAL_ImageMemoryBarrier(
 			renderer,
-			RESOURCE_ACCESS_VERTEX_SHADER_READ_SAMPLED_IMAGE,
-			VK_IMAGE_ASPECT_COLOR_BIT,
-			0,
-			tex->layerCount,
-			0,
-			tex->levelCount,
-			0,
-			tex->image,
-			&tex->resourceAccessType
-		);
-	}
-	else if (tex->usageFlags & REFRESH_TEXTUREUSAGE_FRAGMENT_SAMPLER_BIT)
-	{
-		VULKAN_INTERNAL_ImageMemoryBarrier(
-			renderer,
-			RESOURCE_ACCESS_FRAGMENT_SHADER_READ_SAMPLED_IMAGE,
+			RESOURCE_ACCESS_ANY_SHADER_READ_SAMPLED_IMAGE,
 			VK_IMAGE_ASPECT_COLOR_BIT,
 			0,
 			tex->layerCount,
@@ -5903,20 +5844,6 @@ static void VULKAN_SetFragmentSamplers(
 	for (i = 0; i < samplerCount; i += 1)
 	{
 		currentTexture = (VulkanTexture*) pTextures[i];
-
-		VULKAN_INTERNAL_ImageMemoryBarrier(
-			renderer,
-			RESOURCE_ACCESS_FRAGMENT_SHADER_READ_SAMPLED_IMAGE,
-			VK_IMAGE_ASPECT_COLOR_BIT,
-			0,
-			currentTexture->layerCount,
-			0,
-			currentTexture->levelCount,
-			0,
-			currentTexture->image,
-			&currentTexture->resourceAccessType
-		);
-
 		fragmentSamplerDescriptorSetData.descriptorImageInfo[i].imageView = currentTexture->view;
 		fragmentSamplerDescriptorSetData.descriptorImageInfo[i].sampler = (VkSampler) pSamplers[i];
 		fragmentSamplerDescriptorSetData.descriptorImageInfo[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
@@ -6272,26 +6199,11 @@ static void VULKAN_EndRenderPass(
 	for (i = 0; i < renderer->currentFramebuffer->colorTargetCount; i += 1)
 	{
 		currentTexture = renderer->currentFramebuffer->colorTargets[i]->texture;
-		if (currentTexture->usageFlags & REFRESH_TEXTUREUSAGE_VERTEX_SAMPLER_BIT)
+		if (currentTexture->usageFlags & REFRESH_TEXTUREUSAGE_SAMPLER_BIT)
 		{
 			VULKAN_INTERNAL_ImageMemoryBarrier(
 				renderer,
-				RESOURCE_ACCESS_VERTEX_SHADER_READ_SAMPLED_IMAGE,
-				VK_IMAGE_ASPECT_COLOR_BIT,
-				0,
-				currentTexture->layerCount,
-				0,
-				currentTexture->levelCount,
-				0,
-				currentTexture->image,
-				&currentTexture->resourceAccessType
-			);
-		}
-		else if (currentTexture->usageFlags & REFRESH_TEXTUREUSAGE_FRAGMENT_SAMPLER_BIT)
-		{
-			VULKAN_INTERNAL_ImageMemoryBarrier(
-				renderer,
-				RESOURCE_ACCESS_FRAGMENT_SHADER_READ_SAMPLED_IMAGE,
+				RESOURCE_ACCESS_ANY_SHADER_READ_SAMPLED_IMAGE,
 				VK_IMAGE_ASPECT_COLOR_BIT,
 				0,
 				currentTexture->layerCount,
