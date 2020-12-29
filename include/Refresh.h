@@ -98,7 +98,7 @@ typedef enum REFRESH_StoreOp
 
 typedef enum REFRESH_ClearOptions
 {
-    REFRESH_CLEAROPTIONS_TARGET  = 1,
+    REFRESH_CLEAROPTIONS_COLOR   = 1,
     REFRESH_CLEAROPTIONS_DEPTH   = 2,
     REFRESH_CLEAROPTIONS_STENCIL = 4,
 } REFRESH_ClearOptions;
@@ -619,21 +619,26 @@ REFRESHAPI void REFRESH_DestroyDevice(REFRESH_Device *device);
 /* Drawing */
 
 /* Clears the targets of the currently bound framebuffer.
+ * If fewer colors are passed than the number of color targets in the
+ * framebuffer, this function will clear the first n color targets.
+ *
  * NOTE:
  * 		It is generally recommended to clear in BeginRenderPass
- * 		rather than by calling this function.
+ * 		rather than by calling this function unless necessary.
  *
- * options:	   Bitflags to specify color/depth/stencil buffers for clearing.
- * colors:	   The new values of the cleared color buffers.
- * colorCount: The amount of cleared color buffers.
- * depth:	   The new value of the cleared depth buffer.
- * stencil:	   The new value of the cleared stencil buffer.
+ * clearRect:	Area to clear.
+ * options:		Bitflags to specify color/depth/stencil buffers for clearing.
+ * colors:		An array of color values for the cleared color buffers.
+ * colorCount:	The number of colors in the above array.
+ * depth:		The new value of the cleared depth buffer.
+ * stencil:		The new value of the cleared stencil buffer.
  */
 REFRESHAPI void REFRESH_Clear(
 	REFRESH_Device *device,
+	REFRESH_Rect *clearRect,
 	REFRESH_ClearOptions options,
-	REFRESH_Vec4 **colors,
-    uint32_t colorCount,
+	REFRESH_Color *colors,
+	uint32_t colorCount,
 	float depth,
 	int32_t stencil
 );

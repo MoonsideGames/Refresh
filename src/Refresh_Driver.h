@@ -170,8 +170,9 @@ struct REFRESH_Device
 
 	void (*Clear)(
         REFRESH_Renderer *driverData,
+        REFRESH_Rect *clearRect,
         REFRESH_ClearOptions options,
-        REFRESH_Vec4 **colors,
+        REFRESH_Color *colors,
         uint32_t colorCount,
         float depth,
         int32_t stencil

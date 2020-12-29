@@ -149,14 +149,23 @@ void REFRESH_DestroyDevice(REFRESH_Device *device)
 
 void REFRESH_Clear(
 	REFRESH_Device *device,
+	REFRESH_Rect *clearRect,
 	REFRESH_ClearOptions options,
-	REFRESH_Vec4 **colors,
-    uint32_t colorCount,
+	REFRESH_Color *colors,
+	uint32_t colorCount,
 	float depth,
 	int32_t stencil
 ) {
     NULL_RETURN(device);
-    device->Clear(device->driverData, options, colors, colorCount, depth, stencil);
+    device->Clear(
+        device->driverData,
+        clearRect,
+        options,
+        colors,
+        colorCount,
+        depth,
+        stencil
+    );
 }
 
 void REFRESH_DrawIndexedPrimitives(

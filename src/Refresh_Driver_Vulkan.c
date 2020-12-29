@@ -738,6 +738,8 @@ typedef struct VulkanFramebuffer
 	VulkanColorTarget *colorTargets[MAX_COLOR_TARGET_BINDINGS];
 	uint32_t colorTargetCount;
 	VulkanDepthStencilTarget *depthStencilTarget;
+	uint32_t width;
+	uint32_t height;
 } VulkanFramebuffer;
 
 /* Cache structures */
@@ -3253,13 +3255,112 @@ static void VULKAN_DestroyDevice(
 
 static void VULKAN_Clear(
 	REFRESH_Renderer *driverData,
+	REFRESH_Rect *clearRect,
 	REFRESH_ClearOptions options,
-	REFRESH_Vec4 **colors,
-    uint32_t colorCount,
+	REFRESH_Color *colors,
+	uint32_t colorCount,
 	float depth,
 	int32_t stencil
 ) {
-    SDL_assert(0);
+	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	uint32_t attachmentCount, i;
+	VkClearAttachment clearAttachments[MAX_COLOR_TARGET_BINDINGS + 1];
+	VkClearRect vulkanClearRect;
+	VkClearValue clearValues[4];
+
+	uint8_t shouldClearColor = options & REFRESH_CLEAROPTIONS_COLOR;
+	uint8_t shouldClearDepth = options & REFRESH_CLEAROPTIONS_DEPTH;
+	uint8_t shouldClearStencil = options & REFRESH_CLEAROPTIONS_STENCIL;
+
+	uint8_t shouldClearDepthStencil = (
+		(shouldClearDepth || shouldClearStencil) &&
+		renderer->currentFramebuffer->depthStencilTarget != NULL
+	);
+
+	if (!shouldClearColor && !shouldClearDepthStencil)
+	{
+		return;
+	}
+
+	vulkanClearRect.baseArrayLayer = 0;
+	vulkanClearRect.layerCount = 1;
+	vulkanClearRect.rect.offset.x = clearRect->x;
+	vulkanClearRect.rect.offset.y = clearRect->y;
+	vulkanClearRect.rect.extent.width = clearRect->w;
+	vulkanClearRect.rect.extent.height = clearRect->h;
+
+	attachmentCount = 0;
+
+	if (shouldClearColor)
+	{
+		for (i = 0; i < colorCount; i += 1)
+		{
+			clearValues[i].color.float32[0] = colors[i].r / 255.0f;
+			clearValues[i].color.float32[1] = colors[i].g / 255.0f;
+			clearValues[i].color.float32[2] = colors[i].b / 255.0f;
+			clearValues[i].color.float32[3] = colors[i].a / 255.0f;
+		}
+
+		for (i = 0; i < colorCount; i += 1)
+		{
+			clearAttachments[attachmentCount].aspectMask =
+				VK_IMAGE_ASPECT_COLOR_BIT;
+			clearAttachments[attachmentCount].colorAttachment =
+				attachmentCount;
+			clearAttachments[attachmentCount].clearValue =
+				clearValues[attachmentCount];
+			attachmentCount += 1;
+
+			/* Do NOT clear the multisample image here!
+			 * Vulkan treats them both as the same color attachment.
+			 * Vulkan is a very good and not confusing at all API.
+			 */
+		}
+	}
+
+	if (shouldClearDepthStencil)
+	{
+		clearAttachments[attachmentCount].aspectMask = 0;
+		clearAttachments[attachmentCount].colorAttachment = 0;
+
+		if (shouldClearDepth)
+		{
+			if (depth < 0.0f)
+			{
+				depth = 0.0f;
+			}
+			else if (depth > 1.0f)
+			{
+				depth = 1.0f;
+			}
+			clearAttachments[attachmentCount].aspectMask |= VK_IMAGE_ASPECT_DEPTH_BIT;
+			clearAttachments[attachmentCount].clearValue.depthStencil.depth = depth;
+		}
+		else
+		{
+			clearAttachments[attachmentCount].clearValue.depthStencil.depth = 0.0f;
+		}
+
+		if (shouldClearStencil)
+		{
+			clearAttachments[attachmentCount].aspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
+			clearAttachments[attachmentCount].clearValue.depthStencil.stencil = stencil;
+		}
+		else
+		{
+			clearAttachments[attachmentCount].clearValue.depthStencil.stencil = 0;
+		}
+
+		attachmentCount += 1;
+	}
+
+	RECORD_CMD(renderer->vkCmdClearAttachments(
+		renderer->currentCommandBuffer,
+		attachmentCount,
+		clearAttachments,
+		1,
+		&vulkanClearRect
+	));
 }
 
 static void VULKAN_DrawInstancedPrimitives(
@@ -4473,6 +4574,9 @@ static REFRESH_Framebuffer* VULKAN_CreateFramebuffer(
 	vulkanFramebuffer->colorTargetCount = colorAttachmentCount;
 	vulkanFramebuffer->depthStencilTarget =
 		(VulkanDepthStencilTarget*) framebufferCreateInfo->pDepthStencilTarget;
+
+	vulkanFramebuffer->width = framebufferCreateInfo->width;
+	vulkanFramebuffer->height = framebufferCreateInfo->height;
 
 	SDL_stack_free(imageViews);
 	return (REFRESH_Framebuffer*) vulkanFramebuffer;
