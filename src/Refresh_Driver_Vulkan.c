@@ -1126,6 +1126,14 @@ typedef struct VulkanRenderer
 	uint32_t submittedFramebuffersToDestroyCount;
 	uint32_t submittedFramebuffersToDestroyCapacity;
 
+	VkRenderPass *renderPassesToDestroy;
+	uint32_t renderPassesToDestroyCount;
+	uint32_t renderPassesToDestroyCapacity;
+
+	VkRenderPass *submittedRenderPassesToDestroy;
+	uint32_t submittedRenderPassesToDestroyCount;
+	uint32_t submittedRenderPassesToDestroyCapacity;
+
     #define VULKAN_INSTANCE_FUNCTION(ext, ret, func, params) \
 		vkfntype_##func func;
 	#define VULKAN_DEVICE_FUNCTION(ext, ret, func, params) \
@@ -2044,6 +2052,17 @@ static void VULKAN_INTERNAL_DestroyFramebuffer(
 	);
 }
 
+static void VULKAN_INTERNAL_DestroyRenderPass(
+	VulkanRenderer *renderer,
+	VkRenderPass renderPass
+) {
+	renderer->vkDestroyRenderPass(
+		renderer->logicalDevice,
+		renderPass,
+		NULL
+	);
+}
+
 static void VULKAN_INTERNAL_DestroySwapchain(VulkanRenderer* renderer)
 {
 	uint32_t i;
@@ -2112,7 +2131,7 @@ static void VULKAN_INTERNAL_DestroySamplerDescriptorSetCache(
 	SDL_free(cache);
 }
 
-static void VULKAN_INTERNAL_PostSubmitCleanup(VulkanRenderer* renderer)
+static void VULKAN_INTERNAL_PostWorkCleanup(VulkanRenderer* renderer)
 {
 	uint32_t i, j;
 
@@ -2183,6 +2202,15 @@ static void VULKAN_INTERNAL_PostSubmitCleanup(VulkanRenderer* renderer)
 	}
 	renderer->submittedFramebuffersToDestroyCount = 0;
 
+	for (i = 0; i < renderer->submittedRenderPassesToDestroyCount; i += 1)
+	{
+		VULKAN_INTERNAL_DestroyRenderPass(
+			renderer,
+			renderer->submittedRenderPassesToDestroy[i]
+		);
+	}
+	renderer->submittedRenderPassesToDestroyCount = 0;
+
 	/* Re-size submitted destroy lists */
 
 	EXPAND_ARRAY_IF_NEEDED(
@@ -2241,6 +2269,14 @@ static void VULKAN_INTERNAL_PostSubmitCleanup(VulkanRenderer* renderer)
 		renderer->framebuffersToDestroyCount
 	)
 
+	EXPAND_ARRAY_IF_NEEDED(
+		renderer->submittedRenderPassesToDestroy,
+		VkRenderPass,
+		renderer->renderPassesToDestroyCount,
+		renderer->submittedRenderPassesToDestroyCapacity,
+		renderer->renderPassesToDestroyCount
+	)
+
 	/* Rotate destroy lists */
 
 	MOVE_ARRAY_CONTENTS_AND_RESET(
@@ -2297,6 +2333,14 @@ static void VULKAN_INTERNAL_PostSubmitCleanup(VulkanRenderer* renderer)
 		renderer->submittedFramebuffersToDestroyCount,
 		renderer->framebuffersToDestroy,
 		renderer->framebuffersToDestroyCount
+	)
+
+	MOVE_ARRAY_CONTENTS_AND_RESET(
+		i,
+		renderer->submittedRenderPassesToDestroy,
+		renderer->submittedRenderPassesToDestroyCount,
+		renderer->renderPassesToDestroy,
+		renderer->renderPassesToDestroyCount
 	)
 
 	SDL_UnlockMutex(renderer->disposeLock);
@@ -3015,8 +3059,8 @@ static void VULKAN_DestroyDevice(
 	VULKAN_INTERNAL_DestroyBuffer(renderer, renderer->fragmentUBO);
 
 	/* We have to do this twice so the rotation happens correctly */
-	VULKAN_INTERNAL_PostSubmitCleanup(renderer);
-	VULKAN_INTERNAL_PostSubmitCleanup(renderer);
+	VULKAN_INTERNAL_PostWorkCleanup(renderer);
+	VULKAN_INTERNAL_PostWorkCleanup(renderer);
 
 	VULKAN_INTERNAL_DestroyTextureStagingBuffer(renderer);
 
@@ -6130,7 +6174,23 @@ static void VULKAN_AddDisposeRenderPass(
 	REFRESH_Renderer *driverData,
 	REFRESH_RenderPass *renderPass
 ) {
-    SDL_assert(0);
+	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	VkRenderPass vulkanRenderPass = (VkRenderPass) renderPass;
+
+	SDL_LockMutex(renderer->disposeLock);
+
+	EXPAND_ARRAY_IF_NEEDED(
+		renderer->renderPassesToDestroy,
+		VkRenderPass,
+		renderer->renderPassesToDestroyCount + 1,
+		renderer->renderPassesToDestroyCapacity,
+		renderer->renderPassesToDestroyCapacity * 2
+	)
+
+	renderer->renderPassesToDestroy[renderer->renderPassesToDestroyCount] = vulkanRenderPass;
+	renderer->renderPassesToDestroyCount += 1;
+
+	SDL_UnlockMutex(renderer->disposeLock);
 }
 
 static void VULKAN_AddDisposeGraphicsPipeline(
@@ -6712,7 +6772,7 @@ static void VULKAN_Submit(
 		return;
 	}
 
-	VULKAN_INTERNAL_PostSubmitCleanup(renderer);
+	VULKAN_INTERNAL_PostWorkCleanup(renderer);
 
 	/* Reset the previously submitted command buffers */
 	for (i = 0; i < renderer->submittedCommandBufferCount; i += 1)
@@ -8047,6 +8107,22 @@ static REFRESH_Device* VULKAN_CreateDevice(
 	renderer->submittedFramebuffersToDestroy = (VulkanFramebuffer**) SDL_malloc(
 		sizeof(VulkanFramebuffer*) *
 		renderer->submittedFramebuffersToDestroyCapacity
+	);
+
+	renderer->renderPassesToDestroyCapacity = 16;
+	renderer->renderPassesToDestroyCount = 0;
+
+	renderer->renderPassesToDestroy = (VkRenderPass*) SDL_malloc(
+		sizeof(VkRenderPass) *
+		renderer->renderPassesToDestroyCapacity
+	);
+
+	renderer->submittedRenderPassesToDestroyCapacity = 16;
+	renderer->submittedRenderPassesToDestroyCount = 0;
+
+	renderer->submittedRenderPassesToDestroy = (VkRenderPass*) SDL_malloc(
+		sizeof(VkRenderPass) *
+		renderer->submittedRenderPassesToDestroyCapacity
 	);
 
     return result;
