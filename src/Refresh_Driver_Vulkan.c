@@ -1118,6 +1118,14 @@ typedef struct VulkanRenderer
 	uint32_t submittedSamplersToDestroyCount;
 	uint32_t submittedSamplersToDestroyCapacity;
 
+	VulkanFramebuffer **framebuffersToDestroy;
+	uint32_t framebuffersToDestroyCount;
+	uint32_t framebuffersToDestroyCapacity;
+
+	VulkanFramebuffer **submittedFramebuffersToDestroy;
+	uint32_t submittedFramebuffersToDestroyCount;
+	uint32_t submittedFramebuffersToDestroyCapacity;
+
     #define VULKAN_INSTANCE_FUNCTION(ext, ret, func, params) \
 		vkfntype_##func func;
 	#define VULKAN_DEVICE_FUNCTION(ext, ret, func, params) \
@@ -2024,6 +2032,18 @@ static void VULKAN_INTERNAL_DestroySampler(
 	);
 }
 
+/* The framebuffer doesn't own any targets so we don't have to do much. */
+static void VULKAN_INTERNAL_DestroyFramebuffer(
+	VulkanRenderer *renderer,
+	VulkanFramebuffer *framebuffer
+) {
+	renderer->vkDestroyFramebuffer(
+		renderer->logicalDevice,
+		framebuffer->framebuffer,
+		NULL
+	);
+}
+
 static void VULKAN_INTERNAL_DestroySwapchain(VulkanRenderer* renderer)
 {
 	uint32_t i;
@@ -2154,6 +2174,15 @@ static void VULKAN_INTERNAL_PostSubmitCleanup(VulkanRenderer* renderer)
 	}
 	renderer->submittedSamplersToDestroyCount = 0;
 
+	for (i = 0; i < renderer->submittedFramebuffersToDestroyCount; i += 1)
+	{
+		VULKAN_INTERNAL_DestroyFramebuffer(
+			renderer,
+			renderer->submittedFramebuffersToDestroy[i]
+		);
+	}
+	renderer->submittedFramebuffersToDestroyCount = 0;
+
 	/* Re-size submitted destroy lists */
 
 	EXPAND_ARRAY_IF_NEEDED(
@@ -2204,6 +2233,14 @@ static void VULKAN_INTERNAL_PostSubmitCleanup(VulkanRenderer* renderer)
 		renderer->samplersToDestroyCount
 	)
 
+	EXPAND_ARRAY_IF_NEEDED(
+		renderer->submittedFramebuffersToDestroy,
+		VulkanFramebuffer*,
+		renderer->framebuffersToDestroyCount,
+		renderer->submittedFramebuffersToDestroyCapacity,
+		renderer->framebuffersToDestroyCount
+	)
+
 	/* Rotate destroy lists */
 
 	MOVE_ARRAY_CONTENTS_AND_RESET(
@@ -2252,6 +2289,14 @@ static void VULKAN_INTERNAL_PostSubmitCleanup(VulkanRenderer* renderer)
 		renderer->submittedSamplersToDestroyCount,
 		renderer->samplersToDestroy,
 		renderer->samplersToDestroyCount
+	)
+
+	MOVE_ARRAY_CONTENTS_AND_RESET(
+		i,
+		renderer->submittedFramebuffersToDestroy,
+		renderer->submittedFramebuffersToDestroyCount,
+		renderer->framebuffersToDestroy,
+		renderer->framebuffersToDestroyCount
 	)
 
 	SDL_UnlockMutex(renderer->disposeLock);
@@ -6025,9 +6070,25 @@ static void VULKAN_AddDisposeDepthStencilTarget(
 
 static void VULKAN_AddDisposeFramebuffer(
 	REFRESH_Renderer *driverData,
-	REFRESH_Framebuffer *frameBuffer
+	REFRESH_Framebuffer *framebuffer
 ) {
-    SDL_assert(0);
+	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	VulkanFramebuffer *vulkanFramebuffer = (VulkanFramebuffer*) framebuffer;
+
+	SDL_LockMutex(renderer->disposeLock);
+
+	EXPAND_ARRAY_IF_NEEDED(
+		renderer->framebuffersToDestroy,
+		VulkanFramebuffer*,
+		renderer->framebuffersToDestroyCount + 1,
+		renderer->framebuffersToDestroyCapacity,
+		renderer->framebuffersToDestroyCapacity *= 2
+	)
+
+	renderer->framebuffersToDestroy[renderer->framebuffersToDestroyCount] = vulkanFramebuffer;
+	renderer->framebuffersToDestroyCount += 1;
+
+	SDL_UnlockMutex(renderer->disposeLock);
 }
 
 static void VULKAN_AddDisposeShaderModule(
@@ -7958,6 +8019,22 @@ static REFRESH_Device* VULKAN_CreateDevice(
 	renderer->submittedSamplersToDestroy = (VkSampler*) SDL_malloc(
 		sizeof(VkSampler) *
 		renderer->submittedSamplersToDestroyCapacity
+	);
+
+	renderer->framebuffersToDestroyCapacity = 16;
+	renderer->framebuffersToDestroyCount = 0;
+
+	renderer->framebuffersToDestroy = (VulkanFramebuffer**) SDL_malloc(
+		sizeof(VulkanFramebuffer*) *
+		renderer->framebuffersToDestroyCapacity
+	);
+
+	renderer->submittedFramebuffersToDestroyCapacity = 16;
+	renderer->submittedFramebuffersToDestroyCount = 0;
+
+	renderer->submittedFramebuffersToDestroy = (VulkanFramebuffer**) SDL_malloc(
+		sizeof(VulkanFramebuffer*) *
+		renderer->submittedFramebuffersToDestroyCapacity
 	);
 
     return result;
