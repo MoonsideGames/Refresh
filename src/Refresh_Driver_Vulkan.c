@@ -677,15 +677,15 @@ typedef struct SwapChainSupportDetails
 	uint32_t presentModesLength;
 } SwapChainSupportDetails;
 
-typedef struct SamplerDescriptorSetCache SamplerDescriptorSetCache;
+typedef struct ImageDescriptorSetCache ImageDescriptorSetCache;
 typedef struct ComputeBufferDescriptorSetCache ComputeBufferDescriptorSetCache;
 typedef struct ComputeImageDescriptorSetCache ComputeImageDescriptorSetCache;
 
 typedef struct VulkanGraphicsPipelineLayout
 {
 	VkPipelineLayout pipelineLayout;
-	SamplerDescriptorSetCache *vertexSamplerDescriptorSetCache;
-	SamplerDescriptorSetCache *fragmentSamplerDescriptorSetCache;
+	ImageDescriptorSetCache *vertexSamplerDescriptorSetCache;
+	ImageDescriptorSetCache *fragmentSamplerDescriptorSetCache;
 } VulkanGraphicsPipelineLayout;
 
 typedef struct VulkanGraphicsPipeline
@@ -706,7 +706,7 @@ typedef struct VulkanComputePipelineLayout
 {
 	VkPipelineLayout pipelineLayout;
 	ComputeBufferDescriptorSetCache *bufferDescriptorSetCache;
-	ComputeImageDescriptorSetCache *imageDescriptorSetCache;
+	ImageDescriptorSetCache *imageDescriptorSetCache;
 } VulkanComputePipelineLayout;
 
 typedef struct VulkanComputePipeline
@@ -846,30 +846,30 @@ static inline void DescriptorSetLayoutHashTable_Insert(
 
 /* Descriptor Set Caches */
 
-typedef struct SamplerDescriptorSetData
+typedef struct ImageDescriptorSetData
 {
 	VkDescriptorImageInfo descriptorImageInfo[MAX_TEXTURE_SAMPLERS]; /* used for vertex samplers as well */
-} SamplerDescriptorSetData;
+} ImageDescriptorSetData;
 
-typedef struct SamplerDescriptorSetHashMap
+typedef struct ImageDescriptorSetHashMap
 {
 	uint64_t key;
-	SamplerDescriptorSetData descriptorSetData;
+	ImageDescriptorSetData descriptorSetData;
 	VkDescriptorSet descriptorSet;
 	uint8_t inactiveFrameCount;
-} SamplerDescriptorSetHashMap;
+} ImageDescriptorSetHashMap;
 
-typedef struct SamplerDescriptorSetHashArray
+typedef struct ImageDescriptorSetHashArray
 {
 	uint32_t *elements;
 	int32_t count;
 	int32_t capacity;
-} SamplerDescriptorSetHashArray;
+} ImageDescriptorSetHashArray;
 
 #define NUM_DESCRIPTOR_SET_HASH_BUCKETS 1031
 
-static inline uint64_t SamplerDescriptorSetHashTable_GetHashCode(
-	SamplerDescriptorSetData *descriptorSetData,
+static inline uint64_t ImageDescriptorSetHashTable_GetHashCode(
+	ImageDescriptorSetData *descriptorSetData,
 	uint32_t samplerCount
 ) {
 	const uint64_t HASH_FACTOR = 97;
@@ -885,18 +885,18 @@ static inline uint64_t SamplerDescriptorSetHashTable_GetHashCode(
 	return result;
 }
 
-struct SamplerDescriptorSetCache
+struct ImageDescriptorSetCache
 {
 	VkDescriptorSetLayout descriptorSetLayout;
-	uint32_t samplerBindingCount;
+	uint32_t bindingCount;
 
-	SamplerDescriptorSetHashArray buckets[NUM_DESCRIPTOR_SET_HASH_BUCKETS]; /* these buckets store indices */
-	SamplerDescriptorSetHashMap *elements; /* where the hash map elements are stored */
+	ImageDescriptorSetHashArray buckets[NUM_DESCRIPTOR_SET_HASH_BUCKETS]; /* these buckets store indices */
+	ImageDescriptorSetHashMap *elements; /* where the hash map elements are stored */
 	uint32_t count;
 	uint32_t capacity;
 
-	VkDescriptorPool *samplerDescriptorPools;
-	uint32_t samplerDescriptorPoolCount;
+	VkDescriptorPool *imageDescriptorPools;
+	uint32_t imageDescriptorPoolCount;
 	uint32_t nextPoolSize;
 
 	VkDescriptorSet *inactiveDescriptorSets;
@@ -2217,7 +2217,7 @@ static void VULKAN_INTERNAL_DestroyTextureStagingBuffer(
 
 static void VULKAN_INTERNAL_DestroySamplerDescriptorSetCache(
 	VulkanRenderer* renderer,
-	SamplerDescriptorSetCache* cache
+	ImageDescriptorSetCache* cache
 ) {
 	uint32_t i;
 
@@ -2226,16 +2226,16 @@ static void VULKAN_INTERNAL_DestroySamplerDescriptorSetCache(
 		return;
 	}
 
-	for (i = 0; i < cache->samplerDescriptorPoolCount; i += 1)
+	for (i = 0; i < cache->imageDescriptorPoolCount; i += 1)
 	{
 		renderer->vkDestroyDescriptorPool(
 			renderer->logicalDevice,
-			cache->samplerDescriptorPools[i],
+			cache->imageDescriptorPools[i],
 			NULL
 		);
 	}
 
-	SDL_free(cache->samplerDescriptorPools);
+	SDL_free(cache->imageDescriptorPools);
 	SDL_free(cache->inactiveDescriptorSets);
 	SDL_free(cache->elements);
 
@@ -3868,57 +3868,57 @@ static uint8_t VULKAN_INTERNAL_AllocateSamplerDescriptorSets(
 	return 1;
 }
 
-static SamplerDescriptorSetCache* VULKAN_INTERNAL_CreateSamplerDescriptorSetCache(
+static ImageDescriptorSetCache* VULKAN_INTERNAL_CreateImageDescriptorSetCache(
 	VulkanRenderer *renderer,
 	VkDescriptorSetLayout descriptorSetLayout,
-	uint32_t samplerBindingCount
+	uint32_t bindingCount
 ) {
 	uint32_t i;
-	SamplerDescriptorSetCache *samplerDescriptorSetCache = SDL_malloc(sizeof(SamplerDescriptorSetCache));
+	ImageDescriptorSetCache *imageDescriptorSetCache = SDL_malloc(sizeof(ImageDescriptorSetCache));
 
-	samplerDescriptorSetCache->elements = SDL_malloc(sizeof(SamplerDescriptorSetHashMap) * 16);
-	samplerDescriptorSetCache->count = 0;
-	samplerDescriptorSetCache->capacity = 16;
+	imageDescriptorSetCache->elements = SDL_malloc(sizeof(ImageDescriptorSetHashMap) * 16);
+	imageDescriptorSetCache->count = 0;
+	imageDescriptorSetCache->capacity = 16;
 
 	for (i = 0; i < NUM_DESCRIPTOR_SET_HASH_BUCKETS; i += 1)
 	{
-		samplerDescriptorSetCache->buckets[i].elements = NULL;
-		samplerDescriptorSetCache->buckets[i].count = 0;
-		samplerDescriptorSetCache->buckets[i].capacity = 0;
+		imageDescriptorSetCache->buckets[i].elements = NULL;
+		imageDescriptorSetCache->buckets[i].count = 0;
+		imageDescriptorSetCache->buckets[i].capacity = 0;
 	}
 
-	samplerDescriptorSetCache->descriptorSetLayout = descriptorSetLayout;
-	samplerDescriptorSetCache->samplerBindingCount = samplerBindingCount;
+	imageDescriptorSetCache->descriptorSetLayout = descriptorSetLayout;
+	imageDescriptorSetCache->bindingCount = bindingCount;
 
-	samplerDescriptorSetCache->samplerDescriptorPools = SDL_malloc(sizeof(VkDescriptorPool));
-	samplerDescriptorSetCache->samplerDescriptorPoolCount = 1;
+	imageDescriptorSetCache->imageDescriptorPools = SDL_malloc(sizeof(VkDescriptorPool));
+	imageDescriptorSetCache->imageDescriptorPoolCount = 1;
 
 	VULKAN_INTERNAL_CreateSamplerDescriptorPool(
 		renderer,
 		VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
 		SAMPLER_POOL_STARTING_SIZE,
-		SAMPLER_POOL_STARTING_SIZE * samplerBindingCount,
-		&samplerDescriptorSetCache->samplerDescriptorPools[0]
+		SAMPLER_POOL_STARTING_SIZE * bindingCount,
+		&imageDescriptorSetCache->imageDescriptorPools[0]
 	);
 
-	samplerDescriptorSetCache->samplerDescriptorPoolCount = 1;
-	samplerDescriptorSetCache->nextPoolSize = SAMPLER_POOL_STARTING_SIZE * 2;
+	imageDescriptorSetCache->imageDescriptorPoolCount = 1;
+	imageDescriptorSetCache->nextPoolSize = SAMPLER_POOL_STARTING_SIZE * 2;
 
-	samplerDescriptorSetCache->inactiveDescriptorSetCapacity = SAMPLER_POOL_STARTING_SIZE;
-	samplerDescriptorSetCache->inactiveDescriptorSetCount = SAMPLER_POOL_STARTING_SIZE;
-	samplerDescriptorSetCache->inactiveDescriptorSets = SDL_malloc(
+	imageDescriptorSetCache->inactiveDescriptorSetCapacity = SAMPLER_POOL_STARTING_SIZE;
+	imageDescriptorSetCache->inactiveDescriptorSetCount = SAMPLER_POOL_STARTING_SIZE;
+	imageDescriptorSetCache->inactiveDescriptorSets = SDL_malloc(
 		sizeof(VkDescriptorSet) * SAMPLER_POOL_STARTING_SIZE
 	);
 
 	VULKAN_INTERNAL_AllocateSamplerDescriptorSets(
 		renderer,
-		samplerDescriptorSetCache->samplerDescriptorPools[0],
-		samplerDescriptorSetCache->descriptorSetLayout,
+		imageDescriptorSetCache->imageDescriptorPools[0],
+		imageDescriptorSetCache->descriptorSetLayout,
 		SAMPLER_POOL_STARTING_SIZE,
-		samplerDescriptorSetCache->inactiveDescriptorSets
+		imageDescriptorSetCache->inactiveDescriptorSets
 	);
 
-	return samplerDescriptorSetCache;
+	return imageDescriptorSetCache;
 }
 
 static VkDescriptorSetLayout VULKAN_INTERNAL_FetchDescriptorSetLayout(
@@ -4094,7 +4094,7 @@ static VulkanGraphicsPipelineLayout* VULKAN_INTERNAL_FetchGraphicsPipelineLayout
 	else
 	{
 		vulkanGraphicsPipelineLayout->vertexSamplerDescriptorSetCache =
-			VULKAN_INTERNAL_CreateSamplerDescriptorSetCache(
+			VULKAN_INTERNAL_CreateImageDescriptorSetCache(
 				renderer,
 				pipelineLayoutHash.vertexSamplerLayout,
 				vertexSamplerBindingCount
@@ -4108,7 +4108,7 @@ static VulkanGraphicsPipelineLayout* VULKAN_INTERNAL_FetchGraphicsPipelineLayout
 	else
 	{
 		vulkanGraphicsPipelineLayout->fragmentSamplerDescriptorSetCache =
-			VULKAN_INTERNAL_CreateSamplerDescriptorSetCache(
+			VULKAN_INTERNAL_CreateImageDescriptorSetCache(
 				renderer,
 				pipelineLayoutHash.fragmentSamplerLayout,
 				fragmentSamplerBindingCount
@@ -4579,7 +4579,7 @@ static VulkanComputePipelineLayout* VULKAN_INTERNAL_FetchComputePipelineLayout(
 
 	pipelineLayoutHash.imageLayout = VULKAN_INTERNAL_FetchDescriptorSetLayout(
 		renderer,
-		VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+		VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
 		imageBindingCount,
 		VK_SHADER_STAGE_COMPUTE_BIT
 	);
@@ -4652,7 +4652,7 @@ static VulkanComputePipelineLayout* VULKAN_INTERNAL_FetchComputePipelineLayout(
 	else
 	{
 		vulkanComputePipelineLayout->imageDescriptorSetCache =
-			VULKAN_INTERNAL_CreateComputeImageDescriptorSetSetCache(
+			VULKAN_INTERNAL_CreateImageDescriptorSetCache(
 				renderer,
 				pipelineLayoutHash.imageLayout,
 				imageBindingCount
@@ -6009,8 +6009,8 @@ static uint32_t VULKAN_PushFragmentShaderParams(
 }
 
 static inline uint8_t SamplerDescriptorSetDataEqual(
-	SamplerDescriptorSetData *a,
-	SamplerDescriptorSetData *b,
+	ImageDescriptorSetData *a,
+	ImageDescriptorSetData *b,
 	uint8_t samplerCount
 ) {
 	uint32_t i;
@@ -6030,29 +6030,29 @@ static inline uint8_t SamplerDescriptorSetDataEqual(
 
 static VkDescriptorSet VULKAN_INTERNAL_FetchSamplerDescriptorSet(
 	VulkanRenderer *renderer,
-	SamplerDescriptorSetCache *samplerDescriptorSetCache,
-	SamplerDescriptorSetData *samplerDescriptorSetData
+	ImageDescriptorSetCache *imageDescriptorSetCache,
+	ImageDescriptorSetData *samplerDescriptorSetData
 ) {
 	uint32_t i;
 	uint64_t hashcode;
-	SamplerDescriptorSetHashArray *arr;
+	ImageDescriptorSetHashArray *arr;
 	VkDescriptorSet newDescriptorSet;
 	VkWriteDescriptorSet writeDescriptorSets[MAX_TEXTURE_SAMPLERS];
-	SamplerDescriptorSetHashMap *map;
+	ImageDescriptorSetHashMap *map;
 
-	hashcode = SamplerDescriptorSetHashTable_GetHashCode(
+	hashcode = ImageDescriptorSetHashTable_GetHashCode(
 		samplerDescriptorSetData,
-		samplerDescriptorSetCache->samplerBindingCount
+		imageDescriptorSetCache->bindingCount
 	);
-	arr = &samplerDescriptorSetCache->buckets[hashcode % NUM_DESCRIPTOR_SET_HASH_BUCKETS];
+	arr = &imageDescriptorSetCache->buckets[hashcode % NUM_DESCRIPTOR_SET_HASH_BUCKETS];
 
 	for (i = 0; i < arr->count; i += 1)
 	{
-		SamplerDescriptorSetHashMap *e = &samplerDescriptorSetCache->elements[arr->elements[i]];
+		ImageDescriptorSetHashMap *e = &imageDescriptorSetCache->elements[arr->elements[i]];
 		if (SamplerDescriptorSetDataEqual(
 			samplerDescriptorSetData,
 			&e->descriptorSetData,
-			samplerDescriptorSetCache->samplerBindingCount
+			imageDescriptorSetCache->bindingCount
 		)) {
 			e->inactiveFrameCount = 0;
 			return e->descriptorSet;
@@ -6062,46 +6062,46 @@ static VkDescriptorSet VULKAN_INTERNAL_FetchSamplerDescriptorSet(
 	/* If no match exists, assign a new descriptor set and prepare it for update */
 	/* If no inactive descriptor sets remain, create a new pool and allocate new inactive sets */
 
-	if (samplerDescriptorSetCache->inactiveDescriptorSetCount == 0)
+	if (imageDescriptorSetCache->inactiveDescriptorSetCount == 0)
 	{
-		samplerDescriptorSetCache->samplerDescriptorPoolCount += 1;
-		samplerDescriptorSetCache->samplerDescriptorPools = SDL_realloc(
-			samplerDescriptorSetCache->samplerDescriptorPools,
-			sizeof(VkDescriptorPool) * samplerDescriptorSetCache->samplerDescriptorPoolCount
+		imageDescriptorSetCache->imageDescriptorPoolCount += 1;
+		imageDescriptorSetCache->imageDescriptorPools = SDL_realloc(
+			imageDescriptorSetCache->imageDescriptorPools,
+			sizeof(VkDescriptorPool) * imageDescriptorSetCache->imageDescriptorPoolCount
 		);
 
 		VULKAN_INTERNAL_CreateSamplerDescriptorPool(
 			renderer,
 			VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-			samplerDescriptorSetCache->nextPoolSize,
-			samplerDescriptorSetCache->nextPoolSize * samplerDescriptorSetCache->samplerBindingCount,
-			&samplerDescriptorSetCache->samplerDescriptorPools[samplerDescriptorSetCache->samplerDescriptorPoolCount - 1]
+			imageDescriptorSetCache->nextPoolSize,
+			imageDescriptorSetCache->nextPoolSize * imageDescriptorSetCache->bindingCount,
+			&imageDescriptorSetCache->imageDescriptorPools[imageDescriptorSetCache->imageDescriptorPoolCount - 1]
 		);
 
-		samplerDescriptorSetCache->inactiveDescriptorSetCapacity += samplerDescriptorSetCache->nextPoolSize;
+		imageDescriptorSetCache->inactiveDescriptorSetCapacity += imageDescriptorSetCache->nextPoolSize;
 
-		samplerDescriptorSetCache->inactiveDescriptorSets = SDL_realloc(
-			samplerDescriptorSetCache->inactiveDescriptorSets,
-			sizeof(VkDescriptorSet) * samplerDescriptorSetCache->inactiveDescriptorSetCapacity
+		imageDescriptorSetCache->inactiveDescriptorSets = SDL_realloc(
+			imageDescriptorSetCache->inactiveDescriptorSets,
+			sizeof(VkDescriptorSet) * imageDescriptorSetCache->inactiveDescriptorSetCapacity
 		);
 
 		VULKAN_INTERNAL_AllocateSamplerDescriptorSets(
 			renderer,
-			samplerDescriptorSetCache->samplerDescriptorPools[samplerDescriptorSetCache->samplerDescriptorPoolCount - 1],
-			samplerDescriptorSetCache->descriptorSetLayout,
-			samplerDescriptorSetCache->nextPoolSize,
-			samplerDescriptorSetCache->inactiveDescriptorSets
+			imageDescriptorSetCache->imageDescriptorPools[imageDescriptorSetCache->imageDescriptorPoolCount - 1],
+			imageDescriptorSetCache->descriptorSetLayout,
+			imageDescriptorSetCache->nextPoolSize,
+			imageDescriptorSetCache->inactiveDescriptorSets
 		);
 
-		samplerDescriptorSetCache->inactiveDescriptorSetCount = samplerDescriptorSetCache->nextPoolSize;
+		imageDescriptorSetCache->inactiveDescriptorSetCount = imageDescriptorSetCache->nextPoolSize;
 
-		samplerDescriptorSetCache->nextPoolSize *= 2;
+		imageDescriptorSetCache->nextPoolSize *= 2;
 	}
 
-	newDescriptorSet = samplerDescriptorSetCache->inactiveDescriptorSets[samplerDescriptorSetCache->inactiveDescriptorSetCount - 1];
-	samplerDescriptorSetCache->inactiveDescriptorSetCount -= 1;
+	newDescriptorSet = imageDescriptorSetCache->inactiveDescriptorSets[imageDescriptorSetCache->inactiveDescriptorSetCount - 1];
+	imageDescriptorSetCache->inactiveDescriptorSetCount -= 1;
 
-	for (i = 0; i < samplerDescriptorSetCache->samplerBindingCount; i += 1)
+	for (i = 0; i < imageDescriptorSetCache->bindingCount; i += 1)
 	{
 		writeDescriptorSets[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 		writeDescriptorSets[i].pNext = NULL;
@@ -6116,30 +6116,30 @@ static VkDescriptorSet VULKAN_INTERNAL_FetchSamplerDescriptorSet(
 
 	renderer->vkUpdateDescriptorSets(
 		renderer->logicalDevice,
-		samplerDescriptorSetCache->samplerBindingCount,
+		imageDescriptorSetCache->bindingCount,
 		writeDescriptorSets,
 		0,
 		NULL
 	);
 
 	EXPAND_ELEMENTS_IF_NEEDED(arr, 2, uint32_t)
-	arr->elements[arr->count] = samplerDescriptorSetCache->count;
+	arr->elements[arr->count] = imageDescriptorSetCache->count;
 	arr->count += 1;
 
-	if (samplerDescriptorSetCache->count == samplerDescriptorSetCache->capacity)
+	if (imageDescriptorSetCache->count == imageDescriptorSetCache->capacity)
 	{
-		samplerDescriptorSetCache->capacity *= 2;
+		imageDescriptorSetCache->capacity *= 2;
 
-		samplerDescriptorSetCache->elements = SDL_realloc(
-			samplerDescriptorSetCache->elements,
-			sizeof(SamplerDescriptorSetHashMap) * samplerDescriptorSetCache->capacity
+		imageDescriptorSetCache->elements = SDL_realloc(
+			imageDescriptorSetCache->elements,
+			sizeof(ImageDescriptorSetHashMap) * imageDescriptorSetCache->capacity
 		);
 	}
 
-	map = &samplerDescriptorSetCache->elements[samplerDescriptorSetCache->count];
+	map = &imageDescriptorSetCache->elements[imageDescriptorSetCache->count];
 	map->key = hashcode;
 
-	for (i = 0; i < samplerDescriptorSetCache->samplerBindingCount; i += 1)
+	for (i = 0; i < imageDescriptorSetCache->bindingCount; i += 1)
 	{
 		map->descriptorSetData.descriptorImageInfo[i].imageLayout =
 			samplerDescriptorSetData->descriptorImageInfo[i].imageLayout;
@@ -6151,7 +6151,7 @@ static VkDescriptorSet VULKAN_INTERNAL_FetchSamplerDescriptorSet(
 
 	map->descriptorSet = newDescriptorSet;
 	map->inactiveFrameCount = 0;
-	samplerDescriptorSetCache->count += 1;
+	imageDescriptorSetCache->count += 1;
 
 	return newDescriptorSet;
 }
@@ -6166,14 +6166,14 @@ static void VULKAN_SetVertexSamplers(
 
 	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
 	VulkanGraphicsPipeline *graphicsPipeline = renderer->currentGraphicsPipeline;
-	SamplerDescriptorSetData vertexSamplerDescriptorSetData;
+	ImageDescriptorSetData vertexSamplerDescriptorSetData;
 
 	if (graphicsPipeline->pipelineLayout->vertexSamplerDescriptorSetCache == NULL)
 	{
 		return;
 	}
 
-	samplerCount = graphicsPipeline->pipelineLayout->vertexSamplerDescriptorSetCache->samplerBindingCount;
+	samplerCount = graphicsPipeline->pipelineLayout->vertexSamplerDescriptorSetCache->bindingCount;
 
 	for (i = 0; i < samplerCount; i += 1)
 	{
@@ -6200,14 +6200,14 @@ static void VULKAN_SetFragmentSamplers(
 
 	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
 	VulkanGraphicsPipeline *graphicsPipeline = renderer->currentGraphicsPipeline;
-	SamplerDescriptorSetData fragmentSamplerDescriptorSetData;
+	ImageDescriptorSetData fragmentSamplerDescriptorSetData;
 
 	if (graphicsPipeline->pipelineLayout->fragmentSamplerDescriptorSetCache == NULL)
 	{
 		return;
 	}
 
-	samplerCount = graphicsPipeline->pipelineLayout->fragmentSamplerDescriptorSetCache->samplerBindingCount;
+	samplerCount = graphicsPipeline->pipelineLayout->fragmentSamplerDescriptorSetCache->bindingCount;
 
 	for (i = 0; i < samplerCount; i += 1)
 	{
@@ -6989,18 +6989,18 @@ static void VULKAN_QueuePresent(
 }
 
 static void VULKAN_INTERNAL_DeactivateUnusedDescriptorSets(
-	SamplerDescriptorSetCache *samplerDescriptorSetCache
+	ImageDescriptorSetCache *imageDescriptorSetCache
 ) {
 	int32_t i, j;
-	SamplerDescriptorSetHashArray *arr;
+	ImageDescriptorSetHashArray *arr;
 
-	for (i = samplerDescriptorSetCache->count - 1; i >= 0; i -= 1)
+	for (i = imageDescriptorSetCache->count - 1; i >= 0; i -= 1)
 	{
-		samplerDescriptorSetCache->elements[i].inactiveFrameCount += 1;
+		imageDescriptorSetCache->elements[i].inactiveFrameCount += 1;
 
-		if (samplerDescriptorSetCache->elements[i].inactiveFrameCount + 1 > DESCRIPTOR_SET_DEACTIVATE_FRAMES)
+		if (imageDescriptorSetCache->elements[i].inactiveFrameCount + 1 > DESCRIPTOR_SET_DEACTIVATE_FRAMES)
 		{
-			arr = &samplerDescriptorSetCache->buckets[samplerDescriptorSetCache->elements[i].key % NUM_DESCRIPTOR_SET_HASH_BUCKETS];
+			arr = &imageDescriptorSetCache->buckets[imageDescriptorSetCache->elements[i].key % NUM_DESCRIPTOR_SET_HASH_BUCKETS];
 
 			/* remove index from bucket */
 			for (j = 0; j < arr->count; j += 1)
@@ -7019,20 +7019,20 @@ static void VULKAN_INTERNAL_DeactivateUnusedDescriptorSets(
 
 			/* remove element from table and place in inactive sets */
 
-			samplerDescriptorSetCache->inactiveDescriptorSets[samplerDescriptorSetCache->inactiveDescriptorSetCount] = samplerDescriptorSetCache->elements[i].descriptorSet;
-			samplerDescriptorSetCache->inactiveDescriptorSetCount += 1;
+			imageDescriptorSetCache->inactiveDescriptorSets[imageDescriptorSetCache->inactiveDescriptorSetCount] = imageDescriptorSetCache->elements[i].descriptorSet;
+			imageDescriptorSetCache->inactiveDescriptorSetCount += 1;
 
 			/* move another descriptor set to fill the hole */
-			if (i < samplerDescriptorSetCache->count - 1)
+			if (i < imageDescriptorSetCache->count - 1)
 			{
-				samplerDescriptorSetCache->elements[i] = samplerDescriptorSetCache->elements[samplerDescriptorSetCache->count - 1];
+				imageDescriptorSetCache->elements[i] = imageDescriptorSetCache->elements[imageDescriptorSetCache->count - 1];
 
 				/* update index in bucket */
-				arr = &samplerDescriptorSetCache->buckets[samplerDescriptorSetCache->elements[i].key % NUM_DESCRIPTOR_SET_HASH_BUCKETS];
+				arr = &imageDescriptorSetCache->buckets[imageDescriptorSetCache->elements[i].key % NUM_DESCRIPTOR_SET_HASH_BUCKETS];
 
 				for (j = 0; j < arr->count; j += 1)
 				{
-					if (arr->elements[j] == samplerDescriptorSetCache->count - 1)
+					if (arr->elements[j] == imageDescriptorSetCache->count - 1)
 					{
 						arr->elements[j] = i;
 						break;
@@ -7040,7 +7040,7 @@ static void VULKAN_INTERNAL_DeactivateUnusedDescriptorSets(
 				}
 			}
 
-			samplerDescriptorSetCache->count -= 1;
+			imageDescriptorSetCache->count -= 1;
 		}
 	}
 }
