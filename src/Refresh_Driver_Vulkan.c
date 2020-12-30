@@ -3347,6 +3347,12 @@ static void VULKAN_DestroyDevice(
 
 	renderer->vkDestroyDescriptorSetLayout(
 		renderer->logicalDevice,
+		renderer->emptyComputeBufferDescriptorSetLayout,
+		NULL
+	);
+
+	renderer->vkDestroyDescriptorSetLayout(
+		renderer->logicalDevice,
 		renderer->vertexParamLayout,
 		NULL
 	);
