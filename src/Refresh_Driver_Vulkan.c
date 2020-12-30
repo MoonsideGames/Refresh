@@ -3641,6 +3641,15 @@ static void VULKAN_DrawPrimitives(
 	));
 }
 
+static void VULKAN_DispatchCompute(
+	REFRESH_Renderer *driverData,
+	uint32_t groupCountX,
+	uint32_t groupCountY,
+	uint32_t groupCountZ
+) {
+	SDL_assert(0 && "Function not implemented!");
+}
+
 static REFRESH_RenderPass* VULKAN_CreateRenderPass(
 	REFRESH_Renderer *driverData,
 	REFRESH_RenderPassCreateInfo *renderPassCreateInfo
@@ -6936,6 +6945,27 @@ static void VULKAN_BindIndexBuffer(
 		offset,
 		RefreshToVK_IndexType[indexElementSize]
 	));
+}
+
+static void VULKAN_BindComputePipeline(
+	REFRESH_Renderer *driverData,
+	REFRESH_ComputePipeline *computePipeline
+) {
+	SDL_assert(0 && "Function not implemented!");
+}
+
+static void VULKAN_BindComputeBuffers(
+	REFRESH_Renderer *driverData,
+	REFRESH_Buffer **pBuffers
+) {
+	SDL_assert(0 && "Function not implemented!");
+}
+
+static void VULKAN_BindComputeTextures(
+	REFRESH_Renderer *driverData,
+	REFRESH_Texture **pTextures
+) {
+	SDL_assert(0 && "Function not implemented!");
 }
 
 static void VULKAN_QueuePresent(
