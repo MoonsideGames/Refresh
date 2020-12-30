@@ -212,6 +212,13 @@ struct REFRESH_Device
         uint32_t fragmentParamOffset
 	);
 
+    void (*DispatchCompute)(
+        REFRESH_Renderer *device,
+        uint32_t groupCountX,
+        uint32_t groupCountY,
+        uint32_t groupCountZ
+    );
+
     /* State Creation */
 
     REFRESH_RenderPass* (*CreateRenderPass)(
@@ -507,6 +514,21 @@ struct REFRESH_Device
         REFRESH_IndexElementSize indexElementSize
     );
 
+    void(*BindComputePipeline)(
+        REFRESH_Renderer *driverData,
+        REFRESH_ComputePipeline *computePipeline
+    );
+
+    void(*BindComputeBuffers)(
+        REFRESH_Renderer *driverData,
+        REFRESH_Buffer **pBuffers
+    );
+
+    void(*BindComputeTextures)(
+        REFRESH_Renderer *driverData,
+        REFRESH_Texture **pTextures
+    );
+
     void(*QueuePresent)(
         REFRESH_Renderer *driverData,
         REFRESH_TextureSlice *textureSlice,
@@ -530,6 +552,7 @@ struct REFRESH_Device
 	ASSIGN_DRIVER_FUNC(DrawIndexedPrimitives, name) \
 	ASSIGN_DRIVER_FUNC(DrawInstancedPrimitives, name) \
 	ASSIGN_DRIVER_FUNC(DrawPrimitives, name) \
+    ASSIGN_DRIVER_FUNC(DispatchCompute, name) \
     ASSIGN_DRIVER_FUNC(CreateRenderPass, name) \
     ASSIGN_DRIVER_FUNC(CreateComputePipeline, name) \
     ASSIGN_DRIVER_FUNC(CreateGraphicsPipeline, name) \
@@ -571,6 +594,9 @@ struct REFRESH_Device
     ASSIGN_DRIVER_FUNC(BindGraphicsPipeline, name) \
     ASSIGN_DRIVER_FUNC(BindVertexBuffers, name) \
     ASSIGN_DRIVER_FUNC(BindIndexBuffer, name) \
+    ASSIGN_DRIVER_FUNC(BindComputePipeline, name) \
+    ASSIGN_DRIVER_FUNC(BindComputeBuffers, name) \
+    ASSIGN_DRIVER_FUNC(BindComputeTextures, name) \
     ASSIGN_DRIVER_FUNC(QueuePresent, name) \
     ASSIGN_DRIVER_FUNC(Submit, name)
 

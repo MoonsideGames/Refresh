@@ -241,6 +241,21 @@ void REFRESH_DrawPrimitives(
     );
 }
 
+void REFRESH_DispatchCompute(
+    REFRESH_Device *device,
+    uint32_t groupCountX,
+    uint32_t groupCountY,
+    uint32_t groupCountZ
+) {
+    NULL_RETURN(device);
+    device->DispatchCompute(
+        device->driverData,
+        groupCountX,
+        groupCountY,
+        groupCountZ
+    );
+}
+
 REFRESH_RenderPass* REFRESH_CreateRenderPass(
 	REFRESH_Device *device,
 	REFRESH_RenderPassCreateInfo *renderPassCreateInfo
@@ -847,6 +862,39 @@ void REFRESH_BindIndexBuffer(
         buffer,
         offset,
         indexElementSize
+    );
+}
+
+void REFRESH_BindComputePipeline(
+    REFRESH_Device *device,
+    REFRESH_ComputePipeline *computePipeline
+) {
+    NULL_RETURN(device);
+    device->BindComputePipeline(
+        device->driverData,
+        computePipeline
+    );
+}
+
+void REFRESH_BindComputeBuffers(
+    REFRESH_Device *device,
+    REFRESH_Buffer **pBuffers
+) {
+    NULL_RETURN(device);
+    device->BindComputeBuffers(
+        device->driverData,
+        pBuffers
+    );
+}
+
+void REFRESH_BindComputeTextures(
+    REFRESH_Device *device,
+    REFRESH_Texture **pTextures
+) {
+    NULL_RETURN(device);
+    device->BindComputeTextures(
+        device->driverData,
+        pTextures
     );
 }
 

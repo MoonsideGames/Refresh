@@ -729,6 +729,19 @@ REFRESHAPI void REFRESH_DrawPrimitives(
 	uint32_t fragmentParamOffset
 );
 
+/* Dispatches work compute items.
+ *
+ * groupCountX:		Number of local workgroups to dispatch in the X dimension.
+ * groupCountY:		Number of local workgroups to dispatch in the Y dimension.
+ * groupCountZ:		Number of local workgroups to dispatch in the Z dimension.
+ */
+REFRESHAPI void REFRESH_DispatchCompute(
+	REFRESH_Device *device,
+	uint32_t groupCountX,
+	uint32_t groupCountY,
+	uint32_t groupCountZ
+);
+
 /* State Creation */
 
 /* Returns an allocated RenderPass* object. */
@@ -1292,7 +1305,7 @@ REFRESHAPI void REFRESH_EndRenderPass(
 	REFRESH_Device *device
 );
 
-/* Binds a pipeline to the graphics bind point. */
+/* Binds a graphics pipeline to the graphics bind point. */
 REFRESHAPI void REFRESH_BindGraphicsPipeline(
 	REFRESH_Device *device,
 	REFRESH_GraphicsPipeline *graphicsPipeline
@@ -1313,6 +1326,34 @@ REFRESHAPI void REFRESH_BindIndexBuffer(
 	REFRESH_Buffer *buffer,
 	uint64_t offset,
 	REFRESH_IndexElementSize indexElementSize
+);
+
+/* Binds a compute pipeline to the compute bind point. */
+REFRESHAPI void REFRESH_BindComputePipeline(
+	REFRESH_Device *device,
+	REFRESH_ComputePipeline *computePipeline
+);
+
+/* Binds buffers for use with the currently bound compute pipeline.
+ *
+ * pBuffers: An array of buffers to bind.
+ * 	Length must be equal to the number of buffers
+ * 	specified by the compute pipeline.
+ */
+REFRESHAPI void REFRESH_BindComputeBuffers(
+	REFRESH_Device *device,
+	REFRESH_Buffer **pBuffers
+);
+
+/* Binds textures for use with the currently bound compute pipeline.
+ *
+ * pTextures: An array of textures to bind.
+ * 	Length must be equal to the number of buffers
+ * 	specified by the compute pipeline.
+ */
+REFRESHAPI void REFRESH_BindComputeTextures(
+	REFRESH_Device *device,
+	REFRESH_Texture **pTextures
 );
 
 /* Submission/Presentation */
