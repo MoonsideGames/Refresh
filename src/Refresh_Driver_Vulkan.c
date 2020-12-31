@@ -1346,7 +1346,8 @@ typedef struct VulkanRenderer
 /* Forward declarations */
 
 static void VULKAN_INTERNAL_BeginCommandBuffer(VulkanRenderer *renderer);
-static void VULKAN_Submit(REFRESH_Renderer* driverData);
+static void VULKAN_Submit(REFRESH_Renderer *driverData);
+static void VULKAN_SubmitAndSync(REFRESH_Renderer *driverData);
 
 /* Macros */
 
@@ -5769,8 +5770,8 @@ static void VULKAN_SetTextureData2D(
 		);
 	}
 
-	/* Sync point */
-	VULKAN_Submit(driverData);
+	/* Hard sync point */
+	VULKAN_SubmitAndSync(driverData);
 }
 
 static void VULKAN_SetTextureData3D(
@@ -5868,8 +5869,8 @@ static void VULKAN_SetTextureData3D(
 		);
 	}
 
-	/* Sync point */
-	VULKAN_Submit(driverData);
+	/* Hard sync point */
+	VULKAN_SubmitAndSync(driverData);
 }
 
 static void VULKAN_SetTextureDataCube(
@@ -5966,8 +5967,8 @@ static void VULKAN_SetTextureDataCube(
 		);
 	}
 
-	/* Sync point */
-	VULKAN_Submit(driverData);
+	/* Hard sync point */
+	VULKAN_SubmitAndSync(driverData);
 }
 
 static void VULKAN_SetTextureDataYUV(
@@ -6153,8 +6154,8 @@ static void VULKAN_SetTextureDataYUV(
 		);
 	}
 
-	/* Sync point */
-	VULKAN_Submit(driverData);
+	/* Hard sync point */
+	VULKAN_SubmitAndSync(driverData);
 }
 
 static void VULKAN_SetBufferData(
@@ -6758,16 +6759,8 @@ static void VULKAN_INTERNAL_GetTextureData(
 		&vulkanTexture->resourceAccessType
 	);
 
-	/* hard sync point */
-	VULKAN_Submit(driverData);
-
-	renderer->vkWaitForFences(
-		renderer->logicalDevice,
-		1,
-		&renderer->inFlightFence,
-		VK_TRUE,
-		UINT64_MAX
-	);
+	/* Hard sync point */
+	VULKAN_SubmitAndSync(driverData);
 
 	/* Read from staging buffer */
 
@@ -7622,6 +7615,21 @@ static void VULKAN_INTERNAL_ResetDescriptorSetData(VulkanRenderer *renderer)
 			}
 		}
 	}
+}
+
+static void VULKAN_SubmitAndSync(REFRESH_Renderer *driverData)
+{
+	VulkanRenderer* renderer = (VulkanRenderer*)driverData;
+
+	VULKAN_Submit(driverData);
+
+	renderer->vkWaitForFences(
+		renderer->logicalDevice,
+		1,
+		&renderer->inFlightFence,
+		VK_TRUE,
+		UINT64_MAX
+	);
 }
 
 static void VULKAN_Submit(
