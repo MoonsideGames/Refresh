@@ -245,14 +245,16 @@ void REFRESH_DispatchCompute(
     REFRESH_Device *device,
     uint32_t groupCountX,
     uint32_t groupCountY,
-    uint32_t groupCountZ
+    uint32_t groupCountZ,
+    uint32_t computeParamOffset
 ) {
     NULL_RETURN(device);
     device->DispatchCompute(
         device->driverData,
         groupCountX,
         groupCountY,
-        groupCountZ
+        groupCountZ,
+        computeParamOffset
     );
 }
 
@@ -407,24 +409,15 @@ REFRESH_DepthStencilTarget* REFRESH_CreateDepthStencilTarget(
     );
 }
 
-REFRESH_Buffer* REFRESH_CreateVertexBuffer(
+REFRESH_Buffer* REFRESH_CreateBuffer(
 	REFRESH_Device *device,
+    REFRESH_BufferUsageFlags usageFlags,
 	uint32_t sizeInBytes
 ) {
     NULL_RETURN_NULL(device);
-    return device->CreateVertexBuffer(
+    return device->CreateBuffer(
         device->driverData,
-        sizeInBytes
-    );
-}
-
-REFRESH_Buffer* REFRESH_CreateIndexBuffer(
-	REFRESH_Device *device,
-	uint32_t sizeInBytes
-) {
-    NULL_RETURN_NULL(device);
-    return device->CreateIndexBuffer(
-        device->driverData,
+        usageFlags,
         sizeInBytes
     );
 }
@@ -537,26 +530,7 @@ void REFRESH_SetTextureDataYUV(
     );
 }
 
-void REFRESH_SetVertexBufferData(
-	REFRESH_Device *device,
-	REFRESH_Buffer *buffer,
-	uint32_t offsetInBytes,
-	void* data,
-	uint32_t elementCount,
-	uint32_t vertexStride
-) {
-    NULL_RETURN(device);
-    device->SetVertexBufferData(
-        device->driverData,
-        buffer,
-        offsetInBytes,
-        data,
-        elementCount,
-        vertexStride
-    );
-}
-
-void REFRESH_SetIndexBufferData(
+void REFRESH_SetBufferData(
 	REFRESH_Device *device,
 	REFRESH_Buffer *buffer,
 	uint32_t offsetInBytes,
@@ -564,7 +538,7 @@ void REFRESH_SetIndexBufferData(
 	uint32_t dataLength
 ) {
     NULL_RETURN(device);
-    device->SetIndexBufferData(
+    device->SetBufferData(
         device->driverData,
         buffer,
         offsetInBytes,
@@ -593,6 +567,19 @@ uint32_t REFRESH_PushFragmentShaderParams(
 ) {
     if (device == NULL) { return 0; }
     return device->PushFragmentShaderParams(
+        device->driverData,
+        data,
+        elementCount
+    );
+}
+
+uint32_t REFRESH_PushComputeShaderParams(
+    REFRESH_Device *device,
+    void *data,
+    uint32_t elementCount
+) {
+    if (device == NULL) { return 0; }
+    return device->PushComputeShaderParams(
         device->driverData,
         data,
         elementCount

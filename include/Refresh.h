@@ -170,6 +170,15 @@ typedef enum REFRESH_CubeMapFace
     REFRESH_CUBEMAPFACE_NEGATIVEZ
 } REFRESH_CubeMapFace;
 
+typedef enum REFRESH_BufferUsageFlagBits
+{
+	REFRESH_BUFFERUSAGE_VERTEX_BIT =	0x00000001,
+	REFRESH_BUFFERUSAGE_INDEX_BIT  =	0x00000002,
+	REFRESH_BUFFERUSAGE_STORAGE_BIT =	0x00000004
+} REFRESH_BufferUsageFlagBits;
+
+typedef uint32_t REFRESH_BufferUsageFlags;
+
 typedef enum REFRESH_VertexElementFormat
 {
 	REFRESH_VERTEXELEMENTFORMAT_SINGLE,
@@ -499,18 +508,12 @@ typedef struct REFRESH_ShaderModuleCreateInfo
 
 /* Pipeline state structures */
 
-typedef struct REFRESH_ComputeShaderStageState
-{
-	REFRESH_ShaderModule *shaderModule;
-	const char* entryPointName;
-} REFRESH_ComputeShaderStageState;
-
-typedef struct REFRESH_GraphicsShaderStageState
+typedef struct REFRESH_ShaderStageState
 {
 	REFRESH_ShaderModule *shaderModule;
 	const char* entryPointName;
 	uint64_t uniformBufferSize;
-} REFRESH_GraphicsShaderStageState;
+} REFRESH_ShaderStageState;
 
 typedef struct REFRESH_TopologyState
 {
@@ -559,7 +562,7 @@ typedef struct REFRESH_DepthStencilState
 
 typedef struct REFRESH_ColorBlendState
 {
-	uint8_t blendOpEnable;
+	uint8_t logicOpEnable;
 	REFRESH_LogicOp logicOp;
 	const REFRESH_ColorTargetBlendState *blendStates;
 	uint32_t blendStateCount;
@@ -568,14 +571,14 @@ typedef struct REFRESH_ColorBlendState
 
 typedef struct REFRESH_ComputePipelineCreateInfo
 {
-	REFRESH_ComputeShaderStageState computeShaderState;
+	REFRESH_ShaderStageState computeShaderState;
 	REFRESH_ComputePipelineLayoutCreateInfo pipelineLayoutCreateInfo;
 } REFRESH_ComputePipelineCreateInfo;
 
 typedef struct REFRESH_GraphicsPipelineCreateInfo
 {
-	REFRESH_GraphicsShaderStageState vertexShaderState;
-	REFRESH_GraphicsShaderStageState fragmentShaderState;
+	REFRESH_ShaderStageState vertexShaderState;
+	REFRESH_ShaderStageState fragmentShaderState;
 	REFRESH_VertexInputState vertexInputState;
 	REFRESH_TopologyState topologyState;
 	REFRESH_ViewportState viewportState;
@@ -731,15 +734,17 @@ REFRESHAPI void REFRESH_DrawPrimitives(
 
 /* Dispatches work compute items.
  *
- * groupCountX:		Number of local workgroups to dispatch in the X dimension.
- * groupCountY:		Number of local workgroups to dispatch in the Y dimension.
- * groupCountZ:		Number of local workgroups to dispatch in the Z dimension.
+ * groupCountX:			Number of local workgroups to dispatch in the X dimension.
+ * groupCountY:			Number of local workgroups to dispatch in the Y dimension.
+ * groupCountZ:			Number of local workgroups to dispatch in the Z dimension.
+ * computeParamOffset:	The offset of the compute shader param data.
  */
 REFRESHAPI void REFRESH_DispatchCompute(
 	REFRESH_Device *device,
 	uint32_t groupCountX,
 	uint32_t groupCountY,
-	uint32_t groupCountZ
+	uint32_t groupCountZ,
+	uint32_t computeParamOffset
 );
 
 /* State Creation */
@@ -864,21 +869,14 @@ REFRESHAPI REFRESH_DepthStencilTarget* REFRESH_CreateDepthStencilTarget(
 	REFRESH_DepthFormat format
 );
 
-/* Creates a vertex buffer to be used by Draw commands.
+/* Creates a buffer.
  *
- * sizeInBytes: The length of the vertex buffer.
+ * usageFlags:	Specifies how the buffer will be used.
+ * sizeInBytes:	The length of the buffer.
  */
-REFRESHAPI REFRESH_Buffer* REFRESH_CreateVertexBuffer(
+REFRESHAPI REFRESH_Buffer* REFRESH_CreateBuffer(
 	REFRESH_Device *device,
-	uint32_t sizeInBytes
-);
-
-/* Creates an index buffer to be used by Draw commands.
- *
- * sizeInBytes: The length of the index buffer.
- */
-REFRESHAPI REFRESH_Buffer* REFRESH_CreateIndexBuffer(
-	REFRESH_Device *device,
+	REFRESH_BufferUsageFlags usageFlags,
 	uint32_t sizeInBytes
 );
 
@@ -984,41 +982,18 @@ REFRESHAPI void REFRESH_SetTextureDataYUV(
 	uint32_t dataLength
 );
 
-/* Sets a region of the vertex buffer with client data.
+/* Sets a region of the buffer with client data.
  *
  * NOTE:
  * 		Calling this function on a buffer after the buffer
- * 		has been bound by BindVertexBuffers without calling
- * 		Submit first is an error.
+ * 		has been bound without calling Submit first is an error.
  *
- * buffer:		The vertex buffer to be updated.
+ * buffer:			The vertex buffer to be updated.
  * offsetInBytes:	The starting offset of the buffer to write into.
- * data:		The client data to write into the buffer.
- * elementCount:	The number of elements from the client buffer to write.
- * vertexStride:	The size of each element in the client buffer (including padding).
+ * data:			The client data to write into the buffer.
+ * dataLength:		The length of data from the client buffer to write.
  */
-REFRESHAPI void REFRESH_SetVertexBufferData(
-	REFRESH_Device *device,
-	REFRESH_Buffer *buffer,
-	uint32_t offsetInBytes,
-	void* data,
-	uint32_t elementCount,
-	uint32_t vertexStride
-);
-
-/* Sets a region of the index buffer with client data.
- *
- * NOTE:
- * 		Calling this function on a buffer after the buffer
- * 		has been bound by BindIndexBuffer without calling
- * 		Submit first is an error.
- *
- * buffer:		The index buffer to be updated.
- * offsetInBytes:	The starting offset of the buffer to write into.
- * data:		The client data to write into the buffer.
- * dataLength:		The size (in bytes) of the client data.
- */
-REFRESHAPI void REFRESH_SetIndexBufferData(
+REFRESHAPI void REFRESH_SetBufferData(
 	REFRESH_Device *device,
 	REFRESH_Buffer *buffer,
 	uint32_t offsetInBytes,
@@ -1046,13 +1021,29 @@ REFRESHAPI uint32_t REFRESH_PushVertexShaderParams(
  * Returns a starting offset value to be used with draw calls.
  *
  * NOTE:
- * 		A pipeline must be bound.
+ * 		A graphics pipeline must be bound.
  * 		Will use the block size of the currently bound fragment shader.
  *
  * data: 				The client data to write into the buffer.
  * paramBlockCount: 	The number of param-sized blocks from the client buffer to write.
  */
 REFRESHAPI uint32_t REFRESH_PushFragmentShaderParams(
+	REFRESH_Device *device,
+	void *data,
+	uint32_t paramBlockCount
+);
+
+/* Pushes compute shader params to the device.
+ * Returns a starting offset value to be used with draw calls.
+ *
+ * NOTE:
+ * 	A compute pipeline must be bound.
+ * 	Will use the block size of the currently bound compute shader.
+ *
+ * data:			The client data to write into the buffer.
+ * paramBlockData:	The number of param-sized blocks from the client buffer to write.
+ */
+REFRESHAPI uint32_t REFRESH_PushComputeShaderParams(
 	REFRESH_Device *device,
 	void *data,
 	uint32_t paramBlockCount
