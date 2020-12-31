@@ -3280,8 +3280,10 @@ static void VULKAN_DestroyDevice(
 
 	VULKAN_INTERNAL_DestroyBuffer(renderer, renderer->dummyVertexUniformBuffer);
 	VULKAN_INTERNAL_DestroyBuffer(renderer, renderer->dummyFragmentUniformBuffer);
+	VULKAN_INTERNAL_DestroyBuffer(renderer, renderer->dummyComputeUniformBuffer);
 	VULKAN_INTERNAL_DestroyBuffer(renderer, renderer->vertexUBO);
 	VULKAN_INTERNAL_DestroyBuffer(renderer, renderer->fragmentUBO);
+	VULKAN_INTERNAL_DestroyBuffer(renderer, renderer->computeUBO);
 
 	/* We have to do this twice so the rotation happens correctly */
 	VULKAN_INTERNAL_PostWorkCleanup(renderer);
@@ -3381,6 +3383,12 @@ static void VULKAN_DestroyDevice(
 
 	renderer->vkDestroyDescriptorSetLayout(
 		renderer->logicalDevice,
+		renderer->emptyComputeImageDescriptorSetLayout,
+		NULL
+	);
+
+	renderer->vkDestroyDescriptorSetLayout(
+		renderer->logicalDevice,
 		renderer->vertexParamLayout,
 		NULL
 	);
@@ -3388,6 +3396,12 @@ static void VULKAN_DestroyDevice(
 	renderer->vkDestroyDescriptorSetLayout(
 		renderer->logicalDevice,
 		renderer->fragmentParamLayout,
+		NULL
+	);
+
+	renderer->vkDestroyDescriptorSetLayout(
+		renderer->logicalDevice,
+		renderer->computeParamLayout,
 		NULL
 	);
 
