@@ -216,7 +216,8 @@ struct REFRESH_Device
         REFRESH_Renderer *device,
         uint32_t groupCountX,
         uint32_t groupCountY,
-        uint32_t groupCountZ
+        uint32_t groupCountZ,
+        uint32_t computeParamOffset
     );
 
     /* State Creation */
@@ -291,13 +292,9 @@ struct REFRESH_Device
         REFRESH_DepthFormat format
     );
 
-    REFRESH_Buffer* (*CreateVertexBuffer)(
+    REFRESH_Buffer* (*CreateBuffer)(
         REFRESH_Renderer *driverData,
-        uint32_t sizeInBytes
-    );
-
-    REFRESH_Buffer* (*CreateIndexBuffer)(
-        REFRESH_Renderer *driverData,
+        REFRESH_BufferUsageFlags usageFlags,
         uint32_t sizeInBytes
     );
 
@@ -355,16 +352,7 @@ struct REFRESH_Device
         uint32_t dataLength
     );
 
-    void(*SetVertexBufferData)(
-        REFRESH_Renderer *driverData,
-        REFRESH_Buffer *buffer,
-        uint32_t offsetInBytes,
-        void* data,
-        uint32_t elementCount,
-        uint32_t vertexStride
-    );
-
-    void(*SetIndexBufferData)(
+    void(*SetBufferData)(
         REFRESH_Renderer *driverData,
         REFRESH_Buffer *buffer,
         uint32_t offsetInBytes,
@@ -379,6 +367,12 @@ struct REFRESH_Device
     );
 
     uint32_t(*PushFragmentShaderParams)(
+        REFRESH_Renderer *driverData,
+        void *data,
+        uint32_t elementCount
+    );
+
+    uint32_t (*PushComputeShaderParams)(
         REFRESH_Renderer *driverData,
         void *data,
         uint32_t elementCount
@@ -564,16 +558,15 @@ struct REFRESH_Device
     ASSIGN_DRIVER_FUNC(CreateTextureCube, name) \
     ASSIGN_DRIVER_FUNC(CreateColorTarget, name) \
     ASSIGN_DRIVER_FUNC(CreateDepthStencilTarget, name) \
-    ASSIGN_DRIVER_FUNC(CreateVertexBuffer, name) \
-    ASSIGN_DRIVER_FUNC(CreateIndexBuffer, name) \
+    ASSIGN_DRIVER_FUNC(CreateBuffer, name) \
     ASSIGN_DRIVER_FUNC(SetTextureData2D, name) \
     ASSIGN_DRIVER_FUNC(SetTextureData3D, name) \
     ASSIGN_DRIVER_FUNC(SetTextureDataCube, name) \
     ASSIGN_DRIVER_FUNC(SetTextureDataYUV, name) \
-    ASSIGN_DRIVER_FUNC(SetVertexBufferData, name) \
-    ASSIGN_DRIVER_FUNC(SetIndexBufferData, name) \
+    ASSIGN_DRIVER_FUNC(SetBufferData, name) \
     ASSIGN_DRIVER_FUNC(PushVertexShaderParams, name) \
     ASSIGN_DRIVER_FUNC(PushFragmentShaderParams, name) \
+    ASSIGN_DRIVER_FUNC(PushComputeShaderParams, name) \
     ASSIGN_DRIVER_FUNC(SetVertexSamplers, name) \
     ASSIGN_DRIVER_FUNC(SetFragmentSamplers, name) \
     ASSIGN_DRIVER_FUNC(GetTextureData2D, name) \
