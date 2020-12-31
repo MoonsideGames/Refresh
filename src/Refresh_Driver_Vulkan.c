@@ -1304,6 +1304,14 @@ typedef struct VulkanRenderer
 	uint32_t submittedGraphicsPipelinesToDestroyCount;
 	uint32_t submittedGraphicsPipelinesToDestroyCapacity;
 
+	VulkanComputePipeline **computePipelinesToDestroy;
+	uint32_t computePipelinesToDestroyCount;
+	uint32_t computePipelinesToDestroyCapacity;
+
+	VulkanComputePipeline **submittedComputePipelinesToDestroy;
+	uint32_t submittedComputePipelinesToDestroyCount;
+	uint32_t submittedComputePipelinesToDestroyCapacity;
+
 	VkShaderModule *shaderModulesToDestroy;
 	uint32_t shaderModulesToDestroyCount;
 	uint32_t shaderModulesToDestroyCapacity;
@@ -2229,6 +2237,26 @@ static void VULKAN_INTERNAL_DestroyGraphicsPipeline(
 	SDL_free(graphicsPipeline);
 }
 
+static void VULKAN_INTERNAL_DestroyComputePipeline(
+	VulkanRenderer *renderer,
+	VulkanComputePipeline *computePipeline
+) {
+	renderer->vkFreeDescriptorSets(
+		renderer->logicalDevice,
+		renderer->defaultDescriptorPool,
+		1,
+		&computePipeline->computeUBODescriptorSet
+	);
+
+	renderer->vkDestroyPipeline(
+		renderer->logicalDevice,
+		computePipeline->pipeline,
+		NULL
+	);
+
+	SDL_free(computePipeline);
+}
+
 static void VULKAN_INTERNAL_DestroyShaderModule(
 	VulkanRenderer *renderer,
 	VkShaderModule shaderModule
@@ -2310,9 +2338,41 @@ static void VULKAN_INTERNAL_DestroyTextureStagingBuffer(
 	);
 }
 
+static void VULKAN_INTERNAL_DestroyBufferDescriptorSetCache(
+	VulkanRenderer *renderer,
+	BufferDescriptorSetCache *cache
+) {
+	uint32_t i;
+
+	if (cache == NULL)
+	{
+		return;
+	}
+
+	for (i = 0; i < cache->bufferDescriptorPoolCount; i += 1)
+	{
+		renderer->vkDestroyDescriptorPool(
+			renderer->logicalDevice,
+			cache->bufferDescriptorPools[i],
+			NULL
+		);
+	}
+
+	SDL_free(cache->bufferDescriptorPools);
+	SDL_free(cache->inactiveDescriptorSets);
+	SDL_free(cache->elements);
+
+	for (i = 0; i < NUM_DESCRIPTOR_SET_HASH_BUCKETS; i += 1)
+	{
+		SDL_free(cache->buckets[i].elements);
+	}
+
+	SDL_free(cache);
+}
+
 static void VULKAN_INTERNAL_DestroyImageDescriptorSetCache(
-	VulkanRenderer* renderer,
-	ImageDescriptorSetCache* cache
+	VulkanRenderer *renderer,
+	ImageDescriptorSetCache *cache
 ) {
 	uint32_t i;
 
@@ -2395,6 +2455,15 @@ static void VULKAN_INTERNAL_PostWorkCleanup(VulkanRenderer* renderer)
 	}
 	renderer->submittedGraphicsPipelinesToDestroyCount = 0;
 
+	for (i = 0; i < renderer->submittedComputePipelinesToDestroyCount; i += 1)
+	{
+		VULKAN_INTERNAL_DestroyComputePipeline(
+			renderer,
+			renderer->submittedComputePipelinesToDestroy[i]
+		);
+	}
+	renderer->submittedComputePipelinesToDestroyCount = 0;
+
 	for (i = 0; i < renderer->submittedShaderModulesToDestroyCount; i += 1)
 	{
 		VULKAN_INTERNAL_DestroyShaderModule(
@@ -2474,6 +2543,14 @@ static void VULKAN_INTERNAL_PostWorkCleanup(VulkanRenderer* renderer)
 	)
 
 	EXPAND_ARRAY_IF_NEEDED(
+		renderer->submittedComputePipelinesToDestroy,
+		VulkanComputePipeline*,
+		renderer->computePipelinesToDestroyCount,
+		renderer->submittedComputePipelinesToDestroyCapacity,
+		renderer->computePipelinesToDestroyCount
+	)
+
+	EXPAND_ARRAY_IF_NEEDED(
 		renderer->submittedShaderModulesToDestroy,
 		VkShaderModule,
 		renderer->shaderModulesToDestroyCount,
@@ -2545,6 +2622,14 @@ static void VULKAN_INTERNAL_PostWorkCleanup(VulkanRenderer* renderer)
 		renderer->submittedGraphicsPipelinesToDestroyCount,
 		renderer->graphicsPipelinesToDestroy,
 		renderer->graphicsPipelinesToDestroyCount
+	)
+
+	MOVE_ARRAY_CONTENTS_AND_RESET(
+		i,
+		renderer->submittedComputePipelinesToDestroy,
+		renderer->submittedComputePipelinesToDestroyCount,
+		renderer->computePipelinesToDestroy,
+		renderer->computePipelinesToDestroyCount
 	)
 
 	MOVE_ARRAY_CONTENTS_AND_RESET(
@@ -3266,6 +3351,8 @@ static void VULKAN_INTERNAL_EndCommandBuffer(
 	}
 
 	renderer->currentComputePipeline = NULL;
+	renderer->boundComputeBufferCount = 0;
+
 	renderer->currentCommandBuffer = NULL;
 	renderer->numActiveCommands = 0;
 }
@@ -3277,7 +3364,8 @@ static void VULKAN_DestroyDevice(
 ) {
 	VulkanRenderer* renderer = (VulkanRenderer*) device->driverData;
 	VkResult waitResult;
-	GraphicsPipelineLayoutHashArray pipelineLayoutHashArray;
+	GraphicsPipelineLayoutHashArray graphicsPipelineLayoutHashArray;
+	ComputePipelineLayoutHashArray computePipelineLayoutHashArray;
 	VulkanMemorySubAllocator *allocator;
 	uint32_t i, j, k;
 
@@ -3329,29 +3417,54 @@ static void VULKAN_DestroyDevice(
 
 	for (i = 0; i < NUM_PIPELINE_LAYOUT_BUCKETS; i += 1)
 	{
-		pipelineLayoutHashArray = renderer->graphicsPipelineLayoutHashTable.buckets[i];
-		for (j = 0; j < pipelineLayoutHashArray.count; j += 1)
+		graphicsPipelineLayoutHashArray = renderer->graphicsPipelineLayoutHashTable.buckets[i];
+		for (j = 0; j < graphicsPipelineLayoutHashArray.count; j += 1)
 		{
 			VULKAN_INTERNAL_DestroyImageDescriptorSetCache(
 				renderer,
-				pipelineLayoutHashArray.elements[j].value->vertexSamplerDescriptorSetCache
+				graphicsPipelineLayoutHashArray.elements[j].value->vertexSamplerDescriptorSetCache
 			);
 
 			VULKAN_INTERNAL_DestroyImageDescriptorSetCache(
 				renderer,
-				pipelineLayoutHashArray.elements[j].value->fragmentSamplerDescriptorSetCache
+				graphicsPipelineLayoutHashArray.elements[j].value->fragmentSamplerDescriptorSetCache
 			);
 
 			renderer->vkDestroyPipelineLayout(
 				renderer->logicalDevice,
-				pipelineLayoutHashArray.elements[j].value->pipelineLayout,
+				graphicsPipelineLayoutHashArray.elements[j].value->pipelineLayout,
 				NULL
 			);
 		}
 
-		if (pipelineLayoutHashArray.elements != NULL)
+		if (graphicsPipelineLayoutHashArray.elements != NULL)
 		{
-			SDL_free(pipelineLayoutHashArray.elements);
+			SDL_free(graphicsPipelineLayoutHashArray.elements);
+		}
+
+		computePipelineLayoutHashArray = renderer->computePipelineLayoutHashTable.buckets[i];
+		for (j = 0; j < computePipelineLayoutHashArray.count; j += 1)
+		{
+			VULKAN_INTERNAL_DestroyBufferDescriptorSetCache(
+				renderer,
+				computePipelineLayoutHashArray.elements[j].value->bufferDescriptorSetCache
+			);
+
+			VULKAN_INTERNAL_DestroyImageDescriptorSetCache(
+				renderer,
+				computePipelineLayoutHashArray.elements[j].value->imageDescriptorSetCache
+			);
+
+			renderer->vkDestroyPipelineLayout(
+				renderer->logicalDevice,
+				computePipelineLayoutHashArray.elements[j].value->pipelineLayout,
+				NULL
+			);
+		}
+
+		if (computePipelineLayoutHashArray.elements != NULL)
+		{
+			SDL_free(computePipelineLayoutHashArray.elements);
 		}
 	}
 
@@ -7017,7 +7130,23 @@ static void VULKAN_AddDisposeComputePipeline(
 	REFRESH_Renderer *driverData,
 	REFRESH_ComputePipeline *computePipeline
 ) {
-	SDL_assert(0 && "Function not implemented!");
+	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	VulkanComputePipeline *vulkanComputePipeline = (VulkanComputePipeline*) computePipeline;
+
+	SDL_LockMutex(renderer->disposeLock);
+
+	EXPAND_ARRAY_IF_NEEDED(
+		renderer->computePipelinesToDestroy,
+		VulkanComputePipeline*,
+		renderer->computePipelinesToDestroyCount + 1,
+		renderer->computePipelinesToDestroyCapacity,
+		renderer->computePipelinesToDestroyCapacity * 2
+	)
+
+	renderer->computePipelinesToDestroy[renderer->computePipelinesToDestroyCount] = vulkanComputePipeline;
+	renderer->computePipelinesToDestroyCount += 1;
+
+	SDL_UnlockMutex(renderer->disposeLock);
 }
 
 static void VULKAN_AddDisposeGraphicsPipeline(
@@ -7532,7 +7661,64 @@ static void VULKAN_QueuePresent(
 	);
 }
 
-static void VULKAN_INTERNAL_DeactivateUnusedDescriptorSets(
+static void VULKAN_INTERNAL_DeactivateUnusedBufferDescriptorSets(
+	BufferDescriptorSetCache *bufferDescriptorSetCache
+) {
+	int32_t i, j;
+	BufferDescriptorSetHashArray *arr;
+
+	for (i = bufferDescriptorSetCache->count - 1; i >= 0; i -= 1)
+	{
+		bufferDescriptorSetCache->elements[i].inactiveFrameCount += 1;
+
+		if (bufferDescriptorSetCache->elements[i].inactiveFrameCount + 1 > DESCRIPTOR_SET_DEACTIVATE_FRAMES)
+		{
+			arr = &bufferDescriptorSetCache->buckets[bufferDescriptorSetCache->elements[i].key % NUM_DESCRIPTOR_SET_HASH_BUCKETS];
+
+			/* remove index from bucket */
+			for (j = 0; j < arr->count; j += 1)
+			{
+				if (arr->elements[j] == i)
+				{
+					if (j < arr->count - 1)
+					{
+						arr->elements[j] = arr->elements[arr->count - 1];
+					}
+
+					arr->count -= 1;
+					break;
+				}
+			}
+
+			/* remove element from table and place in inactive sets */
+
+			bufferDescriptorSetCache->inactiveDescriptorSets[bufferDescriptorSetCache->inactiveDescriptorSetCount] = bufferDescriptorSetCache->elements[i].descriptorSet;
+			bufferDescriptorSetCache->inactiveDescriptorSetCount += 1;
+
+			/* move another descriptor set to fill the hole */
+			if (i < bufferDescriptorSetCache->count - 1)
+			{
+				bufferDescriptorSetCache->elements[i] = bufferDescriptorSetCache->elements[bufferDescriptorSetCache->count - 1];
+
+				/* update index in bucket */
+				arr = &bufferDescriptorSetCache->buckets[bufferDescriptorSetCache->elements[i].key % NUM_DESCRIPTOR_SET_HASH_BUCKETS];
+
+				for (j = 0; j < arr->count; j += 1)
+				{
+					if (arr->elements[j] == bufferDescriptorSetCache->count - 1)
+					{
+						arr->elements[j] = i;
+						break;
+					}
+				}
+			}
+
+			bufferDescriptorSetCache->count -= 1;
+		}
+	}
+}
+
+static void VULKAN_INTERNAL_DeactivateUnusedImageDescriptorSets(
 	ImageDescriptorSetCache *imageDescriptorSetCache
 ) {
 	int32_t i, j;
@@ -7592,25 +7778,45 @@ static void VULKAN_INTERNAL_DeactivateUnusedDescriptorSets(
 static void VULKAN_INTERNAL_ResetDescriptorSetData(VulkanRenderer *renderer)
 {
 	uint32_t i, j;
-	VulkanGraphicsPipelineLayout *pipelineLayout;
+	VulkanGraphicsPipelineLayout *graphicsPipelineLayout;
+	VulkanComputePipelineLayout *computePipelineLayout;
 
 	for (i = 0; i < NUM_PIPELINE_LAYOUT_BUCKETS; i += 1)
 	{
 		for (j = 0; j < renderer->graphicsPipelineLayoutHashTable.buckets[i].count; j += 1)
 		{
-			pipelineLayout = renderer->graphicsPipelineLayoutHashTable.buckets[i].elements[j].value;
+			graphicsPipelineLayout = renderer->graphicsPipelineLayoutHashTable.buckets[i].elements[j].value;
 
-			if (pipelineLayout->vertexSamplerDescriptorSetCache != NULL)
+			if (graphicsPipelineLayout->vertexSamplerDescriptorSetCache != NULL)
 			{
-				VULKAN_INTERNAL_DeactivateUnusedDescriptorSets(
-					pipelineLayout->vertexSamplerDescriptorSetCache
+				VULKAN_INTERNAL_DeactivateUnusedImageDescriptorSets(
+					graphicsPipelineLayout->vertexSamplerDescriptorSetCache
 				);
 			}
 
-			if (pipelineLayout->fragmentSamplerDescriptorSetCache != NULL)
+			if (graphicsPipelineLayout->fragmentSamplerDescriptorSetCache != NULL)
 			{
-				VULKAN_INTERNAL_DeactivateUnusedDescriptorSets(
-					pipelineLayout->fragmentSamplerDescriptorSetCache
+				VULKAN_INTERNAL_DeactivateUnusedImageDescriptorSets(
+					graphicsPipelineLayout->fragmentSamplerDescriptorSetCache
+				);
+			}
+		}
+
+		for (j = 0; j < renderer->computePipelineLayoutHashTable.buckets[i].count; j += 1)
+		{
+			computePipelineLayout = renderer->computePipelineLayoutHashTable.buckets[i].elements[j].value;
+
+			if (computePipelineLayout->bufferDescriptorSetCache != NULL)
+			{
+				VULKAN_INTERNAL_DeactivateUnusedBufferDescriptorSets(
+					computePipelineLayout->bufferDescriptorSetCache
+				);
+			}
+
+			if (computePipelineLayout->imageDescriptorSetCache != NULL)
+			{
+				VULKAN_INTERNAL_DeactivateUnusedImageDescriptorSets(
+					computePipelineLayout->imageDescriptorSetCache
 				);
 			}
 		}
@@ -9107,6 +9313,22 @@ static REFRESH_Device* VULKAN_CreateDevice(
 	renderer->submittedGraphicsPipelinesToDestroy = (VulkanGraphicsPipeline**) SDL_malloc(
 		sizeof(VulkanGraphicsPipeline*) *
 		renderer->submittedGraphicsPipelinesToDestroyCapacity
+	);
+
+	renderer->computePipelinesToDestroyCapacity = 16;
+	renderer->computePipelinesToDestroyCount = 0;
+
+	renderer->computePipelinesToDestroy = (VulkanComputePipeline**) SDL_malloc(
+		sizeof(VulkanComputePipeline*) *
+		renderer->computePipelinesToDestroyCapacity
+	);
+
+	renderer->submittedComputePipelinesToDestroyCapacity = 16;
+	renderer->submittedComputePipelinesToDestroyCount = 0;
+
+	renderer->submittedComputePipelinesToDestroy = (VulkanComputePipeline**) SDL_malloc(
+		sizeof(VulkanComputePipeline*) *
+		renderer->submittedComputePipelinesToDestroyCapacity
 	);
 
 	renderer->shaderModulesToDestroyCapacity = 16;
