@@ -712,6 +712,8 @@ typedef struct VulkanComputePipeline
 {
 	VkPipeline pipeline;
 	VulkanComputePipelineLayout *pipelineLayout;
+	VkDescriptorSet bufferDescriptorSet; /* updated by BindComputeBuffers */
+	VkDescriptorSet imageDescriptorSet; /* updated by BindComputeTextures */
 } VulkanComputePipeline;
 
 typedef struct VulkanTexture
@@ -888,6 +890,7 @@ struct ImageDescriptorSetCache
 {
 	VkDescriptorSetLayout descriptorSetLayout;
 	uint32_t bindingCount;
+	VkDescriptorType descriptorType;
 
 	ImageDescriptorSetHashArray buckets[NUM_DESCRIPTOR_SET_HASH_BUCKETS]; /* these buckets store indices */
 	ImageDescriptorSetHashMap *elements; /* where the hash map elements are stored */
@@ -1168,6 +1171,7 @@ typedef struct VulkanRenderer
 	VkCommandBuffer currentCommandBuffer;
 	uint32_t numActiveCommands;
 
+	VulkanComputePipeline *currentComputePipeline;
 	VulkanGraphicsPipeline *currentGraphicsPipeline;
 	VulkanFramebuffer *currentFramebuffer;
 
@@ -3226,6 +3230,7 @@ static void VULKAN_INTERNAL_EndCommandBuffer(
 		LogVulkanResult("vkEndCommandBuffer", result);
 	}
 
+	renderer->currentComputePipeline = NULL;
 	renderer->currentCommandBuffer = NULL;
 	renderer->numActiveCommands = 0;
 }
@@ -3653,7 +3658,31 @@ static void VULKAN_DispatchCompute(
 	uint32_t groupCountY,
 	uint32_t groupCountZ
 ) {
-	SDL_assert(0 && "Function not implemented!");
+	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	VulkanComputePipeline *computePipeline = renderer->currentComputePipeline;
+
+	VkDescriptorSet descriptorSets[2];
+
+	descriptorSets[0] = computePipeline->bufferDescriptorSet;
+	descriptorSets[1] = computePipeline->imageDescriptorSet;
+
+	RECORD_CMD(renderer->vkCmdBindDescriptorSets(
+		renderer->currentCommandBuffer,
+		VK_PIPELINE_BIND_POINT_COMPUTE,
+		computePipeline->pipelineLayout->pipelineLayout,
+		0,
+		2,
+		descriptorSets,
+		0,
+		NULL
+	));
+
+	RECORD_CMD(renderer->vkCmdDispatch(
+		renderer->currentCommandBuffer,
+		groupCountX,
+		groupCountY,
+		groupCountZ
+	));
 }
 
 static REFRESH_RenderPass* VULKAN_CreateRenderPass(
@@ -3961,6 +3990,7 @@ static ImageDescriptorSetCache* VULKAN_INTERNAL_CreateImageDescriptorSetCache(
 
 	imageDescriptorSetCache->descriptorSetLayout = descriptorSetLayout;
 	imageDescriptorSetCache->bindingCount = bindingCount;
+	imageDescriptorSetCache->descriptorType = descriptorType;
 
 	imageDescriptorSetCache->imageDescriptorPools = SDL_malloc(sizeof(VkDescriptorPool));
 	imageDescriptorSetCache->imageDescriptorPoolCount = 1;
@@ -4075,7 +4105,7 @@ static VkDescriptorSetLayout VULKAN_INTERNAL_FetchDescriptorSetLayout(
 		}
 	}
 
-	descriptorSetLayoutHash.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	descriptorSetLayoutHash.descriptorType = descriptorType;
 	descriptorSetLayoutHash.bindingCount = bindingCount;
 	descriptorSetLayoutHash.stageFlag = shaderStageFlagBit;
 
@@ -4093,7 +4123,7 @@ static VkDescriptorSetLayout VULKAN_INTERNAL_FetchDescriptorSetLayout(
 	{
 		setLayoutBindings[i].binding = i;
 		setLayoutBindings[i].descriptorCount = 1;
-		setLayoutBindings[i].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		setLayoutBindings[i].descriptorType = descriptorType;
 		setLayoutBindings[i].stageFlags = shaderStageFlagBit;
 		setLayoutBindings[i].pImmutableSamplers = NULL;
 	}
@@ -6129,14 +6159,164 @@ static uint32_t VULKAN_PushFragmentShaderParams(
 	return renderer->fragmentUBOOffset;
 }
 
-static inline uint8_t SamplerDescriptorSetDataEqual(
-	ImageDescriptorSetData *a,
-	ImageDescriptorSetData *b,
-	uint8_t samplerCount
+static inline uint8_t BufferDescriptorSetDataEqual(
+	BufferDescriptorSetData *a,
+	BufferDescriptorSetData *b,
+	uint8_t bindingCount
 ) {
 	uint32_t i;
 
-	for (i = 0; i < samplerCount; i += 1)
+	for (i = 0; i < bindingCount; i += 1)
+	{
+		if (	a->descriptorBufferInfo[i].buffer != b->descriptorBufferInfo[i].buffer ||
+			a->descriptorBufferInfo[i].offset != b->descriptorBufferInfo[i].offset ||
+			a->descriptorBufferInfo[i].range != b->descriptorBufferInfo[i].range	)
+		{
+			return 0;
+		}
+	}
+
+	return 1;
+}
+
+/* FIXME: this can probably be cleverly folded into the same cache structure as image descriptors */
+static VkDescriptorSet VULKAN_INTERNAL_FetchBufferDescriptorSet(
+	VulkanRenderer *renderer,
+	BufferDescriptorSetCache *bufferDescriptorSetCache,
+	BufferDescriptorSetData *bufferDescriptorSetData
+) {
+	uint32_t i;
+	uint64_t hashcode;
+	BufferDescriptorSetHashArray *arr;
+	VkDescriptorSet newDescriptorSet;
+	VkWriteDescriptorSet writeDescriptorSets[MAX_BUFFER_BINDINGS];
+	BufferDescriptorSetHashMap *map;
+
+	hashcode = BufferDescriptorSetHashTable_GetHashCode(
+		bufferDescriptorSetData,
+		bufferDescriptorSetCache->bindingCount
+	);
+	arr = &bufferDescriptorSetCache->buckets[hashcode % NUM_DESCRIPTOR_SET_HASH_BUCKETS];
+
+	for (i = 0; i < arr->count; i += 1)
+	{
+		BufferDescriptorSetHashMap *e = &bufferDescriptorSetCache->elements[arr->elements[i]];
+		if (BufferDescriptorSetDataEqual(
+			bufferDescriptorSetData,
+			&e->descriptorSetData,
+			bufferDescriptorSetCache->bindingCount
+		)) {
+			e->inactiveFrameCount = 0;
+			return e->descriptorSet;
+		}
+	}
+
+	/* If no match exists, assign a new descriptor set and prepare it for update */
+	/* If no inactive descriptor sets remain, create a new pool and allocate new inactive sets */
+
+	if (bufferDescriptorSetCache->inactiveDescriptorSetCount == 0)
+	{
+		bufferDescriptorSetCache->bufferDescriptorPoolCount += 1;
+		bufferDescriptorSetCache->bufferDescriptorPools = SDL_realloc(
+			bufferDescriptorSetCache->bufferDescriptorPools,
+			sizeof(VkDescriptorPool) * bufferDescriptorSetCache->bufferDescriptorPoolCount
+		);
+
+		VULKAN_INTERNAL_CreateDescriptorPool(
+			renderer,
+			VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+			bufferDescriptorSetCache->nextPoolSize,
+			bufferDescriptorSetCache->nextPoolSize * bufferDescriptorSetCache->bindingCount,
+			&bufferDescriptorSetCache->bufferDescriptorPools[bufferDescriptorSetCache->bufferDescriptorPoolCount - 1]
+		);
+
+		bufferDescriptorSetCache->inactiveDescriptorSetCapacity += bufferDescriptorSetCache->nextPoolSize;
+
+		bufferDescriptorSetCache->inactiveDescriptorSets = SDL_realloc(
+			bufferDescriptorSetCache->inactiveDescriptorSets,
+			sizeof(VkDescriptorSet) * bufferDescriptorSetCache->inactiveDescriptorSetCapacity
+		);
+
+		VULKAN_INTERNAL_AllocateDescriptorSets(
+			renderer,
+			bufferDescriptorSetCache->bufferDescriptorPools[bufferDescriptorSetCache->bufferDescriptorPoolCount - 1],
+			bufferDescriptorSetCache->descriptorSetLayout,
+			bufferDescriptorSetCache->nextPoolSize,
+			bufferDescriptorSetCache->inactiveDescriptorSets
+		);
+
+		bufferDescriptorSetCache->inactiveDescriptorSetCount = bufferDescriptorSetCache->nextPoolSize;
+
+		bufferDescriptorSetCache->nextPoolSize *= 2;
+	}
+
+	newDescriptorSet = bufferDescriptorSetCache->inactiveDescriptorSets[bufferDescriptorSetCache->inactiveDescriptorSetCount - 1];
+	bufferDescriptorSetCache->inactiveDescriptorSetCount -= 1;
+
+	for (i = 0; i < bufferDescriptorSetCache->bindingCount; i += 1)
+	{
+		writeDescriptorSets[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		writeDescriptorSets[i].pNext = NULL;
+		writeDescriptorSets[i].descriptorCount = 1;
+		writeDescriptorSets[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+		writeDescriptorSets[i].dstArrayElement = 0;
+		writeDescriptorSets[i].dstBinding = i;
+		writeDescriptorSets[i].dstSet = newDescriptorSet;
+		writeDescriptorSets[i].pBufferInfo = &bufferDescriptorSetData->descriptorBufferInfo[i];
+		writeDescriptorSets[i].pImageInfo = NULL;
+		writeDescriptorSets[i].pTexelBufferView = NULL;
+	}
+
+	renderer->vkUpdateDescriptorSets(
+		renderer->logicalDevice,
+		bufferDescriptorSetCache->bindingCount,
+		writeDescriptorSets,
+		0,
+		NULL
+	);
+
+	EXPAND_ELEMENTS_IF_NEEDED(arr, 2, uint32_t)
+	arr->elements[arr->count] = bufferDescriptorSetCache->count;
+	arr->count += 1;
+
+	if (bufferDescriptorSetCache->count == bufferDescriptorSetCache->capacity)
+	{
+		bufferDescriptorSetCache->capacity *= 2;
+
+		bufferDescriptorSetCache->elements = SDL_realloc(
+			bufferDescriptorSetCache->elements,
+			sizeof(BufferDescriptorSetHashMap) * bufferDescriptorSetCache->capacity
+		);
+	}
+
+	map = &bufferDescriptorSetCache->elements[bufferDescriptorSetCache->count];
+	map->key = hashcode;
+
+	for (i = 0; i < bufferDescriptorSetCache->bindingCount; i += 1)
+	{
+		map->descriptorSetData.descriptorBufferInfo[i].buffer =
+			bufferDescriptorSetData->descriptorBufferInfo[i].buffer;
+		map->descriptorSetData.descriptorBufferInfo[i].offset =
+			bufferDescriptorSetData->descriptorBufferInfo[i].offset;
+		map->descriptorSetData.descriptorBufferInfo[i].range =
+			bufferDescriptorSetData->descriptorBufferInfo[i].range;
+	}
+
+	map->descriptorSet = newDescriptorSet;
+	map->inactiveFrameCount = 0;
+	bufferDescriptorSetCache->count += 1;
+
+	return newDescriptorSet;
+}
+
+static inline uint8_t ImageDescriptorSetDataEqual(
+	ImageDescriptorSetData *a,
+	ImageDescriptorSetData *b,
+	uint8_t bindingCount
+) {
+	uint32_t i;
+
+	for (i = 0; i < bindingCount; i += 1)
 	{
 		if (	a->descriptorImageInfo[i].imageLayout != b->descriptorImageInfo[i].imageLayout ||
 			a->descriptorImageInfo[i].imageView != b->descriptorImageInfo[i].imageView ||
@@ -6170,7 +6350,7 @@ static VkDescriptorSet VULKAN_INTERNAL_FetchImageDescriptorSet(
 	for (i = 0; i < arr->count; i += 1)
 	{
 		ImageDescriptorSetHashMap *e = &imageDescriptorSetCache->elements[arr->elements[i]];
-		if (SamplerDescriptorSetDataEqual(
+		if (ImageDescriptorSetDataEqual(
 			imageDescriptorSetData,
 			&e->descriptorSetData,
 			imageDescriptorSetCache->bindingCount
@@ -6193,7 +6373,7 @@ static VkDescriptorSet VULKAN_INTERNAL_FetchImageDescriptorSet(
 
 		VULKAN_INTERNAL_CreateDescriptorPool(
 			renderer,
-			VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+			imageDescriptorSetCache->descriptorType,
 			imageDescriptorSetCache->nextPoolSize,
 			imageDescriptorSetCache->nextPoolSize * imageDescriptorSetCache->bindingCount,
 			&imageDescriptorSetCache->imageDescriptorPools[imageDescriptorSetCache->imageDescriptorPoolCount - 1]
@@ -6227,12 +6407,13 @@ static VkDescriptorSet VULKAN_INTERNAL_FetchImageDescriptorSet(
 		writeDescriptorSets[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 		writeDescriptorSets[i].pNext = NULL;
 		writeDescriptorSets[i].descriptorCount = 1;
-		writeDescriptorSets[i].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		writeDescriptorSets[i].descriptorType = imageDescriptorSetCache->descriptorType;
 		writeDescriptorSets[i].dstArrayElement = 0;
 		writeDescriptorSets[i].dstBinding = i;
 		writeDescriptorSets[i].dstSet = newDescriptorSet;
 		writeDescriptorSets[i].pBufferInfo = NULL;
 		writeDescriptorSets[i].pImageInfo = &imageDescriptorSetData->descriptorImageInfo[i];
+		writeDescriptorSets[i].pTexelBufferView = NULL;
 	}
 
 	renderer->vkUpdateDescriptorSets(
@@ -6957,21 +7138,78 @@ static void VULKAN_BindComputePipeline(
 	REFRESH_Renderer *driverData,
 	REFRESH_ComputePipeline *computePipeline
 ) {
-	SDL_assert(0 && "Function not implemented!");
+	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	VulkanComputePipeline *vulkanComputePipeline = (VulkanComputePipeline*) computePipeline;
+
+	renderer->vkCmdBindPipeline(
+		renderer->currentCommandBuffer,
+		VK_PIPELINE_BIND_POINT_COMPUTE,
+		vulkanComputePipeline->pipeline
+	);
+
+	renderer->currentComputePipeline = NULL;
 }
 
 static void VULKAN_BindComputeBuffers(
 	REFRESH_Renderer *driverData,
 	REFRESH_Buffer **pBuffers
 ) {
-	SDL_assert(0 && "Function not implemented!");
+	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	VulkanComputePipeline *computePipeline = renderer->currentComputePipeline;
+	VulkanBuffer *currentBuffer;
+	BufferDescriptorSetData bufferDescriptorSetData;
+	uint32_t i;
+
+	if (computePipeline->pipelineLayout->bufferDescriptorSetCache == NULL)
+	{
+		return;
+	}
+
+	for (i = 0; i < computePipeline->pipelineLayout->bufferDescriptorSetCache->bindingCount; i += 1)
+	{
+		currentBuffer = (VulkanBuffer*) pBuffers[i];
+		bufferDescriptorSetData.descriptorBufferInfo[i].buffer = currentBuffer->subBuffers[currentBuffer->currentSubBufferIndex]->buffer;
+		bufferDescriptorSetData.descriptorBufferInfo[i].offset = 0;
+		bufferDescriptorSetData.descriptorBufferInfo[i].range = currentBuffer->subBuffers[currentBuffer->currentSubBufferIndex]->size;
+	}
+
+	computePipeline->bufferDescriptorSet =
+		VULKAN_INTERNAL_FetchBufferDescriptorSet(
+			renderer,
+			computePipeline->pipelineLayout->bufferDescriptorSetCache,
+			&bufferDescriptorSetData
+		);
 }
 
 static void VULKAN_BindComputeTextures(
 	REFRESH_Renderer *driverData,
 	REFRESH_Texture **pTextures
 ) {
-	SDL_assert(0 && "Function not implemented!");
+	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	VulkanComputePipeline *computePipeline = renderer->currentComputePipeline;
+	VulkanTexture *currentTexture;
+	ImageDescriptorSetData imageDescriptorSetData;
+	uint32_t i;
+
+	if (computePipeline->pipelineLayout->imageDescriptorSetCache == NULL)
+	{
+		return;
+	}
+
+	for (i = 0; i < computePipeline->pipelineLayout->imageDescriptorSetCache->bindingCount; i += 1)
+	{
+		currentTexture = (VulkanTexture*) pTextures[i];
+		imageDescriptorSetData.descriptorImageInfo[i].imageView = currentTexture->view;
+		imageDescriptorSetData.descriptorImageInfo[i].sampler = VK_NULL_HANDLE;
+		imageDescriptorSetData.descriptorImageInfo[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	}
+
+	computePipeline->imageDescriptorSet =
+		VULKAN_INTERNAL_FetchImageDescriptorSet(
+			renderer,
+			computePipeline->pipelineLayout->imageDescriptorSetCache,
+			&imageDescriptorSetData
+		);
 }
 
 static void VULKAN_QueuePresent(
