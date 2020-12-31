@@ -141,6 +141,7 @@ typedef enum VulkanResourceAccessType
 	RESOURCE_ACCESS_FRAGMENT_SHADER_READ_COLOR_ATTACHMENT,
 	RESOURCE_ACCESS_FRAGMENT_SHADER_READ_DEPTH_STENCIL_ATTACHMENT,
 	RESOURCE_ACCESS_COMPUTE_SHADER_READ_UNIFORM_BUFFER,
+	RESOURCE_ACCESS_COMPUTE_SHADER_READ_OTHER,
 	RESOURCE_ACCESS_ANY_SHADER_READ_SAMPLED_IMAGE,
 	RESOURCE_ACCESS_COLOR_ATTACHMENT_READ,
 	RESOURCE_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ,
@@ -514,6 +515,13 @@ static const VulkanResourceAccessInfo AccessMap[RESOURCE_ACCESS_TYPES_COUNT] =
 	{
 		VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
 		VK_ACCESS_UNIFORM_READ_BIT,
+		VK_IMAGE_LAYOUT_UNDEFINED
+	},
+
+	/* RESOURCE_ACCESS_COMPUTE_SHADER_READ_OTHER */
+	{
+		VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+		VK_ACCESS_SHADER_READ_BIT,
 		VK_IMAGE_LAYOUT_UNDEFINED
 	},
 
@@ -1189,6 +1197,9 @@ typedef struct VulkanRenderer
 	VulkanComputePipeline *currentComputePipeline;
 	VulkanGraphicsPipeline *currentGraphicsPipeline;
 	VulkanFramebuffer *currentFramebuffer;
+
+	VulkanBuffer *boundComputeBuffers[MAX_BUFFER_BINDINGS];
+	uint32_t boundComputeBufferCount;
 
 	DescriptorSetLayoutHashTable descriptorSetLayoutHashTable;
 
@@ -3698,8 +3709,20 @@ static void VULKAN_DispatchCompute(
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VulkanComputePipeline *computePipeline = renderer->currentComputePipeline;
-
+	VulkanBuffer *currentBuffer;
 	VkDescriptorSet descriptorSets[3];
+	uint32_t i;
+
+	for (i = 0; i < renderer->boundComputeBufferCount; i += 1)
+	{
+		currentBuffer = renderer->boundComputeBuffers[i];
+		VULKAN_INTERNAL_BufferMemoryBarrier(
+			renderer,
+			RESOURCE_ACCESS_COMPUTE_SHADER_READ_OTHER,
+			currentBuffer,
+			currentBuffer->subBuffers[currentBuffer->currentSubBufferIndex]
+		);
+	}
 
 	descriptorSets[0] = computePipeline->bufferDescriptorSet;
 	descriptorSets[1] = computePipeline->imageDescriptorSet;
@@ -3722,6 +3745,29 @@ static void VULKAN_DispatchCompute(
 		groupCountY,
 		groupCountZ
 	));
+
+	for (i = 0; i < renderer->boundComputeBufferCount; i += 1)
+	{
+		currentBuffer = renderer->boundComputeBuffers[i];
+		if (currentBuffer->usage & VK_BUFFER_USAGE_VERTEX_BUFFER_BIT)
+		{
+			VULKAN_INTERNAL_BufferMemoryBarrier(
+				renderer,
+				RESOURCE_ACCESS_VERTEX_BUFFER,
+				currentBuffer,
+				currentBuffer->subBuffers[currentBuffer->currentSubBufferIndex]
+			);
+		}
+		else if (currentBuffer->usage & VK_BUFFER_USAGE_INDEX_BUFFER_BIT)
+		{
+			VULKAN_INTERNAL_BufferMemoryBarrier(
+				renderer,
+				RESOURCE_ACCESS_INDEX_BUFFER,
+				currentBuffer,
+				currentBuffer->subBuffers[currentBuffer->currentSubBufferIndex]
+			);
+		}
+	}
 }
 
 static REFRESH_RenderPass* VULKAN_CreateRenderPass(
@@ -5582,7 +5628,7 @@ static REFRESH_Buffer* VULKAN_CreateBuffer(
 		vulkanUsageFlags |= VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
 	}
 
-	if (usageFlags & REFRESH_BUFFERUSAGE_STORAGE_BIT)
+	if (usageFlags & REFRESH_BUFFERUSAGE_COMPUTE_BIT)
 	{
 		vulkanUsageFlags |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
 	}
@@ -7287,10 +7333,16 @@ static void VULKAN_BindComputeBuffers(
 	for (i = 0; i < computePipeline->pipelineLayout->bufferDescriptorSetCache->bindingCount; i += 1)
 	{
 		currentBuffer = (VulkanBuffer*) pBuffers[i];
+
 		bufferDescriptorSetData.descriptorBufferInfo[i].buffer = currentBuffer->subBuffers[currentBuffer->currentSubBufferIndex]->buffer;
 		bufferDescriptorSetData.descriptorBufferInfo[i].offset = 0;
 		bufferDescriptorSetData.descriptorBufferInfo[i].range = currentBuffer->subBuffers[currentBuffer->currentSubBufferIndex]->size;
+
+		VULKAN_INTERNAL_MarkAsBound(renderer, currentBuffer);
+		renderer->boundComputeBuffers[i] = currentBuffer;
 	}
+
+	renderer->boundComputeBufferCount = computePipeline->pipelineLayout->bufferDescriptorSetCache->bindingCount;
 
 	computePipeline->bufferDescriptorSet =
 		VULKAN_INTERNAL_FetchBufferDescriptorSet(
@@ -8958,6 +9010,14 @@ static REFRESH_Device* VULKAN_CreateDevice(
 
 	renderer->currentGraphicsPipeline = NULL;
 	renderer->currentFramebuffer = NULL;
+
+	/* init bound compute buffer array */
+
+	for (i = 0; i < MAX_BUFFER_BINDINGS; i += 1)
+	{
+		renderer->boundComputeBuffers[i] = NULL;
+	}
+	renderer->boundComputeBufferCount = 0;
 
 	/* Deferred destroy storage */
 
