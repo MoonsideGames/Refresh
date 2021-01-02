@@ -885,6 +885,17 @@ void REFRESH_BindComputeTextures(
     );
 }
 
+REFRESH_CommandBuffer* REFRESH_AcquireCommandBuffer(
+    REFRESH_Device *device,
+    uint8_t fixed
+) {
+    NULL_RETURN_NULL(device);
+    return device->AcquireCommandBuffer(
+        device->driverData,
+        fixed
+    );
+}
+
 void REFRESH_QueuePresent(
     REFRESH_Device *device,
     REFRESH_TextureSlice* textureSlice,

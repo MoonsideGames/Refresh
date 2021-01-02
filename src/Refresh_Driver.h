@@ -523,6 +523,11 @@ struct REFRESH_Device
         REFRESH_Texture **pTextures
     );
 
+    REFRESH_CommandBuffer* (*AcquireCommandBuffer)(
+        REFRESH_Renderer *driverData,
+        uint8_t fixed
+    );
+
     void(*QueuePresent)(
         REFRESH_Renderer *driverData,
         REFRESH_TextureSlice *textureSlice,
@@ -590,6 +595,7 @@ struct REFRESH_Device
     ASSIGN_DRIVER_FUNC(BindComputePipeline, name) \
     ASSIGN_DRIVER_FUNC(BindComputeBuffers, name) \
     ASSIGN_DRIVER_FUNC(BindComputeTextures, name) \
+    ASSIGN_DRIVER_FUNC(AcquireCommandBuffer, name) \
     ASSIGN_DRIVER_FUNC(QueuePresent, name) \
     ASSIGN_DRIVER_FUNC(Submit, name)
 
