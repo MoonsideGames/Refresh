@@ -148,7 +148,8 @@ void REFRESH_DestroyDevice(REFRESH_Device *device)
 }
 
 void REFRESH_Clear(
-	REFRESH_Device *device,
+    REFRESH_Device *device,
+	REFRESH_CommandBuffer *commandBuffer,
 	REFRESH_Rect *clearRect,
 	REFRESH_ClearOptions options,
 	REFRESH_Color *colors,
@@ -159,6 +160,7 @@ void REFRESH_Clear(
     NULL_RETURN(device);
     device->Clear(
         device->driverData,
+        commandBuffer,
         clearRect,
         options,
         colors,
@@ -170,6 +172,7 @@ void REFRESH_Clear(
 
 void REFRESH_DrawIndexedPrimitives(
 	REFRESH_Device *device,
+    REFRESH_CommandBuffer *commandBuffer,
 	uint32_t baseVertex,
 	uint32_t minVertexIndex,
 	uint32_t numVertices,
@@ -183,6 +186,7 @@ void REFRESH_DrawIndexedPrimitives(
     NULL_RETURN(device);
     device->DrawIndexedPrimitives(
         device->driverData,
+        commandBuffer,
         baseVertex,
         minVertexIndex,
         numVertices,
@@ -197,6 +201,7 @@ void REFRESH_DrawIndexedPrimitives(
 
 void REFRESH_DrawInstancedPrimitives(
 	REFRESH_Device *device,
+    REFRESH_CommandBuffer *commandBuffer,
 	uint32_t baseVertex,
 	uint32_t minVertexIndex,
 	uint32_t numVertices,
@@ -211,6 +216,7 @@ void REFRESH_DrawInstancedPrimitives(
     NULL_RETURN(device);
     device->DrawInstancedPrimitives(
         device->driverData,
+        commandBuffer,
         baseVertex,
         minVertexIndex,
         numVertices,
@@ -226,6 +232,7 @@ void REFRESH_DrawInstancedPrimitives(
 
 void REFRESH_DrawPrimitives(
 	REFRESH_Device *device,
+    REFRESH_CommandBuffer *commandBuffer,
 	uint32_t vertexStart,
 	uint32_t primitiveCount,
     uint32_t vertexParamOffset,
@@ -234,6 +241,7 @@ void REFRESH_DrawPrimitives(
     NULL_RETURN(device);
     device->DrawPrimitives(
         device->driverData,
+        commandBuffer,
         vertexStart,
         primitiveCount,
         vertexParamOffset,
@@ -243,6 +251,7 @@ void REFRESH_DrawPrimitives(
 
 void REFRESH_DispatchCompute(
     REFRESH_Device *device,
+    REFRESH_CommandBuffer *commandBuffer,
     uint32_t groupCountX,
     uint32_t groupCountY,
     uint32_t groupCountZ,
@@ -251,6 +260,7 @@ void REFRESH_DispatchCompute(
     NULL_RETURN(device);
     device->DispatchCompute(
         device->driverData,
+        commandBuffer,
         groupCountX,
         groupCountY,
         groupCountZ,
@@ -549,12 +559,14 @@ void REFRESH_SetBufferData(
 
 uint32_t REFRESH_PushVertexShaderParams(
 	REFRESH_Device *device,
+    REFRESH_CommandBuffer *commandBuffer,
 	void *data,
 	uint32_t elementCount
 ) {
     if (device == NULL) { return 0; }
     return device->PushVertexShaderParams(
         device->driverData,
+        commandBuffer,
         data,
         elementCount
     );
@@ -562,12 +574,14 @@ uint32_t REFRESH_PushVertexShaderParams(
 
 uint32_t REFRESH_PushFragmentShaderParams(
 	REFRESH_Device *device,
+    REFRESH_CommandBuffer *commandBuffer,
 	void *data,
 	uint32_t elementCount
 ) {
     if (device == NULL) { return 0; }
     return device->PushFragmentShaderParams(
         device->driverData,
+        commandBuffer,
         data,
         elementCount
     );
@@ -575,12 +589,14 @@ uint32_t REFRESH_PushFragmentShaderParams(
 
 uint32_t REFRESH_PushComputeShaderParams(
     REFRESH_Device *device,
+    REFRESH_CommandBuffer *commandBuffer,
     void *data,
     uint32_t elementCount
 ) {
     if (device == NULL) { return 0; }
     return device->PushComputeShaderParams(
         device->driverData,
+        commandBuffer,
         data,
         elementCount
     );
@@ -588,12 +604,14 @@ uint32_t REFRESH_PushComputeShaderParams(
 
 void REFRESH_SetVertexSamplers(
 	REFRESH_Device *device,
+    REFRESH_CommandBuffer *commandBuffer,
 	REFRESH_Texture **pTextures,
 	REFRESH_Sampler **pSamplers
 ) {
     NULL_RETURN(device);
     device->SetVertexSamplers(
         device->driverData,
+        commandBuffer,
         pTextures,
         pSamplers
     );
@@ -601,12 +619,14 @@ void REFRESH_SetVertexSamplers(
 
 void REFRESH_SetFragmentSamplers(
 	REFRESH_Device *device,
+    REFRESH_CommandBuffer *commandBuffer,
 	REFRESH_Texture **pTextures,
 	REFRESH_Sampler **pSamplers
 ) {
     NULL_RETURN(device);
     device->SetFragmentSamplers(
         device->driverData,
+        commandBuffer,
         pTextures,
         pSamplers
     );
@@ -783,6 +803,7 @@ void REFRESH_AddDisposeGraphicsPipeline(
 
 void REFRESH_BeginRenderPass(
 	REFRESH_Device *device,
+    REFRESH_CommandBuffer *commandBuffer,
 	REFRESH_RenderPass *renderPass,
 	REFRESH_Framebuffer *framebuffer,
 	REFRESH_Rect renderArea,
@@ -793,6 +814,7 @@ void REFRESH_BeginRenderPass(
     NULL_RETURN(device);
     device->BeginRenderPass(
         device->driverData,
+        commandBuffer,
         renderPass,
         framebuffer,
         renderArea,
@@ -803,25 +825,32 @@ void REFRESH_BeginRenderPass(
 }
 
 void REFRESH_EndRenderPass(
-	REFRESH_Device *device
+	REFRESH_Device *device,
+    REFRESH_CommandBuffer *commandBuffer
 ) {
     NULL_RETURN(device);
-    device->EndRenderPass(device->driverData);
+    device->EndRenderPass(
+        device->driverData,
+        commandBuffer
+    );
 }
 
 void REFRESH_BindGraphicsPipeline(
 	REFRESH_Device *device,
+    REFRESH_CommandBuffer *commandBuffer,
 	REFRESH_GraphicsPipeline *graphicsPipeline
 ) {
     NULL_RETURN(device);
     device->BindGraphicsPipeline(
         device->driverData,
+        commandBuffer,
         graphicsPipeline
     );
 }
 
 void REFRESH_BindVertexBuffers(
 	REFRESH_Device *device,
+    REFRESH_CommandBuffer *commandBuffer,
 	uint32_t firstBinding,
 	uint32_t bindingCount,
 	REFRESH_Buffer **pBuffers,
@@ -830,6 +859,7 @@ void REFRESH_BindVertexBuffers(
     NULL_RETURN(device);
     device->BindVertexBuffers(
         device->driverData,
+        commandBuffer,
         firstBinding,
         bindingCount,
         pBuffers,
@@ -839,6 +869,7 @@ void REFRESH_BindVertexBuffers(
 
 void REFRESH_BindIndexBuffer(
     REFRESH_Device *device,
+    REFRESH_CommandBuffer *commandBuffer,
     REFRESH_Buffer *buffer,
 	uint64_t offset,
 	REFRESH_IndexElementSize indexElementSize
@@ -846,6 +877,7 @@ void REFRESH_BindIndexBuffer(
     NULL_RETURN(device);
     device->BindIndexBuffer(
         device->driverData,
+        commandBuffer,
         buffer,
         offset,
         indexElementSize
@@ -854,33 +886,39 @@ void REFRESH_BindIndexBuffer(
 
 void REFRESH_BindComputePipeline(
     REFRESH_Device *device,
+    REFRESH_CommandBuffer *commandBuffer,
     REFRESH_ComputePipeline *computePipeline
 ) {
     NULL_RETURN(device);
     device->BindComputePipeline(
         device->driverData,
+        commandBuffer,
         computePipeline
     );
 }
 
 void REFRESH_BindComputeBuffers(
     REFRESH_Device *device,
+    REFRESH_CommandBuffer *commandBuffer,
     REFRESH_Buffer **pBuffers
 ) {
     NULL_RETURN(device);
     device->BindComputeBuffers(
         device->driverData,
+        commandBuffer,
         pBuffers
     );
 }
 
 void REFRESH_BindComputeTextures(
     REFRESH_Device *device,
+    REFRESH_CommandBuffer *commandBuffer,
     REFRESH_Texture **pTextures
 ) {
     NULL_RETURN(device);
     device->BindComputeTextures(
         device->driverData,
+        commandBuffer,
         pTextures
     );
 }
@@ -898,6 +936,7 @@ REFRESH_CommandBuffer* REFRESH_AcquireCommandBuffer(
 
 void REFRESH_QueuePresent(
     REFRESH_Device *device,
+    REFRESH_CommandBuffer *commandBuffer,
     REFRESH_TextureSlice* textureSlice,
     REFRESH_Rect *sourceRectangle,
     REFRESH_Rect *destinationRectangle
@@ -905,6 +944,7 @@ void REFRESH_QueuePresent(
     NULL_RETURN(device);
     device->QueuePresent(
         device->driverData,
+        commandBuffer,
         textureSlice,
         sourceRectangle,
         destinationRectangle
@@ -912,11 +952,15 @@ void REFRESH_QueuePresent(
 }
 
 void REFRESH_Submit(
-    REFRESH_Device *device
+    REFRESH_Device *device,
+    REFRESH_CommandBuffer **pCommandBuffers,
+    uint32_t commandBufferCount
 ) {
     NULL_RETURN(device);
     device->Submit(
-        device->driverData
+        device->driverData,
+        pCommandBuffers,
+        commandBufferCount
     );
 }
 

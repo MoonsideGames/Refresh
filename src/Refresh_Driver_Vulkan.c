@@ -682,6 +682,7 @@ typedef struct QueueFamilyIndices
 {
 	uint32_t graphicsFamily;
 	uint32_t presentFamily;
+	uint32_t transferFamily;
 } QueueFamilyIndices;
 
 typedef struct SwapChainSupportDetails
@@ -750,6 +751,7 @@ typedef struct VulkanTexture
 	VkFormat format;
 	REFRESH_SurfaceFormat refreshFormat;
 	VulkanResourceAccessType resourceAccessType;
+	uint32_t queueFamilyIndex;
 	REFRESH_TextureUsageFlags usageFlags;
 	REFRESHNAMELESS union
 	{
@@ -1152,9 +1154,6 @@ typedef struct VulkanCommandBuffer
 
 	VulkanCommandPool *commandPool;
 
-	/* FIXME: do we even use this? */
-	uint32_t numActiveCommands;
-
 	VulkanComputePipeline *currentComputePipeline;
 	VulkanGraphicsPipeline *currentGraphicsPipeline;
 	VulkanFramebuffer *currentFramebuffer;
@@ -1211,10 +1210,16 @@ typedef struct VulkanRenderer
     QueueFamilyIndices queueFamilyIndices;
 	VkQueue graphicsQueue;
 	VkQueue presentQueue;
+	VkQueue transferQueue;
 
 	VkFence inFlightFence;
+	VkSemaphore transferFinishedSemaphore;
 	VkSemaphore imageAvailableSemaphore;
 	VkSemaphore renderFinishedSemaphore;
+
+	VkCommandPool transferCommandPool;
+	VkCommandBuffer transferCommandBuffers[2]; /* frame count */
+	uint8_t pendingTransfer;
 
 	VulkanCommandBuffer **submittedCommandBuffers;
 	uint32_t submittedCommandBufferCount;
@@ -1370,7 +1375,7 @@ typedef struct VulkanRenderer
 
 static void VULKAN_INTERNAL_BeginCommandBuffer(VulkanRenderer *renderer, VulkanCommandBuffer *commandBuffer);
 static void VULKAN_Submit(REFRESH_Renderer *driverData, REFRESH_CommandBuffer **pCommandBuffers, uint32_t commandBufferCount);
-static void VULKAN_SubmitAndSync(REFRESH_Renderer *driverData, REFRESH_CommandBuffer *commandBuffer);
+static void VULKAN_INTERNAL_SubmitTransfer(REFRESH_Renderer *driverData);
 
 /* Error Handling */
 
@@ -1901,7 +1906,7 @@ static uint8_t VULKAN_INTERNAL_FindAvailableMemory(
 
 static void VULKAN_INTERNAL_BufferMemoryBarrier(
 	VulkanRenderer *renderer,
-	VulkanCommandBuffer *commandBuffer,
+	VkCommandBuffer commandBuffer,
 	VulkanResourceAccessType nextResourceAccessType,
 	VulkanBuffer *buffer,
 	VulkanSubBuffer *subBuffer
@@ -1957,7 +1962,7 @@ static void VULKAN_INTERNAL_BufferMemoryBarrier(
 	}
 
 	renderer->vkCmdPipelineBarrier(
-		commandBuffer->commandBuffer,
+		commandBuffer,
 		srcStages,
 		dstStages,
 		0,
@@ -1968,14 +1973,13 @@ static void VULKAN_INTERNAL_BufferMemoryBarrier(
 		0,
 		NULL
 	);
-	commandBuffer->numActiveCommands += 1;
 
 	buffer->resourceAccessType = nextResourceAccessType;
 }
 
 static void VULKAN_INTERNAL_ImageMemoryBarrier(
 	VulkanRenderer *renderer,
-	VulkanCommandBuffer *commandBuffer,
+	VkCommandBuffer commandBuffer,
 	VulkanResourceAccessType nextAccess,
 	VkImageAspectFlags aspectMask,
 	uint32_t baseLayer,
@@ -1984,6 +1988,8 @@ static void VULKAN_INTERNAL_ImageMemoryBarrier(
 	uint32_t levelCount,
 	uint8_t discardContents,
 	VkImage image,
+	uint32_t dstQueueFamilyIndex,
+	uint32_t *srcQueueFamilyIndex, /* can be NULL */
 	VulkanResourceAccessType *resourceAccessType
 ) {
 	VkPipelineStageFlags srcStages = 0;
@@ -2003,8 +2009,15 @@ static void VULKAN_INTERNAL_ImageMemoryBarrier(
 	memoryBarrier.dstAccessMask = 0;
 	memoryBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 	memoryBarrier.newLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-	memoryBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-	memoryBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	memoryBarrier.dstQueueFamilyIndex = dstQueueFamilyIndex;
+	if (dstQueueFamilyIndex == VK_QUEUE_FAMILY_IGNORED)
+	{
+		memoryBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	}
+	else
+	{
+		memoryBarrier.srcQueueFamilyIndex = *srcQueueFamilyIndex;
+	}
 	memoryBarrier.image = image;
 	memoryBarrier.subresourceRange.aspectMask = aspectMask;
 	memoryBarrier.subresourceRange.baseArrayLayer = baseLayer;
@@ -2048,7 +2061,7 @@ static void VULKAN_INTERNAL_ImageMemoryBarrier(
 	}
 
 	renderer->vkCmdPipelineBarrier(
-		commandBuffer->commandBuffer,
+		commandBuffer,
 		srcStages,
 		dstStages,
 		0,
@@ -2059,7 +2072,11 @@ static void VULKAN_INTERNAL_ImageMemoryBarrier(
 		1,
 		&memoryBarrier
 	);
-	commandBuffer->numActiveCommands += 1;
+
+	if (dstQueueFamilyIndex != VK_QUEUE_FAMILY_IGNORED)
+	{
+		*srcQueueFamilyIndex = dstQueueFamilyIndex;
+	}
 
 	*resourceAccessType = nextAccess;
 }
@@ -3311,7 +3328,6 @@ static void VULKAN_INTERNAL_EndCommandBuffer(
 
 	commandBuffer->currentComputePipeline = NULL;
 	commandBuffer->boundComputeBufferCount = 0;
-	commandBuffer->numActiveCommands = 0;
 }
 
 /* Public API */
@@ -3345,6 +3361,12 @@ static void VULKAN_DestroyDevice(
 	VULKAN_INTERNAL_PostWorkCleanup(renderer);
 
 	VULKAN_INTERNAL_DestroyTextureStagingBuffer(renderer);
+
+	renderer->vkDestroySemaphore(
+		renderer->logicalDevice,
+		renderer->transferFinishedSemaphore,
+		NULL
+	);
 
 	renderer->vkDestroySemaphore(
 		renderer->logicalDevice,
@@ -3545,7 +3567,7 @@ static void VULKAN_Clear(
 	float depth,
 	int32_t stencil
 ) {
-	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
 	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
 
 	uint32_t attachmentCount, i;
@@ -3646,7 +3668,6 @@ static void VULKAN_Clear(
 		1,
 		&vulkanClearRect
 	);
-	vulkanCommandBuffer->numActiveCommands += 1;
 }
 
 static void VULKAN_DrawInstancedPrimitives(
@@ -3663,7 +3684,7 @@ static void VULKAN_DrawInstancedPrimitives(
 	uint32_t vertexParamOffset,
 	uint32_t fragmentParamOffset
 ) {
-	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
 	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
 
 	VkDescriptorSet descriptorSets[4];
@@ -3687,7 +3708,6 @@ static void VULKAN_DrawInstancedPrimitives(
 		2,
 		dynamicOffsets
 	);
-	vulkanCommandBuffer->numActiveCommands += 1;
 
 	renderer->vkCmdDrawIndexed(
 		vulkanCommandBuffer->commandBuffer,
@@ -3700,7 +3720,6 @@ static void VULKAN_DrawInstancedPrimitives(
 		baseVertex,
 		0
 	);
-	vulkanCommandBuffer->numActiveCommands += 1;
 }
 
 static void VULKAN_DrawIndexedPrimitives(
@@ -3740,8 +3759,9 @@ static void VULKAN_DrawPrimitives(
 	uint32_t vertexParamOffset,
 	uint32_t fragmentParamOffset
 ) {
-	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
 	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
+
 	VkDescriptorSet descriptorSets[4];
 	uint32_t dynamicOffsets[2];
 
@@ -3763,7 +3783,6 @@ static void VULKAN_DrawPrimitives(
 		2,
 		dynamicOffsets
 	);
-	vulkanCommandBuffer->numActiveCommands += 1;
 
 	renderer->vkCmdDraw(
 		vulkanCommandBuffer->commandBuffer,
@@ -3775,7 +3794,6 @@ static void VULKAN_DrawPrimitives(
 		vertexStart,
 		0
 	);
-	vulkanCommandBuffer->numActiveCommands += 1;
 }
 
 static void VULKAN_DispatchCompute(
@@ -3786,9 +3804,10 @@ static void VULKAN_DispatchCompute(
 	uint32_t groupCountZ,
 	uint32_t computeParamOffset
 ) {
-	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
 	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
 	VulkanComputePipeline *computePipeline = vulkanCommandBuffer->currentComputePipeline;
+
 	VulkanBuffer *currentBuffer;
 	VkDescriptorSet descriptorSets[3];
 	uint32_t i;
@@ -3798,7 +3817,7 @@ static void VULKAN_DispatchCompute(
 		currentBuffer = vulkanCommandBuffer->boundComputeBuffers[i];
 		VULKAN_INTERNAL_BufferMemoryBarrier(
 			renderer,
-			vulkanCommandBuffer,
+			vulkanCommandBuffer->commandBuffer,
 			RESOURCE_ACCESS_COMPUTE_SHADER_READ_OTHER,
 			currentBuffer,
 			currentBuffer->subBuffers[currentBuffer->currentSubBufferIndex]
@@ -3819,7 +3838,6 @@ static void VULKAN_DispatchCompute(
 		1,
 		&computeParamOffset
 	);
-	vulkanCommandBuffer->numActiveCommands += 1;
 
 	renderer->vkCmdDispatch(
 		vulkanCommandBuffer->commandBuffer,
@@ -3827,7 +3845,6 @@ static void VULKAN_DispatchCompute(
 		groupCountY,
 		groupCountZ
 	);
-	vulkanCommandBuffer->numActiveCommands += 1;
 
 	for (i = 0; i < vulkanCommandBuffer->boundComputeBufferCount; i += 1)
 	{
@@ -3836,7 +3853,7 @@ static void VULKAN_DispatchCompute(
 		{
 			VULKAN_INTERNAL_BufferMemoryBarrier(
 				renderer,
-				vulkanCommandBuffer,
+				vulkanCommandBuffer->commandBuffer,
 				RESOURCE_ACCESS_VERTEX_BUFFER,
 				currentBuffer,
 				currentBuffer->subBuffers[currentBuffer->currentSubBufferIndex]
@@ -3846,7 +3863,7 @@ static void VULKAN_DispatchCompute(
 		{
 			VULKAN_INTERNAL_BufferMemoryBarrier(
 				renderer,
-				vulkanCommandBuffer,
+				vulkanCommandBuffer->commandBuffer,
 				RESOURCE_ACCESS_INDEX_BUFFER,
 				currentBuffer,
 				currentBuffer->subBuffers[currentBuffer->currentSubBufferIndex]
@@ -5420,6 +5437,7 @@ static uint8_t VULKAN_INTERNAL_CreateTexture(
 	texture->levelCount = levelCount;
 	texture->layerCount = layerCount;
 	texture->resourceAccessType = RESOURCE_ACCESS_NONE;
+	texture->queueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 	texture->usageFlags = textureUsageFlags;
 
 	return 1;
@@ -5754,7 +5772,6 @@ static void VULKAN_INTERNAL_MaybeExpandStagingBuffer(
 
 static void VULKAN_SetTextureData2D(
 	REFRESH_Renderer *driverData,
-	REFRESH_CommandBuffer *commandBuffer,
 	REFRESH_Texture *texture,
 	uint32_t x,
 	uint32_t y,
@@ -5764,9 +5781,10 @@ static void VULKAN_SetTextureData2D(
 	void *data,
 	uint32_t dataLengthInBytes
 ) {
-	VkResult vulkanResult;
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
-	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
+
+	VkCommandBuffer commandBuffer = renderer->transferCommandBuffers[renderer->frameIndex];
+	VkResult vulkanResult;
 	VulkanTexture *vulkanTexture = (VulkanTexture*) texture;
 	VkBufferImageCopy imageCopy;
 	uint8_t *mapPointer;
@@ -5797,7 +5815,7 @@ static void VULKAN_SetTextureData2D(
 
 	VULKAN_INTERNAL_ImageMemoryBarrier(
 		renderer,
-		vulkanCommandBuffer,
+		renderer->transferCommandBuffers[renderer->frameIndex],
 		RESOURCE_ACCESS_TRANSFER_WRITE,
 		VK_IMAGE_ASPECT_COLOR_BIT,
 		0,
@@ -5806,6 +5824,8 @@ static void VULKAN_SetTextureData2D(
 		vulkanTexture->levelCount,
 		0,
 		vulkanTexture->image,
+		renderer->queueFamilyIndices.transferFamily,
+		&vulkanTexture->queueFamilyIndex,
 		&vulkanTexture->resourceAccessType
 	);
 
@@ -5824,20 +5844,19 @@ static void VULKAN_SetTextureData2D(
 	imageCopy.bufferImageHeight = 0;
 
 	renderer->vkCmdCopyBufferToImage(
-		vulkanCommandBuffer->commandBuffer,
+		commandBuffer,
 		renderer->textureStagingBuffer->subBuffers[0]->buffer,
 		vulkanTexture->image,
 		AccessMap[vulkanTexture->resourceAccessType].imageLayout,
 		1,
 		&imageCopy
 	);
-	vulkanCommandBuffer->numActiveCommands += 1;
 
 	if (vulkanTexture->usageFlags & REFRESH_TEXTUREUSAGE_SAMPLER_BIT)
 	{
 		VULKAN_INTERNAL_ImageMemoryBarrier(
 			renderer,
-			vulkanCommandBuffer,
+			commandBuffer,
 			RESOURCE_ACCESS_ANY_SHADER_READ_SAMPLED_IMAGE,
 			VK_IMAGE_ASPECT_COLOR_BIT,
 			0,
@@ -5846,17 +5865,19 @@ static void VULKAN_SetTextureData2D(
 			vulkanTexture->levelCount,
 			0,
 			vulkanTexture->image,
+			renderer->queueFamilyIndices.graphicsFamily,
+			&vulkanTexture->queueFamilyIndex,
 			&vulkanTexture->resourceAccessType
 		);
 	}
 
-	/* Hard sync point */
-	VULKAN_SubmitAndSync(driverData, commandBuffer);
+	renderer->pendingTransfer = 1;
+
+	VULKAN_INTERNAL_SubmitTransfer(driverData);
 }
 
 static void VULKAN_SetTextureData3D(
 	REFRESH_Renderer *driverData,
-	REFRESH_CommandBuffer *commandBuffer,
 	REFRESH_Texture *texture,
 	uint32_t x,
 	uint32_t y,
@@ -5868,10 +5889,11 @@ static void VULKAN_SetTextureData3D(
 	void* data,
 	uint32_t dataLength
 ) {
-	VkResult vulkanResult;
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
-	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
 	VulkanTexture *vulkanTexture = (VulkanTexture*) texture;
+
+	VkCommandBuffer commandBuffer = renderer->transferCommandBuffers[renderer->frameIndex];
+	VkResult vulkanResult;
 	VkBufferImageCopy imageCopy;
 	uint8_t *mapPointer;
 
@@ -5901,7 +5923,7 @@ static void VULKAN_SetTextureData3D(
 
 	VULKAN_INTERNAL_ImageMemoryBarrier(
 		renderer,
-		vulkanCommandBuffer,
+		commandBuffer,
 		RESOURCE_ACCESS_TRANSFER_WRITE,
 		VK_IMAGE_ASPECT_COLOR_BIT,
 		0,
@@ -5910,6 +5932,8 @@ static void VULKAN_SetTextureData3D(
 		vulkanTexture->levelCount,
 		0,
 		vulkanTexture->image,
+		renderer->queueFamilyIndices.transferFamily,
+		&vulkanTexture->queueFamilyIndex,
 		&vulkanTexture->resourceAccessType
 	);
 
@@ -5928,20 +5952,19 @@ static void VULKAN_SetTextureData3D(
 	imageCopy.bufferImageHeight = 0;
 
 	renderer->vkCmdCopyBufferToImage(
-		vulkanCommandBuffer->commandBuffer,
+		commandBuffer,
 		renderer->textureStagingBuffer->subBuffers[0]->buffer,
 		vulkanTexture->image,
 		AccessMap[vulkanTexture->resourceAccessType].imageLayout,
 		1,
 		&imageCopy
 	);
-	vulkanCommandBuffer->numActiveCommands += 1;
 
 	if (vulkanTexture->usageFlags & REFRESH_TEXTUREUSAGE_SAMPLER_BIT)
 	{
 		VULKAN_INTERNAL_ImageMemoryBarrier(
 			renderer,
-			vulkanCommandBuffer,
+			commandBuffer,
 			RESOURCE_ACCESS_ANY_SHADER_READ_SAMPLED_IMAGE,
 			VK_IMAGE_ASPECT_COLOR_BIT,
 			0,
@@ -5950,17 +5973,19 @@ static void VULKAN_SetTextureData3D(
 			vulkanTexture->levelCount,
 			0,
 			vulkanTexture->image,
+			renderer->queueFamilyIndices.graphicsFamily,
+			&vulkanTexture->queueFamilyIndex,
 			&vulkanTexture->resourceAccessType
 		);
 	}
 
-	/* Hard sync point */
-	VULKAN_SubmitAndSync(driverData, commandBuffer);
+	renderer->pendingTransfer = 1;
+
+	VULKAN_INTERNAL_SubmitTransfer(driverData);
 }
 
 static void VULKAN_SetTextureDataCube(
 	REFRESH_Renderer *driverData,
-	REFRESH_CommandBuffer *commandBuffer,
 	REFRESH_Texture *texture,
 	uint32_t x,
 	uint32_t y,
@@ -5971,10 +5996,11 @@ static void VULKAN_SetTextureDataCube(
 	void* data,
 	uint32_t dataLength
 ) {
-	VkResult vulkanResult;
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
-	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
 	VulkanTexture *vulkanTexture = (VulkanTexture*) texture;
+
+	VkCommandBuffer commandBuffer = renderer->transferCommandBuffers[renderer->frameIndex];
+	VkResult vulkanResult;
 	VkBufferImageCopy imageCopy;
 	uint8_t *mapPointer;
 
@@ -6004,7 +6030,7 @@ static void VULKAN_SetTextureDataCube(
 
 	VULKAN_INTERNAL_ImageMemoryBarrier(
 		renderer,
-		vulkanCommandBuffer,
+		commandBuffer,
 		RESOURCE_ACCESS_TRANSFER_WRITE,
 		VK_IMAGE_ASPECT_COLOR_BIT,
 		0,
@@ -6013,6 +6039,8 @@ static void VULKAN_SetTextureDataCube(
 		vulkanTexture->levelCount,
 		0,
 		vulkanTexture->image,
+		renderer->queueFamilyIndices.transferFamily,
+		&vulkanTexture->queueFamilyIndex,
 		&vulkanTexture->resourceAccessType
 	);
 
@@ -6031,20 +6059,19 @@ static void VULKAN_SetTextureDataCube(
 	imageCopy.bufferImageHeight = 0; /* assumes tightly packed data */
 
 	renderer->vkCmdCopyBufferToImage(
-		vulkanCommandBuffer->commandBuffer,
+		commandBuffer,
 		renderer->textureStagingBuffer->subBuffers[0]->buffer,
 		vulkanTexture->image,
 		AccessMap[vulkanTexture->resourceAccessType].imageLayout,
 		1,
 		&imageCopy
 	);
-	vulkanCommandBuffer->numActiveCommands += 1;
 
 	if (vulkanTexture->usageFlags & REFRESH_TEXTUREUSAGE_SAMPLER_BIT)
 	{
 		VULKAN_INTERNAL_ImageMemoryBarrier(
 			renderer,
-			vulkanCommandBuffer,
+			commandBuffer,
 			RESOURCE_ACCESS_ANY_SHADER_READ_SAMPLED_IMAGE,
 			VK_IMAGE_ASPECT_COLOR_BIT,
 			0,
@@ -6053,17 +6080,19 @@ static void VULKAN_SetTextureDataCube(
 			vulkanTexture->levelCount,
 			0,
 			vulkanTexture->image,
+			renderer->queueFamilyIndices.graphicsFamily,
+			&vulkanTexture->queueFamilyIndex,
 			&vulkanTexture->resourceAccessType
 		);
 	}
 
-	/* Hard sync point */
-	VULKAN_SubmitAndSync(driverData, commandBuffer);
+	renderer->pendingTransfer = 1;
+
+	VULKAN_INTERNAL_SubmitTransfer(driverData);
 }
 
 static void VULKAN_SetTextureDataYUV(
 	REFRESH_Renderer *driverData,
-	REFRESH_CommandBuffer *commandBuffer,
 	REFRESH_Texture *y,
 	REFRESH_Texture *u,
 	REFRESH_Texture *v,
@@ -6075,8 +6104,9 @@ static void VULKAN_SetTextureDataYUV(
 	uint32_t dataLength
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
-	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
 	VulkanTexture *tex;
+
+	VkCommandBuffer commandBuffer = renderer->transferCommandBuffers[renderer->frameIndex];
 	uint8_t *dataPtr = (uint8_t*) data;
 	int32_t yDataLength = BytesPerImage(yWidth, yHeight, REFRESH_SURFACEFORMAT_R8);
 	int32_t uvDataLength = BytesPerImage(uvWidth, uvHeight, REFRESH_SURFACEFORMAT_R8);
@@ -6125,7 +6155,7 @@ static void VULKAN_SetTextureDataYUV(
 
 	VULKAN_INTERNAL_ImageMemoryBarrier(
 		renderer,
-		vulkanCommandBuffer,
+		commandBuffer,
 		RESOURCE_ACCESS_TRANSFER_WRITE,
 		VK_IMAGE_ASPECT_COLOR_BIT,
 		0,
@@ -6134,6 +6164,8 @@ static void VULKAN_SetTextureDataYUV(
 		tex->levelCount,
 		0,
 		tex->image,
+		renderer->queueFamilyIndices.transferFamily,
+		&tex->queueFamilyIndex,
 		&tex->resourceAccessType
 	);
 
@@ -6143,14 +6175,13 @@ static void VULKAN_SetTextureDataYUV(
 	imageCopy.bufferImageHeight = yHeight;
 
 	renderer->vkCmdCopyBufferToImage(
-		vulkanCommandBuffer->commandBuffer,
+		commandBuffer,
 		renderer->textureStagingBuffer->subBuffers[0]->buffer,
 		tex->image,
 		AccessMap[tex->resourceAccessType].imageLayout,
 		1,
 		&imageCopy
 	);
-	vulkanCommandBuffer->numActiveCommands += 1;
 
 	/* These apply to both U and V */
 
@@ -6173,7 +6204,7 @@ static void VULKAN_SetTextureDataYUV(
 
 	VULKAN_INTERNAL_ImageMemoryBarrier(
 		renderer,
-		vulkanCommandBuffer,
+		commandBuffer,
 		RESOURCE_ACCESS_TRANSFER_WRITE,
 		VK_IMAGE_ASPECT_COLOR_BIT,
 		0,
@@ -6182,18 +6213,19 @@ static void VULKAN_SetTextureDataYUV(
 		tex->levelCount,
 		0,
 		tex->image,
+		renderer->queueFamilyIndices.transferFamily,
+		&tex->queueFamilyIndex,
 		&tex->resourceAccessType
 	);
 
 	renderer->vkCmdCopyBufferToImage(
-		vulkanCommandBuffer->commandBuffer,
+		commandBuffer,
 		renderer->textureStagingBuffer->subBuffers[0]->buffer,
 		tex->image,
 		AccessMap[tex->resourceAccessType].imageLayout,
 		1,
 		&imageCopy
 	);
-	vulkanCommandBuffer->numActiveCommands += 1;
 
 	/* V */
 
@@ -6214,7 +6246,7 @@ static void VULKAN_SetTextureDataYUV(
 
 	VULKAN_INTERNAL_ImageMemoryBarrier(
 		renderer,
-		vulkanCommandBuffer,
+		commandBuffer,
 		RESOURCE_ACCESS_TRANSFER_WRITE,
 		VK_IMAGE_ASPECT_COLOR_BIT,
 		0,
@@ -6223,24 +6255,25 @@ static void VULKAN_SetTextureDataYUV(
 		tex->levelCount,
 		0,
 		tex->image,
+		renderer->queueFamilyIndices.transferFamily,
+		&tex->queueFamilyIndex,
 		&tex->resourceAccessType
 	);
 
 	renderer->vkCmdCopyBufferToImage(
-		vulkanCommandBuffer->commandBuffer,
+		commandBuffer,
 		renderer->textureStagingBuffer->subBuffers[0]->buffer,
 		tex->image,
 		AccessMap[tex->resourceAccessType].imageLayout,
 		1,
 		&imageCopy
 	);
-	vulkanCommandBuffer->numActiveCommands += 1;
 
 	if (tex->usageFlags & REFRESH_TEXTUREUSAGE_SAMPLER_BIT)
 	{
 		VULKAN_INTERNAL_ImageMemoryBarrier(
 			renderer,
-			vulkanCommandBuffer,
+			commandBuffer,
 			RESOURCE_ACCESS_ANY_SHADER_READ_SAMPLED_IMAGE,
 			VK_IMAGE_ASPECT_COLOR_BIT,
 			0,
@@ -6249,12 +6282,16 @@ static void VULKAN_SetTextureDataYUV(
 			tex->levelCount,
 			0,
 			tex->image,
+			renderer->queueFamilyIndices.graphicsFamily,
+			&tex->queueFamilyIndex,
 			&tex->resourceAccessType
 		);
 	}
 
+	renderer->pendingTransfer = 1;
+
 	/* Hard sync point */
-	VULKAN_SubmitAndSync(driverData, commandBuffer);
+	VULKAN_INTERNAL_SubmitTransfer(driverData);
 }
 
 static void VULKAN_SetBufferData(
@@ -6329,7 +6366,7 @@ static uint32_t VULKAN_PushVertexShaderParams(
 	void *data,
 	uint32_t elementCount
 ) {
-	VulkanRenderer* renderer = (VulkanRenderer*)driverData;
+	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
 	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
 
 	SDL_LockMutex(renderer->uniformBufferLock);
@@ -6347,7 +6384,7 @@ static uint32_t VULKAN_PushVertexShaderParams(
 	}
 
 	VULKAN_SetBufferData(
-		driverData,
+		(REFRESH_Renderer*) renderer,
 		(REFRESH_Buffer*) renderer->vertexUBO,
 		renderer->vertexUBOOffset,
 		data,
@@ -6365,7 +6402,7 @@ static uint32_t VULKAN_PushFragmentShaderParams(
 	void *data,
 	uint32_t elementCount
 ) {
-	VulkanRenderer* renderer = (VulkanRenderer*)driverData;
+	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
 	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
 
 	SDL_LockMutex(renderer->uniformBufferLock);
@@ -6383,7 +6420,7 @@ static uint32_t VULKAN_PushFragmentShaderParams(
 	}
 
 	VULKAN_SetBufferData(
-		driverData,
+		(REFRESH_Renderer*) renderer,
 		(REFRESH_Buffer*) renderer->fragmentUBO,
 		renderer->fragmentUBOOffset,
 		data,
@@ -6401,7 +6438,7 @@ static uint32_t VULKAN_PushComputeShaderParams(
 	void *data,
 	uint32_t elementCount
 ) {
-	VulkanRenderer* renderer = (VulkanRenderer*)driverData;
+	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
 	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
 
 	SDL_LockMutex(renderer->uniformBufferLock);
@@ -6419,7 +6456,7 @@ static uint32_t VULKAN_PushComputeShaderParams(
 	}
 
 	VULKAN_SetBufferData(
-		driverData,
+		(REFRESH_Renderer*) renderer,
 		(REFRESH_Buffer*) renderer->computeUBO,
 		renderer->computeUBOOffset,
 		data,
@@ -6736,12 +6773,12 @@ static void VULKAN_SetVertexSamplers(
 	REFRESH_Texture **pTextures,
 	REFRESH_Sampler **pSamplers
 ) {
-	VulkanTexture *currentTexture;
-	uint32_t i, samplerCount;
-
 	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
 	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
 	VulkanGraphicsPipeline *graphicsPipeline = vulkanCommandBuffer->currentGraphicsPipeline;
+
+	VulkanTexture *currentTexture;
+	uint32_t i, samplerCount;
 	ImageDescriptorSetData vertexSamplerDescriptorSetData;
 
 	if (graphicsPipeline->pipelineLayout->vertexSamplerDescriptorSetCache == NULL)
@@ -6772,12 +6809,12 @@ static void VULKAN_SetFragmentSamplers(
 	REFRESH_Texture **pTextures,
 	REFRESH_Sampler **pSamplers
 ) {
-	VulkanTexture *currentTexture;
-	uint32_t i, samplerCount;
-
 	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
 	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
 	VulkanGraphicsPipeline *graphicsPipeline = vulkanCommandBuffer->currentGraphicsPipeline;
+	VulkanTexture *currentTexture;
+
+	uint32_t i, samplerCount;
 	ImageDescriptorSetData fragmentSamplerDescriptorSetData;
 
 	if (graphicsPipeline->pipelineLayout->fragmentSamplerDescriptorSetCache == NULL)
@@ -6804,7 +6841,6 @@ static void VULKAN_SetFragmentSamplers(
 
 static void VULKAN_INTERNAL_GetTextureData(
 	REFRESH_Renderer *driverData,
-	REFRESH_CommandBuffer *commandBuffer,
 	REFRESH_Texture *texture,
 	int32_t x,
 	int32_t y,
@@ -6815,8 +6851,9 @@ static void VULKAN_INTERNAL_GetTextureData(
 	void* data
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
-	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
 	VulkanTexture *vulkanTexture = (VulkanTexture*) texture;
+
+	VkCommandBuffer commandBuffer = renderer->transferCommandBuffers[renderer->frameIndex];
 	VulkanResourceAccessType prevResourceAccess;
 	VkBufferImageCopy imageCopy;
 	uint8_t *dataPtr = (uint8_t*) data;
@@ -6831,7 +6868,7 @@ static void VULKAN_INTERNAL_GetTextureData(
 
 	VULKAN_INTERNAL_ImageMemoryBarrier(
 		renderer,
-		vulkanCommandBuffer,
+		commandBuffer,
 		RESOURCE_ACCESS_TRANSFER_READ,
 		VK_IMAGE_ASPECT_COLOR_BIT,
 		0,
@@ -6840,6 +6877,8 @@ static void VULKAN_INTERNAL_GetTextureData(
 		vulkanTexture->levelCount,
 		0,
 		vulkanTexture->image,
+		renderer->queueFamilyIndices.transferFamily,
+		&vulkanTexture->queueFamilyIndex,
 		&vulkanTexture->resourceAccessType
 	);
 
@@ -6860,20 +6899,19 @@ static void VULKAN_INTERNAL_GetTextureData(
 	imageCopy.bufferOffset = 0;
 
 	renderer->vkCmdCopyImageToBuffer(
-		vulkanCommandBuffer->commandBuffer,
+		commandBuffer,
 		vulkanTexture->image,
 		AccessMap[vulkanTexture->resourceAccessType].imageLayout,
 		renderer->textureStagingBuffer->subBuffers[0]->buffer,
 		1,
 		&imageCopy
 	);
-	vulkanCommandBuffer->numActiveCommands += 1;
 
 	/* Restore the image layout and wait for completion of the render pass */
 
 	VULKAN_INTERNAL_ImageMemoryBarrier(
 		renderer,
-		vulkanCommandBuffer,
+		commandBuffer,
 		prevResourceAccess,
 		VK_IMAGE_ASPECT_COLOR_BIT,
 		0,
@@ -6882,11 +6920,15 @@ static void VULKAN_INTERNAL_GetTextureData(
 		vulkanTexture->levelCount,
 		0,
 		vulkanTexture->image,
+		renderer->queueFamilyIndices.graphicsFamily,
+		&vulkanTexture->queueFamilyIndex,
 		&vulkanTexture->resourceAccessType
 	);
 
+	renderer->pendingTransfer = 1;
+
 	/* Hard sync point */
-	VULKAN_SubmitAndSync(driverData, commandBuffer);
+	VULKAN_INTERNAL_SubmitTransfer(driverData);
 
 	/* Read from staging buffer */
 
@@ -6919,7 +6961,6 @@ static void VULKAN_INTERNAL_GetTextureData(
 
 static void VULKAN_GetTextureData2D(
 	REFRESH_Renderer *driverData,
-	REFRESH_CommandBuffer *commandBuffer,
 	REFRESH_Texture *texture,
 	uint32_t x,
 	uint32_t y,
@@ -6930,7 +6971,6 @@ static void VULKAN_GetTextureData2D(
 ) {
     VULKAN_INTERNAL_GetTextureData(
 		driverData,
-		commandBuffer,
 		texture,
 		x,
 		y,
@@ -6944,7 +6984,6 @@ static void VULKAN_GetTextureData2D(
 
 static void VULKAN_GetTextureDataCube(
 	REFRESH_Renderer *driverData,
-	REFRESH_CommandBuffer *commandBuffer,
 	REFRESH_Texture *texture,
 	uint32_t x,
 	uint32_t y,
@@ -6956,7 +6995,6 @@ static void VULKAN_GetTextureDataCube(
 ) {
     VULKAN_INTERNAL_GetTextureData(
 		driverData,
-		commandBuffer,
 		texture,
 		x,
 		y,
@@ -7199,9 +7237,10 @@ static void VULKAN_BeginRenderPass(
 	uint32_t colorClearCount,
 	REFRESH_DepthStencilValue *depthStencilClearValue
 ) {
-	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
 	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
 	VulkanFramebuffer *vulkanFramebuffer = (VulkanFramebuffer*) framebuffer;
+
 	VkClearValue *clearValues;
 	uint32_t i;
 	uint32_t clearCount = colorClearCount;
@@ -7213,7 +7252,7 @@ static void VULKAN_BeginRenderPass(
 	{
 		VULKAN_INTERNAL_ImageMemoryBarrier(
 			renderer,
-			vulkanCommandBuffer,
+			vulkanCommandBuffer->commandBuffer,
 			RESOURCE_ACCESS_COLOR_ATTACHMENT_READ_WRITE,
 			VK_IMAGE_ASPECT_COLOR_BIT,
 			vulkanFramebuffer->colorTargets[i]->layer,
@@ -7222,6 +7261,8 @@ static void VULKAN_BeginRenderPass(
 			1,
 			0,
 			vulkanFramebuffer->colorTargets[i]->texture->image,
+			VK_QUEUE_FAMILY_IGNORED,
+			NULL,
 			&vulkanFramebuffer->colorTargets[i]->texture->resourceAccessType
 		);
 	}
@@ -7237,7 +7278,7 @@ static void VULKAN_BeginRenderPass(
 
 		VULKAN_INTERNAL_ImageMemoryBarrier(
 			renderer,
-			vulkanCommandBuffer,
+			vulkanCommandBuffer->commandBuffer,
 			RESOURCE_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_WRITE,
 			depthAspectFlags,
 			0,
@@ -7246,6 +7287,8 @@ static void VULKAN_BeginRenderPass(
 			1,
 			0,
 			vulkanFramebuffer->depthStencilTarget->texture->image,
+			VK_QUEUE_FAMILY_IGNORED,
+			NULL,
 			&vulkanFramebuffer->depthStencilTarget->texture->resourceAccessType
 		);
 
@@ -7289,7 +7332,6 @@ static void VULKAN_BeginRenderPass(
 		&renderPassBeginInfo,
 		VK_SUBPASS_CONTENTS_INLINE
 	);
-	vulkanCommandBuffer->numActiveCommands += 1;
 
 	vulkanCommandBuffer->currentFramebuffer = vulkanFramebuffer;
 
@@ -7300,15 +7342,14 @@ static void VULKAN_EndRenderPass(
 	REFRESH_Renderer *driverData,
 	REFRESH_CommandBuffer *commandBuffer
 ) {
-	uint32_t i;
-	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
 	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
 	VulkanTexture *currentTexture;
+	uint32_t i;
 
 	renderer->vkCmdEndRenderPass(
 		vulkanCommandBuffer->commandBuffer
 	);
-	vulkanCommandBuffer->numActiveCommands += 1;
 
 	for (i = 0; i < vulkanCommandBuffer->currentFramebuffer->colorTargetCount; i += 1)
 	{
@@ -7317,7 +7358,7 @@ static void VULKAN_EndRenderPass(
 		{
 			VULKAN_INTERNAL_ImageMemoryBarrier(
 				renderer,
-				vulkanCommandBuffer,
+				vulkanCommandBuffer->commandBuffer,
 				RESOURCE_ACCESS_ANY_SHADER_READ_SAMPLED_IMAGE,
 				VK_IMAGE_ASPECT_COLOR_BIT,
 				0,
@@ -7326,6 +7367,8 @@ static void VULKAN_EndRenderPass(
 				currentTexture->levelCount,
 				0,
 				currentTexture->image,
+				VK_QUEUE_FAMILY_IGNORED,
+				NULL,
 				&currentTexture->resourceAccessType
 			);
 		}
@@ -7360,7 +7403,6 @@ static void VULKAN_BindGraphicsPipeline(
 		VK_PIPELINE_BIND_POINT_GRAPHICS,
 		pipeline->pipeline
 	);
-	vulkanCommandBuffer->numActiveCommands += 1;
 
 	vulkanCommandBuffer->currentGraphicsPipeline = pipeline;
 }
@@ -7402,10 +7444,11 @@ static void VULKAN_BindVertexBuffers(
 	REFRESH_Buffer **pBuffers,
 	uint64_t *pOffsets
 ) {
-	VkBuffer *buffers = SDL_stack_alloc(VkBuffer, bindingCount);
-	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
-	VulkanBuffer* currentBuffer;
 	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
+	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
+
+	VkBuffer *buffers = SDL_stack_alloc(VkBuffer, bindingCount);
+	VulkanBuffer* currentBuffer;
 	uint32_t i;
 
 	for (i = 0; i < bindingCount; i += 1)
@@ -7422,7 +7465,6 @@ static void VULKAN_BindVertexBuffers(
 		buffers,
 		pOffsets
 	);
-	vulkanCommandBuffer->numActiveCommands += 1;
 
 	SDL_stack_free(buffers);
 }
@@ -7446,7 +7488,6 @@ static void VULKAN_BindIndexBuffer(
 		offset,
 		RefreshToVK_IndexType[indexElementSize]
 	);
-	vulkanCommandBuffer->numActiveCommands += 1;
 }
 
 static void VULKAN_BindComputePipeline(
@@ -7454,7 +7495,7 @@ static void VULKAN_BindComputePipeline(
 	REFRESH_CommandBuffer *commandBuffer,
 	REFRESH_ComputePipeline *computePipeline
 ) {
-	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
 	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
 	VulkanComputePipeline *vulkanComputePipeline = (VulkanComputePipeline*) computePipeline;
 
@@ -7474,7 +7515,6 @@ static void VULKAN_BindComputePipeline(
 		VK_PIPELINE_BIND_POINT_COMPUTE,
 		vulkanComputePipeline->pipeline
 	);
-	vulkanCommandBuffer->numActiveCommands += 1;
 
 	vulkanCommandBuffer->currentComputePipeline = vulkanComputePipeline;
 }
@@ -7484,9 +7524,10 @@ static void VULKAN_BindComputeBuffers(
 	REFRESH_CommandBuffer *commandBuffer,
 	REFRESH_Buffer **pBuffers
 ) {
-	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
 	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
 	VulkanComputePipeline *computePipeline = vulkanCommandBuffer->currentComputePipeline;
+
 	VulkanBuffer *currentBuffer;
 	BufferDescriptorSetData bufferDescriptorSetData;
 	uint32_t i;
@@ -7523,9 +7564,10 @@ static void VULKAN_BindComputeTextures(
 	REFRESH_CommandBuffer *commandBuffer,
 	REFRESH_Texture **pTextures
 ) {
-	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
 	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
 	VulkanComputePipeline *computePipeline = vulkanCommandBuffer->currentComputePipeline;
+
 	VulkanTexture *currentTexture;
 	ImageDescriptorSetData imageDescriptorSetData;
 	uint32_t i;
@@ -7622,7 +7664,6 @@ static REFRESH_CommandBuffer* VULKAN_AcquireCommandBuffer(
 	}
 	commandBuffer->boundComputeBufferCount = 0;
 
-	commandBuffer->numActiveCommands = 0;
 	commandBuffer->fixed = fixed;
 	commandBuffer->submitted = 0;
 
@@ -7632,7 +7673,7 @@ static REFRESH_CommandBuffer* VULKAN_AcquireCommandBuffer(
 }
 
 static void VULKAN_QueuePresent(
-	REFRESH_Renderer* driverData,
+	REFRESH_Renderer *driverData,
 	REFRESH_CommandBuffer *commandBuffer,
 	REFRESH_TextureSlice* textureSlice,
 	REFRESH_Rect* sourceRectangle,
@@ -7703,7 +7744,7 @@ static void VULKAN_QueuePresent(
 
 	VULKAN_INTERNAL_ImageMemoryBarrier(
 		renderer,
-		vulkanCommandBuffer,
+		vulkanCommandBuffer->commandBuffer,
 		RESOURCE_ACCESS_TRANSFER_READ,
 		VK_IMAGE_ASPECT_COLOR_BIT,
 		0,
@@ -7712,12 +7753,14 @@ static void VULKAN_QueuePresent(
 		1,
 		0,
 		vulkanTexture->image,
+		VK_QUEUE_FAMILY_IGNORED,
+		NULL,
 		&vulkanTexture->resourceAccessType
 	);
 
 	VULKAN_INTERNAL_ImageMemoryBarrier(
 		renderer,
-		vulkanCommandBuffer,
+		vulkanCommandBuffer->commandBuffer,
 		RESOURCE_ACCESS_TRANSFER_WRITE,
 		VK_IMAGE_ASPECT_COLOR_BIT,
 		0,
@@ -7726,6 +7769,8 @@ static void VULKAN_QueuePresent(
 		1,
 		0,
 		renderer->swapChainImages[swapChainImageIndex],
+		VK_QUEUE_FAMILY_IGNORED,
+		NULL,
 		&renderer->swapChainResourceAccessTypes[swapChainImageIndex]
 	);
 
@@ -7763,11 +7808,10 @@ static void VULKAN_QueuePresent(
 		&blit,
 		VK_FILTER_LINEAR
 	);
-	vulkanCommandBuffer->numActiveCommands += 1;
 
 	VULKAN_INTERNAL_ImageMemoryBarrier(
 		renderer,
-		vulkanCommandBuffer,
+		vulkanCommandBuffer->commandBuffer,
 		RESOURCE_ACCESS_PRESENT,
 		VK_IMAGE_ASPECT_COLOR_BIT,
 		0,
@@ -7776,12 +7820,14 @@ static void VULKAN_QueuePresent(
 		1,
 		0,
 		renderer->swapChainImages[swapChainImageIndex],
+		VK_QUEUE_FAMILY_IGNORED,
+		NULL,
 		&renderer->swapChainResourceAccessTypes[swapChainImageIndex]
 	);
 
 	VULKAN_INTERNAL_ImageMemoryBarrier(
 		renderer,
-		vulkanCommandBuffer,
+		vulkanCommandBuffer->commandBuffer,
 		RESOURCE_ACCESS_COLOR_ATTACHMENT_READ_WRITE,
 		VK_IMAGE_ASPECT_COLOR_BIT,
 		0,
@@ -7790,6 +7836,8 @@ static void VULKAN_QueuePresent(
 		1,
 		0,
 		vulkanTexture->image,
+		VK_QUEUE_FAMILY_IGNORED,
+		NULL,
 		&vulkanTexture->resourceAccessType
 	);
 }
@@ -7964,7 +8012,7 @@ static void VULKAN_INTERNAL_ResetCommandBuffer(
 	VulkanCommandPool *commandPool = commandBuffer->commandPool;
 
 	vulkanResult = renderer->vkResetCommandBuffer(
-		commandBuffer,
+		commandBuffer->commandBuffer,
 		VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT
 	);
 
@@ -7981,13 +8029,13 @@ static void VULKAN_INTERNAL_ResetCommandBuffer(
 	commandPool->inactiveCommandBufferCount += 1;
 }
 
-static void VULKAN_SubmitAndSync(
-	REFRESH_Renderer *driverData,
-	REFRESH_CommandBuffer *commandBuffer
+/* This function triggers a hard sync point */
+static void VULKAN_INTERNAL_SubmitTransfer(
+	REFRESH_Renderer *driverData
 ) {
 	VulkanRenderer* renderer = (VulkanRenderer*)driverData;
 
-	VULKAN_Submit(driverData, &commandBuffer, 1);
+	VULKAN_Submit(driverData, NULL, 0);
 
 	renderer->vkWaitForFences(
 		renderer->logicalDevice,
@@ -8004,7 +8052,7 @@ static void VULKAN_Submit(
 	uint32_t commandBufferCount
 ) {
 	VulkanRenderer* renderer = (VulkanRenderer*)driverData;
-	VkSubmitInfo submitInfo;
+	VkSubmitInfo transferSubmitInfo, submitInfo;
 	VkResult vulkanResult, presentResult = VK_SUCCESS;
 	VulkanCommandBuffer *currentCommandBuffer;
 	VkCommandBuffer *commandBuffers;
@@ -8013,6 +8061,19 @@ static void VULKAN_Submit(
 
 	VkPipelineStageFlags waitStages = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 	VkPresentInfoKHR presentInfo;
+
+	if (renderer->pendingTransfer)
+	{
+		transferSubmitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+		transferSubmitInfo.pNext = NULL;
+		transferSubmitInfo.commandBufferCount = 1;
+		transferSubmitInfo.pCommandBuffers = &renderer->transferCommandBuffers[renderer->frameIndex];
+		transferSubmitInfo.pWaitDstStageMask = NULL;
+		transferSubmitInfo.pWaitSemaphores = NULL;
+		transferSubmitInfo.waitSemaphoreCount = 0;
+		transferSubmitInfo.pSignalSemaphores = &renderer->transferFinishedSemaphore;
+		transferSubmitInfo.signalSemaphoreCount = 1;
+	}
 
 	present = !renderer->headless && renderer->shouldPresent;
 
@@ -8027,8 +8088,8 @@ static void VULKAN_Submit(
 
 	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 	submitInfo.pNext = NULL;
-	submitInfo.commandBufferCount = commandBuffers;
-	submitInfo.pCommandBuffers = commandBufferCount;
+	submitInfo.commandBufferCount = commandBufferCount;
+	submitInfo.pCommandBuffers = commandBuffers;
 
 	if (present)
 	{
@@ -8084,6 +8145,23 @@ static void VULKAN_Submit(
 		&renderer->inFlightFence
 	);
 
+	if (renderer->pendingTransfer)
+	{
+		/* Submit any pending transfers */
+		vulkanResult = renderer->vkQueueSubmit(
+			renderer->transferQueue,
+			1,
+			&transferSubmitInfo,
+			renderer->inFlightFence
+		);
+
+		if (vulkanResult != VK_SUCCESS)
+		{
+			LogVulkanResult("vkQueueSubmit", vulkanResult);
+			return;
+		}
+	}
+
 	/* Submit the commands, finally. */
 	vulkanResult = renderer->vkQueueSubmit(
 		renderer->graphicsQueue,
@@ -8112,7 +8190,7 @@ static void VULKAN_Submit(
 	for (i = 0; i < commandBufferCount; i += 1)
 	{
 		((VulkanCommandBuffer*)pCommandBuffers[i])->submitted = 1;
-		renderer->submittedCommandBuffers[renderer->submittedCommandBufferCount] = pCommandBuffers[i];
+		renderer->submittedCommandBuffers[renderer->submittedCommandBufferCount] = (VulkanCommandBuffer*) pCommandBuffers[i];
 	}
 	renderer->submittedCommandBufferCount = commandBufferCount;
 
@@ -8442,11 +8520,12 @@ static uint8_t VULKAN_INTERNAL_IsDeviceSuitable(
 	SwapChainSupportDetails swapChainSupportDetails;
 	VkQueueFamilyProperties *queueProps;
 	VkBool32 supportsPresent;
-	uint8_t querySuccess, foundSuitableDevice = 0;
+	uint8_t querySuccess, foundGraphicsPresentFamily, foundTransferFamily, foundSuitableDevice = 0;
 	VkPhysicalDeviceProperties deviceProperties;
 
 	queueFamilyIndices->graphicsFamily = UINT32_MAX;
 	queueFamilyIndices->presentFamily = UINT32_MAX;
+	queueFamilyIndices->transferFamily = UINT32_MAX;
 	*isIdeal = 0;
 
 	/* Note: If no dedicated device exists,
@@ -8502,11 +8581,29 @@ static uint8_t VULKAN_INTERNAL_IsDeviceSuitable(
 			surface,
 			&supportsPresent
 		);
-		if (	supportsPresent &&
-			(queueProps[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) != 0	)
+		if (!foundGraphicsPresentFamily)
 		{
-			queueFamilyIndices->graphicsFamily = i;
-			queueFamilyIndices->presentFamily = i;
+			if (	supportsPresent &&
+				(queueProps[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) != 0	)
+			{
+				queueFamilyIndices->graphicsFamily = i;
+				queueFamilyIndices->presentFamily = i;
+				foundGraphicsPresentFamily = 1;
+			}
+		}
+
+		if (!foundTransferFamily)
+		{
+			if (	queueProps[i].queueFlags & VK_QUEUE_TRANSFER_BIT &&
+				!(queueProps[i].queueFlags & VK_QUEUE_GRAPHICS_BIT)	)
+			{
+				queueFamilyIndices->transferFamily = i;
+				foundTransferFamily = 1;
+			}
+		}
+
+		if (foundGraphicsPresentFamily && foundTransferFamily)
+		{
 			foundSuitableDevice = 1;
 			break;
 		}
@@ -8647,14 +8744,12 @@ static uint8_t VULKAN_INTERNAL_CreateLogicalDevice(
 	VkDeviceCreateInfo deviceCreateInfo;
 	VkPhysicalDeviceFeatures deviceFeatures;
 
-	VkDeviceQueueCreateInfo *queueCreateInfos = SDL_stack_alloc(
-		VkDeviceQueueCreateInfo,
-		2
-	);
+	VkDeviceQueueCreateInfo queueCreateInfos[3];
 	VkDeviceQueueCreateInfo queueCreateInfoGraphics;
 	VkDeviceQueueCreateInfo queueCreateInfoPresent;
+	VkDeviceQueueCreateInfo queueCreateInfoTransfer;
 
-	int32_t queueInfoCount = 1;
+	int32_t queueInfoCount = 2;
 	float queuePriority = 1.0f;
 
 	queueCreateInfoGraphics.sType =
@@ -8668,6 +8763,17 @@ static uint8_t VULKAN_INTERNAL_CreateLogicalDevice(
 
 	queueCreateInfos[0] = queueCreateInfoGraphics;
 
+	queueCreateInfoTransfer.sType =
+		VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+	queueCreateInfoTransfer.pNext = NULL;
+	queueCreateInfoTransfer.flags = 0;
+	queueCreateInfoTransfer.queueFamilyIndex =
+		renderer->queueFamilyIndices.transferFamily;
+	queueCreateInfoTransfer.queueCount = 1;
+	queueCreateInfoTransfer.pQueuePriorities = &queuePriority;
+
+	queueCreateInfos[1] = queueCreateInfoTransfer;
+
 	if (renderer->queueFamilyIndices.presentFamily != renderer->queueFamilyIndices.graphicsFamily)
 	{
 		queueCreateInfoPresent.sType =
@@ -8679,7 +8785,7 @@ static uint8_t VULKAN_INTERNAL_CreateLogicalDevice(
 		queueCreateInfoPresent.queueCount = 1;
 		queueCreateInfoPresent.pQueuePriorities = &queuePriority;
 
-		queueCreateInfos[1] = queueCreateInfoPresent;
+		queueCreateInfos[queueInfoCount] = queueCreateInfoPresent;
 		queueInfoCount += 1;
 	}
 
@@ -8741,7 +8847,13 @@ static uint8_t VULKAN_INTERNAL_CreateLogicalDevice(
 		&renderer->presentQueue
 	);
 
-	SDL_stack_free(queueCreateInfos);
+	renderer->vkGetDeviceQueue(
+		renderer->logicalDevice,
+		renderer->queueFamilyIndices.transferFamily,
+		0,
+		&renderer->transferQueue
+	);
+
 	return 1;
 }
 
@@ -8758,6 +8870,10 @@ static REFRESH_Device* VULKAN_CreateDevice(
     /* Variables: Create fence and semaphores */
 	VkFenceCreateInfo fenceInfo;
 	VkSemaphoreCreateInfo semaphoreInfo;
+
+	/* Variables: Transfer command buffer */
+	VkCommandPoolCreateInfo transferCommandPoolCreateInfo;
+	VkCommandBufferAllocateInfo transferCommandBufferAllocateInfo;
 
 	/* Variables: Descriptor set layouts */
 	VkDescriptorSetLayoutCreateInfo setLayoutCreateInfo;
@@ -8930,12 +9046,25 @@ static REFRESH_Device* VULKAN_CreateDevice(
 		renderer->logicalDevice,
 		&semaphoreInfo,
 		NULL,
+		&renderer->transferFinishedSemaphore
+	);
+
+	if (vulkanResult != VK_SUCCESS)
+	{
+		LogVulkanResult("vkCreateSemaphore", vulkanResult);
+		return NULL;
+	}
+
+	vulkanResult = renderer->vkCreateSemaphore(
+		renderer->logicalDevice,
+		&semaphoreInfo,
+		NULL,
 		&renderer->imageAvailableSemaphore
 	);
 
 	if (vulkanResult != VK_SUCCESS)
 	{
-		LogVulkanResult("vkCreateFence", vulkanResult);
+		LogVulkanResult("vkCreateSemaphore", vulkanResult);
 		return NULL;
 	}
 
@@ -8961,7 +9090,7 @@ static REFRESH_Device* VULKAN_CreateDevice(
 
 	if (vulkanResult != VK_SUCCESS)
 	{
-		LogVulkanResult("vkCreateSemaphore", vulkanResult);
+		LogVulkanResult("vkCreateFence", vulkanResult);
 		return NULL;
 	}
 
@@ -8972,6 +9101,46 @@ static REFRESH_Device* VULKAN_CreateDevice(
 	renderer->uniformBufferLock = SDL_CreateMutex();
 	renderer->descriptorSetLock = SDL_CreateMutex();
 	renderer->boundBufferLock = SDL_CreateMutex();
+
+	/* Transfer buffer */
+
+	transferCommandPoolCreateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+	transferCommandPoolCreateInfo.pNext = NULL;
+	transferCommandPoolCreateInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+	transferCommandPoolCreateInfo.queueFamilyIndex = renderer->queueFamilyIndices.transferFamily;
+
+	vulkanResult = renderer->vkCreateCommandPool(
+		renderer->logicalDevice,
+		&transferCommandPoolCreateInfo,
+		NULL,
+		&renderer->transferCommandPool
+	);
+
+	if (vulkanResult != VK_SUCCESS)
+	{
+		LogVulkanResult("vkCreateCommandPool", vulkanResult);
+		return NULL;
+	}
+
+	transferCommandBufferAllocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+	transferCommandBufferAllocateInfo.pNext = NULL;
+	transferCommandBufferAllocateInfo.commandBufferCount = 2;
+	transferCommandBufferAllocateInfo.commandPool = renderer->transferCommandPool;
+	transferCommandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+
+	vulkanResult = renderer->vkAllocateCommandBuffers(
+		renderer->logicalDevice,
+		&transferCommandBufferAllocateInfo,
+		renderer->transferCommandBuffers
+	);
+
+	if (vulkanResult != VK_SUCCESS)
+	{
+		LogVulkanResult("vkAllocateCommandBuffers", vulkanResult);
+		return NULL;
+	}
+
+	renderer->pendingTransfer = 0;
 
 	/*
 	 * Create submitted command buffer list
