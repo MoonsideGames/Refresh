@@ -66,6 +66,7 @@ typedef struct REFRESH_ShaderModule REFRESH_ShaderModule;
 typedef struct REFRESH_RenderPass REFRESH_RenderPass;
 typedef struct REFRESH_ComputePipeline REFRESH_ComputePipeline;
 typedef struct REFRESH_GraphicsPipeline REFRESH_GraphicsPipeline;
+typedef struct REFRESH_CommandBuffer REFRESH_CommandBuffer;
 
 typedef enum REFRESH_PresentMode
 {
@@ -1348,6 +1349,23 @@ REFRESHAPI void REFRESH_BindComputeTextures(
 );
 
 /* Submission/Presentation */
+
+/* Returns an allocated REFRESH_CommandBuffer* object.
+ *
+ * NOTE:
+ * 	A command buffer may only be used on the thread that
+ * 	it was acquired on. Using it on any other thread is an error.
+ *
+ * fixed:
+ * 	If a command buffer is designated as fixed, it can be
+ * 	acquired once, have commands recorded into it, and
+ * 	be re-submitted indefinitely.
+ *
+ */
+REFRESHAPI REFRESH_CommandBuffer* REFRESH_AcquireCommandBuffer(
+	REFRESH_Device *device,
+	uint8_t fixed
+);
 
 /* Queues an image to be presented to the screen.
  * The image will be presented upon the next REFRESH_Submit call.

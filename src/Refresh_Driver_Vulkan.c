@@ -1142,6 +1142,40 @@ static inline void ComputePipelineLayoutHashArray_Insert(
 
 /* Context */
 
+typedef struct VulkanCommandPool VulkanCommandPool;
+
+typedef struct VulkanCommandBuffer
+{
+	VkCommandBuffer commandBuffer;
+	uint8_t fixed;
+	uint8_t submitted;
+
+	VulkanCommandPool *commandPool;
+
+	/* FIXME: do we even use this? */
+	uint32_t numActiveCommands;
+
+	VulkanComputePipeline *currentComputePipeline;
+	VulkanGraphicsPipeline *currentGraphicsPipeline;
+	VulkanFramebuffer *currentFramebuffer;
+
+	VulkanBuffer *boundComputeBuffers[MAX_BUFFER_BINDINGS];
+	uint32_t boundComputeBufferCount;
+} VulkanCommandBuffer;
+
+struct VulkanCommandPool
+{
+	SDL_threadID threadID;
+
+	VkCommandPool commandPool;
+
+	uint32_t allocatedCommandBufferCount;
+
+	VulkanCommandBuffer **inactiveCommandBuffers;
+	uint32_t inactiveCommandBufferCapacity;
+	uint32_t inactiveCommandBufferCount;
+};
+
 typedef struct VulkanRenderer
 {
     VkInstance instance;
@@ -1182,35 +1216,14 @@ typedef struct VulkanRenderer
 	VkSemaphore imageAvailableSemaphore;
 	VkSemaphore renderFinishedSemaphore;
 
-	VkCommandPool commandPool;
-	VkCommandBuffer *inactiveCommandBuffers;
-	VkCommandBuffer *activeCommandBuffers;
-	VkCommandBuffer *submittedCommandBuffers;
-	uint32_t inactiveCommandBufferCount;
-	uint32_t activeCommandBufferCount;
+	VulkanCommandBuffer **submittedCommandBuffers;
 	uint32_t submittedCommandBufferCount;
-	uint32_t allocatedCommandBufferCount;
-	uint32_t currentCommandCount;
-	VkCommandBuffer currentCommandBuffer;
-	uint32_t numActiveCommands;
-
-	VulkanComputePipeline *currentComputePipeline;
-	VulkanGraphicsPipeline *currentGraphicsPipeline;
-	VulkanFramebuffer *currentFramebuffer;
-
-	VulkanBuffer *boundComputeBuffers[MAX_BUFFER_BINDINGS];
-	uint32_t boundComputeBufferCount;
+	uint32_t submittedCommandBufferCapacity;
 
 	DescriptorSetLayoutHashTable descriptorSetLayoutHashTable;
 
 	GraphicsPipelineLayoutHashTable graphicsPipelineLayoutHashTable;
 	ComputePipelineLayoutHashTable computePipelineLayoutHashTable;
-	/*
-	 * TODO: we can get rid of this reference when we
-	 * come up with a clever descriptor set reuse system
-	 */
-	VkDescriptorPool *descriptorPools;
-	uint32_t descriptorPoolCount;
 
 	/* initialize baseline descriptor info */
 	VkDescriptorPool defaultDescriptorPool;
@@ -1259,8 +1272,10 @@ typedef struct VulkanRenderer
 	uint32_t frameIndex;
 
 	SDL_mutex *allocatorLock;
-	SDL_mutex *commandLock;
 	SDL_mutex *disposeLock;
+	SDL_mutex *uniformBufferLock;
+	SDL_mutex *descriptorSetLock;
+	SDL_mutex *boundBufferLock;
 
 	/* Deferred destroy storage */
 
@@ -1353,21 +1368,9 @@ typedef struct VulkanRenderer
 
 /* Forward declarations */
 
-static void VULKAN_INTERNAL_BeginCommandBuffer(VulkanRenderer *renderer);
-static void VULKAN_Submit(REFRESH_Renderer *driverData);
-static void VULKAN_SubmitAndSync(REFRESH_Renderer *driverData);
-
-/* Macros */
-
-#define RECORD_CMD(cmdCall)					\
-	SDL_LockMutex(renderer->commandLock);			\
-	if (renderer->currentCommandBuffer == NULL)		\
-	{							\
-		VULKAN_INTERNAL_BeginCommandBuffer(renderer);	\
-	}							\
-	cmdCall;						\
-	renderer->numActiveCommands += 1;			\
-	SDL_UnlockMutex(renderer->commandLock);
+static void VULKAN_INTERNAL_BeginCommandBuffer(VulkanRenderer *renderer, VulkanCommandBuffer *commandBuffer);
+static void VULKAN_Submit(REFRESH_Renderer *driverData, REFRESH_CommandBuffer **pCommandBuffers, uint32_t commandBufferCount);
+static void VULKAN_SubmitAndSync(REFRESH_Renderer *driverData, REFRESH_CommandBuffer *commandBuffer);
 
 /* Error Handling */
 
@@ -1898,6 +1901,7 @@ static uint8_t VULKAN_INTERNAL_FindAvailableMemory(
 
 static void VULKAN_INTERNAL_BufferMemoryBarrier(
 	VulkanRenderer *renderer,
+	VulkanCommandBuffer *commandBuffer,
 	VulkanResourceAccessType nextResourceAccessType,
 	VulkanBuffer *buffer,
 	VulkanSubBuffer *subBuffer
@@ -1952,8 +1956,8 @@ static void VULKAN_INTERNAL_BufferMemoryBarrier(
 		dstStages = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
 	}
 
-	RECORD_CMD(renderer->vkCmdPipelineBarrier(
-		renderer->currentCommandBuffer,
+	renderer->vkCmdPipelineBarrier(
+		commandBuffer->commandBuffer,
 		srcStages,
 		dstStages,
 		0,
@@ -1963,13 +1967,15 @@ static void VULKAN_INTERNAL_BufferMemoryBarrier(
 		&memoryBarrier,
 		0,
 		NULL
-	));
+	);
+	commandBuffer->numActiveCommands += 1;
 
 	buffer->resourceAccessType = nextResourceAccessType;
 }
 
 static void VULKAN_INTERNAL_ImageMemoryBarrier(
 	VulkanRenderer *renderer,
+	VulkanCommandBuffer *commandBuffer,
 	VulkanResourceAccessType nextAccess,
 	VkImageAspectFlags aspectMask,
 	uint32_t baseLayer,
@@ -2041,8 +2047,8 @@ static void VULKAN_INTERNAL_ImageMemoryBarrier(
 		dstStages = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
 	}
 
-	RECORD_CMD(renderer->vkCmdPipelineBarrier(
-		renderer->currentCommandBuffer,
+	renderer->vkCmdPipelineBarrier(
+		commandBuffer->commandBuffer,
 		srcStages,
 		dstStages,
 		0,
@@ -2052,7 +2058,8 @@ static void VULKAN_INTERNAL_ImageMemoryBarrier(
 		NULL,
 		1,
 		&memoryBarrier
-	));
+	);
+	commandBuffer->numActiveCommands += 1;
 
 	*resourceAccessType = nextAccess;
 }
@@ -3252,13 +3259,6 @@ static uint8_t VULKAN_INTERNAL_CreateBuffer(
 
 		buffer->subBuffers[i]->resourceAccessType = resourceAccessType;
 		buffer->subBuffers[i]->bound = -1;
-
-		VULKAN_INTERNAL_BufferMemoryBarrier(
-			renderer,
-			buffer->resourceAccessType,
-			buffer,
-			buffer->subBuffers[i]
-		);
 	}
 
 	return 1;
@@ -3266,67 +3266,25 @@ static uint8_t VULKAN_INTERNAL_CreateBuffer(
 
 /* Command Buffers */
 
-static void VULKAN_INTERNAL_BeginCommandBuffer(VulkanRenderer *renderer)
-{
-	VkCommandBufferAllocateInfo allocateInfo;
+static void VULKAN_INTERNAL_BeginCommandBuffer(
+	VulkanRenderer *renderer,
+	VulkanCommandBuffer *commandBuffer
+) {
 	VkCommandBufferBeginInfo beginInfo;
 	VkResult result;
 
 	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 	beginInfo.pNext = NULL;
-	beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+	beginInfo.flags = 0;
 	beginInfo.pInheritanceInfo = NULL;
 
-	/* If we are out of unused command buffers, allocate some more */
-	if (renderer->inactiveCommandBufferCount == 0)
+	if (!commandBuffer->fixed)
 	{
-		renderer->activeCommandBuffers = SDL_realloc(
-			renderer->activeCommandBuffers,
-			sizeof(VkCommandBuffer) * renderer->allocatedCommandBufferCount * 2
-		);
-
-		renderer->inactiveCommandBuffers = SDL_realloc(
-			renderer->inactiveCommandBuffers,
-			sizeof(VkCommandBuffer) * renderer->allocatedCommandBufferCount * 2
-		);
-
-		renderer->submittedCommandBuffers = SDL_realloc(
-			renderer->submittedCommandBuffers,
-			sizeof(VkCommandBuffer) * renderer->allocatedCommandBufferCount * 2
-		);
-
-		allocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-		allocateInfo.pNext = NULL;
-		allocateInfo.commandPool = renderer->commandPool;
-		allocateInfo.commandBufferCount = renderer->allocatedCommandBufferCount;
-		allocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-
-		result = renderer->vkAllocateCommandBuffers(
-			renderer->logicalDevice,
-			&allocateInfo,
-			renderer->inactiveCommandBuffers
-		);
-
-		if (result != VK_SUCCESS)
-		{
-			LogVulkanResult("vkAllocateCommandBuffers", result);
-			return;
-		}
-
-		renderer->inactiveCommandBufferCount = renderer->allocatedCommandBufferCount;
-		renderer->allocatedCommandBufferCount *= 2;
+		beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 	}
 
-	renderer->currentCommandBuffer =
-		renderer->inactiveCommandBuffers[renderer->inactiveCommandBufferCount - 1];
-
-	renderer->activeCommandBuffers[renderer->activeCommandBufferCount] = renderer->currentCommandBuffer;
-
-	renderer->activeCommandBufferCount += 1;
-	renderer->inactiveCommandBufferCount -= 1;
-
 	result = renderer->vkBeginCommandBuffer(
-		renderer->currentCommandBuffer,
+		commandBuffer->commandBuffer,
 		&beginInfo
 	);
 
@@ -3337,12 +3295,13 @@ static void VULKAN_INTERNAL_BeginCommandBuffer(VulkanRenderer *renderer)
 }
 
 static void VULKAN_INTERNAL_EndCommandBuffer(
-	VulkanRenderer* renderer
+	VulkanRenderer* renderer,
+	VulkanCommandBuffer *commandBuffer
 ) {
 	VkResult result;
 
 	result = renderer->vkEndCommandBuffer(
-		renderer->currentCommandBuffer
+		commandBuffer->commandBuffer
 	);
 
 	if (result != VK_SUCCESS)
@@ -3350,11 +3309,9 @@ static void VULKAN_INTERNAL_EndCommandBuffer(
 		LogVulkanResult("vkEndCommandBuffer", result);
 	}
 
-	renderer->currentComputePipeline = NULL;
-	renderer->boundComputeBufferCount = 0;
-
-	renderer->currentCommandBuffer = NULL;
-	renderer->numActiveCommands = 0;
+	commandBuffer->currentComputePipeline = NULL;
+	commandBuffer->boundComputeBufferCount = 0;
+	commandBuffer->numActiveCommands = 0;
 }
 
 /* Public API */
@@ -3368,8 +3325,6 @@ static void VULKAN_DestroyDevice(
 	ComputePipelineLayoutHashArray computePipelineLayoutHashArray;
 	VulkanMemorySubAllocator *allocator;
 	uint32_t i, j, k;
-
-	VULKAN_Submit(device->driverData);
 
 	waitResult = renderer->vkDeviceWaitIdle(renderer->logicalDevice);
 
@@ -3409,11 +3364,7 @@ static void VULKAN_DestroyDevice(
 		NULL
 	);
 
-	renderer->vkDestroyCommandPool(
-		renderer->logicalDevice,
-		renderer->commandPool,
-		NULL
-	);
+	/* TODO: destroy command pools */
 
 	for (i = 0; i < NUM_PIPELINE_LAYOUT_BUCKETS; i += 1)
 	{
@@ -3569,15 +3520,13 @@ static void VULKAN_DestroyDevice(
 
 	SDL_free(renderer->memoryAllocator);
 
-	SDL_DestroyMutex(renderer->commandLock);
 	SDL_DestroyMutex(renderer->allocatorLock);
 	SDL_DestroyMutex(renderer->disposeLock);
+	SDL_DestroyMutex(renderer->uniformBufferLock);
+	SDL_DestroyMutex(renderer->descriptorSetLock);
+	SDL_DestroyMutex(renderer->boundBufferLock);
 
 	SDL_free(renderer->buffersInUse);
-
-	SDL_free(renderer->inactiveCommandBuffers);
-	SDL_free(renderer->activeCommandBuffers);
-	SDL_free(renderer->submittedCommandBuffers);
 
 	renderer->vkDestroyDevice(renderer->logicalDevice, NULL);
 	renderer->vkDestroyInstance(renderer->instance, NULL);
@@ -3588,6 +3537,7 @@ static void VULKAN_DestroyDevice(
 
 static void VULKAN_Clear(
 	REFRESH_Renderer *driverData,
+	REFRESH_CommandBuffer *commandBuffer,
 	REFRESH_Rect *clearRect,
 	REFRESH_ClearOptions options,
 	REFRESH_Color *colors,
@@ -3596,6 +3546,8 @@ static void VULKAN_Clear(
 	int32_t stencil
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
+
 	uint32_t attachmentCount, i;
 	VkClearAttachment clearAttachments[MAX_COLOR_TARGET_BINDINGS + 1];
 	VkClearRect vulkanClearRect;
@@ -3607,7 +3559,7 @@ static void VULKAN_Clear(
 
 	uint8_t shouldClearDepthStencil = (
 		(shouldClearDepth || shouldClearStencil) &&
-		renderer->currentFramebuffer->depthStencilTarget != NULL
+		vulkanCommandBuffer->currentFramebuffer->depthStencilTarget != NULL
 	);
 
 	if (!shouldClearColor && !shouldClearDepthStencil)
@@ -3687,17 +3639,19 @@ static void VULKAN_Clear(
 		attachmentCount += 1;
 	}
 
-	RECORD_CMD(renderer->vkCmdClearAttachments(
-		renderer->currentCommandBuffer,
+	renderer->vkCmdClearAttachments(
+		vulkanCommandBuffer->commandBuffer,
 		attachmentCount,
 		clearAttachments,
 		1,
 		&vulkanClearRect
-	));
+	);
+	vulkanCommandBuffer->numActiveCommands += 1;
 }
 
 static void VULKAN_DrawInstancedPrimitives(
 	REFRESH_Renderer *driverData,
+	REFRESH_CommandBuffer *commandBuffer,
 	uint32_t baseVertex,
 	uint32_t minVertexIndex,
 	uint32_t numVertices,
@@ -3710,43 +3664,48 @@ static void VULKAN_DrawInstancedPrimitives(
 	uint32_t fragmentParamOffset
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
+
 	VkDescriptorSet descriptorSets[4];
 	uint32_t dynamicOffsets[2];
 
-	descriptorSets[0] = renderer->currentGraphicsPipeline->vertexSamplerDescriptorSet;
-	descriptorSets[1] = renderer->currentGraphicsPipeline->fragmentSamplerDescriptorSet;
-	descriptorSets[2] = renderer->currentGraphicsPipeline->vertexUBODescriptorSet;
-	descriptorSets[3] = renderer->currentGraphicsPipeline->fragmentUBODescriptorSet;
+	descriptorSets[0] = vulkanCommandBuffer->currentGraphicsPipeline->vertexSamplerDescriptorSet;
+	descriptorSets[1] = vulkanCommandBuffer->currentGraphicsPipeline->fragmentSamplerDescriptorSet;
+	descriptorSets[2] = vulkanCommandBuffer->currentGraphicsPipeline->vertexUBODescriptorSet;
+	descriptorSets[3] = vulkanCommandBuffer->currentGraphicsPipeline->fragmentUBODescriptorSet;
 
 	dynamicOffsets[0] = vertexParamOffset;
 	dynamicOffsets[1] = fragmentParamOffset;
 
-	RECORD_CMD(renderer->vkCmdBindDescriptorSets(
-		renderer->currentCommandBuffer,
+	renderer->vkCmdBindDescriptorSets(
+		vulkanCommandBuffer->commandBuffer,
 		VK_PIPELINE_BIND_POINT_GRAPHICS,
-		renderer->currentGraphicsPipeline->pipelineLayout->pipelineLayout,
+		vulkanCommandBuffer->currentGraphicsPipeline->pipelineLayout->pipelineLayout,
 		0,
 		4,
 		descriptorSets,
 		2,
 		dynamicOffsets
-	));
+	);
+	vulkanCommandBuffer->numActiveCommands += 1;
 
-	RECORD_CMD(renderer->vkCmdDrawIndexed(
-		renderer->currentCommandBuffer,
+	renderer->vkCmdDrawIndexed(
+		vulkanCommandBuffer->commandBuffer,
 		PrimitiveVerts(
-			renderer->currentGraphicsPipeline->primitiveType,
+			vulkanCommandBuffer->currentGraphicsPipeline->primitiveType,
 			primitiveCount
 		),
 		instanceCount,
 		startIndex,
 		baseVertex,
 		0
-	));
+	);
+	vulkanCommandBuffer->numActiveCommands += 1;
 }
 
 static void VULKAN_DrawIndexedPrimitives(
 	REFRESH_Renderer *driverData,
+	REFRESH_CommandBuffer *commandBuffer,
 	uint32_t baseVertex,
 	uint32_t minVertexIndex,
 	uint32_t numVertices,
@@ -3759,6 +3718,7 @@ static void VULKAN_DrawIndexedPrimitives(
 ) {
 	VULKAN_DrawInstancedPrimitives(
 		driverData,
+		commandBuffer,
 		baseVertex,
 		minVertexIndex,
 		numVertices,
@@ -3774,64 +3734,71 @@ static void VULKAN_DrawIndexedPrimitives(
 
 static void VULKAN_DrawPrimitives(
 	REFRESH_Renderer *driverData,
+	REFRESH_CommandBuffer *commandBuffer,
 	uint32_t vertexStart,
 	uint32_t primitiveCount,
 	uint32_t vertexParamOffset,
 	uint32_t fragmentParamOffset
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
 	VkDescriptorSet descriptorSets[4];
 	uint32_t dynamicOffsets[2];
 
-	descriptorSets[0] = renderer->currentGraphicsPipeline->vertexSamplerDescriptorSet;
-	descriptorSets[1] = renderer->currentGraphicsPipeline->fragmentSamplerDescriptorSet;
-	descriptorSets[2] = renderer->currentGraphicsPipeline->vertexUBODescriptorSet;
-	descriptorSets[3] = renderer->currentGraphicsPipeline->fragmentUBODescriptorSet;
+	descriptorSets[0] = vulkanCommandBuffer->currentGraphicsPipeline->vertexSamplerDescriptorSet;
+	descriptorSets[1] = vulkanCommandBuffer->currentGraphicsPipeline->fragmentSamplerDescriptorSet;
+	descriptorSets[2] = vulkanCommandBuffer->currentGraphicsPipeline->vertexUBODescriptorSet;
+	descriptorSets[3] = vulkanCommandBuffer->currentGraphicsPipeline->fragmentUBODescriptorSet;
 
 	dynamicOffsets[0] = vertexParamOffset;
 	dynamicOffsets[1] = fragmentParamOffset;
 
-	RECORD_CMD(renderer->vkCmdBindDescriptorSets(
-		renderer->currentCommandBuffer,
+	renderer->vkCmdBindDescriptorSets(
+		vulkanCommandBuffer->commandBuffer,
 		VK_PIPELINE_BIND_POINT_GRAPHICS,
-		renderer->currentGraphicsPipeline->pipelineLayout->pipelineLayout,
+		vulkanCommandBuffer->currentGraphicsPipeline->pipelineLayout->pipelineLayout,
 		0,
 		4,
 		descriptorSets,
 		2,
 		dynamicOffsets
-	));
+	);
+	vulkanCommandBuffer->numActiveCommands += 1;
 
-	RECORD_CMD(renderer->vkCmdDraw(
-		renderer->currentCommandBuffer,
+	renderer->vkCmdDraw(
+		vulkanCommandBuffer->commandBuffer,
 		PrimitiveVerts(
-			renderer->currentGraphicsPipeline->primitiveType,
+			vulkanCommandBuffer->currentGraphicsPipeline->primitiveType,
 			primitiveCount
 		),
 		1,
 		vertexStart,
 		0
-	));
+	);
+	vulkanCommandBuffer->numActiveCommands += 1;
 }
 
 static void VULKAN_DispatchCompute(
 	REFRESH_Renderer *driverData,
+	REFRESH_CommandBuffer *commandBuffer,
 	uint32_t groupCountX,
 	uint32_t groupCountY,
 	uint32_t groupCountZ,
 	uint32_t computeParamOffset
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
-	VulkanComputePipeline *computePipeline = renderer->currentComputePipeline;
+	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
+	VulkanComputePipeline *computePipeline = vulkanCommandBuffer->currentComputePipeline;
 	VulkanBuffer *currentBuffer;
 	VkDescriptorSet descriptorSets[3];
 	uint32_t i;
 
-	for (i = 0; i < renderer->boundComputeBufferCount; i += 1)
+	for (i = 0; i < vulkanCommandBuffer->boundComputeBufferCount; i += 1)
 	{
-		currentBuffer = renderer->boundComputeBuffers[i];
+		currentBuffer = vulkanCommandBuffer->boundComputeBuffers[i];
 		VULKAN_INTERNAL_BufferMemoryBarrier(
 			renderer,
+			vulkanCommandBuffer,
 			RESOURCE_ACCESS_COMPUTE_SHADER_READ_OTHER,
 			currentBuffer,
 			currentBuffer->subBuffers[currentBuffer->currentSubBufferIndex]
@@ -3842,8 +3809,8 @@ static void VULKAN_DispatchCompute(
 	descriptorSets[1] = computePipeline->imageDescriptorSet;
 	descriptorSets[2] = computePipeline->computeUBODescriptorSet;
 
-	RECORD_CMD(renderer->vkCmdBindDescriptorSets(
-		renderer->currentCommandBuffer,
+	renderer->vkCmdBindDescriptorSets(
+		vulkanCommandBuffer->commandBuffer,
 		VK_PIPELINE_BIND_POINT_COMPUTE,
 		computePipeline->pipelineLayout->pipelineLayout,
 		0,
@@ -3851,22 +3818,25 @@ static void VULKAN_DispatchCompute(
 		descriptorSets,
 		1,
 		&computeParamOffset
-	));
+	);
+	vulkanCommandBuffer->numActiveCommands += 1;
 
-	RECORD_CMD(renderer->vkCmdDispatch(
-		renderer->currentCommandBuffer,
+	renderer->vkCmdDispatch(
+		vulkanCommandBuffer->commandBuffer,
 		groupCountX,
 		groupCountY,
 		groupCountZ
-	));
+	);
+	vulkanCommandBuffer->numActiveCommands += 1;
 
-	for (i = 0; i < renderer->boundComputeBufferCount; i += 1)
+	for (i = 0; i < vulkanCommandBuffer->boundComputeBufferCount; i += 1)
 	{
-		currentBuffer = renderer->boundComputeBuffers[i];
+		currentBuffer = vulkanCommandBuffer->boundComputeBuffers[i];
 		if (currentBuffer->usage & VK_BUFFER_USAGE_VERTEX_BUFFER_BIT)
 		{
 			VULKAN_INTERNAL_BufferMemoryBarrier(
 				renderer,
+				vulkanCommandBuffer,
 				RESOURCE_ACCESS_VERTEX_BUFFER,
 				currentBuffer,
 				currentBuffer->subBuffers[currentBuffer->currentSubBufferIndex]
@@ -3876,6 +3846,7 @@ static void VULKAN_DispatchCompute(
 		{
 			VULKAN_INTERNAL_BufferMemoryBarrier(
 				renderer,
+				vulkanCommandBuffer,
 				RESOURCE_ACCESS_INDEX_BUFFER,
 				currentBuffer,
 				currentBuffer->subBuffers[currentBuffer->currentSubBufferIndex]
@@ -4139,6 +4110,8 @@ static uint8_t VULKAN_INTERNAL_AllocateDescriptorSets(
 	VkDescriptorSetAllocateInfo descriptorSetAllocateInfo;
 	VkDescriptorSetLayout *descriptorSetLayouts = SDL_stack_alloc(VkDescriptorSetLayout, descriptorSetCount);
 
+	SDL_LockMutex(renderer->descriptorSetLock);
+
 	for (i = 0; i < descriptorSetCount; i += 1)
 	{
 		descriptorSetLayouts[i] = descriptorSetLayout;
@@ -4162,6 +4135,8 @@ static uint8_t VULKAN_INTERNAL_AllocateDescriptorSets(
 		SDL_stack_free(descriptorSetLayouts);
 		return 0;
 	}
+
+	SDL_UnlockMutex(renderer->descriptorSetLock);
 
 	SDL_stack_free(descriptorSetLayouts);
 	return 1;
@@ -5622,19 +5597,6 @@ static REFRESH_ColorTarget* VULKAN_CreateColorTarget(
 		);
 		colorTarget->multisampleTexture->colorFormat = colorTarget->texture->colorFormat;
 		colorTarget->multisampleCount = multisampleCount;
-
-		VULKAN_INTERNAL_ImageMemoryBarrier(
-			renderer,
-			RESOURCE_ACCESS_COLOR_ATTACHMENT_READ_WRITE,
-			VK_IMAGE_ASPECT_COLOR_BIT,
-			0,
-			colorTarget->multisampleTexture->layerCount,
-			0,
-			colorTarget->multisampleTexture->levelCount,
-			0,
-			colorTarget->multisampleTexture->image,
-			&colorTarget->multisampleTexture->resourceAccessType
-		);
 	}
 
 	/* create framebuffer compatible views for RenderTarget */
@@ -5792,6 +5754,7 @@ static void VULKAN_INTERNAL_MaybeExpandStagingBuffer(
 
 static void VULKAN_SetTextureData2D(
 	REFRESH_Renderer *driverData,
+	REFRESH_CommandBuffer *commandBuffer,
 	REFRESH_Texture *texture,
 	uint32_t x,
 	uint32_t y,
@@ -5803,6 +5766,7 @@ static void VULKAN_SetTextureData2D(
 ) {
 	VkResult vulkanResult;
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
 	VulkanTexture *vulkanTexture = (VulkanTexture*) texture;
 	VkBufferImageCopy imageCopy;
 	uint8_t *mapPointer;
@@ -5833,6 +5797,7 @@ static void VULKAN_SetTextureData2D(
 
 	VULKAN_INTERNAL_ImageMemoryBarrier(
 		renderer,
+		vulkanCommandBuffer,
 		RESOURCE_ACCESS_TRANSFER_WRITE,
 		VK_IMAGE_ASPECT_COLOR_BIT,
 		0,
@@ -5858,19 +5823,21 @@ static void VULKAN_SetTextureData2D(
 	imageCopy.bufferRowLength = 0;
 	imageCopy.bufferImageHeight = 0;
 
-	RECORD_CMD(renderer->vkCmdCopyBufferToImage(
-		renderer->currentCommandBuffer,
+	renderer->vkCmdCopyBufferToImage(
+		vulkanCommandBuffer->commandBuffer,
 		renderer->textureStagingBuffer->subBuffers[0]->buffer,
 		vulkanTexture->image,
 		AccessMap[vulkanTexture->resourceAccessType].imageLayout,
 		1,
 		&imageCopy
-	));
+	);
+	vulkanCommandBuffer->numActiveCommands += 1;
 
 	if (vulkanTexture->usageFlags & REFRESH_TEXTUREUSAGE_SAMPLER_BIT)
 	{
 		VULKAN_INTERNAL_ImageMemoryBarrier(
 			renderer,
+			vulkanCommandBuffer,
 			RESOURCE_ACCESS_ANY_SHADER_READ_SAMPLED_IMAGE,
 			VK_IMAGE_ASPECT_COLOR_BIT,
 			0,
@@ -5884,11 +5851,12 @@ static void VULKAN_SetTextureData2D(
 	}
 
 	/* Hard sync point */
-	VULKAN_SubmitAndSync(driverData);
+	VULKAN_SubmitAndSync(driverData, commandBuffer);
 }
 
 static void VULKAN_SetTextureData3D(
 	REFRESH_Renderer *driverData,
+	REFRESH_CommandBuffer *commandBuffer,
 	REFRESH_Texture *texture,
 	uint32_t x,
 	uint32_t y,
@@ -5902,6 +5870,7 @@ static void VULKAN_SetTextureData3D(
 ) {
 	VkResult vulkanResult;
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
 	VulkanTexture *vulkanTexture = (VulkanTexture*) texture;
 	VkBufferImageCopy imageCopy;
 	uint8_t *mapPointer;
@@ -5932,6 +5901,7 @@ static void VULKAN_SetTextureData3D(
 
 	VULKAN_INTERNAL_ImageMemoryBarrier(
 		renderer,
+		vulkanCommandBuffer,
 		RESOURCE_ACCESS_TRANSFER_WRITE,
 		VK_IMAGE_ASPECT_COLOR_BIT,
 		0,
@@ -5957,19 +5927,21 @@ static void VULKAN_SetTextureData3D(
 	imageCopy.bufferRowLength = 0;
 	imageCopy.bufferImageHeight = 0;
 
-	RECORD_CMD(renderer->vkCmdCopyBufferToImage(
-		renderer->currentCommandBuffer,
+	renderer->vkCmdCopyBufferToImage(
+		vulkanCommandBuffer->commandBuffer,
 		renderer->textureStagingBuffer->subBuffers[0]->buffer,
 		vulkanTexture->image,
 		AccessMap[vulkanTexture->resourceAccessType].imageLayout,
 		1,
 		&imageCopy
-	));
+	);
+	vulkanCommandBuffer->numActiveCommands += 1;
 
 	if (vulkanTexture->usageFlags & REFRESH_TEXTUREUSAGE_SAMPLER_BIT)
 	{
 		VULKAN_INTERNAL_ImageMemoryBarrier(
 			renderer,
+			vulkanCommandBuffer,
 			RESOURCE_ACCESS_ANY_SHADER_READ_SAMPLED_IMAGE,
 			VK_IMAGE_ASPECT_COLOR_BIT,
 			0,
@@ -5983,11 +5955,12 @@ static void VULKAN_SetTextureData3D(
 	}
 
 	/* Hard sync point */
-	VULKAN_SubmitAndSync(driverData);
+	VULKAN_SubmitAndSync(driverData, commandBuffer);
 }
 
 static void VULKAN_SetTextureDataCube(
 	REFRESH_Renderer *driverData,
+	REFRESH_CommandBuffer *commandBuffer,
 	REFRESH_Texture *texture,
 	uint32_t x,
 	uint32_t y,
@@ -6000,6 +5973,7 @@ static void VULKAN_SetTextureDataCube(
 ) {
 	VkResult vulkanResult;
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
 	VulkanTexture *vulkanTexture = (VulkanTexture*) texture;
 	VkBufferImageCopy imageCopy;
 	uint8_t *mapPointer;
@@ -6030,6 +6004,7 @@ static void VULKAN_SetTextureDataCube(
 
 	VULKAN_INTERNAL_ImageMemoryBarrier(
 		renderer,
+		vulkanCommandBuffer,
 		RESOURCE_ACCESS_TRANSFER_WRITE,
 		VK_IMAGE_ASPECT_COLOR_BIT,
 		0,
@@ -6055,19 +6030,21 @@ static void VULKAN_SetTextureDataCube(
 	imageCopy.bufferRowLength = 0; /* assumes tightly packed data */
 	imageCopy.bufferImageHeight = 0; /* assumes tightly packed data */
 
-	RECORD_CMD(renderer->vkCmdCopyBufferToImage(
-		renderer->currentCommandBuffer,
+	renderer->vkCmdCopyBufferToImage(
+		vulkanCommandBuffer->commandBuffer,
 		renderer->textureStagingBuffer->subBuffers[0]->buffer,
 		vulkanTexture->image,
 		AccessMap[vulkanTexture->resourceAccessType].imageLayout,
 		1,
 		&imageCopy
-	));
+	);
+	vulkanCommandBuffer->numActiveCommands += 1;
 
 	if (vulkanTexture->usageFlags & REFRESH_TEXTUREUSAGE_SAMPLER_BIT)
 	{
 		VULKAN_INTERNAL_ImageMemoryBarrier(
 			renderer,
+			vulkanCommandBuffer,
 			RESOURCE_ACCESS_ANY_SHADER_READ_SAMPLED_IMAGE,
 			VK_IMAGE_ASPECT_COLOR_BIT,
 			0,
@@ -6081,11 +6058,12 @@ static void VULKAN_SetTextureDataCube(
 	}
 
 	/* Hard sync point */
-	VULKAN_SubmitAndSync(driverData);
+	VULKAN_SubmitAndSync(driverData, commandBuffer);
 }
 
 static void VULKAN_SetTextureDataYUV(
 	REFRESH_Renderer *driverData,
+	REFRESH_CommandBuffer *commandBuffer,
 	REFRESH_Texture *y,
 	REFRESH_Texture *u,
 	REFRESH_Texture *v,
@@ -6097,6 +6075,7 @@ static void VULKAN_SetTextureDataYUV(
 	uint32_t dataLength
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
 	VulkanTexture *tex;
 	uint8_t *dataPtr = (uint8_t*) data;
 	int32_t yDataLength = BytesPerImage(yWidth, yHeight, REFRESH_SURFACEFORMAT_R8);
@@ -6146,6 +6125,7 @@ static void VULKAN_SetTextureDataYUV(
 
 	VULKAN_INTERNAL_ImageMemoryBarrier(
 		renderer,
+		vulkanCommandBuffer,
 		RESOURCE_ACCESS_TRANSFER_WRITE,
 		VK_IMAGE_ASPECT_COLOR_BIT,
 		0,
@@ -6162,14 +6142,15 @@ static void VULKAN_SetTextureDataYUV(
 	imageCopy.bufferRowLength = yWidth;
 	imageCopy.bufferImageHeight = yHeight;
 
-	RECORD_CMD(renderer->vkCmdCopyBufferToImage(
-		renderer->currentCommandBuffer,
+	renderer->vkCmdCopyBufferToImage(
+		vulkanCommandBuffer->commandBuffer,
 		renderer->textureStagingBuffer->subBuffers[0]->buffer,
 		tex->image,
 		AccessMap[tex->resourceAccessType].imageLayout,
 		1,
 		&imageCopy
-	));
+	);
+	vulkanCommandBuffer->numActiveCommands += 1;
 
 	/* These apply to both U and V */
 
@@ -6192,6 +6173,7 @@ static void VULKAN_SetTextureDataYUV(
 
 	VULKAN_INTERNAL_ImageMemoryBarrier(
 		renderer,
+		vulkanCommandBuffer,
 		RESOURCE_ACCESS_TRANSFER_WRITE,
 		VK_IMAGE_ASPECT_COLOR_BIT,
 		0,
@@ -6203,14 +6185,15 @@ static void VULKAN_SetTextureDataYUV(
 		&tex->resourceAccessType
 	);
 
-	RECORD_CMD(renderer->vkCmdCopyBufferToImage(
-		renderer->currentCommandBuffer,
+	renderer->vkCmdCopyBufferToImage(
+		vulkanCommandBuffer->commandBuffer,
 		renderer->textureStagingBuffer->subBuffers[0]->buffer,
 		tex->image,
 		AccessMap[tex->resourceAccessType].imageLayout,
 		1,
 		&imageCopy
-	));
+	);
+	vulkanCommandBuffer->numActiveCommands += 1;
 
 	/* V */
 
@@ -6231,6 +6214,7 @@ static void VULKAN_SetTextureDataYUV(
 
 	VULKAN_INTERNAL_ImageMemoryBarrier(
 		renderer,
+		vulkanCommandBuffer,
 		RESOURCE_ACCESS_TRANSFER_WRITE,
 		VK_IMAGE_ASPECT_COLOR_BIT,
 		0,
@@ -6242,19 +6226,21 @@ static void VULKAN_SetTextureDataYUV(
 		&tex->resourceAccessType
 	);
 
-	RECORD_CMD(renderer->vkCmdCopyBufferToImage(
-		renderer->currentCommandBuffer,
+	renderer->vkCmdCopyBufferToImage(
+		vulkanCommandBuffer->commandBuffer,
 		renderer->textureStagingBuffer->subBuffers[0]->buffer,
 		tex->image,
 		AccessMap[tex->resourceAccessType].imageLayout,
 		1,
 		&imageCopy
-	));
+	);
+	vulkanCommandBuffer->numActiveCommands += 1;
 
 	if (tex->usageFlags & REFRESH_TEXTUREUSAGE_SAMPLER_BIT)
 	{
 		VULKAN_INTERNAL_ImageMemoryBarrier(
 			renderer,
+			vulkanCommandBuffer,
 			RESOURCE_ACCESS_ANY_SHADER_READ_SAMPLED_IMAGE,
 			VK_IMAGE_ASPECT_COLOR_BIT,
 			0,
@@ -6268,7 +6254,7 @@ static void VULKAN_SetTextureDataYUV(
 	}
 
 	/* Hard sync point */
-	VULKAN_SubmitAndSync(driverData);
+	VULKAN_SubmitAndSync(driverData, commandBuffer);
 }
 
 static void VULKAN_SetBufferData(
@@ -6339,17 +6325,21 @@ static void VULKAN_SetBufferData(
 
 static uint32_t VULKAN_PushVertexShaderParams(
 	REFRESH_Renderer *driverData,
+	REFRESH_CommandBuffer *commandBuffer,
 	void *data,
 	uint32_t elementCount
 ) {
 	VulkanRenderer* renderer = (VulkanRenderer*)driverData;
+	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
+
+	SDL_LockMutex(renderer->uniformBufferLock);
 
 	renderer->vertexUBOOffset += renderer->vertexUBOBlockIncrement;
-	renderer->vertexUBOBlockIncrement = renderer->currentGraphicsPipeline->vertexUBOBlockSize;
+	renderer->vertexUBOBlockIncrement = vulkanCommandBuffer->currentGraphicsPipeline->vertexUBOBlockSize;
 
 	if (
 		renderer->vertexUBOOffset +
-		renderer->currentGraphicsPipeline->vertexUBOBlockSize >=
+		vulkanCommandBuffer->currentGraphicsPipeline->vertexUBOBlockSize >=
 		UBO_BUFFER_SIZE * (renderer->frameIndex + 1)
 	) {
 		REFRESH_LogError("Vertex UBO overflow!");
@@ -6361,25 +6351,31 @@ static uint32_t VULKAN_PushVertexShaderParams(
 		(REFRESH_Buffer*) renderer->vertexUBO,
 		renderer->vertexUBOOffset,
 		data,
-		elementCount * renderer->currentGraphicsPipeline->vertexUBOBlockSize
+		elementCount * vulkanCommandBuffer->currentGraphicsPipeline->vertexUBOBlockSize
 	);
+
+	SDL_UnlockMutex(renderer->uniformBufferLock);
 
 	return renderer->vertexUBOOffset;
 }
 
 static uint32_t VULKAN_PushFragmentShaderParams(
 	REFRESH_Renderer *driverData,
+	REFRESH_CommandBuffer *commandBuffer,
 	void *data,
 	uint32_t elementCount
 ) {
 	VulkanRenderer* renderer = (VulkanRenderer*)driverData;
+	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
+
+	SDL_LockMutex(renderer->uniformBufferLock);
 
 	renderer->fragmentUBOOffset += renderer->fragmentUBOBlockIncrement;
-	renderer->fragmentUBOBlockIncrement = renderer->currentGraphicsPipeline->fragmentUBOBlockSize;
+	renderer->fragmentUBOBlockIncrement = vulkanCommandBuffer->currentGraphicsPipeline->fragmentUBOBlockSize;
 
 	if (
 		renderer->fragmentUBOOffset +
-		renderer->currentGraphicsPipeline->fragmentUBOBlockSize >=
+		vulkanCommandBuffer->currentGraphicsPipeline->fragmentUBOBlockSize >=
 		UBO_BUFFER_SIZE * (renderer->frameIndex + 1)
 	) {
 		REFRESH_LogError("Fragment UBO overflow!");
@@ -6391,25 +6387,31 @@ static uint32_t VULKAN_PushFragmentShaderParams(
 		(REFRESH_Buffer*) renderer->fragmentUBO,
 		renderer->fragmentUBOOffset,
 		data,
-		elementCount * renderer->currentGraphicsPipeline->fragmentUBOBlockSize
+		elementCount * vulkanCommandBuffer->currentGraphicsPipeline->fragmentUBOBlockSize
 	);
+
+	SDL_UnlockMutex(renderer->uniformBufferLock);
 
 	return renderer->fragmentUBOOffset;
 }
 
 static uint32_t VULKAN_PushComputeShaderParams(
 	REFRESH_Renderer *driverData,
+	REFRESH_CommandBuffer *commandBuffer,
 	void *data,
 	uint32_t elementCount
 ) {
 	VulkanRenderer* renderer = (VulkanRenderer*)driverData;
+	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
+
+	SDL_LockMutex(renderer->uniformBufferLock);
 
 	renderer->computeUBOOffset += renderer->computeUBOBlockIncrement;
-	renderer->computeUBOBlockIncrement = renderer->currentComputePipeline->computeUBOBlockSize;
+	renderer->computeUBOBlockIncrement = vulkanCommandBuffer->currentComputePipeline->computeUBOBlockSize;
 
 	if (
 		renderer->computeUBOOffset +
-		renderer->currentComputePipeline->computeUBOBlockSize >=
+		vulkanCommandBuffer->currentComputePipeline->computeUBOBlockSize >=
 		UBO_BUFFER_SIZE * (renderer->frameIndex + 1)
 	) {
 		REFRESH_LogError("Compute UBO overflow!");
@@ -6421,8 +6423,10 @@ static uint32_t VULKAN_PushComputeShaderParams(
 		(REFRESH_Buffer*) renderer->computeUBO,
 		renderer->computeUBOOffset,
 		data,
-		elementCount * renderer->currentComputePipeline->computeUBOBlockSize
+		elementCount * vulkanCommandBuffer->currentComputePipeline->computeUBOBlockSize
 	);
+
+	SDL_UnlockMutex(renderer->uniformBufferLock);
 
 	return renderer->computeUBOOffset;
 }
@@ -6728,6 +6732,7 @@ static VkDescriptorSet VULKAN_INTERNAL_FetchImageDescriptorSet(
 
 static void VULKAN_SetVertexSamplers(
 	REFRESH_Renderer *driverData,
+	REFRESH_CommandBuffer *commandBuffer,
 	REFRESH_Texture **pTextures,
 	REFRESH_Sampler **pSamplers
 ) {
@@ -6735,7 +6740,8 @@ static void VULKAN_SetVertexSamplers(
 	uint32_t i, samplerCount;
 
 	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
-	VulkanGraphicsPipeline *graphicsPipeline = renderer->currentGraphicsPipeline;
+	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
+	VulkanGraphicsPipeline *graphicsPipeline = vulkanCommandBuffer->currentGraphicsPipeline;
 	ImageDescriptorSetData vertexSamplerDescriptorSetData;
 
 	if (graphicsPipeline->pipelineLayout->vertexSamplerDescriptorSetCache == NULL)
@@ -6762,6 +6768,7 @@ static void VULKAN_SetVertexSamplers(
 
 static void VULKAN_SetFragmentSamplers(
 	REFRESH_Renderer *driverData,
+	REFRESH_CommandBuffer *commandBuffer,
 	REFRESH_Texture **pTextures,
 	REFRESH_Sampler **pSamplers
 ) {
@@ -6769,7 +6776,8 @@ static void VULKAN_SetFragmentSamplers(
 	uint32_t i, samplerCount;
 
 	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
-	VulkanGraphicsPipeline *graphicsPipeline = renderer->currentGraphicsPipeline;
+	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
+	VulkanGraphicsPipeline *graphicsPipeline = vulkanCommandBuffer->currentGraphicsPipeline;
 	ImageDescriptorSetData fragmentSamplerDescriptorSetData;
 
 	if (graphicsPipeline->pipelineLayout->fragmentSamplerDescriptorSetCache == NULL)
@@ -6796,6 +6804,7 @@ static void VULKAN_SetFragmentSamplers(
 
 static void VULKAN_INTERNAL_GetTextureData(
 	REFRESH_Renderer *driverData,
+	REFRESH_CommandBuffer *commandBuffer,
 	REFRESH_Texture *texture,
 	int32_t x,
 	int32_t y,
@@ -6806,6 +6815,7 @@ static void VULKAN_INTERNAL_GetTextureData(
 	void* data
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
 	VulkanTexture *vulkanTexture = (VulkanTexture*) texture;
 	VulkanResourceAccessType prevResourceAccess;
 	VkBufferImageCopy imageCopy;
@@ -6821,6 +6831,7 @@ static void VULKAN_INTERNAL_GetTextureData(
 
 	VULKAN_INTERNAL_ImageMemoryBarrier(
 		renderer,
+		vulkanCommandBuffer,
 		RESOURCE_ACCESS_TRANSFER_READ,
 		VK_IMAGE_ASPECT_COLOR_BIT,
 		0,
@@ -6848,19 +6859,21 @@ static void VULKAN_INTERNAL_GetTextureData(
 	imageCopy.imageSubresource.mipLevel = level;
 	imageCopy.bufferOffset = 0;
 
-	RECORD_CMD(renderer->vkCmdCopyImageToBuffer(
-		renderer->currentCommandBuffer,
+	renderer->vkCmdCopyImageToBuffer(
+		vulkanCommandBuffer->commandBuffer,
 		vulkanTexture->image,
 		AccessMap[vulkanTexture->resourceAccessType].imageLayout,
 		renderer->textureStagingBuffer->subBuffers[0]->buffer,
 		1,
 		&imageCopy
-	));
+	);
+	vulkanCommandBuffer->numActiveCommands += 1;
 
 	/* Restore the image layout and wait for completion of the render pass */
 
 	VULKAN_INTERNAL_ImageMemoryBarrier(
 		renderer,
+		vulkanCommandBuffer,
 		prevResourceAccess,
 		VK_IMAGE_ASPECT_COLOR_BIT,
 		0,
@@ -6873,7 +6886,7 @@ static void VULKAN_INTERNAL_GetTextureData(
 	);
 
 	/* Hard sync point */
-	VULKAN_SubmitAndSync(driverData);
+	VULKAN_SubmitAndSync(driverData, commandBuffer);
 
 	/* Read from staging buffer */
 
@@ -6906,6 +6919,7 @@ static void VULKAN_INTERNAL_GetTextureData(
 
 static void VULKAN_GetTextureData2D(
 	REFRESH_Renderer *driverData,
+	REFRESH_CommandBuffer *commandBuffer,
 	REFRESH_Texture *texture,
 	uint32_t x,
 	uint32_t y,
@@ -6916,6 +6930,7 @@ static void VULKAN_GetTextureData2D(
 ) {
     VULKAN_INTERNAL_GetTextureData(
 		driverData,
+		commandBuffer,
 		texture,
 		x,
 		y,
@@ -6929,6 +6944,7 @@ static void VULKAN_GetTextureData2D(
 
 static void VULKAN_GetTextureDataCube(
 	REFRESH_Renderer *driverData,
+	REFRESH_CommandBuffer *commandBuffer,
 	REFRESH_Texture *texture,
 	uint32_t x,
 	uint32_t y,
@@ -6940,6 +6956,7 @@ static void VULKAN_GetTextureDataCube(
 ) {
     VULKAN_INTERNAL_GetTextureData(
 		driverData,
+		commandBuffer,
 		texture,
 		x,
 		y,
@@ -7174,6 +7191,7 @@ static void VULKAN_AddDisposeGraphicsPipeline(
 
 static void VULKAN_BeginRenderPass(
 	REFRESH_Renderer *driverData,
+	REFRESH_CommandBuffer *commandBuffer,
 	REFRESH_RenderPass *renderPass,
 	REFRESH_Framebuffer *framebuffer,
 	REFRESH_Rect renderArea,
@@ -7182,6 +7200,7 @@ static void VULKAN_BeginRenderPass(
 	REFRESH_DepthStencilValue *depthStencilClearValue
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
 	VulkanFramebuffer *vulkanFramebuffer = (VulkanFramebuffer*) framebuffer;
 	VkClearValue *clearValues;
 	uint32_t i;
@@ -7194,6 +7213,7 @@ static void VULKAN_BeginRenderPass(
 	{
 		VULKAN_INTERNAL_ImageMemoryBarrier(
 			renderer,
+			vulkanCommandBuffer,
 			RESOURCE_ACCESS_COLOR_ATTACHMENT_READ_WRITE,
 			VK_IMAGE_ASPECT_COLOR_BIT,
 			vulkanFramebuffer->colorTargets[i]->layer,
@@ -7217,6 +7237,7 @@ static void VULKAN_BeginRenderPass(
 
 		VULKAN_INTERNAL_ImageMemoryBarrier(
 			renderer,
+			vulkanCommandBuffer,
 			RESOURCE_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_WRITE,
 			depthAspectFlags,
 			0,
@@ -7263,35 +7284,40 @@ static void VULKAN_BeginRenderPass(
 	renderPassBeginInfo.pClearValues = clearValues;
 	renderPassBeginInfo.clearValueCount = clearCount;
 
-	RECORD_CMD(renderer->vkCmdBeginRenderPass(
-		renderer->currentCommandBuffer,
+	renderer->vkCmdBeginRenderPass(
+		vulkanCommandBuffer->commandBuffer,
 		&renderPassBeginInfo,
 		VK_SUBPASS_CONTENTS_INLINE
-	));
+	);
+	vulkanCommandBuffer->numActiveCommands += 1;
 
-	renderer->currentFramebuffer = vulkanFramebuffer;
+	vulkanCommandBuffer->currentFramebuffer = vulkanFramebuffer;
 
 	SDL_stack_free(clearValues);
 }
 
 static void VULKAN_EndRenderPass(
-	REFRESH_Renderer *driverData
+	REFRESH_Renderer *driverData,
+	REFRESH_CommandBuffer *commandBuffer
 ) {
 	uint32_t i;
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
 	VulkanTexture *currentTexture;
 
-	RECORD_CMD(renderer->vkCmdEndRenderPass(
-		renderer->currentCommandBuffer
-	));
+	renderer->vkCmdEndRenderPass(
+		vulkanCommandBuffer->commandBuffer
+	);
+	vulkanCommandBuffer->numActiveCommands += 1;
 
-	for (i = 0; i < renderer->currentFramebuffer->colorTargetCount; i += 1)
+	for (i = 0; i < vulkanCommandBuffer->currentFramebuffer->colorTargetCount; i += 1)
 	{
-		currentTexture = renderer->currentFramebuffer->colorTargets[i]->texture;
+		currentTexture = vulkanCommandBuffer->currentFramebuffer->colorTargets[i]->texture;
 		if (currentTexture->usageFlags & REFRESH_TEXTUREUSAGE_SAMPLER_BIT)
 		{
 			VULKAN_INTERNAL_ImageMemoryBarrier(
 				renderer,
+				vulkanCommandBuffer,
 				RESOURCE_ACCESS_ANY_SHADER_READ_SAMPLED_IMAGE,
 				VK_IMAGE_ASPECT_COLOR_BIT,
 				0,
@@ -7305,15 +7331,17 @@ static void VULKAN_EndRenderPass(
 		}
 	}
 
-	renderer->currentGraphicsPipeline = NULL;
-	renderer->currentFramebuffer = NULL;
+	vulkanCommandBuffer->currentGraphicsPipeline = NULL;
+	vulkanCommandBuffer->currentFramebuffer = NULL;
 }
 
 static void VULKAN_BindGraphicsPipeline(
 	REFRESH_Renderer *driverData,
+	REFRESH_CommandBuffer *commandBuffer,
 	REFRESH_GraphicsPipeline *graphicsPipeline
 ) {
 	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
+	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
 	VulkanGraphicsPipeline* pipeline = (VulkanGraphicsPipeline*) graphicsPipeline;
 
 	/* bind dummy sets */
@@ -7327,13 +7355,14 @@ static void VULKAN_BindGraphicsPipeline(
 		pipeline->fragmentSamplerDescriptorSet = renderer->emptyFragmentSamplerDescriptorSet;
 	}
 
-	RECORD_CMD(renderer->vkCmdBindPipeline(
-		renderer->currentCommandBuffer,
+	renderer->vkCmdBindPipeline(
+		vulkanCommandBuffer->commandBuffer,
 		VK_PIPELINE_BIND_POINT_GRAPHICS,
 		pipeline->pipeline
-	));
+	);
+	vulkanCommandBuffer->numActiveCommands += 1;
 
-	renderer->currentGraphicsPipeline = pipeline;
+	vulkanCommandBuffer->currentGraphicsPipeline = pipeline;
 }
 
 static void VULKAN_INTERNAL_MarkAsBound(
@@ -7348,6 +7377,8 @@ static void VULKAN_INTERNAL_MarkAsBound(
 
 	buf->bound = 1;
 
+	SDL_LockMutex(renderer->boundBufferLock);
+
 	if (renderer->buffersInUseCount == renderer->buffersInUseCapacity)
 	{
 		renderer->buffersInUseCapacity *= 2;
@@ -7359,16 +7390,20 @@ static void VULKAN_INTERNAL_MarkAsBound(
 
 	renderer->buffersInUse[renderer->buffersInUseCount] = buf;
 	renderer->buffersInUseCount += 1;
+
+	SDL_UnlockMutex(renderer->boundBufferLock);
 }
 
 static void VULKAN_BindVertexBuffers(
 	REFRESH_Renderer *driverData,
+	REFRESH_CommandBuffer *commandBuffer,
 	uint32_t firstBinding,
 	uint32_t bindingCount,
 	REFRESH_Buffer **pBuffers,
 	uint64_t *pOffsets
 ) {
 	VkBuffer *buffers = SDL_stack_alloc(VkBuffer, bindingCount);
+	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
 	VulkanBuffer* currentBuffer;
 	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
 	uint32_t i;
@@ -7380,41 +7415,47 @@ static void VULKAN_BindVertexBuffers(
 		VULKAN_INTERNAL_MarkAsBound(renderer, currentBuffer);
 	}
 
-	RECORD_CMD(renderer->vkCmdBindVertexBuffers(
-		renderer->currentCommandBuffer,
+	renderer->vkCmdBindVertexBuffers(
+		vulkanCommandBuffer->commandBuffer,
 		firstBinding,
 		bindingCount,
 		buffers,
 		pOffsets
-	));
+	);
+	vulkanCommandBuffer->numActiveCommands += 1;
 
 	SDL_stack_free(buffers);
 }
 
 static void VULKAN_BindIndexBuffer(
 	REFRESH_Renderer *driverData,
+	REFRESH_CommandBuffer *commandBuffer,
 	REFRESH_Buffer *buffer,
 	uint64_t offset,
 	REFRESH_IndexElementSize indexElementSize
 ) {
 	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
+	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
 	VulkanBuffer* vulkanBuffer = (VulkanBuffer*) buffer;
 
 	VULKAN_INTERNAL_MarkAsBound(renderer, vulkanBuffer);
 
-	RECORD_CMD(renderer->vkCmdBindIndexBuffer(
-		renderer->currentCommandBuffer,
+	renderer->vkCmdBindIndexBuffer(
+		vulkanCommandBuffer->commandBuffer,
 		vulkanBuffer->subBuffers[renderer->frameIndex]->buffer,
 		offset,
 		RefreshToVK_IndexType[indexElementSize]
-	));
+	);
+	vulkanCommandBuffer->numActiveCommands += 1;
 }
 
 static void VULKAN_BindComputePipeline(
 	REFRESH_Renderer *driverData,
+	REFRESH_CommandBuffer *commandBuffer,
 	REFRESH_ComputePipeline *computePipeline
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
 	VulkanComputePipeline *vulkanComputePipeline = (VulkanComputePipeline*) computePipeline;
 
 	/* bind dummy sets */
@@ -7429,20 +7470,23 @@ static void VULKAN_BindComputePipeline(
 	}
 
 	renderer->vkCmdBindPipeline(
-		renderer->currentCommandBuffer,
+		vulkanCommandBuffer->commandBuffer,
 		VK_PIPELINE_BIND_POINT_COMPUTE,
 		vulkanComputePipeline->pipeline
 	);
+	vulkanCommandBuffer->numActiveCommands += 1;
 
-	renderer->currentComputePipeline = vulkanComputePipeline;
+	vulkanCommandBuffer->currentComputePipeline = vulkanComputePipeline;
 }
 
 static void VULKAN_BindComputeBuffers(
 	REFRESH_Renderer *driverData,
+	REFRESH_CommandBuffer *commandBuffer,
 	REFRESH_Buffer **pBuffers
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
-	VulkanComputePipeline *computePipeline = renderer->currentComputePipeline;
+	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
+	VulkanComputePipeline *computePipeline = vulkanCommandBuffer->currentComputePipeline;
 	VulkanBuffer *currentBuffer;
 	BufferDescriptorSetData bufferDescriptorSetData;
 	uint32_t i;
@@ -7461,10 +7505,10 @@ static void VULKAN_BindComputeBuffers(
 		bufferDescriptorSetData.descriptorBufferInfo[i].range = currentBuffer->subBuffers[currentBuffer->currentSubBufferIndex]->size;
 
 		VULKAN_INTERNAL_MarkAsBound(renderer, currentBuffer);
-		renderer->boundComputeBuffers[i] = currentBuffer;
+		vulkanCommandBuffer->boundComputeBuffers[i] = currentBuffer;
 	}
 
-	renderer->boundComputeBufferCount = computePipeline->pipelineLayout->bufferDescriptorSetCache->bindingCount;
+	vulkanCommandBuffer->boundComputeBufferCount = computePipeline->pipelineLayout->bufferDescriptorSetCache->bindingCount;
 
 	computePipeline->bufferDescriptorSet =
 		VULKAN_INTERNAL_FetchBufferDescriptorSet(
@@ -7476,10 +7520,12 @@ static void VULKAN_BindComputeBuffers(
 
 static void VULKAN_BindComputeTextures(
 	REFRESH_Renderer *driverData,
+	REFRESH_CommandBuffer *commandBuffer,
 	REFRESH_Texture **pTextures
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
-	VulkanComputePipeline *computePipeline = renderer->currentComputePipeline;
+	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
+	VulkanComputePipeline *computePipeline = vulkanCommandBuffer->currentComputePipeline;
 	VulkanTexture *currentTexture;
 	ImageDescriptorSetData imageDescriptorSetData;
 	uint32_t i;
@@ -7505,8 +7551,89 @@ static void VULKAN_BindComputeTextures(
 		);
 }
 
+static VulkanCommandBuffer* VULKAN_INTERNAL_GetInactiveCommandBufferFromPool(
+	VulkanRenderer *renderer,
+	SDL_threadID threadID
+) {
+	VulkanCommandPool *commandPool =
+		VULKAN_INTERNAL_GetCommandPool(renderer, threadID);
+	VulkanCommandBuffer *commandBuffer;
+	VkCommandBufferAllocateInfo allocateInfo;
+	VkResult vulkanResult;
+
+	if (commandPool->inactiveCommandBufferCount == 0)
+	{
+		commandPool->inactiveCommandBuffers = SDL_realloc(
+			commandPool->inactiveCommandBuffers,
+			sizeof(VulkanCommandBuffer*) * commandPool->allocatedCommandBufferCount * 2
+		);
+
+		allocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+		allocateInfo.pNext = NULL;
+		allocateInfo.commandPool = commandPool->commandPool;
+		allocateInfo.commandBufferCount = commandPool->allocatedCommandBufferCount;
+		allocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+
+		vulkanResult = renderer->vkAllocateCommandBuffers(
+			renderer->logicalDevice,
+			&allocateInfo,
+			commandPool->inactiveCommandBuffers
+		);
+
+		if (vulkanResult != VK_SUCCESS)
+		{
+			LogVulkanResult("vkAllocateCommandBuffers", vulkanResult);
+			return NULL;
+		}
+
+		commandPool->inactiveCommandBufferCount = commandPool->allocatedCommandBufferCount;
+		commandPool->allocatedCommandBufferCount *= 2;
+	}
+
+	commandBuffer = commandPool->inactiveCommandBuffers[commandPool->inactiveCommandBufferCount];
+	commandPool->inactiveCommandBufferCount -= 1;
+
+	return commandBuffer;
+}
+
+static REFRESH_CommandBuffer* VULKAN_AcquireCommandBuffer(
+	REFRESH_Renderer *driverData,
+	uint8_t fixed
+) {
+	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	uint32_t i;
+
+	SDL_threadID threadID = SDL_ThreadID();
+
+	VulkanCommandBuffer *commandBuffer =
+		VULKAN_INTERNAL_GetInactiveCommandBufferFromPool(renderer, threadID);
+
+	/* State tracking */
+
+	commandBuffer->currentComputePipeline = NULL;
+	commandBuffer->currentGraphicsPipeline = NULL;
+	commandBuffer->currentFramebuffer = NULL;
+
+	/* init bound compute buffer array */
+
+	for (i = 0; i < MAX_BUFFER_BINDINGS; i += 1)
+	{
+		commandBuffer->boundComputeBuffers[i] = NULL;
+	}
+	commandBuffer->boundComputeBufferCount = 0;
+
+	commandBuffer->numActiveCommands = 0;
+	commandBuffer->fixed = fixed;
+	commandBuffer->submitted = 0;
+
+	VULKAN_INTERNAL_BeginCommandBuffer(renderer, commandBuffer);
+
+	return (REFRESH_CommandBuffer*) commandBuffer;
+}
+
 static void VULKAN_QueuePresent(
 	REFRESH_Renderer* driverData,
+	REFRESH_CommandBuffer *commandBuffer,
 	REFRESH_TextureSlice* textureSlice,
 	REFRESH_Rect* sourceRectangle,
 	REFRESH_Rect* destinationRectangle
@@ -7519,6 +7646,7 @@ static void VULKAN_QueuePresent(
 	VkImageBlit blit;
 
 	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
+	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
 	VulkanTexture* vulkanTexture = (VulkanTexture*) textureSlice->texture;
 
 	if (renderer->headless)
@@ -7575,6 +7703,7 @@ static void VULKAN_QueuePresent(
 
 	VULKAN_INTERNAL_ImageMemoryBarrier(
 		renderer,
+		vulkanCommandBuffer,
 		RESOURCE_ACCESS_TRANSFER_READ,
 		VK_IMAGE_ASPECT_COLOR_BIT,
 		0,
@@ -7588,6 +7717,7 @@ static void VULKAN_QueuePresent(
 
 	VULKAN_INTERNAL_ImageMemoryBarrier(
 		renderer,
+		vulkanCommandBuffer,
 		RESOURCE_ACCESS_TRANSFER_WRITE,
 		VK_IMAGE_ASPECT_COLOR_BIT,
 		0,
@@ -7623,8 +7753,8 @@ static void VULKAN_QueuePresent(
 	blit.dstSubresource.layerCount = 1;
 	blit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 
-	RECORD_CMD(renderer->vkCmdBlitImage(
-		renderer->currentCommandBuffer,
+	renderer->vkCmdBlitImage(
+		vulkanCommandBuffer->commandBuffer,
 		vulkanTexture->image,
 		VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
 		renderer->swapChainImages[swapChainImageIndex],
@@ -7632,10 +7762,12 @@ static void VULKAN_QueuePresent(
 		1,
 		&blit,
 		VK_FILTER_LINEAR
-	));
+	);
+	vulkanCommandBuffer->numActiveCommands += 1;
 
 	VULKAN_INTERNAL_ImageMemoryBarrier(
 		renderer,
+		vulkanCommandBuffer,
 		RESOURCE_ACCESS_PRESENT,
 		VK_IMAGE_ASPECT_COLOR_BIT,
 		0,
@@ -7649,6 +7781,7 @@ static void VULKAN_QueuePresent(
 
 	VULKAN_INTERNAL_ImageMemoryBarrier(
 		renderer,
+		vulkanCommandBuffer,
 		RESOURCE_ACCESS_COLOR_ATTACHMENT_READ_WRITE,
 		VK_IMAGE_ASPECT_COLOR_BIT,
 		0,
@@ -7823,11 +7956,38 @@ static void VULKAN_INTERNAL_ResetDescriptorSetData(VulkanRenderer *renderer)
 	}
 }
 
-static void VULKAN_SubmitAndSync(REFRESH_Renderer *driverData)
-{
+static void VULKAN_INTERNAL_ResetCommandBuffer(
+	VulkanRenderer *renderer,
+	VulkanCommandBuffer *commandBuffer
+) {
+	VkResult vulkanResult;
+	VulkanCommandPool *commandPool = commandBuffer->commandPool;
+
+	vulkanResult = renderer->vkResetCommandBuffer(
+		commandBuffer,
+		VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT
+	);
+
+	if (vulkanResult != VK_SUCCESS)
+	{
+		LogVulkanResult("vkResetCommandBuffer", vulkanResult);
+	}
+
+	commandBuffer->submitted = 0;
+
+	commandPool->inactiveCommandBuffers[
+		commandPool->inactiveCommandBufferCount
+	] = commandBuffer;
+	commandPool->inactiveCommandBufferCount += 1;
+}
+
+static void VULKAN_SubmitAndSync(
+	REFRESH_Renderer *driverData,
+	REFRESH_CommandBuffer *commandBuffer
+) {
 	VulkanRenderer* renderer = (VulkanRenderer*)driverData;
 
-	VULKAN_Submit(driverData);
+	VULKAN_Submit(driverData, &commandBuffer, 1);
 
 	renderer->vkWaitForFences(
 		renderer->logicalDevice,
@@ -7839,11 +7999,15 @@ static void VULKAN_SubmitAndSync(REFRESH_Renderer *driverData)
 }
 
 static void VULKAN_Submit(
-    REFRESH_Renderer *driverData
+    REFRESH_Renderer *driverData,
+	REFRESH_CommandBuffer **pCommandBuffers,
+	uint32_t commandBufferCount
 ) {
 	VulkanRenderer* renderer = (VulkanRenderer*)driverData;
 	VkSubmitInfo submitInfo;
 	VkResult vulkanResult, presentResult = VK_SUCCESS;
+	VulkanCommandBuffer *currentCommandBuffer;
+	VkCommandBuffer *commandBuffers;
 	uint32_t i;
 	uint8_t present;
 
@@ -7852,21 +8016,19 @@ static void VULKAN_Submit(
 
 	present = !renderer->headless && renderer->shouldPresent;
 
-	if (renderer->activeCommandBufferCount <= 1 && renderer->numActiveCommands == 0)
-	{
-		/* No commands recorded, bailing out */
-		return;
-	}
+	commandBuffers = SDL_stack_alloc(VkCommandBuffer, commandBufferCount);
 
-	if (renderer->currentCommandBuffer != NULL)
+	for (i = 0; i < commandBufferCount; i += 1)
 	{
-		VULKAN_INTERNAL_EndCommandBuffer(renderer);
+		currentCommandBuffer = (VulkanCommandBuffer*)pCommandBuffers[i];
+		VULKAN_INTERNAL_EndCommandBuffer(renderer, currentCommandBuffer);
+		commandBuffers[i] = currentCommandBuffer->commandBuffer;
 	}
 
 	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 	submitInfo.pNext = NULL;
-	submitInfo.commandBufferCount = renderer->activeCommandBufferCount;
-	submitInfo.pCommandBuffers = renderer->activeCommandBuffers;
+	submitInfo.commandBufferCount = commandBuffers;
+	submitInfo.pCommandBuffers = commandBufferCount;
 
 	if (present)
 	{
@@ -7905,24 +8067,14 @@ static void VULKAN_Submit(
 	/* Reset the previously submitted command buffers */
 	for (i = 0; i < renderer->submittedCommandBufferCount; i += 1)
 	{
-		vulkanResult = renderer->vkResetCommandBuffer(
-			renderer->submittedCommandBuffers[i],
-			VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT
-		);
-
-		if (vulkanResult != VK_SUCCESS)
+		if (!renderer->submittedCommandBuffers[i]->fixed)
 		{
-			LogVulkanResult("vkResetCommandBuffer", vulkanResult);
+			VULKAN_INTERNAL_ResetCommandBuffer(
+				renderer,
+				renderer->submittedCommandBuffers[i]
+			);
 		}
 	}
-
-	/* Mark the previously submitted command buffers as inactive */
-	for (i = 0; i < renderer->submittedCommandBufferCount; i += 1)
-	{
-		renderer->inactiveCommandBuffers[renderer->inactiveCommandBufferCount] = renderer->submittedCommandBuffers[i];
-		renderer->inactiveCommandBufferCount += 1;
-	}
-
 	renderer->submittedCommandBufferCount = 0;
 
 	/* Prepare the command buffer fence for submission */
@@ -7946,21 +8098,34 @@ static void VULKAN_Submit(
 		return;
 	}
 
-	/* Mark active command buffers as submitted */
-	for (i = 0; i < renderer->activeCommandBufferCount; i += 1)
+	if (renderer->submittedCommandBufferCount >= renderer->submittedCommandBufferCapacity)
 	{
-		renderer->submittedCommandBuffers[renderer->submittedCommandBufferCount] = renderer->activeCommandBuffers[i];
-		renderer->submittedCommandBufferCount += 1;
+		renderer->submittedCommandBufferCapacity *= 2;
+
+		renderer->submittedCommandBuffers = SDL_realloc(
+			renderer->submittedCommandBuffers,
+			sizeof(VulkanCommandBuffer*) * renderer->submittedCommandBufferCapacity
+		);
 	}
 
-	renderer->activeCommandBufferCount = 0;
+	/* Mark command buffers as submitted */
+	for (i = 0; i < commandBufferCount; i += 1)
+	{
+		((VulkanCommandBuffer*)pCommandBuffers[i])->submitted = 1;
+		renderer->submittedCommandBuffers[renderer->submittedCommandBufferCount] = pCommandBuffers[i];
+	}
+	renderer->submittedCommandBufferCount = commandBufferCount;
 
 	/* Reset UBOs */
 
+	SDL_LockMutex(renderer->uniformBufferLock);
 	renderer->vertexUBOOffset = UBO_BUFFER_SIZE * renderer->frameIndex;
 	renderer->vertexUBOBlockIncrement = 0;
 	renderer->fragmentUBOOffset = UBO_BUFFER_SIZE * renderer->frameIndex;
 	renderer->fragmentUBOBlockIncrement = 0;
+	renderer->computeUBOOffset = UBO_BUFFER_SIZE * renderer->frameIndex;
+	renderer->computeUBOBlockIncrement = 0;
+	SDL_UnlockMutex(renderer->uniformBufferLock);
 
 	/* Reset descriptor set data */
 	VULKAN_INTERNAL_ResetDescriptorSetData(renderer);
@@ -7992,7 +8157,7 @@ static void VULKAN_Submit(
 	renderer->swapChainImageAcquired = 0;
 	renderer->shouldPresent = 0;
 
-	VULKAN_INTERNAL_BeginCommandBuffer(renderer);
+	SDL_stack_free(commandBuffers);
 }
 
 /* Device instantiation */
@@ -8594,10 +8759,6 @@ static REFRESH_Device* VULKAN_CreateDevice(
 	VkFenceCreateInfo fenceInfo;
 	VkSemaphoreCreateInfo semaphoreInfo;
 
-	/* Variables: Create command pool and command buffer */
-	VkCommandPoolCreateInfo commandPoolCreateInfo;
-	VkCommandBufferAllocateInfo commandBufferAllocateInfo;
-
 	/* Variables: Descriptor set layouts */
 	VkDescriptorSetLayoutCreateInfo setLayoutCreateInfo;
 	VkDescriptorSetLayoutBinding vertexParamLayoutBinding;
@@ -8807,54 +8968,18 @@ static REFRESH_Device* VULKAN_CreateDevice(
 	/* Threading */
 
 	renderer->allocatorLock = SDL_CreateMutex();
-	renderer->commandLock = SDL_CreateMutex();
 	renderer->disposeLock = SDL_CreateMutex();
+	renderer->uniformBufferLock = SDL_CreateMutex();
+	renderer->descriptorSetLock = SDL_CreateMutex();
+	renderer->boundBufferLock = SDL_CreateMutex();
 
 	/*
-	 * Create command pool and buffers
+	 * Create submitted command buffer list
 	 */
 
-	commandPoolCreateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-	commandPoolCreateInfo.pNext = NULL;
-	commandPoolCreateInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-	commandPoolCreateInfo.queueFamilyIndex = renderer->queueFamilyIndices.graphicsFamily;
-	vulkanResult = renderer->vkCreateCommandPool(
-		renderer->logicalDevice,
-		&commandPoolCreateInfo,
-		NULL,
-		&renderer->commandPool
-	);
-	if (vulkanResult != VK_SUCCESS)
-	{
-		LogVulkanResult("vkCreateCommandPool", vulkanResult);
-	}
-
-	renderer->allocatedCommandBufferCount = 4;
-	renderer->inactiveCommandBuffers = SDL_malloc(sizeof(VkCommandBuffer) * renderer->allocatedCommandBufferCount);
-	renderer->activeCommandBuffers = SDL_malloc(sizeof(VkCommandBuffer) * renderer->allocatedCommandBufferCount);
-	renderer->submittedCommandBuffers = SDL_malloc(sizeof(VkCommandBuffer) * renderer->allocatedCommandBufferCount);
-	renderer->inactiveCommandBufferCount = renderer->allocatedCommandBufferCount;
-	renderer->activeCommandBufferCount = 0;
+	renderer->submittedCommandBufferCapacity = 16;
 	renderer->submittedCommandBufferCount = 0;
-
-	commandBufferAllocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-	commandBufferAllocateInfo.pNext = NULL;
-	commandBufferAllocateInfo.commandPool = renderer->commandPool;
-	commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-	commandBufferAllocateInfo.commandBufferCount = renderer->allocatedCommandBufferCount;
-	vulkanResult = renderer->vkAllocateCommandBuffers(
-		renderer->logicalDevice,
-		&commandBufferAllocateInfo,
-		renderer->inactiveCommandBuffers
-	);
-	if (vulkanResult != VK_SUCCESS)
-	{
-		LogVulkanResult("vkAllocateCommandBuffers", vulkanResult);
-	}
-
-	renderer->currentCommandCount = 0;
-
-	VULKAN_INTERNAL_BeginCommandBuffer(renderer);
+	renderer->submittedCommandBuffers = SDL_malloc(sizeof(VulkanCommandBuffer*) * renderer->submittedCommandBufferCapacity);
 
 	/* Memory Allocator */
 
@@ -9214,24 +9339,6 @@ static REFRESH_Device* VULKAN_CreateDevice(
 		renderer->descriptorSetLayoutHashTable.buckets[i].count = 0;
 		renderer->descriptorSetLayoutHashTable.buckets[i].capacity = 0;
 	}
-
-	/* Descriptor Pools */
-
-	renderer->descriptorPools = NULL;
-	renderer->descriptorPoolCount = 0;
-
-	/* State tracking */
-
-	renderer->currentGraphicsPipeline = NULL;
-	renderer->currentFramebuffer = NULL;
-
-	/* init bound compute buffer array */
-
-	for (i = 0; i < MAX_BUFFER_BINDINGS; i += 1)
-	{
-		renderer->boundComputeBuffers[i] = NULL;
-	}
-	renderer->boundComputeBufferCount = 0;
 
 	/* Deferred destroy storage */
 
