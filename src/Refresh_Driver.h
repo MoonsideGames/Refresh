@@ -169,6 +169,7 @@ struct REFRESH_Device
 
 	void (*Clear)(
         REFRESH_Renderer *driverData,
+        REFRESH_CommandBuffer *commandBuffer,
         REFRESH_Rect *clearRect,
         REFRESH_ClearOptions options,
         REFRESH_Color *colors,
@@ -179,6 +180,7 @@ struct REFRESH_Device
 
 	void (*DrawInstancedPrimitives)(
         REFRESH_Renderer *driverData,
+        REFRESH_CommandBuffer *commandBuffer,
         uint32_t baseVertex,
         uint32_t minVertexIndex,
         uint32_t numVertices,
@@ -193,6 +195,7 @@ struct REFRESH_Device
 
 	void (*DrawIndexedPrimitives)(
         REFRESH_Renderer *driverData,
+        REFRESH_CommandBuffer *commandBuffer,
         uint32_t baseVertex,
         uint32_t minVertexIndex,
         uint32_t numVertices,
@@ -206,6 +209,7 @@ struct REFRESH_Device
 
 	void (*DrawPrimitives)(
 	    REFRESH_Renderer *driverData,
+        REFRESH_CommandBuffer *commandBuffer,
         uint32_t vertexStart,
         uint32_t primitiveCount,
         uint32_t vertexParamOffset,
@@ -214,6 +218,7 @@ struct REFRESH_Device
 
     void (*DispatchCompute)(
         REFRESH_Renderer *device,
+        REFRESH_CommandBuffer *commandBuffer,
         uint32_t groupCountX,
         uint32_t groupCountY,
         uint32_t groupCountZ,
@@ -362,30 +367,35 @@ struct REFRESH_Device
 
     uint32_t(*PushVertexShaderParams)(
         REFRESH_Renderer *driverData,
+        REFRESH_CommandBuffer *commandBuffer,
         void *data,
         uint32_t elementCount
     );
 
     uint32_t(*PushFragmentShaderParams)(
         REFRESH_Renderer *driverData,
+        REFRESH_CommandBuffer *commandBuffer,
         void *data,
         uint32_t elementCount
     );
 
     uint32_t (*PushComputeShaderParams)(
         REFRESH_Renderer *driverData,
+        REFRESH_CommandBuffer *commandBuffer,
         void *data,
         uint32_t elementCount
     );
 
     void(*SetVertexSamplers)(
         REFRESH_Renderer *driverData,
+        REFRESH_CommandBuffer *commandBuffer,
         REFRESH_Texture **pTextures,
         REFRESH_Sampler **pSamplers
     );
 
     void(*SetFragmentSamplers)(
         REFRESH_Renderer *driverData,
+        REFRESH_CommandBuffer *commandBuffer,
         REFRESH_Texture **pTextures,
         REFRESH_Sampler **pSamplers
     );
@@ -476,6 +486,7 @@ struct REFRESH_Device
 
     void(*BeginRenderPass)(
         REFRESH_Renderer *driverData,
+        REFRESH_CommandBuffer *commandBuffer,
         REFRESH_RenderPass *renderPass,
         REFRESH_Framebuffer *framebuffer,
         REFRESH_Rect renderArea,
@@ -485,16 +496,19 @@ struct REFRESH_Device
     );
 
     void(*EndRenderPass)(
-        REFRESH_Renderer *driverData
+        REFRESH_Renderer *driverData,
+        REFRESH_CommandBuffer *commandBuffer
     );
 
     void(*BindGraphicsPipeline)(
         REFRESH_Renderer *driverData,
+        REFRESH_CommandBuffer *commandBuffer,
         REFRESH_GraphicsPipeline *graphicsPipeline
     );
 
     void(*BindVertexBuffers)(
         REFRESH_Renderer *driverData,
+        REFRESH_CommandBuffer *commandBuffer,
         uint32_t firstBinding,
         uint32_t bindingCount,
         REFRESH_Buffer **pBuffers,
@@ -503,6 +517,7 @@ struct REFRESH_Device
 
     void(*BindIndexBuffer)(
         REFRESH_Renderer *driverData,
+        REFRESH_CommandBuffer *commandBuffer,
         REFRESH_Buffer *buffer,
         uint64_t offset,
         REFRESH_IndexElementSize indexElementSize
@@ -510,16 +525,19 @@ struct REFRESH_Device
 
     void(*BindComputePipeline)(
         REFRESH_Renderer *driverData,
+        REFRESH_CommandBuffer *commandBuffer,
         REFRESH_ComputePipeline *computePipeline
     );
 
     void(*BindComputeBuffers)(
         REFRESH_Renderer *driverData,
+        REFRESH_CommandBuffer *commandBuffer,
         REFRESH_Buffer **pBuffers
     );
 
     void(*BindComputeTextures)(
         REFRESH_Renderer *driverData,
+        REFRESH_CommandBuffer *commandBuffer,
         REFRESH_Texture **pTextures
     );
 
@@ -530,13 +548,16 @@ struct REFRESH_Device
 
     void(*QueuePresent)(
         REFRESH_Renderer *driverData,
+        REFRESH_CommandBuffer *commandBuffer,
         REFRESH_TextureSlice *textureSlice,
         REFRESH_Rect *sourceRectangle,
         REFRESH_Rect *destinationRectangle
     );
 
     void(*Submit)(
-        REFRESH_Renderer *driverData
+        REFRESH_Renderer *driverData,
+        REFRESH_CommandBuffer **pCommandBuffers,
+        uint32_t commandBufferCount
     );
 
 	/* Opaque pointer for the Driver */

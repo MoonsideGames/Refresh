@@ -658,6 +658,7 @@ REFRESHAPI void REFRESH_DestroyDevice(REFRESH_Device *device);
  */
 REFRESHAPI void REFRESH_Clear(
 	REFRESH_Device *device,
+	REFRESH_CommandBuffer *commandBuffer,
 	REFRESH_Rect *clearRect,
 	REFRESH_ClearOptions options,
 	REFRESH_Color *colors,
@@ -681,6 +682,7 @@ REFRESHAPI void REFRESH_Clear(
  */
 REFRESHAPI void REFRESH_DrawInstancedPrimitives(
 	REFRESH_Device *device,
+	REFRESH_CommandBuffer *commandBuffer,
 	uint32_t baseVertex,
 	uint32_t minVertexIndex,
 	uint32_t numVertices,
@@ -707,6 +709,7 @@ REFRESHAPI void REFRESH_DrawInstancedPrimitives(
  */
 REFRESHAPI void REFRESH_DrawIndexedPrimitives(
 	REFRESH_Device *device,
+	REFRESH_CommandBuffer *commandBuffer,
 	uint32_t baseVertex,
 	uint32_t minVertexIndex,
 	uint32_t numVertices,
@@ -727,6 +730,7 @@ REFRESHAPI void REFRESH_DrawIndexedPrimitives(
  */
 REFRESHAPI void REFRESH_DrawPrimitives(
 	REFRESH_Device *device,
+	REFRESH_CommandBuffer *commandBuffer,
 	uint32_t vertexStart,
 	uint32_t primitiveCount,
 	uint32_t vertexParamOffset,
@@ -742,6 +746,7 @@ REFRESHAPI void REFRESH_DrawPrimitives(
  */
 REFRESHAPI void REFRESH_DispatchCompute(
 	REFRESH_Device *device,
+	REFRESH_CommandBuffer *commandBuffer,
 	uint32_t groupCountX,
 	uint32_t groupCountY,
 	uint32_t groupCountZ,
@@ -895,7 +900,7 @@ REFRESHAPI REFRESH_Buffer* REFRESH_CreateBuffer(
  * dataLength:	The size of the image data in bytes.
  */
 REFRESHAPI void REFRESH_SetTextureData2D(
-	REFRESH_Device *device,
+	REFRESH_Device *driverData,
 	REFRESH_Texture *texture,
 	uint32_t x,
 	uint32_t y,
@@ -920,7 +925,7 @@ REFRESHAPI void REFRESH_SetTextureData2D(
  * dataLength:	The size of the image data in bytes.
  */
 REFRESHAPI void REFRESH_SetTextureData3D(
-	REFRESH_Device *device,
+	REFRESH_Device *driverData,
 	REFRESH_Texture *texture,
 	uint32_t x,
 	uint32_t y,
@@ -946,7 +951,7 @@ REFRESHAPI void REFRESH_SetTextureData3D(
  * dataLength:	The size of the image data in bytes.
  */
 REFRESHAPI void REFRESH_SetTextureDataCube(
-	REFRESH_Device *device,
+	REFRESH_Device *driverData,
 	REFRESH_Texture *texture,
 	uint32_t x,
 	uint32_t y,
@@ -971,7 +976,7 @@ REFRESHAPI void REFRESH_SetTextureDataCube(
  * dataLength:	The size of the image data in bytes.
  */
 REFRESHAPI void REFRESH_SetTextureDataYUV(
-	REFRESH_Device *device,
+	REFRESH_Device *driverData,
 	REFRESH_Texture *y,
 	REFRESH_Texture *u,
 	REFRESH_Texture *v,
@@ -1014,6 +1019,7 @@ REFRESHAPI void REFRESH_SetBufferData(
  */
 REFRESHAPI uint32_t REFRESH_PushVertexShaderParams(
 	REFRESH_Device *device,
+	REFRESH_CommandBuffer *commandBuffer,
 	void *data,
 	uint32_t paramBlockCount
 );
@@ -1030,6 +1036,7 @@ REFRESHAPI uint32_t REFRESH_PushVertexShaderParams(
  */
 REFRESHAPI uint32_t REFRESH_PushFragmentShaderParams(
 	REFRESH_Device *device,
+	REFRESH_CommandBuffer *commandBuffer,
 	void *data,
 	uint32_t paramBlockCount
 );
@@ -1046,6 +1053,7 @@ REFRESHAPI uint32_t REFRESH_PushFragmentShaderParams(
  */
 REFRESHAPI uint32_t REFRESH_PushComputeShaderParams(
 	REFRESH_Device *device,
+	REFRESH_CommandBuffer *commandBuffer,
 	void *data,
 	uint32_t paramBlockCount
 );
@@ -1061,6 +1069,7 @@ REFRESHAPI uint32_t REFRESH_PushComputeShaderParams(
  */
 REFRESHAPI void REFRESH_SetVertexSamplers(
 	REFRESH_Device *device,
+	REFRESH_CommandBuffer *commandBuffer,
 	REFRESH_Texture **pTextures,
 	REFRESH_Sampler **pSamplers
 );
@@ -1076,6 +1085,7 @@ REFRESHAPI void REFRESH_SetVertexSamplers(
  */
 REFRESHAPI void REFRESH_SetFragmentSamplers(
 	REFRESH_Device *device,
+	REFRESH_CommandBuffer *commandBuffer,
 	REFRESH_Texture **pTextures,
 	REFRESH_Sampler **pSamplers
 );
@@ -1284,6 +1294,7 @@ REFRESHAPI void REFRESH_AddDisposeGraphicsPipeline(
  */
 REFRESHAPI void REFRESH_BeginRenderPass(
 	REFRESH_Device *device,
+	REFRESH_CommandBuffer *commandBuffer,
 	REFRESH_RenderPass *renderPass,
 	REFRESH_Framebuffer *framebuffer,
 	REFRESH_Rect renderArea,
@@ -1294,18 +1305,21 @@ REFRESHAPI void REFRESH_BeginRenderPass(
 
 /* Ends the current render pass. */
 REFRESHAPI void REFRESH_EndRenderPass(
-	REFRESH_Device *device
+	REFRESH_Device *device,
+	REFRESH_CommandBuffer *commandBuffer
 );
 
 /* Binds a graphics pipeline to the graphics bind point. */
 REFRESHAPI void REFRESH_BindGraphicsPipeline(
 	REFRESH_Device *device,
+	REFRESH_CommandBuffer *commandBuffer,
 	REFRESH_GraphicsPipeline *graphicsPipeline
 );
 
 /* Binds vertex buffers for use with subsequent draw calls. */
 REFRESHAPI void REFRESH_BindVertexBuffers(
 	REFRESH_Device *device,
+	REFRESH_CommandBuffer *commandBuffer,
 	uint32_t firstBinding,
 	uint32_t bindingCount,
 	REFRESH_Buffer **pBuffers,
@@ -1315,6 +1329,7 @@ REFRESHAPI void REFRESH_BindVertexBuffers(
 /* Binds an index buffer for use with subsequent draw calls. */
 REFRESHAPI void REFRESH_BindIndexBuffer(
 	REFRESH_Device *device,
+	REFRESH_CommandBuffer *commandBuffer,
 	REFRESH_Buffer *buffer,
 	uint64_t offset,
 	REFRESH_IndexElementSize indexElementSize
@@ -1323,6 +1338,7 @@ REFRESHAPI void REFRESH_BindIndexBuffer(
 /* Binds a compute pipeline to the compute bind point. */
 REFRESHAPI void REFRESH_BindComputePipeline(
 	REFRESH_Device *device,
+	REFRESH_CommandBuffer *commandBuffer,
 	REFRESH_ComputePipeline *computePipeline
 );
 
@@ -1334,6 +1350,7 @@ REFRESHAPI void REFRESH_BindComputePipeline(
  */
 REFRESHAPI void REFRESH_BindComputeBuffers(
 	REFRESH_Device *device,
+	REFRESH_CommandBuffer *commandBuffer,
 	REFRESH_Buffer **pBuffers
 );
 
@@ -1345,6 +1362,7 @@ REFRESHAPI void REFRESH_BindComputeBuffers(
  */
 REFRESHAPI void REFRESH_BindComputeTextures(
 	REFRESH_Device *device,
+	REFRESH_CommandBuffer *commandBuffer,
 	REFRESH_Texture **pTextures
 );
 
@@ -1379,6 +1397,7 @@ REFRESHAPI REFRESH_CommandBuffer* REFRESH_AcquireCommandBuffer(
  */
 REFRESHAPI void REFRESH_QueuePresent(
 	REFRESH_Device *device,
+	REFRESH_CommandBuffer *commandBuffer,
 	REFRESH_TextureSlice *textureSlice,
 	REFRESH_Rect *sourceRectangle,
 	REFRESH_Rect *destinationRectangle
@@ -1386,7 +1405,9 @@ REFRESHAPI void REFRESH_QueuePresent(
 
 /* Submits all of the enqueued commands. */
 REFRESHAPI void REFRESH_Submit(
-	REFRESH_Device* device
+	REFRESH_Device* device,
+	REFRESH_CommandBuffer **pCommandBuffers,
+	uint32_t commandBufferCount
 );
 
 #ifdef __cplusplus
