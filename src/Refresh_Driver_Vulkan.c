@@ -6033,6 +6033,7 @@ static void VULKAN_SetTextureData2D(
 	{
 		REFRESH_LogError("Failed to map buffer memory!");
 		SDL_UnlockMutex(renderer->textureStagingBuffer->subBuffers[0]->allocation->memoryLock);
+		SDL_UnlockMutex(renderer->stagingLock);
 		return;
 	}
 
@@ -6145,6 +6146,7 @@ static void VULKAN_SetTextureData3D(
 	{
 		REFRESH_LogError("Failed to map buffer memory!");
 		SDL_UnlockMutex(renderer->textureStagingBuffer->subBuffers[0]->allocation->memoryLock);
+		SDL_UnlockMutex(renderer->stagingLock);
 		return;
 	}
 
@@ -6256,6 +6258,7 @@ static void VULKAN_SetTextureDataCube(
 	{
 		REFRESH_LogError("Failed to map buffer memory!");
 		SDL_UnlockMutex(renderer->textureStagingBuffer->subBuffers[0]->allocation->memoryLock);
+		SDL_UnlockMutex(renderer->stagingLock);
 		return;
 	}
 
@@ -6385,6 +6388,7 @@ static void VULKAN_SetTextureDataYUV(
 	{
 		REFRESH_LogError("Failed to map buffer memory!");
 		SDL_UnlockMutex(renderer->textureStagingBuffer->subBuffers[0]->allocation->memoryLock);
+		SDL_UnlockMutex(renderer->stagingLock);
 		return;
 	}
 
