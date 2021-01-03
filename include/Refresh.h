@@ -315,11 +315,12 @@ typedef enum REFRESH_ShaderStageType
 	REFRESH_SHADERSTAGE_FRAGMENT
 } REFRESH_ShaderStageType;
 
-typedef enum REFRESH_SamplerFilter
+typedef enum REFRESH_Filter
 {
-	REFRESH_SAMPLERFILTER_NEAREST,
-	REFRESH_SAMPLERFILTER_LINEAR
-} REFRESH_SamplerFilter;
+	REFRESH_FILTER_NEAREST,
+	REFRESH_FILTER_LINEAR,
+	REFRESH_FILTER_CUBIC
+} REFRESH_Filter;
 
 typedef enum REFRESH_SamplerMipmapMode
 {
@@ -391,6 +392,7 @@ typedef struct REFRESH_TextureSlice
 {
 	REFRESH_Texture *texture;
 	uint32_t layer; /* 0-5 for cube, or z-slice for 3D */
+	uint32_t level;
 } REFRESH_TextureSlice;
 
 typedef struct REFRESH_PresentationParameters
@@ -403,8 +405,8 @@ typedef struct REFRESH_PresentationParameters
 
 typedef struct REFRESH_SamplerStateCreateInfo
 {
-	REFRESH_SamplerFilter minFilter;
-	REFRESH_SamplerFilter magFilter;
+	REFRESH_Filter minFilter;
+	REFRESH_Filter magFilter;
 	REFRESH_SamplerMipmapMode mipmapMode;
 	REFRESH_SamplerAddressMode addressModeU;
 	REFRESH_SamplerAddressMode addressModeV;
@@ -988,6 +990,49 @@ REFRESHAPI void REFRESH_SetTextureDataYUV(
 	uint32_t dataLength
 );
 
+/* Performs an asynchronous texture-to-texture copy.
+ *
+ * sourceTextureSlice:		The texture slice from which to copy.
+ * destinationTextureSlice:	The texture slice to copy to.
+ * sourceRectangle:			The region on the source texture slice to copy from. Can be NULL.
+ * destinationRectangle:	The region on the destination texture slice to copy to. Can be NULL.
+ * filter:					The filter that will be used if the copy requires scaling.
+ */
+REFRESHAPI void REFRESH_CopyTextureToTexture(
+	REFRESH_Device *driverData,
+	REFRESH_CommandBuffer *commandBuffer,
+	REFRESH_TextureSlice *sourceTextureSlice,
+	REFRESH_TextureSlice *destinationTextureSlice,
+	REFRESH_Rect *sourceRectangle,
+	REFRESH_Rect *destinationRectangle,
+	REFRESH_Filter filter
+);
+
+/* Asynchronously copies image data from a texture slice into a buffer.
+ *
+ * NOTE:
+ * 	The buffer will not contain correct data until the command buffer
+ * 	is submitted and completed.
+ *
+ * textureSlice:	The texture object being copied.
+ * x:				The x offset of the subregion being read.
+ * y:				The y offset of the subregion being read.
+ * w:				The width of the subregion being read.
+ * h:				The height of the subregion being read.
+ * level:			The mipmap level being read.
+ * buffer:			The buffer being filled with the image data.
+ */
+REFRESHAPI void REFRESH_CopyTextureToBuffer(
+	REFRESH_Device *device,
+	REFRESH_CommandBuffer *commandBuffer,
+	REFRESH_TextureSlice *texture,
+	uint32_t x,
+	uint32_t y,
+	uint32_t w,
+	uint32_t h,
+	REFRESH_Buffer *buffer
+);
+
 /* Sets a region of the buffer with client data.
  *
  * NOTE:
@@ -1104,58 +1149,6 @@ REFRESHAPI void REFRESH_GetBufferData(
 	REFRESH_Buffer *buffer,
 	void *data,
 	uint32_t dataLengthInBytes
-);
-
-/* Asynchronously copies image data from a 2D texture into a buffer.
- *
- * NOTE:
- * 	The buffer will not contain correct data until the command buffer
- * 	is submitted and completed.
- *
- * texture:	The texture object being read.
- * x:		The x offset of the subregion being read.
- * y:		The y offset of the subregion being read.
- * w:		The width of the subregion being read.
- * h:		The height of the subregion being read.
- * level:	The mipmap level being read.
- * buffer:	The buffer being filled with the image data.
- */
-REFRESHAPI void REFRESH_CopyTextureData2D(
-	REFRESH_Device *device,
-	REFRESH_CommandBuffer *commandBuffer,
-	REFRESH_Texture *texture,
-	uint32_t x,
-	uint32_t y,
-	uint32_t w,
-	uint32_t h,
-	uint32_t level,
-	REFRESH_Buffer *buffer
-);
-
-/* Asynchronously copies image data from a single face of a texture cube
- * object into a buffer. You must wait for the command buffer to be
- * submitted and completed before reading the buffer.
- *
- * texture:		The texture object being read.
- * x:			The x offset of the subregion being read.
- * y:			The y offset of the subregion being read.
- * w:			The width of the subregion being read.
- * h:			The height of the subregion being read.
- * cubeMapFace:	The face of the cube being read.
- * level:		The mipmap level being read.
- * buffer:		The buffer being filled with the image data.
- */
-REFRESHAPI void REFRESH_CopyTextureDataCube(
-	REFRESH_Device *device,
-	REFRESH_CommandBuffer *commandBuffer,
-	REFRESH_Texture *texture,
-	uint32_t x,
-	uint32_t y,
-	uint32_t w,
-	uint32_t h,
-	REFRESH_CubeMapFace cubeMapFace,
-	uint32_t level,
-	REFRESH_Buffer *buffer
 );
 
 /* Disposal */
@@ -1401,13 +1394,15 @@ REFRESHAPI REFRESH_CommandBuffer* REFRESH_AcquireCommandBuffer(
  * textureSlice:			The texture slice to present.
  * sourceRectangle:			The region of the image to present (or NULL).
  * destinationRectangle:	The region of the window to update (or NULL).
+ * filter:					The filter to use if scaling is required.
  */
 REFRESHAPI void REFRESH_QueuePresent(
 	REFRESH_Device *device,
 	REFRESH_CommandBuffer *commandBuffer,
 	REFRESH_TextureSlice *textureSlice,
 	REFRESH_Rect *sourceRectangle,
-	REFRESH_Rect *destinationRectangle
+	REFRESH_Rect *destinationRectangle,
+	REFRESH_Filter filter
 );
 
 /* Submits all of the enqueued commands. */

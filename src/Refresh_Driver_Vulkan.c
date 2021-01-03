@@ -367,10 +367,11 @@ static VkVertexInputRate RefreshToVK_VertexInputRate[] =
 	VK_VERTEX_INPUT_RATE_INSTANCE
 };
 
-static VkFilter RefreshToVK_SamplerFilter[] =
+static VkFilter RefreshToVK_Filter[] =
 {
 	VK_FILTER_NEAREST,
-	VK_FILTER_LINEAR
+	VK_FILTER_LINEAR,
+	VK_FILTER_CUBIC_EXT
 };
 
 static VkSamplerMipmapMode RefreshToVK_SamplerMipmapMode[] =
@@ -5221,10 +5222,10 @@ static REFRESH_Sampler* VULKAN_CreateSampler(
 	vkSamplerCreateInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
 	vkSamplerCreateInfo.pNext = NULL;
 	vkSamplerCreateInfo.flags = 0;
-	vkSamplerCreateInfo.magFilter = RefreshToVK_SamplerFilter[
+	vkSamplerCreateInfo.magFilter = RefreshToVK_Filter[
 		samplerStateCreateInfo->magFilter
 	];
-	vkSamplerCreateInfo.minFilter = RefreshToVK_SamplerFilter[
+	vkSamplerCreateInfo.minFilter = RefreshToVK_Filter[
 		samplerStateCreateInfo->minFilter
 	];
 	vkSamplerCreateInfo.mipmapMode = RefreshToVK_SamplerMipmapMode[
@@ -6478,6 +6479,177 @@ static void VULKAN_SetTextureDataYUV(
 	}
 }
 
+static void VULKAN_INTERNAL_BlitImage(
+	VulkanRenderer *renderer,
+	VkCommandBuffer commandBuffer,
+	REFRESH_Rect *sourceRectangle,
+	uint32_t sourceLayer,
+	uint32_t sourceLevel,
+	VkImage sourceImage,
+	VulkanResourceAccessType *currentSourceAccessType,
+	VulkanResourceAccessType nextSourceAccessType,
+	REFRESH_Rect *destinationRectangle,
+	uint32_t destinationLayer,
+	uint32_t destinationLevel,
+	VkImage destinationImage,
+	VulkanResourceAccessType *currentDestinationAccessType,
+	VulkanResourceAccessType nextDestinationAccessType,
+	VkFilter filter
+) {
+	VkImageBlit blit;
+
+	VULKAN_INTERNAL_ImageMemoryBarrier(
+		renderer,
+		commandBuffer,
+		RESOURCE_ACCESS_TRANSFER_READ,
+		VK_IMAGE_ASPECT_COLOR_BIT,
+		sourceLayer,
+		1,
+		sourceLevel,
+		1,
+		0,
+		sourceImage,
+		currentSourceAccessType
+	);
+
+	VULKAN_INTERNAL_ImageMemoryBarrier(
+		renderer,
+		commandBuffer,
+		RESOURCE_ACCESS_TRANSFER_WRITE,
+		VK_IMAGE_ASPECT_COLOR_BIT,
+		destinationLayer,
+		1,
+		destinationLevel,
+		1,
+		0,
+		destinationImage,
+		currentDestinationAccessType
+	);
+
+	blit.srcOffsets[0].x = sourceRectangle->x;
+	blit.srcOffsets[0].y = sourceRectangle->y;
+	blit.srcOffsets[0].z = 0;
+	blit.srcOffsets[1].x = sourceRectangle->x + sourceRectangle->w;
+	blit.srcOffsets[1].y = sourceRectangle->y + sourceRectangle->h;
+	blit.srcOffsets[1].z = 1;
+
+	blit.srcSubresource.mipLevel = sourceLevel;
+	blit.srcSubresource.baseArrayLayer = sourceLayer;
+	blit.srcSubresource.layerCount = 1;
+	blit.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+
+	blit.dstOffsets[0].x = destinationRectangle->x;
+	blit.dstOffsets[0].y = destinationRectangle->y;
+	blit.dstOffsets[0].z = 0;
+	blit.dstOffsets[1].x = destinationRectangle->x + destinationRectangle->w;
+	blit.dstOffsets[1].y = destinationRectangle->y + destinationRectangle->h;
+	blit.dstOffsets[1].z = 1;
+
+	blit.dstSubresource.mipLevel = destinationLevel;
+	blit.dstSubresource.baseArrayLayer = destinationLayer;
+	blit.dstSubresource.layerCount = 1;
+	blit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+
+	renderer->vkCmdBlitImage(
+		commandBuffer,
+		sourceImage,
+		VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+		destinationImage,
+		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+		1,
+		&blit,
+		filter
+	);
+
+	VULKAN_INTERNAL_ImageMemoryBarrier(
+		renderer,
+		commandBuffer,
+		nextSourceAccessType,
+		VK_IMAGE_ASPECT_COLOR_BIT,
+		sourceLayer,
+		1,
+		sourceLevel,
+		1,
+		0,
+		sourceImage,
+		currentSourceAccessType
+	);
+
+	VULKAN_INTERNAL_ImageMemoryBarrier(
+		renderer,
+		commandBuffer,
+		nextDestinationAccessType,
+		VK_IMAGE_ASPECT_COLOR_BIT,
+		destinationLayer,
+		1,
+		destinationLevel,
+		1,
+		0,
+		destinationImage,
+		currentDestinationAccessType
+	);
+}
+
+REFRESHAPI void VULKAN_CopyTextureToTexture(
+	REFRESH_Renderer *driverData,
+	REFRESH_CommandBuffer *commandBuffer,
+	REFRESH_TextureSlice *sourceTextureSlice,
+	REFRESH_TextureSlice *destinationTextureSlice,
+	REFRESH_Rect *sourceRectangle,
+	REFRESH_Rect *destinationRectangle,
+	REFRESH_Filter filter
+) {
+	VulkanRenderer *renderer = (VulkanRenderer*)driverData;
+	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
+	VulkanTexture *sourceTexture = (VulkanTexture*) sourceTextureSlice->texture;
+	VulkanTexture *destinationTexture = (VulkanTexture*) destinationTextureSlice->texture;
+
+	REFRESH_Rect srcRect;
+	REFRESH_Rect dstRect;
+
+	if (sourceRectangle != NULL)
+	{
+		srcRect = *sourceRectangle;
+	}
+	else
+	{
+		srcRect.x = 0;
+		srcRect.y = 0;
+		srcRect.w = sourceTexture->dimensions.width;
+		srcRect.h = sourceTexture->dimensions.height;
+	}
+
+	if (destinationRectangle != NULL)
+	{
+		dstRect = *destinationRectangle;
+	}
+	else
+	{
+		dstRect.x = 0;
+		dstRect.y = 0;
+		dstRect.w = destinationTexture->dimensions.width;
+		dstRect.h = destinationTexture->dimensions.height;
+	}
+
+	VULKAN_INTERNAL_BlitImage(
+		renderer,
+		vulkanCommandBuffer->commandBuffer,
+		&srcRect,
+		sourceTextureSlice->layer,
+		sourceTextureSlice->level,
+		sourceTexture->image,
+		&sourceTexture->resourceAccessType,
+		sourceTexture->resourceAccessType,
+		&dstRect,
+		destinationTextureSlice->layer,
+		destinationTextureSlice->level,
+		destinationTexture->image,
+		&destinationTexture->resourceAccessType,
+		destinationTexture->resourceAccessType,
+		RefreshToVK_Filter[filter]
+	);
+}
+
 static void VULKAN_SetBufferData(
 	REFRESH_Renderer *driverData,
 	REFRESH_Buffer *buffer,
@@ -7141,53 +7313,26 @@ static void VULKAN_INTERNAL_CopyTextureData(
 	);
 }
 
-static void VULKAN_CopyTextureData2D(
+static void VULKAN_CopyTextureToBuffer(
 	REFRESH_Renderer *driverData,
 	REFRESH_CommandBuffer *commandBuffer,
-	REFRESH_Texture *texture,
+	REFRESH_TextureSlice *textureSlice,
 	uint32_t x,
 	uint32_t y,
 	uint32_t w,
 	uint32_t h,
-	uint32_t level,
 	REFRESH_Buffer *buffer
 ) {
     VULKAN_INTERNAL_CopyTextureData(
 		driverData,
 		commandBuffer,
-		texture,
+		textureSlice->texture,
 		x,
 		y,
 		w,
 		h,
-		level,
-		0,
-		buffer
-	);
-}
-
-static void VULKAN_CopyTextureDataCube(
-	REFRESH_Renderer *driverData,
-	REFRESH_CommandBuffer *commandBuffer,
-	REFRESH_Texture *texture,
-	uint32_t x,
-	uint32_t y,
-	uint32_t w,
-	uint32_t h,
-	REFRESH_CubeMapFace cubeMapFace,
-	uint32_t level,
-	REFRESH_Buffer *buffer
-) {
-    VULKAN_INTERNAL_CopyTextureData(
-		driverData,
-		commandBuffer,
-		texture,
-		x,
-		y,
-		w,
-		h,
-		level,
-		cubeMapFace,
+		textureSlice->level,
+		textureSlice->layer,
 		buffer
 	);
 }
@@ -7952,16 +8097,16 @@ static REFRESH_CommandBuffer* VULKAN_AcquireCommandBuffer(
 static void VULKAN_QueuePresent(
 	REFRESH_Renderer *driverData,
 	REFRESH_CommandBuffer *commandBuffer,
-	REFRESH_TextureSlice* textureSlice,
-	REFRESH_Rect* sourceRectangle,
-	REFRESH_Rect* destinationRectangle
+	REFRESH_TextureSlice *textureSlice,
+	REFRESH_Rect *sourceRectangle,
+	REFRESH_Rect *destinationRectangle,
+	REFRESH_Filter filter
 ) {
 	VkResult acquireResult;
 	uint32_t swapChainImageIndex;
 
 	REFRESH_Rect srcRect;
 	REFRESH_Rect dstRect;
-	VkImageBlit blit;
 
 	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
 	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
@@ -8017,97 +8162,24 @@ static void VULKAN_QueuePresent(
 		dstRect.h = renderer->swapChainExtent.height;
 	}
 
-	/* Blit the framebuffer! */
+	/* Blit! */
 
-	VULKAN_INTERNAL_ImageMemoryBarrier(
+	VULKAN_INTERNAL_BlitImage(
 		renderer,
 		vulkanCommandBuffer->commandBuffer,
-		RESOURCE_ACCESS_TRANSFER_READ,
-		VK_IMAGE_ASPECT_COLOR_BIT,
-		0,
-		1,
-		0,
-		1,
-		0,
+		&srcRect,
+		textureSlice->layer,
+		textureSlice->level,
 		vulkanTexture->image,
-		&vulkanTexture->resourceAccessType
-	);
-
-	VULKAN_INTERNAL_ImageMemoryBarrier(
-		renderer,
-		vulkanCommandBuffer->commandBuffer,
-		RESOURCE_ACCESS_TRANSFER_WRITE,
-		VK_IMAGE_ASPECT_COLOR_BIT,
+		&vulkanTexture->resourceAccessType,
+		vulkanTexture->resourceAccessType,
+		&dstRect,
 		0,
-		1,
-		0,
-		1,
 		0,
 		renderer->swapChainImages[swapChainImageIndex],
-		&renderer->swapChainResourceAccessTypes[swapChainImageIndex]
-	);
-
-	blit.srcOffsets[0].x = srcRect.x;
-	blit.srcOffsets[0].y = srcRect.y;
-	blit.srcOffsets[0].z = 0;
-	blit.srcOffsets[1].x = srcRect.x + srcRect.w;
-	blit.srcOffsets[1].y = srcRect.y + srcRect.h;
-	blit.srcOffsets[1].z = 1;
-
-	blit.srcSubresource.mipLevel = 0;
-	blit.srcSubresource.baseArrayLayer = 0;
-	blit.srcSubresource.layerCount = 1;
-	blit.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-
-	blit.dstOffsets[0].x = dstRect.x;
-	blit.dstOffsets[0].y = dstRect.y;
-	blit.dstOffsets[0].z = 0;
-	blit.dstOffsets[1].x = dstRect.x + dstRect.w;
-	blit.dstOffsets[1].y = dstRect.y + dstRect.h;
-	blit.dstOffsets[1].z = 1;
-
-	blit.dstSubresource.mipLevel = 0;
-	blit.dstSubresource.baseArrayLayer = textureSlice->layer;
-	blit.dstSubresource.layerCount = 1;
-	blit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-
-	renderer->vkCmdBlitImage(
-		vulkanCommandBuffer->commandBuffer,
-		vulkanTexture->image,
-		VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-		renderer->swapChainImages[swapChainImageIndex],
-		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-		1,
-		&blit,
-		VK_FILTER_LINEAR
-	);
-
-	VULKAN_INTERNAL_ImageMemoryBarrier(
-		renderer,
-		vulkanCommandBuffer->commandBuffer,
+		&renderer->swapChainResourceAccessTypes[swapChainImageIndex],
 		RESOURCE_ACCESS_PRESENT,
-		VK_IMAGE_ASPECT_COLOR_BIT,
-		0,
-		1,
-		0,
-		1,
-		0,
-		renderer->swapChainImages[swapChainImageIndex],
-		&renderer->swapChainResourceAccessTypes[swapChainImageIndex]
-	);
-
-	VULKAN_INTERNAL_ImageMemoryBarrier(
-		renderer,
-		vulkanCommandBuffer->commandBuffer,
-		RESOURCE_ACCESS_COLOR_ATTACHMENT_READ_WRITE,
-		VK_IMAGE_ASPECT_COLOR_BIT,
-		0,
-		1,
-		0,
-		1,
-		0,
-		vulkanTexture->image,
-		&vulkanTexture->resourceAccessType
+		RefreshToVK_Filter[filter]
 	);
 }
 
