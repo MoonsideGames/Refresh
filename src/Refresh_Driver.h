@@ -446,12 +446,7 @@ struct REFRESH_Device
         REFRESH_Sampler *sampler
     );
 
-    void(*AddDisposeVertexBuffer)(
-        REFRESH_Renderer *driverData,
-        REFRESH_Buffer *buffer
-    );
-
-    void(*AddDisposeIndexBuffer)(
+    void(*AddDisposeBuffer)(
         REFRESH_Renderer *driverData,
         REFRESH_Buffer *buffer
     );
@@ -609,8 +604,7 @@ struct REFRESH_Device
     ASSIGN_DRIVER_FUNC(CopyTextureDataCube, name) \
     ASSIGN_DRIVER_FUNC(AddDisposeTexture, name) \
     ASSIGN_DRIVER_FUNC(AddDisposeSampler, name) \
-    ASSIGN_DRIVER_FUNC(AddDisposeVertexBuffer, name) \
-    ASSIGN_DRIVER_FUNC(AddDisposeIndexBuffer, name) \
+    ASSIGN_DRIVER_FUNC(AddDisposeBuffer, name) \
     ASSIGN_DRIVER_FUNC(AddDisposeColorTarget, name) \
     ASSIGN_DRIVER_FUNC(AddDisposeDepthStencilTarget, name) \
     ASSIGN_DRIVER_FUNC(AddDisposeFramebuffer, name) \
