@@ -721,23 +721,12 @@ void REFRESH_AddDisposeSampler(
     );
 }
 
-void REFRESH_AddDisposeVertexBuffer(
+void REFRESH_AddDisposeBuffer(
 	REFRESH_Device *device,
 	REFRESH_Buffer *buffer
 ) {
     NULL_RETURN(device);
-    device->AddDisposeVertexBuffer(
-        device->driverData,
-        buffer
-    );
-}
-
-void REFRESH_AddDisposeIndexBuffer(
-	REFRESH_Device *device,
-	REFRESH_Buffer *buffer
-) {
-    NULL_RETURN(device);
-    device->AddDisposeIndexBuffer(
+    device->AddDisposeBuffer(
         device->driverData,
         buffer
     );
