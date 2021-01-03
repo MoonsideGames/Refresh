@@ -682,6 +682,7 @@ typedef struct QueueFamilyIndices
 {
 	uint32_t graphicsFamily;
 	uint32_t presentFamily;
+	uint32_t computeFamily;
 	uint32_t transferFamily;
 } QueueFamilyIndices;
 
@@ -1268,6 +1269,7 @@ typedef struct VulkanRenderer
     VkComponentMapping swapChainSwizzle;
     VkImage *swapChainImages;
     VkImageView *swapChainImageViews;
+	uint32_t *swapChainQueueFamilyIndices;
     VulkanResourceAccessType *swapChainResourceAccessTypes;
     uint32_t swapChainImageCount;
     VkExtent2D swapChainExtent;
@@ -1280,6 +1282,7 @@ typedef struct VulkanRenderer
     QueueFamilyIndices queueFamilyIndices;
 	VkQueue graphicsQueue;
 	VkQueue presentQueue;
+	VkQueue computeQueue;
 	VkQueue transferQueue;
 
 	VkFence inFlightFence;
@@ -2428,6 +2431,8 @@ static void VULKAN_INTERNAL_DestroySwapchain(VulkanRenderer* renderer)
 	renderer->swapChainImageViews = NULL;
 	SDL_free(renderer->swapChainResourceAccessTypes);
 	renderer->swapChainResourceAccessTypes = NULL;
+	SDL_free(renderer->swapChainQueueFamilyIndices);
+	renderer->swapChainQueueFamilyIndices = NULL;
 
 	renderer->vkDestroySwapchainKHR(
 		renderer->logicalDevice,
@@ -3182,6 +3187,15 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 		return CREATE_SWAPCHAIN_FAIL;
 	}
 
+	renderer->swapChainQueueFamilyIndices = (uint32_t*) SDL_malloc(
+		sizeof(uint32_t) * swapChainImageCount
+	);
+	if (!renderer->swapChainQueueFamilyIndices)
+	{
+		SDL_OutOfMemory();
+		return CREATE_SWAPCHAIN_FAIL;
+	}
+
 	swapChainImages = SDL_stack_alloc(VkImage, swapChainImageCount);
 	renderer->vkGetSwapchainImagesKHR(
 		renderer->logicalDevice,
@@ -3224,6 +3238,7 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 		renderer->swapChainImages[i] = swapChainImages[i];
 		renderer->swapChainImageViews[i] = swapChainImageView;
 		renderer->swapChainResourceAccessTypes[i] = RESOURCE_ACCESS_NONE;
+		renderer->swapChainQueueFamilyIndices[i] = renderer->queueFamilyIndices.graphicsFamily;
 	}
 
 	SDL_stack_free(swapChainImages);
@@ -5536,7 +5551,7 @@ static uint8_t VULKAN_INTERNAL_CreateTexture(
 	texture->levelCount = levelCount;
 	texture->layerCount = layerCount;
 	texture->resourceAccessType = RESOURCE_ACCESS_NONE;
-	texture->queueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	texture->queueFamilyIndex = renderer->queueFamilyIndices.graphicsFamily;
 	texture->usageFlags = textureUsageFlags;
 
 	return 1;
@@ -5809,7 +5824,8 @@ static REFRESH_Buffer* VULKAN_CreateBuffer(
 ) {
 	VulkanBuffer *buffer = (VulkanBuffer*) SDL_malloc(sizeof(VulkanBuffer));
 
-	VkBufferUsageFlags vulkanUsageFlags = 0;
+	VkBufferUsageFlags vulkanUsageFlags =
+		VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 
 	if (usageFlags & REFRESH_BUFFERUSAGE_VERTEX_BIT)
 	{
@@ -5869,6 +5885,38 @@ static void VULKAN_INTERNAL_MaybeExpandStagingBuffer(
 	}
 }
 
+static void VULKAN_INTERNAL_MaybeBeginTransferCommandBuffer(
+	VulkanRenderer *renderer
+) {
+	VkCommandBufferBeginInfo transferCommandBufferBeginInfo;
+
+	if (!renderer->pendingTransfer)
+	{
+		transferCommandBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+		transferCommandBufferBeginInfo.pNext = NULL;
+		transferCommandBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+		transferCommandBufferBeginInfo.pInheritanceInfo = NULL;
+
+		renderer->vkBeginCommandBuffer(
+			renderer->transferCommandBuffers[renderer->frameIndex],
+			&transferCommandBufferBeginInfo
+		);
+
+		renderer->pendingTransfer = 1;
+	}
+}
+
+static void VULKAN_INTERNAL_EndTransferCommandBuffer(
+	VulkanRenderer *renderer
+) {
+	if (renderer->pendingTransfer)
+	{
+		renderer->vkEndCommandBuffer(
+			renderer->transferCommandBuffers[renderer->frameIndex]
+		);
+	}
+}
+
 static void VULKAN_SetTextureData2D(
 	REFRESH_Renderer *driverData,
 	REFRESH_Texture *texture,
@@ -5888,6 +5936,7 @@ static void VULKAN_SetTextureData2D(
 	VkBufferImageCopy imageCopy;
 	uint8_t *mapPointer;
 
+	VULKAN_INTERNAL_MaybeBeginTransferCommandBuffer(renderer);
 	VULKAN_INTERNAL_MaybeExpandStagingBuffer(renderer, dataLengthInBytes);
 
 	vulkanResult = renderer->vkMapMemory(
@@ -5969,8 +6018,6 @@ static void VULKAN_SetTextureData2D(
 			&vulkanTexture->resourceAccessType
 		);
 	}
-
-	renderer->pendingTransfer = 1;
 }
 
 static void VULKAN_SetTextureData3D(
@@ -5994,6 +6041,7 @@ static void VULKAN_SetTextureData3D(
 	VkBufferImageCopy imageCopy;
 	uint8_t *mapPointer;
 
+	VULKAN_INTERNAL_MaybeBeginTransferCommandBuffer(renderer);
 	VULKAN_INTERNAL_MaybeExpandStagingBuffer(renderer, dataLength);
 
 	vulkanResult = renderer->vkMapMemory(
@@ -6075,8 +6123,6 @@ static void VULKAN_SetTextureData3D(
 			&vulkanTexture->resourceAccessType
 		);
 	}
-
-	renderer->pendingTransfer = 1;
 }
 
 static void VULKAN_SetTextureDataCube(
@@ -6099,6 +6145,7 @@ static void VULKAN_SetTextureDataCube(
 	VkBufferImageCopy imageCopy;
 	uint8_t *mapPointer;
 
+	VULKAN_INTERNAL_MaybeBeginTransferCommandBuffer(renderer);
 	VULKAN_INTERNAL_MaybeExpandStagingBuffer(renderer, dataLength);
 
 	vulkanResult = renderer->vkMapMemory(
@@ -6180,8 +6227,6 @@ static void VULKAN_SetTextureDataCube(
 			&vulkanTexture->resourceAccessType
 		);
 	}
-
-	renderer->pendingTransfer = 1;
 }
 
 static void VULKAN_SetTextureDataYUV(
@@ -6207,6 +6252,7 @@ static void VULKAN_SetTextureDataYUV(
 	uint8_t *mapPointer;
 	VkResult vulkanResult;
 
+	VULKAN_INTERNAL_MaybeBeginTransferCommandBuffer(renderer);
 	VULKAN_INTERNAL_MaybeExpandStagingBuffer(renderer, dataLength);
 
 	/* Initialize values that are the same for Y, U, and V */
@@ -6380,8 +6426,6 @@ static void VULKAN_SetTextureDataYUV(
 			&tex->resourceAccessType
 		);
 	}
-
-	renderer->pendingTransfer = 1;
 }
 
 static void VULKAN_SetBufferData(
@@ -7002,8 +7046,8 @@ static void VULKAN_INTERNAL_CopyTextureData(
 		vulkanTexture->levelCount,
 		0,
 		vulkanTexture->image,
-		VK_QUEUE_FAMILY_IGNORED,
-		NULL,
+		renderer->queueFamilyIndices.transferFamily,
+		&vulkanTexture->queueFamilyIndex,
 		&vulkanTexture->resourceAccessType
 	);
 
@@ -7032,7 +7076,7 @@ static void VULKAN_INTERNAL_CopyTextureData(
 		&imageCopy
 	);
 
-	/* Restore the image layout and wait for completion of the render pass */
+	/* Restore the image layout */
 
 	VULKAN_INTERNAL_ImageMemoryBarrier(
 		renderer,
@@ -7045,12 +7089,10 @@ static void VULKAN_INTERNAL_CopyTextureData(
 		vulkanTexture->levelCount,
 		0,
 		vulkanTexture->image,
-		VK_QUEUE_FAMILY_IGNORED,
-		NULL,
+		renderer->queueFamilyIndices.graphicsFamily,
+		&vulkanTexture->queueFamilyIndex,
 		&vulkanTexture->resourceAccessType
 	);
-
-	renderer->pendingTransfer = 1;
 }
 
 static void VULKAN_CopyTextureData2D(
@@ -7359,8 +7401,8 @@ static void VULKAN_BeginRenderPass(
 			1,
 			0,
 			vulkanFramebuffer->colorTargets[i]->texture->image,
-			VK_QUEUE_FAMILY_IGNORED,
-			NULL,
+			renderer->queueFamilyIndices.graphicsFamily,
+			&vulkanFramebuffer->colorTargets[i]->texture->queueFamilyIndex,
 			&vulkanFramebuffer->colorTargets[i]->texture->resourceAccessType
 		);
 	}
@@ -7385,8 +7427,8 @@ static void VULKAN_BeginRenderPass(
 			1,
 			0,
 			vulkanFramebuffer->depthStencilTarget->texture->image,
-			VK_QUEUE_FAMILY_IGNORED,
-			NULL,
+			renderer->queueFamilyIndices.graphicsFamily,
+			&vulkanFramebuffer->depthStencilTarget->texture->queueFamilyIndex,
 			&vulkanFramebuffer->depthStencilTarget->texture->resourceAccessType
 		);
 
@@ -7465,8 +7507,8 @@ static void VULKAN_EndRenderPass(
 				currentTexture->levelCount,
 				0,
 				currentTexture->image,
-				VK_QUEUE_FAMILY_IGNORED,
-				NULL,
+				renderer->queueFamilyIndices.graphicsFamily,
+				&currentTexture->queueFamilyIndex,
 				&currentTexture->resourceAccessType
 			);
 		}
@@ -7732,6 +7774,7 @@ static void VULKAN_INTERNAL_AllocateCommandBuffers(
 	for (i = 0; i < allocateCount; i += 1)
 	{
 		currentVulkanCommandBuffer = SDL_malloc(sizeof(VulkanCommandBuffer));
+		currentVulkanCommandBuffer->commandPool = vulkanCommandPool;
 		currentVulkanCommandBuffer->commandBuffer = commandBuffers[i];
 		vulkanCommandPool->inactiveCommandBuffers[
 			vulkanCommandPool->inactiveCommandBufferCount
@@ -7762,6 +7805,8 @@ static VulkanCommandPool* VULKAN_INTERNAL_FetchCommandPool(
 	{
 		return vulkanCommandPool;
 	}
+
+	vulkanCommandPool = (VulkanCommandPool*) SDL_malloc(sizeof(VulkanCommandPool));
 
 	commandPoolCreateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
 	commandPoolCreateInfo.pNext = NULL;
@@ -7813,7 +7858,7 @@ static VulkanCommandBuffer* VULKAN_INTERNAL_GetInactiveCommandBufferFromPool(
 		);
 	}
 
-	commandBuffer = commandPool->inactiveCommandBuffers[commandPool->inactiveCommandBufferCount];
+	commandBuffer = commandPool->inactiveCommandBuffers[commandPool->inactiveCommandBufferCount - 1];
 	commandPool->inactiveCommandBufferCount -= 1;
 
 	return commandBuffer;
@@ -7934,8 +7979,8 @@ static void VULKAN_QueuePresent(
 		1,
 		0,
 		vulkanTexture->image,
-		VK_QUEUE_FAMILY_IGNORED,
-		NULL,
+		renderer->queueFamilyIndices.graphicsFamily,
+		&vulkanTexture->queueFamilyIndex,
 		&vulkanTexture->resourceAccessType
 	);
 
@@ -7950,8 +7995,8 @@ static void VULKAN_QueuePresent(
 		1,
 		0,
 		renderer->swapChainImages[swapChainImageIndex],
-		VK_QUEUE_FAMILY_IGNORED,
-		NULL,
+		renderer->queueFamilyIndices.graphicsFamily,
+		&renderer->swapChainQueueFamilyIndices[swapChainImageIndex],
 		&renderer->swapChainResourceAccessTypes[swapChainImageIndex]
 	);
 
@@ -8001,8 +8046,8 @@ static void VULKAN_QueuePresent(
 		1,
 		0,
 		renderer->swapChainImages[swapChainImageIndex],
-		VK_QUEUE_FAMILY_IGNORED,
-		NULL,
+		renderer->queueFamilyIndices.graphicsFamily,
+		&renderer->swapChainQueueFamilyIndices[swapChainImageIndex],
 		&renderer->swapChainResourceAccessTypes[swapChainImageIndex]
 	);
 
@@ -8017,8 +8062,8 @@ static void VULKAN_QueuePresent(
 		1,
 		0,
 		vulkanTexture->image,
-		VK_QUEUE_FAMILY_IGNORED,
-		NULL,
+		renderer->queueFamilyIndices.graphicsFamily,
+		&vulkanTexture->queueFamilyIndex,
 		&vulkanTexture->resourceAccessType
 	);
 }
@@ -8228,6 +8273,8 @@ static void VULKAN_Submit(
 
 	if (renderer->pendingTransfer)
 	{
+		VULKAN_INTERNAL_EndTransferCommandBuffer(renderer);
+
 		transferSubmitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 		transferSubmitInfo.pNext = NULL;
 		transferSubmitInfo.commandBufferCount = 1;
@@ -8398,6 +8445,7 @@ static void VULKAN_Submit(
 
 	renderer->swapChainImageAcquired = 0;
 	renderer->shouldPresent = 0;
+	renderer->pendingTransfer = 0;
 
 	SDL_stack_free(commandBuffers);
 }
@@ -8684,11 +8732,15 @@ static uint8_t VULKAN_INTERNAL_IsDeviceSuitable(
 	SwapChainSupportDetails swapChainSupportDetails;
 	VkQueueFamilyProperties *queueProps;
 	VkBool32 supportsPresent;
-	uint8_t querySuccess, foundGraphicsPresentFamily, foundTransferFamily, foundSuitableDevice = 0;
+	uint8_t querySuccess = 0;
+	uint8_t foundGraphicsComputePresentFamily = 0;
+	uint8_t foundTransferFamily = 0;
+	uint8_t foundSuitableDevice = 0;
 	VkPhysicalDeviceProperties deviceProperties;
 
 	queueFamilyIndices->graphicsFamily = UINT32_MAX;
 	queueFamilyIndices->presentFamily = UINT32_MAX;
+	queueFamilyIndices->computeFamily = UINT32_MAX;
 	queueFamilyIndices->transferFamily = UINT32_MAX;
 	*isIdeal = 0;
 
@@ -8745,14 +8797,16 @@ static uint8_t VULKAN_INTERNAL_IsDeviceSuitable(
 			surface,
 			&supportsPresent
 		);
-		if (!foundGraphicsPresentFamily)
+		if (!foundGraphicsComputePresentFamily)
 		{
 			if (	supportsPresent &&
-				(queueProps[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) != 0	)
+				(queueProps[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) &&
+				(queueProps[i].queueFlags & VK_QUEUE_COMPUTE_BIT)	)
 			{
 				queueFamilyIndices->graphicsFamily = i;
 				queueFamilyIndices->presentFamily = i;
-				foundGraphicsPresentFamily = 1;
+				queueFamilyIndices->computeFamily = i;
+				foundGraphicsComputePresentFamily = 1;
 			}
 		}
 
@@ -8766,7 +8820,7 @@ static uint8_t VULKAN_INTERNAL_IsDeviceSuitable(
 			}
 		}
 
-		if (foundGraphicsPresentFamily && foundTransferFamily)
+		if (foundGraphicsComputePresentFamily && foundTransferFamily)
 		{
 			foundSuitableDevice = 1;
 			break;
@@ -9009,6 +9063,13 @@ static uint8_t VULKAN_INTERNAL_CreateLogicalDevice(
 		renderer->queueFamilyIndices.presentFamily,
 		0,
 		&renderer->presentQueue
+	);
+
+	renderer->vkGetDeviceQueue(
+		renderer->logicalDevice,
+		renderer->queueFamilyIndices.computeFamily,
+		0,
+		&renderer->computeQueue
 	);
 
 	renderer->vkGetDeviceQueue(
