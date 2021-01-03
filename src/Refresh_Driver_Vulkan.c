@@ -8501,6 +8501,20 @@ static void VULKAN_Submit(
 	SDL_stack_free(commandBuffers);
 }
 
+static void VULKAN_Wait(
+    REFRESH_Renderer *driverData
+) {
+	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+
+	renderer->vkWaitForFences(
+		renderer->logicalDevice,
+		1,
+		&renderer->inFlightFence,
+		VK_TRUE,
+		UINT64_MAX
+	);
+}
+
 /* Device instantiation */
 
 static inline uint8_t VULKAN_INTERNAL_SupportsExtension(

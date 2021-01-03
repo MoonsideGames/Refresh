@@ -1417,6 +1417,11 @@ REFRESHAPI void REFRESH_Submit(
 	uint32_t commandBufferCount
 );
 
+/* Waits for the previous submission to complete. */
+REFRESHAPI void REFRESH_Wait(
+	REFRESH_Device *device
+);
+
 #ifdef __cplusplus
 }
 #endif /* __cplusplus */
