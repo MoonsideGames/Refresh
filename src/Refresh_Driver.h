@@ -43,34 +43,34 @@ extern void REFRESH_LogError(const char *fmt, ...);
 /* Internal Helper Utilities */
 
 static inline uint32_t Texture_GetFormatSize(
-	REFRESH_SurfaceFormat format
+	REFRESH_ColorFormat format
 ) {
 	switch (format)
 	{
-		case REFRESH_SURFACEFORMAT_BC1:
+		case REFRESH_COLORFORMAT_BC1:
 			return 8;
-		case REFRESH_SURFACEFORMAT_BC2:
-		case REFRESH_SURFACEFORMAT_BC3:
+		case REFRESH_COLORFORMAT_BC2:
+		case REFRESH_COLORFORMAT_BC3:
 			return 16;
-		case REFRESH_SURFACEFORMAT_R8:
+		case REFRESH_COLORFORMAT_R8:
 			return 1;
-		case REFRESH_SURFACEFORMAT_R5G6B5:
-		case REFRESH_SURFACEFORMAT_B4G4R4A4:
-		case REFRESH_SURFACEFORMAT_A1R5G5B5:
-		case REFRESH_SURFACEFORMAT_R16_SFLOAT:
-		case REFRESH_SURFACEFORMAT_R8G8_SNORM:
+		case REFRESH_COLORFORMAT_R5G6B5:
+		case REFRESH_COLORFORMAT_B4G4R4A4:
+		case REFRESH_COLORFORMAT_A1R5G5B5:
+		case REFRESH_COLORFORMAT_R16_SFLOAT:
+		case REFRESH_COLORFORMAT_R8G8_SNORM:
 			return 2;
-		case REFRESH_SURFACEFORMAT_R8G8B8A8:
-		case REFRESH_SURFACEFORMAT_R32_SFLOAT:
-		case REFRESH_SURFACEFORMAT_R16G16_SFLOAT:
-		case REFRESH_SURFACEFORMAT_R8G8B8A8_SNORM:
-		case REFRESH_SURFACEFORMAT_A2R10G10B10:
+		case REFRESH_COLORFORMAT_R8G8B8A8:
+		case REFRESH_COLORFORMAT_R32_SFLOAT:
+		case REFRESH_COLORFORMAT_R16G16_SFLOAT:
+		case REFRESH_COLORFORMAT_R8G8B8A8_SNORM:
+		case REFRESH_COLORFORMAT_A2R10G10B10:
 			return 4;
-		case REFRESH_SURFACEFORMAT_R16G16B16A16_SFLOAT:
-		case REFRESH_SURFACEFORMAT_R16G16B16A16:
-		case REFRESH_SURFACEFORMAT_R32G32_SFLOAT:
+		case REFRESH_COLORFORMAT_R16G16B16A16_SFLOAT:
+		case REFRESH_COLORFORMAT_R16G16B16A16:
+		case REFRESH_COLORFORMAT_R32G32_SFLOAT:
 			return 8;
-		case REFRESH_SURFACEFORMAT_R32G32B32A32_SFLOAT:
+		case REFRESH_COLORFORMAT_R32G32B32A32_SFLOAT:
 			return 16;
 		default:
 			REFRESH_LogError(
@@ -111,13 +111,13 @@ static inline uint32_t IndexSize(REFRESH_IndexElementSize size)
 
 static inline uint32_t BytesPerRow(
 	int32_t width,
-	REFRESH_SurfaceFormat format
+	REFRESH_ColorFormat format
 ) {
 	uint32_t blocksPerRow = width;
 
-	if (	format == REFRESH_SURFACEFORMAT_BC1 ||
-		format == REFRESH_SURFACEFORMAT_BC2 ||
-		format == REFRESH_SURFACEFORMAT_BC3	)
+	if (	format == REFRESH_COLORFORMAT_BC1 ||
+		format == REFRESH_COLORFORMAT_BC2 ||
+		format == REFRESH_COLORFORMAT_BC3	)
 	{
 		blocksPerRow = (width + 3) / 4;
 	}
@@ -128,14 +128,14 @@ static inline uint32_t BytesPerRow(
 static inline int32_t BytesPerImage(
 	uint32_t width,
 	uint32_t height,
-	REFRESH_SurfaceFormat format
+	REFRESH_ColorFormat format
 ) {
 	uint32_t blocksPerRow = width;
 	uint32_t blocksPerColumn = height;
 
-	if (	format == REFRESH_SURFACEFORMAT_BC1 ||
-		format == REFRESH_SURFACEFORMAT_BC2 ||
-		format == REFRESH_SURFACEFORMAT_BC3	)
+	if (	format == REFRESH_COLORFORMAT_BC1 ||
+		format == REFRESH_COLORFORMAT_BC2 ||
+		format == REFRESH_COLORFORMAT_BC3	)
 	{
 		blocksPerRow = (width + 3) / 4;
 		blocksPerColumn = (height + 3) / 4;
@@ -259,7 +259,7 @@ struct REFRESH_Device
 
     REFRESH_Texture* (*CreateTexture2D)(
         REFRESH_Renderer *driverData,
-        REFRESH_SurfaceFormat format,
+        REFRESH_ColorFormat format,
         uint32_t width,
         uint32_t height,
         uint32_t levelCount,
@@ -268,7 +268,7 @@ struct REFRESH_Device
 
     REFRESH_Texture* (*CreateTexture3D)(
         REFRESH_Renderer *driverData,
-        REFRESH_SurfaceFormat format,
+        REFRESH_ColorFormat format,
         uint32_t width,
         uint32_t height,
         uint32_t depth,
@@ -278,7 +278,7 @@ struct REFRESH_Device
 
     REFRESH_Texture* (*CreateTextureCube)(
         REFRESH_Renderer *driverData,
-        REFRESH_SurfaceFormat format,
+        REFRESH_ColorFormat format,
         uint32_t size,
         uint32_t levelCount,
         REFRESH_TextureUsageFlags usageFlags

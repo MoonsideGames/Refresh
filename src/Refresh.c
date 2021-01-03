@@ -336,7 +336,7 @@ REFRESH_ShaderModule* REFRESH_CreateShaderModule(
 
 REFRESH_Texture* REFRESH_CreateTexture2D(
 	REFRESH_Device *device,
-	REFRESH_SurfaceFormat format,
+	REFRESH_ColorFormat format,
 	uint32_t width,
 	uint32_t height,
 	uint32_t levelCount,
@@ -355,7 +355,7 @@ REFRESH_Texture* REFRESH_CreateTexture2D(
 
 REFRESH_Texture* REFRESH_CreateTexture3D(
 	REFRESH_Device *device,
-	REFRESH_SurfaceFormat format,
+	REFRESH_ColorFormat format,
 	uint32_t width,
 	uint32_t height,
 	uint32_t depth,
@@ -376,7 +376,7 @@ REFRESH_Texture* REFRESH_CreateTexture3D(
 
 REFRESH_Texture* REFRESH_CreateTextureCube(
 	REFRESH_Device *device,
-	REFRESH_SurfaceFormat format,
+	REFRESH_ColorFormat format,
 	uint32_t size,
 	uint32_t levelCount,
     REFRESH_TextureUsageFlags usageFlags

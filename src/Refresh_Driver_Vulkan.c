@@ -757,13 +757,13 @@ typedef struct VulkanTexture
 	uint32_t layerCount;
 	uint32_t levelCount;
 	VkFormat format;
-	REFRESH_SurfaceFormat refreshFormat;
+	REFRESH_ColorFormat refreshFormat;
 	VulkanResourceAccessType resourceAccessType;
 	uint32_t queueFamilyIndex;
 	REFRESH_TextureUsageFlags usageFlags;
 	REFRESHNAMELESS union
 	{
-		REFRESH_SurfaceFormat colorFormat;
+		REFRESH_ColorFormat colorFormat;
 		REFRESH_DepthFormat depthStencilFormat;
 	};
 } VulkanTexture;
@@ -5554,7 +5554,7 @@ static uint8_t VULKAN_INTERNAL_CreateTexture(
 
 static REFRESH_Texture* VULKAN_CreateTexture2D(
 	REFRESH_Renderer *driverData,
-	REFRESH_SurfaceFormat format,
+	REFRESH_ColorFormat format,
 	uint32_t width,
 	uint32_t height,
 	uint32_t levelCount,
@@ -5598,7 +5598,7 @@ static REFRESH_Texture* VULKAN_CreateTexture2D(
 
 static REFRESH_Texture* VULKAN_CreateTexture3D(
 	REFRESH_Renderer *driverData,
-	REFRESH_SurfaceFormat format,
+	REFRESH_ColorFormat format,
 	uint32_t width,
 	uint32_t height,
 	uint32_t depth,
@@ -5643,7 +5643,7 @@ static REFRESH_Texture* VULKAN_CreateTexture3D(
 
 static REFRESH_Texture* VULKAN_CreateTextureCube(
 	REFRESH_Renderer *driverData,
-	REFRESH_SurfaceFormat format,
+	REFRESH_ColorFormat format,
 	uint32_t size,
 	uint32_t levelCount,
 	REFRESH_TextureUsageFlags usageFlags
@@ -6134,8 +6134,8 @@ static void VULKAN_SetTextureDataYUV(
 
 	VkCommandBuffer commandBuffer = renderer->transferCommandBuffers[renderer->frameIndex];
 	uint8_t *dataPtr = (uint8_t*) data;
-	int32_t yDataLength = BytesPerImage(yWidth, yHeight, REFRESH_SURFACEFORMAT_R8);
-	int32_t uvDataLength = BytesPerImage(uvWidth, uvHeight, REFRESH_SURFACEFORMAT_R8);
+	int32_t yDataLength = BytesPerImage(yWidth, yHeight, REFRESH_COLORFORMAT_R8);
+	int32_t uvDataLength = BytesPerImage(uvWidth, uvHeight, REFRESH_COLORFORMAT_R8);
 	VkBufferImageCopy imageCopy;
 	uint8_t *mapPointer;
 	VkResult vulkanResult;
