@@ -987,6 +987,8 @@ struct BufferDescriptorSetCache
 
 /* Pipeline Caches */
 
+#define NUM_PIPELINE_LAYOUT_BUCKETS 1031
+
 typedef struct GraphicsPipelineLayoutHash
 {
 	VkDescriptorSetLayout vertexSamplerLayout;
@@ -1007,8 +1009,6 @@ typedef struct GraphicsPipelineLayoutHashArray
 	int32_t count;
 	int32_t capacity;
 } GraphicsPipelineLayoutHashArray;
-
-#define NUM_PIPELINE_LAYOUT_BUCKETS 1031
 
 typedef struct GraphicsPipelineLayoutHashTable
 {
@@ -1142,7 +1142,7 @@ static inline void ComputePipelineLayoutHashArray_Insert(
 	arr->count += 1;
 }
 
-/* Context */
+/* Command structures */
 
 typedef struct VulkanCommandPool VulkanCommandPool;
 
@@ -1165,15 +1165,85 @@ typedef struct VulkanCommandBuffer
 struct VulkanCommandPool
 {
 	SDL_threadID threadID;
-
 	VkCommandPool commandPool;
-
-	uint32_t allocatedCommandBufferCount;
 
 	VulkanCommandBuffer **inactiveCommandBuffers;
 	uint32_t inactiveCommandBufferCapacity;
 	uint32_t inactiveCommandBufferCount;
 };
+
+#define NUM_COMMAND_POOL_BUCKETS 1031
+
+typedef struct CommandPoolHash
+{
+	SDL_threadID threadID;
+} CommandPoolHash;
+
+typedef struct CommandPoolHashMap
+{
+	CommandPoolHash key;
+	VulkanCommandPool *value;
+} CommandPoolHashMap;
+
+typedef struct CommandPoolHashArray
+{
+	CommandPoolHashMap *elements;
+	uint32_t count;
+	uint32_t capacity;
+} CommandPoolHashArray;
+
+typedef struct CommandPoolHashTable
+{
+	CommandPoolHashArray buckets[NUM_COMMAND_POOL_BUCKETS];
+} CommandPoolHashTable;
+
+static inline uint64_t CommandPoolHashTable_GetHashCode(CommandPoolHash key)
+{
+	const uint64_t HASH_FACTOR = 97;
+	uint64_t result = 1;
+	result = result * HASH_FACTOR + (uint64_t) key.threadID;
+	return result;
+}
+
+static inline VulkanCommandPool* CommandPoolHashTable_Fetch(
+	CommandPoolHashTable *table,
+	CommandPoolHash key
+) {
+	uint32_t i;
+	uint64_t hashcode = CommandPoolHashTable_GetHashCode(key);
+	CommandPoolHashArray *arr = &table->buckets[hashcode % NUM_COMMAND_POOL_BUCKETS];
+
+	for (i = 0; i < arr->count; i += 1)
+	{
+		const CommandPoolHash *e = &arr->elements[i].key;
+		if (key.threadID == e->threadID)
+		{
+			return arr->elements[i].value;
+		}
+	}
+
+	return NULL;
+}
+
+static inline void CommandPoolHashTable_Insert(
+	CommandPoolHashTable *table,
+	CommandPoolHash key,
+	VulkanCommandPool *value
+) {
+	uint64_t hashcode = CommandPoolHashTable_GetHashCode(key);
+	CommandPoolHashArray *arr = &table->buckets[hashcode % NUM_COMMAND_POOL_BUCKETS];
+
+	CommandPoolHashMap map;
+	map.key = key;
+	map.value = value;
+
+	EXPAND_ELEMENTS_IF_NEEDED(arr, 4, CommandPoolHashMap)
+
+	arr->elements[arr->count] = map;
+	arr->count += 1;
+}
+
+/* Context */
 
 typedef struct VulkanRenderer
 {
@@ -1225,8 +1295,8 @@ typedef struct VulkanRenderer
 	uint32_t submittedCommandBufferCount;
 	uint32_t submittedCommandBufferCapacity;
 
+	CommandPoolHashTable commandPoolHashTable;
 	DescriptorSetLayoutHashTable descriptorSetLayoutHashTable;
-
 	GraphicsPipelineLayoutHashTable graphicsPipelineLayoutHashTable;
 	ComputePipelineLayoutHashTable computePipelineLayoutHashTable;
 
@@ -2234,6 +2304,20 @@ static void VULKAN_INTERNAL_DestroyBuffer(
 	buffer->subBuffers = NULL;
 
 	SDL_free(buffer);
+}
+
+static void VULKAN_INTERNAL_DestroyCommandPool(
+	VulkanRenderer *renderer,
+	VulkanCommandPool *commandPool
+) {
+	renderer->vkResetCommandPool(
+		renderer->logicalDevice,
+		commandPool->commandPool,
+		VK_COMMAND_POOL_RESET_RELEASE_RESOURCES_BIT
+	);
+
+	SDL_free(commandPool->inactiveCommandBuffers);
+	SDL_free(commandPool);
 }
 
 static void VULKAN_INTERNAL_DestroyGraphicsPipeline(
@@ -3336,6 +3420,7 @@ static void VULKAN_DestroyDevice(
 ) {
 	VulkanRenderer* renderer = (VulkanRenderer*) device->driverData;
 	VkResult waitResult;
+	CommandPoolHashArray commandPoolHashArray;
 	GraphicsPipelineLayoutHashArray graphicsPipelineLayoutHashArray;
 	ComputePipelineLayoutHashArray computePipelineLayoutHashArray;
 	VulkanMemorySubAllocator *allocator;
@@ -3385,7 +3470,22 @@ static void VULKAN_DestroyDevice(
 		NULL
 	);
 
-	/* TODO: destroy command pools */
+	for (i = 0; i < NUM_COMMAND_POOL_BUCKETS; i += 1)
+	{
+		commandPoolHashArray = renderer->commandPoolHashTable.buckets[i];
+		for (j = 0; j < commandPoolHashArray.count; j += 1)
+		{
+			VULKAN_INTERNAL_DestroyCommandPool(
+				renderer,
+				commandPoolHashArray.elements[j].value
+			);
+		}
+
+		if (commandPoolHashArray.elements != NULL)
+		{
+			SDL_free(commandPoolHashArray.elements);
+		}
+	}
 
 	for (i = 0; i < NUM_PIPELINE_LAYOUT_BUCKETS; i += 1)
 	{
@@ -6843,9 +6943,9 @@ static void VULKAN_GetBufferData(
 
 	vulkanResult = renderer->vkMapMemory(
 		renderer->logicalDevice,
-		vulkanBuffer->subBuffers[0]->allocation->memory,
-		vulkanBuffer->subBuffers[0]->offset,
-		vulkanBuffer->subBuffers[0]->size,
+		vulkanBuffer->subBuffers[vulkanBuffer->currentSubBufferIndex]->allocation->memory,
+		vulkanBuffer->subBuffers[vulkanBuffer->currentSubBufferIndex]->offset,
+		vulkanBuffer->subBuffers[vulkanBuffer->currentSubBufferIndex]->size,
 		0,
 		(void**) &mapPointer
 	);
@@ -7591,43 +7691,126 @@ static void VULKAN_BindComputeTextures(
 		);
 }
 
+static void VULKAN_INTERNAL_AllocateCommandBuffers(
+	VulkanRenderer *renderer,
+	VulkanCommandPool *vulkanCommandPool,
+	uint32_t allocateCount
+) {
+	VkCommandBufferAllocateInfo allocateInfo;
+	VkResult vulkanResult;
+	uint32_t i;
+	VkCommandBuffer *commandBuffers = SDL_stack_alloc(VkCommandBuffer, allocateCount);
+	VulkanCommandBuffer *currentVulkanCommandBuffer;
+
+	vulkanCommandPool->inactiveCommandBufferCapacity += allocateCount;
+
+	vulkanCommandPool->inactiveCommandBuffers = SDL_realloc(
+		vulkanCommandPool->inactiveCommandBuffers,
+		sizeof(VulkanCommandBuffer*) *
+		vulkanCommandPool->inactiveCommandBufferCapacity
+	);
+
+	allocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+	allocateInfo.pNext = NULL;
+	allocateInfo.commandPool = vulkanCommandPool->commandPool;
+	allocateInfo.commandBufferCount = allocateCount;
+	allocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+
+	vulkanResult = renderer->vkAllocateCommandBuffers(
+		renderer->logicalDevice,
+		&allocateInfo,
+		commandBuffers
+	);
+
+	if (vulkanResult != VK_SUCCESS)
+	{
+		LogVulkanResult("vkAllocateCommandBuffers", vulkanResult);
+		SDL_stack_free(commandBuffers);
+		return;
+	}
+
+	for (i = 0; i < allocateCount; i += 1)
+	{
+		currentVulkanCommandBuffer = SDL_malloc(sizeof(VulkanCommandBuffer));
+		currentVulkanCommandBuffer->commandBuffer = commandBuffers[i];
+		vulkanCommandPool->inactiveCommandBuffers[
+			vulkanCommandPool->inactiveCommandBufferCount
+		] = currentVulkanCommandBuffer;
+		vulkanCommandPool->inactiveCommandBufferCount += 1;
+	}
+
+	SDL_stack_free(commandBuffers);
+}
+
+static VulkanCommandPool* VULKAN_INTERNAL_FetchCommandPool(
+	VulkanRenderer *renderer,
+	SDL_threadID threadID
+) {
+	VulkanCommandPool *vulkanCommandPool;
+	VkCommandPoolCreateInfo commandPoolCreateInfo;
+	VkResult vulkanResult;
+	CommandPoolHash commandPoolHash;
+
+	commandPoolHash.threadID = threadID;
+
+	vulkanCommandPool = CommandPoolHashTable_Fetch(
+		&renderer->commandPoolHashTable,
+		commandPoolHash
+	);
+
+	if (vulkanCommandPool != NULL)
+	{
+		return vulkanCommandPool;
+	}
+
+	commandPoolCreateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+	commandPoolCreateInfo.pNext = NULL;
+	commandPoolCreateInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+	commandPoolCreateInfo.queueFamilyIndex = renderer->queueFamilyIndices.graphicsFamily;
+
+	vulkanResult = renderer->vkCreateCommandPool(
+		renderer->logicalDevice,
+		&commandPoolCreateInfo,
+		NULL,
+		&vulkanCommandPool->commandPool
+	);
+
+	vulkanCommandPool->threadID = threadID;
+
+	vulkanCommandPool->inactiveCommandBufferCapacity = 0;
+	vulkanCommandPool->inactiveCommandBufferCount = 0;
+	vulkanCommandPool->inactiveCommandBuffers = NULL;
+
+	VULKAN_INTERNAL_AllocateCommandBuffers(
+		renderer,
+		vulkanCommandPool,
+		2
+	);
+
+	CommandPoolHashTable_Insert(
+		&renderer->commandPoolHashTable,
+		commandPoolHash,
+		vulkanCommandPool
+	);
+
+	return vulkanCommandPool;
+}
+
 static VulkanCommandBuffer* VULKAN_INTERNAL_GetInactiveCommandBufferFromPool(
 	VulkanRenderer *renderer,
 	SDL_threadID threadID
 ) {
 	VulkanCommandPool *commandPool =
-		VULKAN_INTERNAL_GetCommandPool(renderer, threadID);
+		VULKAN_INTERNAL_FetchCommandPool(renderer, threadID);
 	VulkanCommandBuffer *commandBuffer;
-	VkCommandBufferAllocateInfo allocateInfo;
-	VkResult vulkanResult;
 
 	if (commandPool->inactiveCommandBufferCount == 0)
 	{
-		commandPool->inactiveCommandBuffers = SDL_realloc(
-			commandPool->inactiveCommandBuffers,
-			sizeof(VulkanCommandBuffer*) * commandPool->allocatedCommandBufferCount * 2
+		VULKAN_INTERNAL_AllocateCommandBuffers(
+			renderer,
+			commandPool,
+			commandPool->inactiveCommandBufferCapacity
 		);
-
-		allocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-		allocateInfo.pNext = NULL;
-		allocateInfo.commandPool = commandPool->commandPool;
-		allocateInfo.commandBufferCount = commandPool->allocatedCommandBufferCount;
-		allocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-
-		vulkanResult = renderer->vkAllocateCommandBuffers(
-			renderer->logicalDevice,
-			&allocateInfo,
-			commandPool->inactiveCommandBuffers
-		);
-
-		if (vulkanResult != VK_SUCCESS)
-		{
-			LogVulkanResult("vkAllocateCommandBuffers", vulkanResult);
-			return NULL;
-		}
-
-		commandPool->inactiveCommandBufferCount = commandPool->allocatedCommandBufferCount;
-		commandPool->allocatedCommandBufferCount *= 2;
 	}
 
 	commandBuffer = commandPool->inactiveCommandBuffers[commandPool->inactiveCommandBufferCount];
@@ -9468,6 +9651,13 @@ static REFRESH_Device* VULKAN_CreateDevice(
 	}
 
 	/* Initialize caches */
+
+	for (i = 0; i < NUM_COMMAND_POOL_BUCKETS; i += 1)
+	{
+		renderer->commandPoolHashTable.buckets[i].elements = NULL;
+		renderer->commandPoolHashTable.buckets[i].count = 0;
+		renderer->commandPoolHashTable.buckets[i].capacity = 0;
+	}
 
 	for (i = 0; i < NUM_PIPELINE_LAYOUT_BUCKETS; i += 1)
 	{
