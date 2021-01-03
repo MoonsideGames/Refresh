@@ -432,84 +432,18 @@ REFRESH_Buffer* REFRESH_CreateBuffer(
     );
 }
 
-void REFRESH_SetTextureData2D(
+void REFRESH_SetTextureData(
 	REFRESH_Device *device,
-	REFRESH_Texture *texture,
-	uint32_t x,
-	uint32_t y,
-	uint32_t w,
-	uint32_t h,
-	uint32_t level,
+	REFRESH_TextureSlice *textureSlice,
 	void *data,
 	uint32_t dataLengthInBytes
 ) {
     NULL_RETURN(device);
-    device->SetTextureData2D(
+    device->SetTextureData(
         device->driverData,
-        texture,
-        x,
-        y,
-        w,
-        h,
-        level,
+        textureSlice,
         data,
         dataLengthInBytes
-    );
-}
-
-void REFRESH_SetTextureData3D(
-	REFRESH_Device *device,
-	REFRESH_Texture *texture,
-	uint32_t x,
-	uint32_t y,
-	uint32_t z,
-	uint32_t w,
-	uint32_t h,
-	uint32_t d,
-	uint32_t level,
-	void* data,
-	uint32_t dataLength
-) {
-    NULL_RETURN(device);
-    device->SetTextureData3D(
-        device->driverData,
-        texture,
-        x,
-        y,
-        z,
-        w,
-        h,
-        d,
-        level,
-        data,
-        dataLength
-    );
-}
-
-void REFRESH_SetTextureDataCube(
-	REFRESH_Device *device,
-	REFRESH_Texture *texture,
-	uint32_t x,
-	uint32_t y,
-	uint32_t w,
-	uint32_t h,
-	REFRESH_CubeMapFace cubeMapFace,
-	uint32_t level,
-	void* data,
-	uint32_t dataLength
-) {
-    NULL_RETURN(device);
-    device->SetTextureDataCube(
-        device->driverData,
-        texture,
-        x,
-        y,
-        w,
-        h,
-        cubeMapFace,
-        level,
-        data,
-        dataLength
     );
 }
 
@@ -542,12 +476,10 @@ void REFRESH_SetTextureDataYUV(
 
 void REFRESH_CopyTextureToTexture(
     REFRESH_Device *device,
-    REFRESH_CommandBuffer *commandBuffer,
-    REFRESH_TextureSlice *sourceTextureSlice,
+	REFRESH_CommandBuffer *commandBuffer,
+	REFRESH_TextureSlice *sourceTextureSlice,
 	REFRESH_TextureSlice *destinationTextureSlice,
-	REFRESH_Rect *sourceRectangle,
-	REFRESH_Rect *destinationRectangle,
-    REFRESH_Filter filter
+	REFRESH_Filter filter
 ) {
     NULL_RETURN(device);
     device->CopyTextureToTexture(
@@ -555,31 +487,21 @@ void REFRESH_CopyTextureToTexture(
         commandBuffer,
         sourceTextureSlice,
         destinationTextureSlice,
-        sourceRectangle,
-        destinationRectangle,
         filter
     );
 }
 
 void REFRESH_CopyTextureToBuffer(
 	REFRESH_Device *device,
-    REFRESH_CommandBuffer *commandBuffer,
+	REFRESH_CommandBuffer *commandBuffer,
 	REFRESH_TextureSlice *textureSlice,
-	uint32_t x,
-	uint32_t y,
-	uint32_t w,
-	uint32_t h,
-    REFRESH_Buffer* buffer
+	REFRESH_Buffer *buffer
 ) {
     NULL_RETURN(device);
     device->CopyTextureToBuffer(
         device->driverData,
         commandBuffer,
         textureSlice,
-        x,
-        y,
-        w,
-        h,
         buffer
     );
 }
@@ -938,7 +860,6 @@ void REFRESH_QueuePresent(
     REFRESH_Device *device,
     REFRESH_CommandBuffer *commandBuffer,
     REFRESH_TextureSlice* textureSlice,
-    REFRESH_Rect *sourceRectangle,
     REFRESH_Rect *destinationRectangle,
     REFRESH_Filter filter
 ) {
@@ -947,7 +868,6 @@ void REFRESH_QueuePresent(
         device->driverData,
         commandBuffer,
         textureSlice,
-        sourceRectangle,
         destinationRectangle,
         filter
     );

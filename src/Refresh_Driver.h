@@ -305,43 +305,11 @@ struct REFRESH_Device
 
     /* Setters */
 
-    void(*SetTextureData2D)(
+    void(*SetTextureData)(
         REFRESH_Renderer *driverData,
-        REFRESH_Texture *texture,
-        uint32_t x,
-        uint32_t y,
-        uint32_t w,
-        uint32_t h,
-        uint32_t level,
+        REFRESH_TextureSlice *textureSlice,
         void *data,
         uint32_t dataLengthInBytes
-    );
-
-    void(*SetTextureData3D)(
-        REFRESH_Renderer *driverData,
-        REFRESH_Texture *texture,
-        uint32_t x,
-        uint32_t y,
-        uint32_t z,
-        uint32_t w,
-        uint32_t h,
-        uint32_t d,
-        uint32_t level,
-        void* data,
-        uint32_t dataLength
-    );
-
-    void(*SetTextureDataCube)(
-        REFRESH_Renderer *driverData,
-        REFRESH_Texture *texture,
-        uint32_t x,
-        uint32_t y,
-        uint32_t w,
-        uint32_t h,
-        REFRESH_CubeMapFace cubeMapFace,
-        uint32_t level,
-        void* data,
-        uint32_t dataLength
     );
 
     void(*SetTextureDataYUV)(
@@ -361,9 +329,7 @@ struct REFRESH_Device
         REFRESH_Renderer *driverData,
         REFRESH_CommandBuffer *commandBuffer,
         REFRESH_TextureSlice *sourceTextureSlice,
-        REFRESH_TextureSlice *destinationTexture,
-        REFRESH_Rect *sourceRectangle,
-        REFRESH_Rect *destinationRectangle,
+        REFRESH_TextureSlice *destinationTextureSlice,
         REFRESH_Filter filter
     );
 
@@ -371,11 +337,7 @@ struct REFRESH_Device
         REFRESH_Renderer *driverData,
         REFRESH_CommandBuffer *commandBuffer,
         REFRESH_TextureSlice *textureSlice,
-        uint32_t x,
-        uint32_t y,
-        uint32_t w,
-        uint32_t h,
-        REFRESH_Buffer* buffer
+        REFRESH_Buffer *buffer
     );
 
     void(*SetBufferData)(
@@ -550,7 +512,6 @@ struct REFRESH_Device
         REFRESH_Renderer *driverData,
         REFRESH_CommandBuffer *commandBuffer,
         REFRESH_TextureSlice *textureSlice,
-        REFRESH_Rect *sourceRectangle,
         REFRESH_Rect *destinationRectangle,
         REFRESH_Filter filter
     );
@@ -590,9 +551,7 @@ struct REFRESH_Device
     ASSIGN_DRIVER_FUNC(CreateColorTarget, name) \
     ASSIGN_DRIVER_FUNC(CreateDepthStencilTarget, name) \
     ASSIGN_DRIVER_FUNC(CreateBuffer, name) \
-    ASSIGN_DRIVER_FUNC(SetTextureData2D, name) \
-    ASSIGN_DRIVER_FUNC(SetTextureData3D, name) \
-    ASSIGN_DRIVER_FUNC(SetTextureDataCube, name) \
+    ASSIGN_DRIVER_FUNC(SetTextureData, name) \
     ASSIGN_DRIVER_FUNC(SetTextureDataYUV, name) \
     ASSIGN_DRIVER_FUNC(CopyTextureToTexture, name) \
     ASSIGN_DRIVER_FUNC(CopyTextureToBuffer, name) \
