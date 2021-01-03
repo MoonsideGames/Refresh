@@ -402,19 +402,28 @@ struct REFRESH_Device
 
     /* Getters */
 
-    void(*GetTextureData2D)(
+    void(*GetBufferData)(
         REFRESH_Renderer *driverData,
+        REFRESH_Buffer *buffer,
+        void *data,
+        uint32_t dataLengthInBytes
+    );
+
+    void(*CopyTextureData2D)(
+        REFRESH_Renderer *driverData,
+        REFRESH_CommandBuffer *commandBuffer,
         REFRESH_Texture *texture,
         uint32_t x,
         uint32_t y,
         uint32_t w,
         uint32_t h,
         uint32_t level,
-        void* data
+        REFRESH_Buffer* buffer
     );
 
-    void(*GetTextureDataCube)(
+    void(*CopyTextureDataCube)(
         REFRESH_Renderer *driverData,
+        REFRESH_CommandBuffer *commandBuffer,
         REFRESH_Texture *texture,
         uint32_t x,
         uint32_t y,
@@ -422,7 +431,7 @@ struct REFRESH_Device
         uint32_t h,
         REFRESH_CubeMapFace cubeMapFace,
         uint32_t level,
-        void* data
+        REFRESH_Buffer* buffer
     );
 
     /* Disposal */
@@ -595,8 +604,9 @@ struct REFRESH_Device
     ASSIGN_DRIVER_FUNC(PushComputeShaderParams, name) \
     ASSIGN_DRIVER_FUNC(SetVertexSamplers, name) \
     ASSIGN_DRIVER_FUNC(SetFragmentSamplers, name) \
-    ASSIGN_DRIVER_FUNC(GetTextureData2D, name) \
-    ASSIGN_DRIVER_FUNC(GetTextureDataCube, name) \
+    ASSIGN_DRIVER_FUNC(GetBufferData, name) \
+    ASSIGN_DRIVER_FUNC(CopyTextureData2D, name) \
+    ASSIGN_DRIVER_FUNC(CopyTextureDataCube, name) \
     ASSIGN_DRIVER_FUNC(AddDisposeTexture, name) \
     ASSIGN_DRIVER_FUNC(AddDisposeSampler, name) \
     ASSIGN_DRIVER_FUNC(AddDisposeVertexBuffer, name) \

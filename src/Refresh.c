@@ -632,31 +632,49 @@ void REFRESH_SetFragmentSamplers(
     );
 }
 
-void REFRESH_GetTextureData2D(
+void REFRESH_GetBufferData(
+    REFRESH_Device *device,
+    REFRESH_Buffer *buffer,
+    void *data,
+    uint32_t dataLengthInBytes
+) {
+    NULL_RETURN(device);
+    device->GetBufferData(
+        device->driverData,
+        buffer,
+        data,
+        dataLengthInBytes
+    );
+}
+
+void REFRESH_CopyTextureData2D(
 	REFRESH_Device *device,
+    REFRESH_CommandBuffer *commandBuffer,
 	REFRESH_Texture *texture,
 	uint32_t x,
 	uint32_t y,
 	uint32_t w,
 	uint32_t h,
 	uint32_t level,
-	void* data
+    REFRESH_Buffer* buffer
 ) {
     NULL_RETURN(device);
-    device->GetTextureData2D(
+    device->CopyTextureData2D(
         device->driverData,
+        commandBuffer,
         texture,
         x,
         y,
         w,
         h,
         level,
-        data
+        buffer
     );
 }
 
 void REFRESH_GetTextureDataCube(
 	REFRESH_Device *device,
+    REFRESH_CommandBuffer *commandBuffer,
 	REFRESH_Texture *texture,
 	uint32_t x,
 	uint32_t y,
@@ -664,11 +682,12 @@ void REFRESH_GetTextureDataCube(
 	uint32_t h,
 	REFRESH_CubeMapFace cubeMapFace,
 	uint32_t level,
-	void* data
+	REFRESH_Buffer* buffer
 ) {
     NULL_RETURN(device);
-    device->GetTextureDataCube(
+    device->CopyTextureDataCube(
         device->driverData,
+        commandBuffer,
         texture,
         x,
         y,
@@ -676,7 +695,7 @@ void REFRESH_GetTextureDataCube(
         h,
         cubeMapFace,
         level,
-        data
+        buffer
     );
 }
 

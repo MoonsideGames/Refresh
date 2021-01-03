@@ -1092,9 +1092,25 @@ REFRESHAPI void REFRESH_SetFragmentSamplers(
 
 /* Getters */
 
-/* Pulls image data from a 2D texture into client memory. Like any GetData,
- * this is generally asking for a massive CPU/GPU sync point, don't call this
- * unless there's absolutely no other way to use the image data!
+/* Synchronously copies data from a buffer to a pointer.
+ * You probably want to wait for a sync point to call this.
+ *
+ * buffer: 				The buffer to copy data from.
+ * data:				The pointer to copy data to.
+ * dataLengthInBytes:	The length of data to copy.
+ */
+REFRESHAPI void REFRESH_GetBufferData(
+	REFRESH_Device *device,
+	REFRESH_Buffer *buffer,
+	void *data,
+	uint32_t dataLengthInBytes
+);
+
+/* Asynchronously copies image data from a 2D texture into a buffer.
+ *
+ * NOTE:
+ * 	The buffer will not contain correct data until the command buffer
+ * 	is submitted and completed.
  *
  * texture:	The texture object being read.
  * x:		The x offset of the subregion being read.
@@ -1102,23 +1118,23 @@ REFRESHAPI void REFRESH_SetFragmentSamplers(
  * w:		The width of the subregion being read.
  * h:		The height of the subregion being read.
  * level:	The mipmap level being read.
- * data:	The pointer being filled with the image data.
+ * buffer:	The buffer being filled with the image data.
  */
-REFRESHAPI void REFRESH_GetTextureData2D(
+REFRESHAPI void REFRESH_CopyTextureData2D(
 	REFRESH_Device *device,
+	REFRESH_CommandBuffer *commandBuffer,
 	REFRESH_Texture *texture,
 	uint32_t x,
 	uint32_t y,
 	uint32_t w,
 	uint32_t h,
 	uint32_t level,
-	void* data
+	REFRESH_Buffer *buffer
 );
 
-/* Pulls image data from a single face of a texture cube object into client
- * memory. Like any GetData, this is generally asking for a massive CPU/GPU sync
- * point, don't call this unless there's absolutely no other way to use the
- * image data!
+/* Asynchronously copies image data from a single face of a texture cube
+ * object into a buffer. You must wait for the command buffer to be
+ * submitted and completed before reading the buffer.
  *
  * texture:		The texture object being read.
  * x:			The x offset of the subregion being read.
@@ -1127,10 +1143,11 @@ REFRESHAPI void REFRESH_GetTextureData2D(
  * h:			The height of the subregion being read.
  * cubeMapFace:	The face of the cube being read.
  * level:		The mipmap level being read.
- * data:		The pointer being filled with the image data.
+ * buffer:		The buffer being filled with the image data.
  */
-REFRESHAPI void REFRESH_GetTextureDataCube(
+REFRESHAPI void REFRESH_CopyTextureDataCube(
 	REFRESH_Device *device,
+	REFRESH_CommandBuffer *commandBuffer,
 	REFRESH_Texture *texture,
 	uint32_t x,
 	uint32_t y,
@@ -1138,7 +1155,7 @@ REFRESHAPI void REFRESH_GetTextureDataCube(
 	uint32_t h,
 	REFRESH_CubeMapFace cubeMapFace,
 	uint32_t level,
-	void* data
+	REFRESH_Buffer *buffer
 );
 
 /* Disposal */
