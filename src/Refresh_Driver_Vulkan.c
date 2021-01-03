@@ -2060,8 +2060,6 @@ static void VULKAN_INTERNAL_ImageMemoryBarrier(
 	uint32_t levelCount,
 	uint8_t discardContents,
 	VkImage image,
-	uint32_t dstQueueFamilyIndex,
-	uint32_t *srcQueueFamilyIndex, /* can be NULL */
 	VulkanResourceAccessType *resourceAccessType
 ) {
 	VkPipelineStageFlags srcStages = 0;
@@ -2081,15 +2079,8 @@ static void VULKAN_INTERNAL_ImageMemoryBarrier(
 	memoryBarrier.dstAccessMask = 0;
 	memoryBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 	memoryBarrier.newLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-	memoryBarrier.dstQueueFamilyIndex = dstQueueFamilyIndex;
-	if (dstQueueFamilyIndex == VK_QUEUE_FAMILY_IGNORED)
-	{
-		memoryBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-	}
-	else
-	{
-		memoryBarrier.srcQueueFamilyIndex = *srcQueueFamilyIndex;
-	}
+	memoryBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	memoryBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 	memoryBarrier.image = image;
 	memoryBarrier.subresourceRange.aspectMask = aspectMask;
 	memoryBarrier.subresourceRange.baseArrayLayer = baseLayer;
@@ -2144,11 +2135,6 @@ static void VULKAN_INTERNAL_ImageMemoryBarrier(
 		1,
 		&memoryBarrier
 	);
-
-	if (dstQueueFamilyIndex != VK_QUEUE_FAMILY_IGNORED)
-	{
-		*srcQueueFamilyIndex = dstQueueFamilyIndex;
-	}
 
 	*resourceAccessType = nextAccess;
 }
@@ -5963,7 +5949,7 @@ static void VULKAN_SetTextureData2D(
 
 	VULKAN_INTERNAL_ImageMemoryBarrier(
 		renderer,
-		renderer->transferCommandBuffers[renderer->frameIndex],
+		commandBuffer,
 		RESOURCE_ACCESS_TRANSFER_WRITE,
 		VK_IMAGE_ASPECT_COLOR_BIT,
 		0,
@@ -5972,8 +5958,6 @@ static void VULKAN_SetTextureData2D(
 		vulkanTexture->levelCount,
 		0,
 		vulkanTexture->image,
-		renderer->queueFamilyIndices.transferFamily,
-		&vulkanTexture->queueFamilyIndex,
 		&vulkanTexture->resourceAccessType
 	);
 
@@ -6013,8 +5997,6 @@ static void VULKAN_SetTextureData2D(
 			vulkanTexture->levelCount,
 			0,
 			vulkanTexture->image,
-			renderer->queueFamilyIndices.graphicsFamily,
-			&vulkanTexture->queueFamilyIndex,
 			&vulkanTexture->resourceAccessType
 		);
 	}
@@ -6077,8 +6059,6 @@ static void VULKAN_SetTextureData3D(
 		vulkanTexture->levelCount,
 		0,
 		vulkanTexture->image,
-		renderer->queueFamilyIndices.transferFamily,
-		&vulkanTexture->queueFamilyIndex,
 		&vulkanTexture->resourceAccessType
 	);
 
@@ -6118,8 +6098,6 @@ static void VULKAN_SetTextureData3D(
 			vulkanTexture->levelCount,
 			0,
 			vulkanTexture->image,
-			renderer->queueFamilyIndices.graphicsFamily,
-			&vulkanTexture->queueFamilyIndex,
 			&vulkanTexture->resourceAccessType
 		);
 	}
@@ -6181,8 +6159,6 @@ static void VULKAN_SetTextureDataCube(
 		vulkanTexture->levelCount,
 		0,
 		vulkanTexture->image,
-		renderer->queueFamilyIndices.transferFamily,
-		&vulkanTexture->queueFamilyIndex,
 		&vulkanTexture->resourceAccessType
 	);
 
@@ -6222,8 +6198,6 @@ static void VULKAN_SetTextureDataCube(
 			vulkanTexture->levelCount,
 			0,
 			vulkanTexture->image,
-			renderer->queueFamilyIndices.graphicsFamily,
-			&vulkanTexture->queueFamilyIndex,
 			&vulkanTexture->resourceAccessType
 		);
 	}
@@ -6303,8 +6277,6 @@ static void VULKAN_SetTextureDataYUV(
 		tex->levelCount,
 		0,
 		tex->image,
-		renderer->queueFamilyIndices.transferFamily,
-		&tex->queueFamilyIndex,
 		&tex->resourceAccessType
 	);
 
@@ -6352,8 +6324,6 @@ static void VULKAN_SetTextureDataYUV(
 		tex->levelCount,
 		0,
 		tex->image,
-		renderer->queueFamilyIndices.transferFamily,
-		&tex->queueFamilyIndex,
 		&tex->resourceAccessType
 	);
 
@@ -6394,8 +6364,6 @@ static void VULKAN_SetTextureDataYUV(
 		tex->levelCount,
 		0,
 		tex->image,
-		renderer->queueFamilyIndices.transferFamily,
-		&tex->queueFamilyIndex,
 		&tex->resourceAccessType
 	);
 
@@ -6421,8 +6389,6 @@ static void VULKAN_SetTextureDataYUV(
 			tex->levelCount,
 			0,
 			tex->image,
-			renderer->queueFamilyIndices.graphicsFamily,
-			&tex->queueFamilyIndex,
 			&tex->resourceAccessType
 		);
 	}
@@ -7046,8 +7012,6 @@ static void VULKAN_INTERNAL_CopyTextureData(
 		vulkanTexture->levelCount,
 		0,
 		vulkanTexture->image,
-		renderer->queueFamilyIndices.transferFamily,
-		&vulkanTexture->queueFamilyIndex,
 		&vulkanTexture->resourceAccessType
 	);
 
@@ -7089,8 +7053,6 @@ static void VULKAN_INTERNAL_CopyTextureData(
 		vulkanTexture->levelCount,
 		0,
 		vulkanTexture->image,
-		renderer->queueFamilyIndices.graphicsFamily,
-		&vulkanTexture->queueFamilyIndex,
 		&vulkanTexture->resourceAccessType
 	);
 }
@@ -7401,8 +7363,6 @@ static void VULKAN_BeginRenderPass(
 			1,
 			0,
 			vulkanFramebuffer->colorTargets[i]->texture->image,
-			renderer->queueFamilyIndices.graphicsFamily,
-			&vulkanFramebuffer->colorTargets[i]->texture->queueFamilyIndex,
 			&vulkanFramebuffer->colorTargets[i]->texture->resourceAccessType
 		);
 	}
@@ -7427,8 +7387,6 @@ static void VULKAN_BeginRenderPass(
 			1,
 			0,
 			vulkanFramebuffer->depthStencilTarget->texture->image,
-			renderer->queueFamilyIndices.graphicsFamily,
-			&vulkanFramebuffer->depthStencilTarget->texture->queueFamilyIndex,
 			&vulkanFramebuffer->depthStencilTarget->texture->resourceAccessType
 		);
 
@@ -7507,8 +7465,6 @@ static void VULKAN_EndRenderPass(
 				currentTexture->levelCount,
 				0,
 				currentTexture->image,
-				renderer->queueFamilyIndices.graphicsFamily,
-				&currentTexture->queueFamilyIndex,
 				&currentTexture->resourceAccessType
 			);
 		}
@@ -7979,8 +7935,6 @@ static void VULKAN_QueuePresent(
 		1,
 		0,
 		vulkanTexture->image,
-		renderer->queueFamilyIndices.graphicsFamily,
-		&vulkanTexture->queueFamilyIndex,
 		&vulkanTexture->resourceAccessType
 	);
 
@@ -7995,8 +7949,6 @@ static void VULKAN_QueuePresent(
 		1,
 		0,
 		renderer->swapChainImages[swapChainImageIndex],
-		renderer->queueFamilyIndices.graphicsFamily,
-		&renderer->swapChainQueueFamilyIndices[swapChainImageIndex],
 		&renderer->swapChainResourceAccessTypes[swapChainImageIndex]
 	);
 
@@ -8046,8 +7998,6 @@ static void VULKAN_QueuePresent(
 		1,
 		0,
 		renderer->swapChainImages[swapChainImageIndex],
-		renderer->queueFamilyIndices.graphicsFamily,
-		&renderer->swapChainQueueFamilyIndices[swapChainImageIndex],
 		&renderer->swapChainResourceAccessTypes[swapChainImageIndex]
 	);
 
@@ -8062,8 +8012,6 @@ static void VULKAN_QueuePresent(
 		1,
 		0,
 		vulkanTexture->image,
-		renderer->queueFamilyIndices.graphicsFamily,
-		&vulkanTexture->queueFamilyIndex,
 		&vulkanTexture->resourceAccessType
 	);
 }
@@ -8363,7 +8311,7 @@ static void VULKAN_Submit(
 			renderer->transferQueue,
 			1,
 			&transferSubmitInfo,
-			renderer->inFlightFence
+			NULL
 		);
 
 		if (vulkanResult != VK_SUCCESS)
@@ -8733,8 +8681,7 @@ static uint8_t VULKAN_INTERNAL_IsDeviceSuitable(
 	VkQueueFamilyProperties *queueProps;
 	VkBool32 supportsPresent;
 	uint8_t querySuccess = 0;
-	uint8_t foundGraphicsComputePresentFamily = 0;
-	uint8_t foundTransferFamily = 0;
+	uint8_t foundFamily = 0;
 	uint8_t foundSuitableDevice = 0;
 	VkPhysicalDeviceProperties deviceProperties;
 
@@ -8797,30 +8744,22 @@ static uint8_t VULKAN_INTERNAL_IsDeviceSuitable(
 			surface,
 			&supportsPresent
 		);
-		if (!foundGraphicsComputePresentFamily)
+		if (!foundFamily)
 		{
 			if (	supportsPresent &&
 				(queueProps[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) &&
-				(queueProps[i].queueFlags & VK_QUEUE_COMPUTE_BIT)	)
+				(queueProps[i].queueFlags & VK_QUEUE_COMPUTE_BIT) &&
+				(queueProps[i].queueFlags & VK_QUEUE_TRANSFER_BIT)	)
 			{
 				queueFamilyIndices->graphicsFamily = i;
 				queueFamilyIndices->presentFamily = i;
 				queueFamilyIndices->computeFamily = i;
-				foundGraphicsComputePresentFamily = 1;
-			}
-		}
-
-		if (!foundTransferFamily)
-		{
-			if (	queueProps[i].queueFlags & VK_QUEUE_TRANSFER_BIT &&
-				!(queueProps[i].queueFlags & VK_QUEUE_GRAPHICS_BIT)	)
-			{
 				queueFamilyIndices->transferFamily = i;
-				foundTransferFamily = 1;
+				foundFamily = 1;
 			}
 		}
 
-		if (foundGraphicsComputePresentFamily && foundTransferFamily)
+		if (foundFamily)
 		{
 			foundSuitableDevice = 1;
 			break;
