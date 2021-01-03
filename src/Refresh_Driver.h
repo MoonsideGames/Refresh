@@ -518,8 +518,8 @@ struct REFRESH_Device
 
     void(*Submit)(
         REFRESH_Renderer *driverData,
-        REFRESH_CommandBuffer **pCommandBuffers,
-        uint32_t commandBufferCount
+        uint32_t commandBufferCount,
+        REFRESH_CommandBuffer **pCommandBuffers
     );
 
     void(*Wait)(

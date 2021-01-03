@@ -875,14 +875,14 @@ void REFRESH_QueuePresent(
 
 void REFRESH_Submit(
     REFRESH_Device *device,
-    REFRESH_CommandBuffer **pCommandBuffers,
-    uint32_t commandBufferCount
+	uint32_t commandBufferCount,
+	REFRESH_CommandBuffer **pCommandBuffers
 ) {
     NULL_RETURN(device);
     device->Submit(
         device->driverData,
-        pCommandBuffers,
-        commandBufferCount
+        commandBufferCount,
+        pCommandBuffers
     );
 }
 

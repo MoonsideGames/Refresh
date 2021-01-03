@@ -1456,7 +1456,7 @@ typedef struct VulkanRenderer
 /* Forward declarations */
 
 static void VULKAN_INTERNAL_BeginCommandBuffer(VulkanRenderer *renderer, VulkanCommandBuffer *commandBuffer);
-static void VULKAN_Submit(REFRESH_Renderer *driverData, REFRESH_CommandBuffer **pCommandBuffers, uint32_t commandBufferCount);
+static void VULKAN_Submit(REFRESH_Renderer *driverData, uint32_t commandBufferCount, REFRESH_CommandBuffer **pCommandBuffers);
 static void VULKAN_INTERNAL_FlushTransfers(VulkanRenderer *renderer);
 
 /* Error Handling */
@@ -8156,8 +8156,8 @@ static void VULKAN_INTERNAL_ResetCommandBuffer(
 
 static void VULKAN_Submit(
     REFRESH_Renderer *driverData,
-	REFRESH_CommandBuffer **pCommandBuffers,
-	uint32_t commandBufferCount
+	uint32_t commandBufferCount,
+	REFRESH_CommandBuffer **pCommandBuffers
 ) {
 	VulkanRenderer* renderer = (VulkanRenderer*)driverData;
 	VkSubmitInfo transferSubmitInfo, submitInfo;

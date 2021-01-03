@@ -1333,8 +1333,8 @@ REFRESHAPI void REFRESH_QueuePresent(
 /* Submits all of the enqueued commands. */
 REFRESHAPI void REFRESH_Submit(
 	REFRESH_Device* device,
-	REFRESH_CommandBuffer **pCommandBuffers,
-	uint32_t commandBufferCount
+	uint32_t commandBufferCount,
+	REFRESH_CommandBuffer **pCommandBuffers
 );
 
 /* Waits for the previous submission to complete. */
