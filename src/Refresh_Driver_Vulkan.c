@@ -1358,6 +1358,7 @@ typedef struct VulkanRenderer
 	SDL_mutex *uniformBufferLock;
 	SDL_mutex *descriptorSetLock;
 	SDL_mutex *boundBufferLock;
+	SDL_mutex *stagingLock;
 
 	/* Deferred destroy storage */
 
@@ -3641,6 +3642,7 @@ static void VULKAN_DestroyDevice(
 	SDL_DestroyMutex(renderer->uniformBufferLock);
 	SDL_DestroyMutex(renderer->descriptorSetLock);
 	SDL_DestroyMutex(renderer->boundBufferLock);
+	SDL_DestroyMutex(renderer->stagingLock);
 
 	SDL_free(renderer->buffersInUse);
 
@@ -6011,6 +6013,8 @@ static void VULKAN_SetTextureData2D(
 	VkBufferImageCopy imageCopy;
 	uint8_t *mapPointer;
 
+	SDL_LockMutex(renderer->stagingLock);
+
 	VULKAN_INTERNAL_MaybeExpandStagingBuffer(renderer, dataLengthInBytes);
 	VULKAN_INTERNAL_MaybeBeginTransferCommandBuffer(renderer);
 
@@ -6096,6 +6100,8 @@ static void VULKAN_SetTextureData2D(
 			&vulkanTexture->resourceAccessType
 		);
 	}
+
+	SDL_UnlockMutex(renderer->stagingLock);
 }
 
 static void VULKAN_SetTextureData3D(
@@ -6118,6 +6124,8 @@ static void VULKAN_SetTextureData3D(
 	VkResult vulkanResult;
 	VkBufferImageCopy imageCopy;
 	uint8_t *mapPointer;
+
+	SDL_LockMutex(renderer->stagingLock);
 
 	VULKAN_INTERNAL_MaybeExpandStagingBuffer(renderer, dataLength);
 	VULKAN_INTERNAL_MaybeBeginTransferCommandBuffer(renderer);
@@ -6204,6 +6212,8 @@ static void VULKAN_SetTextureData3D(
 			&vulkanTexture->resourceAccessType
 		);
 	}
+
+	SDL_UnlockMutex(renderer->stagingLock);
 }
 
 static void VULKAN_SetTextureDataCube(
@@ -6225,6 +6235,8 @@ static void VULKAN_SetTextureDataCube(
 	VkResult vulkanResult;
 	VkBufferImageCopy imageCopy;
 	uint8_t *mapPointer;
+
+	SDL_LockMutex(renderer->stagingLock);
 
 	VULKAN_INTERNAL_MaybeExpandStagingBuffer(renderer, dataLength);
 	VULKAN_INTERNAL_MaybeBeginTransferCommandBuffer(renderer);
@@ -6311,6 +6323,8 @@ static void VULKAN_SetTextureDataCube(
 			&vulkanTexture->resourceAccessType
 		);
 	}
+
+	SDL_UnlockMutex(renderer->stagingLock);
 }
 
 static void VULKAN_SetTextureDataYUV(
@@ -6335,6 +6349,8 @@ static void VULKAN_SetTextureDataYUV(
 	VkBufferImageCopy imageCopy;
 	uint8_t *mapPointer;
 	VkResult vulkanResult;
+
+	SDL_LockMutex(renderer->stagingLock);
 
 	VULKAN_INTERNAL_MaybeExpandStagingBuffer(renderer, dataLength);
 	VULKAN_INTERNAL_MaybeBeginTransferCommandBuffer(renderer);
@@ -6510,6 +6526,8 @@ static void VULKAN_SetTextureDataYUV(
 			&tex->resourceAccessType
 		);
 	}
+
+	SDL_UnlockMutex(renderer->stagingLock);
 }
 
 static void VULKAN_INTERNAL_BlitImage(
@@ -9484,6 +9502,7 @@ static REFRESH_Device* VULKAN_CreateDevice(
 	renderer->uniformBufferLock = SDL_CreateMutex();
 	renderer->descriptorSetLock = SDL_CreateMutex();
 	renderer->boundBufferLock = SDL_CreateMutex();
+	renderer->stagingLock = SDL_CreateMutex();
 
 	/* Transfer buffer */
 
