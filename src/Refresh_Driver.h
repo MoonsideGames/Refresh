@@ -564,6 +564,10 @@ struct REFRESH_Device
         uint32_t commandBufferCount
     );
 
+    void(*Wait)(
+        REFRESH_Renderer *driverData
+    );
+
 	/* Opaque pointer for the Driver */
 	REFRESH_Renderer *driverData;
 };
@@ -622,7 +626,8 @@ struct REFRESH_Device
     ASSIGN_DRIVER_FUNC(BindComputeTextures, name) \
     ASSIGN_DRIVER_FUNC(AcquireCommandBuffer, name) \
     ASSIGN_DRIVER_FUNC(QueuePresent, name) \
-    ASSIGN_DRIVER_FUNC(Submit, name)
+    ASSIGN_DRIVER_FUNC(Submit, name) \
+    ASSIGN_DRIVER_FUNC(Wait, name)
 
 typedef struct REFRESH_Driver
 {

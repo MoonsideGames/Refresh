@@ -972,4 +972,13 @@ void REFRESH_Submit(
     );
 }
 
+void REFRESH_Wait(
+    REFRESH_Device *device
+) {
+    NULL_RETURN(device);
+    device->Wait(
+        device->driverData
+    );
+}
+
 /* vim: set noexpandtab shiftwidth=8 tabstop=8: */
