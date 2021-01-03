@@ -1386,6 +1386,8 @@ REFRESHAPI void REFRESH_BindComputeTextures(
 /* Submission/Presentation */
 
 /* Returns an allocated REFRESH_CommandBuffer* object.
+ * This command buffer is managed by the implementation and
+ * should NOT be freed by the user.
  *
  * NOTE:
  * 	A command buffer may only be used on the thread that
