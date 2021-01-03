@@ -1375,7 +1375,6 @@ typedef struct VulkanRenderer
 
 static void VULKAN_INTERNAL_BeginCommandBuffer(VulkanRenderer *renderer, VulkanCommandBuffer *commandBuffer);
 static void VULKAN_Submit(REFRESH_Renderer *driverData, REFRESH_CommandBuffer **pCommandBuffers, uint32_t commandBufferCount);
-static void VULKAN_INTERNAL_SubmitTransfer(REFRESH_Renderer *driverData);
 
 /* Error Handling */
 
@@ -5872,8 +5871,6 @@ static void VULKAN_SetTextureData2D(
 	}
 
 	renderer->pendingTransfer = 1;
-
-	VULKAN_INTERNAL_SubmitTransfer(driverData);
 }
 
 static void VULKAN_SetTextureData3D(
@@ -5980,8 +5977,6 @@ static void VULKAN_SetTextureData3D(
 	}
 
 	renderer->pendingTransfer = 1;
-
-	VULKAN_INTERNAL_SubmitTransfer(driverData);
 }
 
 static void VULKAN_SetTextureDataCube(
@@ -6087,8 +6082,6 @@ static void VULKAN_SetTextureDataCube(
 	}
 
 	renderer->pendingTransfer = 1;
-
-	VULKAN_INTERNAL_SubmitTransfer(driverData);
 }
 
 static void VULKAN_SetTextureDataYUV(
@@ -6289,9 +6282,6 @@ static void VULKAN_SetTextureDataYUV(
 	}
 
 	renderer->pendingTransfer = 1;
-
-	/* Hard sync point */
-	VULKAN_INTERNAL_SubmitTransfer(driverData);
 }
 
 static void VULKAN_SetBufferData(
@@ -6839,8 +6829,48 @@ static void VULKAN_SetFragmentSamplers(
 	);
 }
 
-static void VULKAN_INTERNAL_GetTextureData(
+static void VULKAN_GetBufferData(
 	REFRESH_Renderer *driverData,
+	REFRESH_Buffer *buffer,
+	void *data,
+	uint32_t dataLengthInBytes
+) {
+	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	VulkanBuffer *vulkanBuffer = (VulkanBuffer*) buffer;
+	uint8_t *dataPtr = (uint8_t*) data;
+	uint8_t *mapPointer;
+	VkResult vulkanResult;
+
+	vulkanResult = renderer->vkMapMemory(
+		renderer->logicalDevice,
+		vulkanBuffer->subBuffers[0]->allocation->memory,
+		vulkanBuffer->subBuffers[0]->offset,
+		vulkanBuffer->subBuffers[0]->size,
+		0,
+		(void**) &mapPointer
+	);
+
+	if (vulkanResult != VK_SUCCESS)
+	{
+		REFRESH_LogError("Failed to map buffer memory!");
+		return;
+	}
+
+	SDL_memcpy(
+		dataPtr,
+		mapPointer,
+		dataLengthInBytes
+	);
+
+	renderer->vkUnmapMemory(
+		renderer->logicalDevice,
+		vulkanBuffer->subBuffers[0]->allocation->memory
+	);
+}
+
+static void VULKAN_INTERNAL_CopyTextureData(
+	REFRESH_Renderer *driverData,
+	REFRESH_CommandBuffer *commandBuffer,
 	REFRESH_Texture *texture,
 	int32_t x,
 	int32_t y,
@@ -6848,27 +6878,22 @@ static void VULKAN_INTERNAL_GetTextureData(
 	int32_t h,
 	int32_t level,
 	int32_t layer,
-	void* data
+	REFRESH_Buffer *buffer
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
 	VulkanTexture *vulkanTexture = (VulkanTexture*) texture;
+	VulkanBuffer *vulkanBuffer = (VulkanBuffer*) buffer;
 
-	VkCommandBuffer commandBuffer = renderer->transferCommandBuffers[renderer->frameIndex];
 	VulkanResourceAccessType prevResourceAccess;
 	VkBufferImageCopy imageCopy;
-	uint8_t *dataPtr = (uint8_t*) data;
-	uint8_t *mapPointer;
-	VkResult vulkanResult;
-	uint32_t dataLength = BytesPerImage(w, h, vulkanTexture->colorFormat);
-
-	VULKAN_INTERNAL_MaybeExpandStagingBuffer(renderer, dataLength);
 
 	/* Cache this so we can restore it later */
 	prevResourceAccess = vulkanTexture->resourceAccessType;
 
 	VULKAN_INTERNAL_ImageMemoryBarrier(
 		renderer,
-		commandBuffer,
+		vulkanCommandBuffer->commandBuffer,
 		RESOURCE_ACCESS_TRANSFER_READ,
 		VK_IMAGE_ASPECT_COLOR_BIT,
 		0,
@@ -6877,12 +6902,12 @@ static void VULKAN_INTERNAL_GetTextureData(
 		vulkanTexture->levelCount,
 		0,
 		vulkanTexture->image,
-		renderer->queueFamilyIndices.transferFamily,
-		&vulkanTexture->queueFamilyIndex,
+		VK_QUEUE_FAMILY_IGNORED,
+		NULL,
 		&vulkanTexture->resourceAccessType
 	);
 
-	/* Save texture data to staging buffer */
+	/* Save texture data to buffer */
 
 	imageCopy.imageExtent.width = w;
 	imageCopy.imageExtent.height = h;
@@ -6899,10 +6924,10 @@ static void VULKAN_INTERNAL_GetTextureData(
 	imageCopy.bufferOffset = 0;
 
 	renderer->vkCmdCopyImageToBuffer(
-		commandBuffer,
+		vulkanCommandBuffer->commandBuffer,
 		vulkanTexture->image,
 		AccessMap[vulkanTexture->resourceAccessType].imageLayout,
-		renderer->textureStagingBuffer->subBuffers[0]->buffer,
+		vulkanBuffer->subBuffers[vulkanBuffer->currentSubBufferIndex]->buffer,
 		1,
 		&imageCopy
 	);
@@ -6911,7 +6936,7 @@ static void VULKAN_INTERNAL_GetTextureData(
 
 	VULKAN_INTERNAL_ImageMemoryBarrier(
 		renderer,
-		commandBuffer,
+		vulkanCommandBuffer->commandBuffer,
 		prevResourceAccess,
 		VK_IMAGE_ASPECT_COLOR_BIT,
 		0,
@@ -6920,57 +6945,28 @@ static void VULKAN_INTERNAL_GetTextureData(
 		vulkanTexture->levelCount,
 		0,
 		vulkanTexture->image,
-		renderer->queueFamilyIndices.graphicsFamily,
-		&vulkanTexture->queueFamilyIndex,
+		VK_QUEUE_FAMILY_IGNORED,
+		NULL,
 		&vulkanTexture->resourceAccessType
 	);
 
 	renderer->pendingTransfer = 1;
-
-	/* Hard sync point */
-	VULKAN_INTERNAL_SubmitTransfer(driverData);
-
-	/* Read from staging buffer */
-
-	vulkanResult = renderer->vkMapMemory(
-		renderer->logicalDevice,
-		renderer->textureStagingBuffer->subBuffers[0]->allocation->memory,
-		renderer->textureStagingBuffer->subBuffers[0]->offset,
-		renderer->textureStagingBuffer->subBuffers[0]->size,
-		0,
-		(void**) &mapPointer
-	);
-
-	if (vulkanResult != VK_SUCCESS)
-	{
-		REFRESH_LogError("Failed to map buffer memory!");
-		return;
-	}
-
-	SDL_memcpy(
-		dataPtr,
-		mapPointer,
-		dataLength
-	);
-
-	renderer->vkUnmapMemory(
-		renderer->logicalDevice,
-		renderer->textureStagingBuffer->subBuffers[0]->allocation->memory
-	);
 }
 
-static void VULKAN_GetTextureData2D(
+static void VULKAN_CopyTextureData2D(
 	REFRESH_Renderer *driverData,
+	REFRESH_CommandBuffer *commandBuffer,
 	REFRESH_Texture *texture,
 	uint32_t x,
 	uint32_t y,
 	uint32_t w,
 	uint32_t h,
 	uint32_t level,
-	void* data
+	REFRESH_Buffer *buffer
 ) {
-    VULKAN_INTERNAL_GetTextureData(
+    VULKAN_INTERNAL_CopyTextureData(
 		driverData,
+		commandBuffer,
 		texture,
 		x,
 		y,
@@ -6978,12 +6974,13 @@ static void VULKAN_GetTextureData2D(
 		h,
 		level,
 		0,
-		data
+		buffer
 	);
 }
 
-static void VULKAN_GetTextureDataCube(
+static void VULKAN_CopyTextureDataCube(
 	REFRESH_Renderer *driverData,
+	REFRESH_CommandBuffer *commandBuffer,
 	REFRESH_Texture *texture,
 	uint32_t x,
 	uint32_t y,
@@ -6991,10 +6988,11 @@ static void VULKAN_GetTextureDataCube(
 	uint32_t h,
 	REFRESH_CubeMapFace cubeMapFace,
 	uint32_t level,
-	void* data
+	REFRESH_Buffer *buffer
 ) {
-    VULKAN_INTERNAL_GetTextureData(
+    VULKAN_INTERNAL_CopyTextureData(
 		driverData,
+		commandBuffer,
 		texture,
 		x,
 		y,
@@ -7002,7 +7000,7 @@ static void VULKAN_GetTextureDataCube(
 		h,
 		level,
 		cubeMapFace,
-		data
+		buffer
 	);
 }
 
@@ -8027,23 +8025,6 @@ static void VULKAN_INTERNAL_ResetCommandBuffer(
 		commandPool->inactiveCommandBufferCount
 	] = commandBuffer;
 	commandPool->inactiveCommandBufferCount += 1;
-}
-
-/* This function triggers a hard sync point */
-static void VULKAN_INTERNAL_SubmitTransfer(
-	REFRESH_Renderer *driverData
-) {
-	VulkanRenderer* renderer = (VulkanRenderer*)driverData;
-
-	VULKAN_Submit(driverData, NULL, 0);
-
-	renderer->vkWaitForFences(
-		renderer->logicalDevice,
-		1,
-		&renderer->inFlightFence,
-		VK_TRUE,
-		UINT64_MAX
-	);
 }
 
 static void VULKAN_Submit(
