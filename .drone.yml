@@ -6,7 +6,7 @@ steps:
 - name: build
   image: fedora
   commands:
-    - dnf install -y git cmake SDL2-devel
+    - dnf install -y git cmake clang SDL2-devel
     - git submodule update --recursive --init
     - cmake -E make_directory ./build
     - cd ./build
