@@ -4758,7 +4758,7 @@ static Refresh_GraphicsPipeline* VULKAN_CreateGraphicsPipeline(
 	multisampleStateCreateInfo.sampleShadingEnable = VK_FALSE;
 	multisampleStateCreateInfo.minSampleShading = 1.0f;
 	multisampleStateCreateInfo.pSampleMask =
-		pipelineCreateInfo->multisampleState.sampleMask;
+		&pipelineCreateInfo->multisampleState.sampleMask;
 	multisampleStateCreateInfo.alphaToCoverageEnable = VK_FALSE;
 	multisampleStateCreateInfo.alphaToOneEnable = VK_FALSE;
 

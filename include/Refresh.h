@@ -336,6 +336,7 @@ typedef enum Refresh_SamplerAddressMode
 	REFRESH_SAMPLERADDRESSMODE_CLAMP_TO_BORDER
 } Refresh_SamplerAddressMode;
 
+/* FIXME: we should probably make a library-level decision about color types */
 typedef enum Refresh_BorderColor
 {
     REFRESH_BORDERCOLOR_FLOAT_TRANSPARENT_BLACK = 0,
@@ -520,6 +521,7 @@ typedef struct Refresh_ShaderStageState
 	uint64_t uniformBufferSize;
 } Refresh_ShaderStageState;
 
+/* FIXME: this is awkwardly named */
 typedef struct Refresh_TopologyState
 {
 	Refresh_PrimitiveType topology;
@@ -549,7 +551,7 @@ typedef struct Refresh_RasterizerState
 typedef struct Refresh_MultisampleState
 {
 	Refresh_SampleCount multisampleCount;
-	const uint32_t *sampleMask;
+	const uint32_t sampleMask;
 } Refresh_MultisampleState;
 
 typedef struct Refresh_DepthStencilState
