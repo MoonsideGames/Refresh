@@ -50,21 +50,21 @@ extern "C" {
  * h:		    Filled with the height of the image.
  * numChannels: Filled with the number of channels in the image.
  *
- * Returns a block of memory suitable for use with REFRESH_SetTextureData2D.
- * Be sure to free the memory with REFRESH_Image_Free after use!
+ * Returns a block of memory suitable for use with Refresh_SetTextureData2D.
+ * Be sure to free the memory with Refresh_Image_Free after use!
  */
-REFRESHAPI uint8_t* REFRESH_Image_Load(
+REFRESHAPI uint8_t* Refresh_Image_Load(
     char const *filename,
 	int32_t *w,
 	int32_t *h,
     int32_t *numChannels
 );
 
-/* Frees memory returned by REFRESH_Image_Load. (Do NOT free the memory yourself!)
+/* Frees memory returned by Refresh_Image_Load. (Do NOT free the memory yourself!)
  *
- * mem: A pointer previously returned by REFRESH_Image_Load.
+ * mem: A pointer previously returned by Refresh_Image_Load.
  */
-REFRESHAPI void REFRESH_Image_Free(uint8_t *mem);
+REFRESHAPI void Refresh_Image_Free(uint8_t *mem);
 
 /* Image Write API */
 
@@ -75,7 +75,7 @@ REFRESHAPI void REFRESH_Image_Free(uint8_t *mem);
  * h:	        The height of the PNG data.
  * data:	    The raw RGBA8 image data.
  */
-REFRESHAPI void REFRESH_Image_SavePNG(
+REFRESHAPI void Refresh_Image_SavePNG(
     char const *filename,
     int32_t w,
     int32_t h,

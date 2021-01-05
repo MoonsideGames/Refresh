@@ -90,7 +90,7 @@ static uint32_t deviceExtensionCount = SDL_arraysize(deviceExtensionNames);
 
 #define NULL_DESC_LAYOUT (VkDescriptorSetLayout) 0
 #define NULL_PIPELINE_LAYOUT (VkPipelineLayout) 0
-#define NULL_RENDER_PASS (REFRESH_RenderPass*) 0
+#define NULL_RENDER_PASS (Refresh_RenderPass*) 0
 
 #define EXPAND_ELEMENTS_IF_NEEDED(arr, initialValue, type)	\
 	if (arr->count == arr->capacity)		\
@@ -712,7 +712,7 @@ typedef struct VulkanGraphicsPipeline
 {
 	VkPipeline pipeline;
 	VulkanGraphicsPipelineLayout *pipelineLayout;
-	REFRESH_PrimitiveType primitiveType;
+	Refresh_PrimitiveType primitiveType;
 	VkDescriptorSet vertexSamplerDescriptorSet; /* updated by SetVertexSamplers */
 	VkDescriptorSet fragmentSamplerDescriptorSet; /* updated by SetFragmentSamplers */
 
@@ -757,14 +757,14 @@ typedef struct VulkanTexture
 	uint32_t layerCount;
 	uint32_t levelCount;
 	VkFormat format;
-	REFRESH_ColorFormat refreshFormat;
+	Refresh_ColorFormat refreshFormat;
 	VulkanResourceAccessType resourceAccessType;
 	uint32_t queueFamilyIndex;
-	REFRESH_TextureUsageFlags usageFlags;
+	Refresh_TextureUsageFlags usageFlags;
 	REFRESHNAMELESS union
 	{
-		REFRESH_ColorFormat colorFormat;
-		REFRESH_DepthFormat depthStencilFormat;
+		Refresh_ColorFormat colorFormat;
+		Refresh_DepthFormat depthStencilFormat;
 	};
 } VulkanTexture;
 
@@ -1269,7 +1269,7 @@ typedef struct VulkanRenderer
 
 	VulkanMemoryAllocator *memoryAllocator;
 
-    REFRESH_PresentMode presentMode;
+    Refresh_PresentMode presentMode;
     VkSurfaceKHR surface;
     VkSwapchainKHR swapChain;
     VkFormat swapChainFormat;
@@ -1456,7 +1456,7 @@ typedef struct VulkanRenderer
 /* Forward declarations */
 
 static void VULKAN_INTERNAL_BeginCommandBuffer(VulkanRenderer *renderer, VulkanCommandBuffer *commandBuffer);
-static void VULKAN_Submit(REFRESH_Renderer *driverData, uint32_t commandBufferCount, REFRESH_CommandBuffer **pCommandBuffers);
+static void VULKAN_Submit(Refresh_Renderer *driverData, uint32_t commandBufferCount, Refresh_CommandBuffer **pCommandBuffers);
 static void VULKAN_INTERNAL_FlushTransfers(VulkanRenderer *renderer);
 
 /* Error Handling */
@@ -1493,7 +1493,7 @@ static inline void LogVulkanResult(
 ) {
 	if (result != VK_SUCCESS)
 	{
-		REFRESH_LogError(
+		Refresh_LogError(
 			"%s: %s",
 			vulkanFunctionName,
 			VkErrorMessages(result)
@@ -1652,7 +1652,7 @@ static uint8_t VULKAN_INTERNAL_FindMemoryType(
 		}
 	}
 
-	REFRESH_LogError("Failed to find memory properties %X, filter %X", properties, typeFilter);
+	Refresh_LogError("Failed to find memory properties %X, filter %X", properties, typeFilter);
 	return 0;
 }
 
@@ -1680,7 +1680,7 @@ static uint8_t VULKAN_INTERNAL_FindBufferMemoryRequirements(
 		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
 		pMemoryTypeIndex
 	)) {
-		REFRESH_LogError(
+		Refresh_LogError(
 			"Could not find valid memory type for buffer creation"
 		);
 		return 0;
@@ -1713,7 +1713,7 @@ static uint8_t VULKAN_INTERNAL_FindImageMemoryRequirements(
 		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
 		pMemoryTypeIndex
 	)) {
-		REFRESH_LogError(
+		Refresh_LogError(
 			"Could not find valid memory type for image creation"
 		);
 		return 0;
@@ -1834,7 +1834,7 @@ static uint8_t VULKAN_INTERNAL_FindAvailableMemory(
 
 	if (buffer != VK_NULL_HANDLE && image != VK_NULL_HANDLE)
 	{
-		REFRESH_LogError("Calling FindAvailableMemory with both a buffer and image handle is invalid!");
+		Refresh_LogError("Calling FindAvailableMemory with both a buffer and image handle is invalid!");
 		return 0;
 	}
 	else if (buffer != VK_NULL_HANDLE)
@@ -1845,7 +1845,7 @@ static uint8_t VULKAN_INTERNAL_FindAvailableMemory(
 			&memoryRequirements,
 			&memoryTypeIndex
 		)) {
-			REFRESH_LogError("Failed to acquire buffer memory requirements!");
+			Refresh_LogError("Failed to acquire buffer memory requirements!");
 			return 0;
 		}
 	}
@@ -1857,13 +1857,13 @@ static uint8_t VULKAN_INTERNAL_FindAvailableMemory(
 			&memoryRequirements,
 			&memoryTypeIndex
 		)) {
-			REFRESH_LogError("Failed to acquire image memory requirements!");
+			Refresh_LogError("Failed to acquire image memory requirements!");
 			return 0;
 		}
 	}
 	else
 	{
-		REFRESH_LogError("Calling FindAvailableMemory with neither buffer nor image handle is invalid!");
+		Refresh_LogError("Calling FindAvailableMemory with neither buffer nor image handle is invalid!");
 		return 0;
 	}
 
@@ -1954,7 +1954,7 @@ static uint8_t VULKAN_INTERNAL_FindAvailableMemory(
 	if (allocationResult == 0)
 	{
 		/* Responsibility of the caller to handle being out of memory */
-		REFRESH_LogWarn("Failed to allocate memory!");
+		Refresh_LogWarn("Failed to allocate memory!");
 		SDL_UnlockMutex(renderer->allocatorLock);
 
 		return 2;
@@ -2237,7 +2237,7 @@ static void VULKAN_INTERNAL_DestroyBuffer(
 
 	if (buffer->bound || buffer->boundSubmitted)
 	{
-		REFRESH_LogError("Cannot destroy a bound buffer!");
+		Refresh_LogError("Cannot destroy a bound buffer!");
 		return;
 	}
 
@@ -2849,7 +2849,7 @@ static uint8_t VULKAN_INTERNAL_QuerySwapChainSupport(
 	);
 	if (result != VK_SUCCESS)
 	{
-		REFRESH_LogError(
+		Refresh_LogError(
 			"vkGetPhysicalDeviceSurfaceCapabilitiesKHR: %s",
 			VkErrorMessages(result)
 		);
@@ -2885,7 +2885,7 @@ static uint8_t VULKAN_INTERNAL_QuerySwapChainSupport(
 		);
 		if (result != VK_SUCCESS)
 		{
-			REFRESH_LogError(
+			Refresh_LogError(
 				"vkGetPhysicalDeviceSurfaceFormatsKHR: %s",
 				VkErrorMessages(result)
 			);
@@ -2923,7 +2923,7 @@ static uint8_t VULKAN_INTERNAL_QuerySwapChainSupport(
 		);
 		if (result != VK_SUCCESS)
 		{
-			REFRESH_LogError(
+			Refresh_LogError(
 				"vkGetPhysicalDeviceSurfacePresentModesKHR: %s",
 				VkErrorMessages(result)
 			);
@@ -2954,12 +2954,12 @@ static uint8_t VULKAN_INTERNAL_ChooseSwapSurfaceFormat(
 		}
 	}
 
-	REFRESH_LogError("Desired surface format is unavailable.");
+	Refresh_LogError("Desired surface format is unavailable.");
 	return 0;
 }
 
 static uint8_t VULKAN_INTERNAL_ChooseSwapPresentMode(
-	REFRESH_PresentMode desiredPresentInterval,
+	Refresh_PresentMode desiredPresentInterval,
 	VkPresentModeKHR *availablePresentModes,
 	uint32_t availablePresentModesLength,
 	VkPresentModeKHR *outputPresentMode
@@ -2970,11 +2970,11 @@ static uint8_t VULKAN_INTERNAL_ChooseSwapPresentMode(
 			if (availablePresentModes[i] == m) \
 			{ \
 				*outputPresentMode = m; \
-				REFRESH_LogInfo("Using " #m "!"); \
+				Refresh_LogInfo("Using " #m "!"); \
 				return 1; \
 			} \
 		} \
-		REFRESH_LogInfo(#m " unsupported.");
+		Refresh_LogInfo(#m " unsupported.");
 
 	uint32_t i;
     if (desiredPresentInterval == REFRESH_PRESENTMODE_IMMEDIATE)
@@ -2995,7 +2995,7 @@ static uint8_t VULKAN_INTERNAL_ChooseSwapPresentMode(
     }
 	else
 	{
-		REFRESH_LogError(
+		Refresh_LogError(
 			"Unrecognized PresentInterval: %d",
 			desiredPresentInterval
 		);
@@ -3004,7 +3004,7 @@ static uint8_t VULKAN_INTERNAL_ChooseSwapPresentMode(
 
 	#undef CHECK_MODE
 
-	REFRESH_LogInfo("Fall back to VK_PRESENT_MODE_FIFO_KHR.");
+	Refresh_LogInfo("Fall back to VK_PRESENT_MODE_FIFO_KHR.");
 	*outputPresentMode = VK_PRESENT_MODE_FIFO_KHR;
 	return 1;
 }
@@ -3029,7 +3029,7 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 		renderer->surface,
 		&swapChainSupportDetails
 	)) {
-		REFRESH_LogError("Device does not support swap chain creation");
+		Refresh_LogError("Device does not support swap chain creation");
 		return CREATE_SWAPCHAIN_FAIL;
 	}
 
@@ -3046,7 +3046,7 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 	)) {
 		SDL_free(swapChainSupportDetails.formats);
 		SDL_free(swapChainSupportDetails.presentModes);
-		REFRESH_LogError("Device does not support swap chain format");
+		Refresh_LogError("Device does not support swap chain format");
 		return CREATE_SWAPCHAIN_FAIL;
 	}
 
@@ -3058,7 +3058,7 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 	)) {
 		SDL_free(swapChainSupportDetails.formats);
 		SDL_free(swapChainSupportDetails.presentModes);
-		REFRESH_LogError("Device does not support swap chain present mode");
+		Refresh_LogError("Device does not support swap chain present mode");
 		return CREATE_SWAPCHAIN_FAIL;
 	}
 
@@ -3249,7 +3249,7 @@ static void VULKAN_INTERNAL_RecreateSwapchain(VulkanRenderer* renderer)
 
 	if (createSwapchainResult == CREATE_SWAPCHAIN_FAIL)
 	{
-		REFRESH_LogError("Failed to recreate swapchain");
+		Refresh_LogError("Failed to recreate swapchain");
 		return;
 	}
 
@@ -3308,7 +3308,7 @@ static uint8_t VULKAN_INTERNAL_CreateBuffer(
 		if (vulkanResult != VK_SUCCESS)
 		{
 			LogVulkanResult("vkCreateBuffer", vulkanResult);
-			REFRESH_LogError("Failed to create VkBuffer");
+			Refresh_LogError("Failed to create VkBuffer");
 			return 0;
 		}
 
@@ -3324,12 +3324,12 @@ static uint8_t VULKAN_INTERNAL_CreateBuffer(
 		/* We're out of available memory */
 		if (findMemoryResult == 2)
 		{
-			REFRESH_LogWarn("Out of buffer memory!");
+			Refresh_LogWarn("Out of buffer memory!");
 			return 2;
 		}
 		else if (findMemoryResult == 0)
 		{
-			REFRESH_LogError("Failed to find buffer memory!");
+			Refresh_LogError("Failed to find buffer memory!");
 			return 0;
 		}
 
@@ -3346,7 +3346,7 @@ static uint8_t VULKAN_INTERNAL_CreateBuffer(
 
 		if (vulkanResult != VK_SUCCESS)
 		{
-			REFRESH_LogError("Failed to bind buffer memory!");
+			Refresh_LogError("Failed to bind buffer memory!");
 			return 0;
 		}
 
@@ -3409,7 +3409,7 @@ static void VULKAN_INTERNAL_EndCommandBuffer(
 /* Public API */
 
 static void VULKAN_DestroyDevice(
-    REFRESH_Device *device
+    Refresh_Device *device
 ) {
 	VulkanRenderer* renderer = (VulkanRenderer*) device->driverData;
 	VkResult waitResult;
@@ -3658,11 +3658,11 @@ static void VULKAN_DestroyDevice(
 }
 
 static void VULKAN_Clear(
-	REFRESH_Renderer *driverData,
-	REFRESH_CommandBuffer *commandBuffer,
-	REFRESH_Rect *clearRect,
-	REFRESH_ClearOptions options,
-	REFRESH_Color *colors,
+	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_Rect *clearRect,
+	Refresh_ClearOptions options,
+	Refresh_Color *colors,
 	uint32_t colorCount,
 	float depth,
 	int32_t stencil
@@ -3771,16 +3771,16 @@ static void VULKAN_Clear(
 }
 
 static void VULKAN_DrawInstancedPrimitives(
-	REFRESH_Renderer *driverData,
-	REFRESH_CommandBuffer *commandBuffer,
+	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer,
 	uint32_t baseVertex,
 	uint32_t minVertexIndex,
 	uint32_t numVertices,
 	uint32_t startIndex,
 	uint32_t primitiveCount,
 	uint32_t instanceCount,
-	REFRESH_Buffer *indices,
-	REFRESH_IndexElementSize indexElementSize,
+	Refresh_Buffer *indices,
+	Refresh_IndexElementSize indexElementSize,
 	uint32_t vertexParamOffset,
 	uint32_t fragmentParamOffset
 ) {
@@ -3823,15 +3823,15 @@ static void VULKAN_DrawInstancedPrimitives(
 }
 
 static void VULKAN_DrawIndexedPrimitives(
-	REFRESH_Renderer *driverData,
-	REFRESH_CommandBuffer *commandBuffer,
+	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer,
 	uint32_t baseVertex,
 	uint32_t minVertexIndex,
 	uint32_t numVertices,
 	uint32_t startIndex,
 	uint32_t primitiveCount,
-	REFRESH_Buffer *indices,
-	REFRESH_IndexElementSize indexElementSize,
+	Refresh_Buffer *indices,
+	Refresh_IndexElementSize indexElementSize,
 	uint32_t vertexParamOffset,
 	uint32_t fragmentParamOffset
 ) {
@@ -3852,8 +3852,8 @@ static void VULKAN_DrawIndexedPrimitives(
 }
 
 static void VULKAN_DrawPrimitives(
-	REFRESH_Renderer *driverData,
-	REFRESH_CommandBuffer *commandBuffer,
+	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer,
 	uint32_t vertexStart,
 	uint32_t primitiveCount,
 	uint32_t vertexParamOffset,
@@ -3897,8 +3897,8 @@ static void VULKAN_DrawPrimitives(
 }
 
 static void VULKAN_DispatchCompute(
-	REFRESH_Renderer *driverData,
-	REFRESH_CommandBuffer *commandBuffer,
+	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer,
 	uint32_t groupCountX,
 	uint32_t groupCountY,
 	uint32_t groupCountZ,
@@ -3972,9 +3972,9 @@ static void VULKAN_DispatchCompute(
 	}
 }
 
-static REFRESH_RenderPass* VULKAN_CreateRenderPass(
-	REFRESH_Renderer *driverData,
-	REFRESH_RenderPassCreateInfo *renderPassCreateInfo
+static Refresh_RenderPass* VULKAN_CreateRenderPass(
+	Refresh_Renderer *driverData,
+	Refresh_RenderPassCreateInfo *renderPassCreateInfo
 ) {
     VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 
@@ -4174,7 +4174,7 @@ static REFRESH_RenderPass* VULKAN_CreateRenderPass(
 		return NULL_RENDER_PASS;
 	}
 
-    return (REFRESH_RenderPass*) renderPass;
+    return (Refresh_RenderPass*) renderPass;
 }
 
 static uint8_t VULKAN_INTERNAL_CreateDescriptorPool(
@@ -4402,13 +4402,13 @@ static VkDescriptorSetLayout VULKAN_INTERNAL_FetchDescriptorSetLayout(
 			}
 			else
 			{
-				REFRESH_LogError("Invalid descriptor type for compute shader: ", descriptorType);
+				Refresh_LogError("Invalid descriptor type for compute shader: ", descriptorType);
 				return NULL_DESC_LAYOUT;
 			}
 		}
 		else
 		{
-			REFRESH_LogError("Invalid shader stage flag bit: ", shaderStageFlagBit);
+			Refresh_LogError("Invalid shader stage flag bit: ", shaderStageFlagBit);
 			return NULL_DESC_LAYOUT;
 		}
 	}
@@ -4576,9 +4576,9 @@ static VulkanGraphicsPipelineLayout* VULKAN_INTERNAL_FetchGraphicsPipelineLayout
 	return vulkanGraphicsPipelineLayout;
 }
 
-static REFRESH_GraphicsPipeline* VULKAN_CreateGraphicsPipeline(
-	REFRESH_Renderer *driverData,
-	REFRESH_GraphicsPipelineCreateInfo *pipelineCreateInfo
+static Refresh_GraphicsPipeline* VULKAN_CreateGraphicsPipeline(
+	Refresh_Renderer *driverData,
+	Refresh_GraphicsPipelineCreateInfo *pipelineCreateInfo
 ) {
 	VkResult vulkanResult;
 	uint32_t i;
@@ -4916,7 +4916,7 @@ static REFRESH_GraphicsPipeline* VULKAN_CreateGraphicsPipeline(
 	if (vulkanResult != VK_SUCCESS)
 	{
 		LogVulkanResult("vkCreateGraphicsPipelines", vulkanResult);
-		REFRESH_LogError("Failed to create graphics pipeline!");
+		Refresh_LogError("Failed to create graphics pipeline!");
 
 		SDL_stack_free(vertexInputBindingDescriptions);
 		SDL_stack_free(vertexInputAttributeDescriptions);
@@ -5014,7 +5014,7 @@ static REFRESH_GraphicsPipeline* VULKAN_CreateGraphicsPipeline(
 		NULL
 	);
 
-	return (REFRESH_GraphicsPipeline*) graphicsPipeline;
+	return (Refresh_GraphicsPipeline*) graphicsPipeline;
 }
 
 static VulkanComputePipelineLayout* VULKAN_INTERNAL_FetchComputePipelineLayout(
@@ -5125,9 +5125,9 @@ static VulkanComputePipelineLayout* VULKAN_INTERNAL_FetchComputePipelineLayout(
 	return vulkanComputePipelineLayout;
 }
 
-static REFRESH_ComputePipeline* VULKAN_CreateComputePipeline(
-	REFRESH_Renderer *driverData,
-	REFRESH_ComputePipelineCreateInfo *pipelineCreateInfo
+static Refresh_ComputePipeline* VULKAN_CreateComputePipeline(
+	Refresh_Renderer *driverData,
+	Refresh_ComputePipelineCreateInfo *pipelineCreateInfo
 ) {
 	VkComputePipelineCreateInfo computePipelineCreateInfo;
 	VkPipelineShaderStageCreateInfo pipelineShaderStageCreateInfo;
@@ -5221,12 +5221,12 @@ static REFRESH_ComputePipeline* VULKAN_CreateComputePipeline(
 		NULL
 	);
 
-	return (REFRESH_ComputePipeline*) vulkanComputePipeline;
+	return (Refresh_ComputePipeline*) vulkanComputePipeline;
 }
 
-static REFRESH_Sampler* VULKAN_CreateSampler(
-	REFRESH_Renderer *driverData,
-	REFRESH_SamplerStateCreateInfo *samplerStateCreateInfo
+static Refresh_Sampler* VULKAN_CreateSampler(
+	Refresh_Renderer *driverData,
+	Refresh_SamplerStateCreateInfo *samplerStateCreateInfo
 ) {
 	VkResult vulkanResult;
 	VkSampler sampler;
@@ -5282,12 +5282,12 @@ static REFRESH_Sampler* VULKAN_CreateSampler(
 		return NULL;
 	}
 
-	return (REFRESH_Sampler*) sampler;
+	return (Refresh_Sampler*) sampler;
 }
 
-static REFRESH_Framebuffer* VULKAN_CreateFramebuffer(
-	REFRESH_Renderer *driverData,
-	REFRESH_FramebufferCreateInfo *framebufferCreateInfo
+static Refresh_Framebuffer* VULKAN_CreateFramebuffer(
+	Refresh_Renderer *driverData,
+	Refresh_FramebufferCreateInfo *framebufferCreateInfo
 ) {
 	VkResult vulkanResult;
 	VkFramebufferCreateInfo vkFramebufferCreateInfo;
@@ -5355,12 +5355,12 @@ static REFRESH_Framebuffer* VULKAN_CreateFramebuffer(
 	vulkanFramebuffer->height = framebufferCreateInfo->height;
 
 	SDL_stack_free(imageViews);
-	return (REFRESH_Framebuffer*) vulkanFramebuffer;
+	return (Refresh_Framebuffer*) vulkanFramebuffer;
 }
 
-static REFRESH_ShaderModule* VULKAN_CreateShaderModule(
-	REFRESH_Renderer *driverData,
-	REFRESH_ShaderModuleCreateInfo *shaderModuleCreateInfo
+static Refresh_ShaderModule* VULKAN_CreateShaderModule(
+	Refresh_Renderer *driverData,
+	Refresh_ShaderModuleCreateInfo *shaderModuleCreateInfo
 ) {
 	VkResult vulkanResult;
 	VkShaderModule shaderModule;
@@ -5383,11 +5383,11 @@ static REFRESH_ShaderModule* VULKAN_CreateShaderModule(
 	if (vulkanResult != VK_SUCCESS)
 	{
 		LogVulkanResult("vkCreateShaderModule", vulkanResult);
-		REFRESH_LogError("Failed to create shader module!");
+		Refresh_LogError("Failed to create shader module!");
 		return NULL;
 	}
 
-	return (REFRESH_ShaderModule*) shaderModule;
+	return (Refresh_ShaderModule*) shaderModule;
 }
 
 /* texture should be an alloc'd but uninitialized VulkanTexture */
@@ -5404,7 +5404,7 @@ static uint8_t VULKAN_INTERNAL_CreateTexture(
 	VkImageTiling tiling,
 	VkImageType imageType,
 	VkImageUsageFlags imageUsageFlags,
-	REFRESH_TextureUsageFlags textureUsageFlags,
+	Refresh_TextureUsageFlags textureUsageFlags,
 	VulkanTexture *texture
 ) {
 	VkResult vulkanResult;
@@ -5459,7 +5459,7 @@ static uint8_t VULKAN_INTERNAL_CreateTexture(
 	if (vulkanResult != VK_SUCCESS)
 	{
 		LogVulkanResult("vkCreateImage", vulkanResult);
-		REFRESH_LogError("Failed to create texture!");
+		Refresh_LogError("Failed to create texture!");
 	}
 
 	findMemoryResult = VULKAN_INTERNAL_FindAvailableMemory(
@@ -5474,7 +5474,7 @@ static uint8_t VULKAN_INTERNAL_CreateTexture(
 	/* No device memory available, time to die */
 	if (findMemoryResult == 0 || findMemoryResult == 2)
 	{
-		REFRESH_LogError("Failed to find texture memory!");
+		Refresh_LogError("Failed to find texture memory!");
 		return 0;
 	}
 
@@ -5492,7 +5492,7 @@ static uint8_t VULKAN_INTERNAL_CreateTexture(
 	if (vulkanResult != VK_SUCCESS)
 	{
 		LogVulkanResult("vkBindImageMemory", vulkanResult);
-		REFRESH_LogError("Failed to bind texture memory!");
+		Refresh_LogError("Failed to bind texture memory!");
 		return 0;
 	}
 
@@ -5522,7 +5522,7 @@ static uint8_t VULKAN_INTERNAL_CreateTexture(
 	}
 	else
 	{
-		REFRESH_LogError("invalid image type: %u", imageType);
+		Refresh_LogError("invalid image type: %u", imageType);
 	}
 
 	vulkanResult = renderer->vkCreateImageView(
@@ -5535,7 +5535,7 @@ static uint8_t VULKAN_INTERNAL_CreateTexture(
 	if (vulkanResult != VK_SUCCESS)
 	{
 		LogVulkanResult("vkCreateImageView", vulkanResult);
-		REFRESH_LogError("Failed to create texture image view");
+		Refresh_LogError("Failed to create texture image view");
 		return 0;
 	}
 
@@ -5552,13 +5552,13 @@ static uint8_t VULKAN_INTERNAL_CreateTexture(
 	return 1;
 }
 
-static REFRESH_Texture* VULKAN_CreateTexture2D(
-	REFRESH_Renderer *driverData,
-	REFRESH_ColorFormat format,
+static Refresh_Texture* VULKAN_CreateTexture2D(
+	Refresh_Renderer *driverData,
+	Refresh_ColorFormat format,
 	uint32_t width,
 	uint32_t height,
 	uint32_t levelCount,
-	REFRESH_TextureUsageFlags usageFlags
+	Refresh_TextureUsageFlags usageFlags
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VulkanTexture *result;
@@ -5593,17 +5593,17 @@ static REFRESH_Texture* VULKAN_CreateTexture2D(
 	);
 	result->colorFormat = format;
 
-	return (REFRESH_Texture*) result;
+	return (Refresh_Texture*) result;
 }
 
-static REFRESH_Texture* VULKAN_CreateTexture3D(
-	REFRESH_Renderer *driverData,
-	REFRESH_ColorFormat format,
+static Refresh_Texture* VULKAN_CreateTexture3D(
+	Refresh_Renderer *driverData,
+	Refresh_ColorFormat format,
 	uint32_t width,
 	uint32_t height,
 	uint32_t depth,
 	uint32_t levelCount,
-	REFRESH_TextureUsageFlags usageFlags
+	Refresh_TextureUsageFlags usageFlags
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VulkanTexture *result;
@@ -5638,15 +5638,15 @@ static REFRESH_Texture* VULKAN_CreateTexture3D(
 	);
 	result->colorFormat = format;
 
-	return (REFRESH_Texture*) result;
+	return (Refresh_Texture*) result;
 }
 
-static REFRESH_Texture* VULKAN_CreateTextureCube(
-	REFRESH_Renderer *driverData,
-	REFRESH_ColorFormat format,
+static Refresh_Texture* VULKAN_CreateTextureCube(
+	Refresh_Renderer *driverData,
+	Refresh_ColorFormat format,
 	uint32_t size,
 	uint32_t levelCount,
-	REFRESH_TextureUsageFlags usageFlags
+	Refresh_TextureUsageFlags usageFlags
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VulkanTexture *result;
@@ -5681,13 +5681,13 @@ static REFRESH_Texture* VULKAN_CreateTextureCube(
 	);
 	result->colorFormat = format;
 
-	return (REFRESH_Texture*) result;
+	return (Refresh_Texture*) result;
 }
 
-static REFRESH_ColorTarget* VULKAN_CreateColorTarget(
-	REFRESH_Renderer *driverData,
-	REFRESH_SampleCount multisampleCount,
-	REFRESH_TextureSlice *textureSlice
+static Refresh_ColorTarget* VULKAN_CreateColorTarget(
+	Refresh_Renderer *driverData,
+	Refresh_SampleCount multisampleCount,
+	Refresh_TextureSlice *textureSlice
 ) {
 	VkResult vulkanResult;
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
@@ -5761,18 +5761,18 @@ static REFRESH_ColorTarget* VULKAN_CreateColorTarget(
 			"vkCreateImageView",
 			vulkanResult
 		);
-		REFRESH_LogError("Failed to create color attachment image view");
+		Refresh_LogError("Failed to create color attachment image view");
 		return NULL;
 	}
 
-	return (REFRESH_ColorTarget*) colorTarget;
+	return (Refresh_ColorTarget*) colorTarget;
 }
 
-static REFRESH_DepthStencilTarget* VULKAN_CreateDepthStencilTarget(
-	REFRESH_Renderer *driverData,
+static Refresh_DepthStencilTarget* VULKAN_CreateDepthStencilTarget(
+	Refresh_Renderer *driverData,
 	uint32_t width,
 	uint32_t height,
-	REFRESH_DepthFormat format
+	Refresh_DepthFormat format
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VulkanDepthStencilTarget *depthStencilTarget =
@@ -5817,12 +5817,12 @@ static REFRESH_DepthStencilTarget* VULKAN_CreateDepthStencilTarget(
 	depthStencilTarget->texture = texture;
 	depthStencilTarget->view = texture->view;
 
-    return (REFRESH_DepthStencilTarget*) depthStencilTarget;
+    return (Refresh_DepthStencilTarget*) depthStencilTarget;
 }
 
-static REFRESH_Buffer* VULKAN_CreateBuffer(
-	REFRESH_Renderer *driverData,
-	REFRESH_BufferUsageFlags usageFlags,
+static Refresh_Buffer* VULKAN_CreateBuffer(
+	Refresh_Renderer *driverData,
+	Refresh_BufferUsageFlags usageFlags,
 	uint32_t sizeInBytes
 ) {
 	VulkanBuffer *buffer = (VulkanBuffer*) SDL_malloc(sizeof(VulkanBuffer));
@@ -5853,11 +5853,11 @@ static REFRESH_Buffer* VULKAN_CreateBuffer(
 		SUB_BUFFER_COUNT,
 		buffer
 	)) {
-		REFRESH_LogError("Failed to create vertex buffer!");
+		Refresh_LogError("Failed to create vertex buffer!");
 		return NULL;
 	}
 
-	return (REFRESH_Buffer*) buffer;
+	return (Refresh_Buffer*) buffer;
 }
 
 /* Setters */
@@ -5891,7 +5891,7 @@ static void VULKAN_INTERNAL_MaybeExpandStagingBuffer(
 			1,
 			renderer->textureStagingBuffer
 		)) {
-			REFRESH_LogError("Failed to expand texture staging buffer!");
+			Refresh_LogError("Failed to expand texture staging buffer!");
 			return;
 		}
 	}
@@ -6012,8 +6012,8 @@ static void VULKAN_INTERNAL_FlushTransfers(
 }
 
 static void VULKAN_SetTextureData(
-	REFRESH_Renderer *driverData,
-	REFRESH_TextureSlice *textureSlice,
+	Refresh_Renderer *driverData,
+	Refresh_TextureSlice *textureSlice,
 	void *data,
 	uint32_t dataLengthInBytes
 ) {
@@ -6043,7 +6043,7 @@ static void VULKAN_SetTextureData(
 
 	if (vulkanResult != VK_SUCCESS)
 	{
-		REFRESH_LogError("Failed to map buffer memory!");
+		Refresh_LogError("Failed to map buffer memory!");
 		SDL_UnlockMutex(renderer->textureStagingBuffer->subBuffers[0]->allocation->memoryLock);
 		SDL_UnlockMutex(renderer->stagingLock);
 		return;
@@ -6118,10 +6118,10 @@ static void VULKAN_SetTextureData(
 }
 
 static void VULKAN_SetTextureDataYUV(
-	REFRESH_Renderer *driverData,
-	REFRESH_Texture *y,
-	REFRESH_Texture *u,
-	REFRESH_Texture *v,
+	Refresh_Renderer *driverData,
+	Refresh_Texture *y,
+	Refresh_Texture *u,
+	Refresh_Texture *v,
 	uint32_t yWidth,
 	uint32_t yHeight,
 	uint32_t uvWidth,
@@ -6173,7 +6173,7 @@ static void VULKAN_SetTextureDataYUV(
 
 	if (vulkanResult != VK_SUCCESS)
 	{
-		REFRESH_LogError("Failed to map buffer memory!");
+		Refresh_LogError("Failed to map buffer memory!");
 		SDL_UnlockMutex(renderer->textureStagingBuffer->subBuffers[0]->allocation->memoryLock);
 		SDL_UnlockMutex(renderer->stagingLock);
 		return;
@@ -6324,14 +6324,14 @@ static void VULKAN_SetTextureDataYUV(
 static void VULKAN_INTERNAL_BlitImage(
 	VulkanRenderer *renderer,
 	VkCommandBuffer commandBuffer,
-	REFRESH_Rect *sourceRectangle,
+	Refresh_Rect *sourceRectangle,
 	uint32_t sourceDepth,
 	uint32_t sourceLayer,
 	uint32_t sourceLevel,
 	VkImage sourceImage,
 	VulkanResourceAccessType *currentSourceAccessType,
 	VulkanResourceAccessType nextSourceAccessType,
-	REFRESH_Rect *destinationRectangle,
+	Refresh_Rect *destinationRectangle,
 	uint32_t destinationDepth,
 	uint32_t destinationLayer,
 	uint32_t destinationLevel,
@@ -6435,11 +6435,11 @@ static void VULKAN_INTERNAL_BlitImage(
 }
 
 REFRESHAPI void VULKAN_CopyTextureToTexture(
-	REFRESH_Renderer *driverData,
-	REFRESH_CommandBuffer *commandBuffer,
-	REFRESH_TextureSlice *sourceTextureSlice,
-	REFRESH_TextureSlice *destinationTextureSlice,
-	REFRESH_Filter filter
+	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_TextureSlice *sourceTextureSlice,
+	Refresh_TextureSlice *destinationTextureSlice,
+	Refresh_Filter filter
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*)driverData;
 	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
@@ -6468,8 +6468,8 @@ REFRESHAPI void VULKAN_CopyTextureToTexture(
 }
 
 static void VULKAN_SetBufferData(
-	REFRESH_Renderer *driverData,
-	REFRESH_Buffer *buffer,
+	Refresh_Renderer *driverData,
+	Refresh_Buffer *buffer,
 	uint32_t offsetInBytes,
 	void* data,
 	uint32_t dataLength
@@ -6497,7 +6497,7 @@ static void VULKAN_SetBufferData(
 	}
 	else
 	{
-		REFRESH_LogError("Buffer already bound. It is an error to set vertex data after binding but before submitting.");
+		Refresh_LogError("Buffer already bound. It is an error to set vertex data after binding but before submitting.");
 		return;
 	}
 
@@ -6515,7 +6515,7 @@ static void VULKAN_SetBufferData(
 
 	if (vulkanResult != VK_SUCCESS)
 	{
-		REFRESH_LogError("Failed to map buffer memory!");
+		Refresh_LogError("Failed to map buffer memory!");
 		SDL_UnlockMutex(SUBBUF->allocation->memoryLock);
 		return;
 	}
@@ -6538,8 +6538,8 @@ static void VULKAN_SetBufferData(
 }
 
 static uint32_t VULKAN_PushVertexShaderParams(
-	REFRESH_Renderer *driverData,
-	REFRESH_CommandBuffer *commandBuffer,
+	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer,
 	void *data,
 	uint32_t elementCount
 ) {
@@ -6556,13 +6556,13 @@ static uint32_t VULKAN_PushVertexShaderParams(
 		vulkanCommandBuffer->currentGraphicsPipeline->vertexUBOBlockSize >=
 		UBO_BUFFER_SIZE * (renderer->frameIndex + 1)
 	) {
-		REFRESH_LogError("Vertex UBO overflow!");
+		Refresh_LogError("Vertex UBO overflow!");
 		return 0;
 	}
 
 	VULKAN_SetBufferData(
-		(REFRESH_Renderer*) renderer,
-		(REFRESH_Buffer*) renderer->vertexUBO,
+		(Refresh_Renderer*) renderer,
+		(Refresh_Buffer*) renderer->vertexUBO,
 		renderer->vertexUBOOffset,
 		data,
 		elementCount * vulkanCommandBuffer->currentGraphicsPipeline->vertexUBOBlockSize
@@ -6574,8 +6574,8 @@ static uint32_t VULKAN_PushVertexShaderParams(
 }
 
 static uint32_t VULKAN_PushFragmentShaderParams(
-	REFRESH_Renderer *driverData,
-	REFRESH_CommandBuffer *commandBuffer,
+	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer,
 	void *data,
 	uint32_t elementCount
 ) {
@@ -6592,13 +6592,13 @@ static uint32_t VULKAN_PushFragmentShaderParams(
 		vulkanCommandBuffer->currentGraphicsPipeline->fragmentUBOBlockSize >=
 		UBO_BUFFER_SIZE * (renderer->frameIndex + 1)
 	) {
-		REFRESH_LogError("Fragment UBO overflow!");
+		Refresh_LogError("Fragment UBO overflow!");
 		return 0;
 	}
 
 	VULKAN_SetBufferData(
-		(REFRESH_Renderer*) renderer,
-		(REFRESH_Buffer*) renderer->fragmentUBO,
+		(Refresh_Renderer*) renderer,
+		(Refresh_Buffer*) renderer->fragmentUBO,
 		renderer->fragmentUBOOffset,
 		data,
 		elementCount * vulkanCommandBuffer->currentGraphicsPipeline->fragmentUBOBlockSize
@@ -6610,8 +6610,8 @@ static uint32_t VULKAN_PushFragmentShaderParams(
 }
 
 static uint32_t VULKAN_PushComputeShaderParams(
-	REFRESH_Renderer *driverData,
-	REFRESH_CommandBuffer *commandBuffer,
+	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer,
 	void *data,
 	uint32_t elementCount
 ) {
@@ -6628,13 +6628,13 @@ static uint32_t VULKAN_PushComputeShaderParams(
 		vulkanCommandBuffer->currentComputePipeline->computeUBOBlockSize >=
 		UBO_BUFFER_SIZE * (renderer->frameIndex + 1)
 	) {
-		REFRESH_LogError("Compute UBO overflow!");
+		Refresh_LogError("Compute UBO overflow!");
 		return 0;
 	}
 
 	VULKAN_SetBufferData(
-		(REFRESH_Renderer*) renderer,
-		(REFRESH_Buffer*) renderer->computeUBO,
+		(Refresh_Renderer*) renderer,
+		(Refresh_Buffer*) renderer->computeUBO,
 		renderer->computeUBOOffset,
 		data,
 		elementCount * vulkanCommandBuffer->currentComputePipeline->computeUBOBlockSize
@@ -6945,10 +6945,10 @@ static VkDescriptorSet VULKAN_INTERNAL_FetchImageDescriptorSet(
 }
 
 static void VULKAN_SetVertexSamplers(
-	REFRESH_Renderer *driverData,
-	REFRESH_CommandBuffer *commandBuffer,
-	REFRESH_Texture **pTextures,
-	REFRESH_Sampler **pSamplers
+	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_Texture **pTextures,
+	Refresh_Sampler **pSamplers
 ) {
 	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
 	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
@@ -6981,10 +6981,10 @@ static void VULKAN_SetVertexSamplers(
 }
 
 static void VULKAN_SetFragmentSamplers(
-	REFRESH_Renderer *driverData,
-	REFRESH_CommandBuffer *commandBuffer,
-	REFRESH_Texture **pTextures,
-	REFRESH_Sampler **pSamplers
+	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_Texture **pTextures,
+	Refresh_Sampler **pSamplers
 ) {
 	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
 	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
@@ -7017,8 +7017,8 @@ static void VULKAN_SetFragmentSamplers(
 }
 
 static void VULKAN_GetBufferData(
-	REFRESH_Renderer *driverData,
-	REFRESH_Buffer *buffer,
+	Refresh_Renderer *driverData,
+	Refresh_Buffer *buffer,
 	void *data,
 	uint32_t dataLengthInBytes
 ) {
@@ -7041,7 +7041,7 @@ static void VULKAN_GetBufferData(
 
 	if (vulkanResult != VK_SUCCESS)
 	{
-		REFRESH_LogError("Failed to map buffer memory!");
+		Refresh_LogError("Failed to map buffer memory!");
 		SDL_UnlockMutex(vulkanBuffer->subBuffers[vulkanBuffer->currentSubBufferIndex]->allocation->memoryLock);
 		return;
 	}
@@ -7061,10 +7061,10 @@ static void VULKAN_GetBufferData(
 }
 
 static void VULKAN_CopyTextureToBuffer(
-	REFRESH_Renderer *driverData,
-	REFRESH_CommandBuffer *commandBuffer,
-	REFRESH_TextureSlice *textureSlice,
-	REFRESH_Buffer *buffer
+	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_TextureSlice *textureSlice,
+	Refresh_Buffer *buffer
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
@@ -7134,8 +7134,8 @@ static void VULKAN_CopyTextureToBuffer(
 }
 
 static void VULKAN_AddDisposeTexture(
-	REFRESH_Renderer *driverData,
-	REFRESH_Texture *texture
+	Refresh_Renderer *driverData,
+	Refresh_Texture *texture
 ) {
 	VulkanRenderer* renderer = (VulkanRenderer*)driverData;
 	VulkanTexture* vulkanTexture = (VulkanTexture*)texture;
@@ -7157,8 +7157,8 @@ static void VULKAN_AddDisposeTexture(
 }
 
 static void VULKAN_AddDisposeSampler(
-	REFRESH_Renderer *driverData,
-	REFRESH_Sampler *sampler
+	Refresh_Renderer *driverData,
+	Refresh_Sampler *sampler
 ) {
 	VulkanRenderer* renderer = (VulkanRenderer*)driverData;
 	VkSampler vulkanSampler = (VkSampler) sampler;
@@ -7180,8 +7180,8 @@ static void VULKAN_AddDisposeSampler(
 }
 
 static void VULKAN_AddDisposeBuffer(
-	REFRESH_Renderer *driverData,
-	REFRESH_Buffer *buffer
+	Refresh_Renderer *driverData,
+	Refresh_Buffer *buffer
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VulkanBuffer *vulkanBuffer = (VulkanBuffer*) buffer;
@@ -7205,8 +7205,8 @@ static void VULKAN_AddDisposeBuffer(
 }
 
 static void VULKAN_AddDisposeColorTarget(
-	REFRESH_Renderer *driverData,
-	REFRESH_ColorTarget *colorTarget
+	Refresh_Renderer *driverData,
+	Refresh_ColorTarget *colorTarget
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VulkanColorTarget *vulkanColorTarget = (VulkanColorTarget*) colorTarget;
@@ -7228,8 +7228,8 @@ static void VULKAN_AddDisposeColorTarget(
 }
 
 static void VULKAN_AddDisposeDepthStencilTarget(
-	REFRESH_Renderer *driverData,
-	REFRESH_DepthStencilTarget *depthStencilTarget
+	Refresh_Renderer *driverData,
+	Refresh_DepthStencilTarget *depthStencilTarget
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VulkanDepthStencilTarget *vulkanDepthStencilTarget = (VulkanDepthStencilTarget*) depthStencilTarget;
@@ -7251,8 +7251,8 @@ static void VULKAN_AddDisposeDepthStencilTarget(
 }
 
 static void VULKAN_AddDisposeFramebuffer(
-	REFRESH_Renderer *driverData,
-	REFRESH_Framebuffer *framebuffer
+	Refresh_Renderer *driverData,
+	Refresh_Framebuffer *framebuffer
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VulkanFramebuffer *vulkanFramebuffer = (VulkanFramebuffer*) framebuffer;
@@ -7274,8 +7274,8 @@ static void VULKAN_AddDisposeFramebuffer(
 }
 
 static void VULKAN_AddDisposeShaderModule(
-	REFRESH_Renderer *driverData,
-	REFRESH_ShaderModule *shaderModule
+	Refresh_Renderer *driverData,
+	Refresh_ShaderModule *shaderModule
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VkShaderModule vulkanShaderModule = (VkShaderModule) shaderModule;
@@ -7297,8 +7297,8 @@ static void VULKAN_AddDisposeShaderModule(
 }
 
 static void VULKAN_AddDisposeRenderPass(
-	REFRESH_Renderer *driverData,
-	REFRESH_RenderPass *renderPass
+	Refresh_Renderer *driverData,
+	Refresh_RenderPass *renderPass
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VkRenderPass vulkanRenderPass = (VkRenderPass) renderPass;
@@ -7320,8 +7320,8 @@ static void VULKAN_AddDisposeRenderPass(
 }
 
 static void VULKAN_AddDisposeComputePipeline(
-	REFRESH_Renderer *driverData,
-	REFRESH_ComputePipeline *computePipeline
+	Refresh_Renderer *driverData,
+	Refresh_ComputePipeline *computePipeline
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VulkanComputePipeline *vulkanComputePipeline = (VulkanComputePipeline*) computePipeline;
@@ -7343,8 +7343,8 @@ static void VULKAN_AddDisposeComputePipeline(
 }
 
 static void VULKAN_AddDisposeGraphicsPipeline(
-	REFRESH_Renderer *driverData,
-	REFRESH_GraphicsPipeline *graphicsPipeline
+	Refresh_Renderer *driverData,
+	Refresh_GraphicsPipeline *graphicsPipeline
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VulkanGraphicsPipeline *vulkanGraphicsPipeline = (VulkanGraphicsPipeline*) graphicsPipeline;
@@ -7366,14 +7366,14 @@ static void VULKAN_AddDisposeGraphicsPipeline(
 }
 
 static void VULKAN_BeginRenderPass(
-	REFRESH_Renderer *driverData,
-	REFRESH_CommandBuffer *commandBuffer,
-	REFRESH_RenderPass *renderPass,
-	REFRESH_Framebuffer *framebuffer,
-	REFRESH_Rect renderArea,
-	REFRESH_Color *pColorClearValues,
+	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_RenderPass *renderPass,
+	Refresh_Framebuffer *framebuffer,
+	Refresh_Rect renderArea,
+	Refresh_Color *pColorClearValues,
 	uint32_t colorClearCount,
-	REFRESH_DepthStencilValue *depthStencilClearValue
+	Refresh_DepthStencilValue *depthStencilClearValue
 ) {
 	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
 	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
@@ -7473,8 +7473,8 @@ static void VULKAN_BeginRenderPass(
 }
 
 static void VULKAN_EndRenderPass(
-	REFRESH_Renderer *driverData,
-	REFRESH_CommandBuffer *commandBuffer
+	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer
 ) {
 	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
 	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
@@ -7511,9 +7511,9 @@ static void VULKAN_EndRenderPass(
 }
 
 static void VULKAN_BindGraphicsPipeline(
-	REFRESH_Renderer *driverData,
-	REFRESH_CommandBuffer *commandBuffer,
-	REFRESH_GraphicsPipeline *graphicsPipeline
+	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_GraphicsPipeline *graphicsPipeline
 ) {
 	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
 	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
@@ -7569,11 +7569,11 @@ static void VULKAN_INTERNAL_MarkAsBound(
 }
 
 static void VULKAN_BindVertexBuffers(
-	REFRESH_Renderer *driverData,
-	REFRESH_CommandBuffer *commandBuffer,
+	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer,
 	uint32_t firstBinding,
 	uint32_t bindingCount,
-	REFRESH_Buffer **pBuffers,
+	Refresh_Buffer **pBuffers,
 	uint64_t *pOffsets
 ) {
 	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
@@ -7602,11 +7602,11 @@ static void VULKAN_BindVertexBuffers(
 }
 
 static void VULKAN_BindIndexBuffer(
-	REFRESH_Renderer *driverData,
-	REFRESH_CommandBuffer *commandBuffer,
-	REFRESH_Buffer *buffer,
+	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_Buffer *buffer,
 	uint64_t offset,
-	REFRESH_IndexElementSize indexElementSize
+	Refresh_IndexElementSize indexElementSize
 ) {
 	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
 	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
@@ -7623,9 +7623,9 @@ static void VULKAN_BindIndexBuffer(
 }
 
 static void VULKAN_BindComputePipeline(
-	REFRESH_Renderer *driverData,
-	REFRESH_CommandBuffer *commandBuffer,
-	REFRESH_ComputePipeline *computePipeline
+	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_ComputePipeline *computePipeline
 ) {
 	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
 	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
@@ -7652,9 +7652,9 @@ static void VULKAN_BindComputePipeline(
 }
 
 static void VULKAN_BindComputeBuffers(
-	REFRESH_Renderer *driverData,
-	REFRESH_CommandBuffer *commandBuffer,
-	REFRESH_Buffer **pBuffers
+	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_Buffer **pBuffers
 ) {
 	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
 	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
@@ -7692,9 +7692,9 @@ static void VULKAN_BindComputeBuffers(
 }
 
 static void VULKAN_BindComputeTextures(
-	REFRESH_Renderer *driverData,
-	REFRESH_CommandBuffer *commandBuffer,
-	REFRESH_Texture **pTextures
+	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_Texture **pTextures
 ) {
 	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
 	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
@@ -7814,7 +7814,7 @@ static VulkanCommandPool* VULKAN_INTERNAL_FetchCommandPool(
 
 	if (vulkanResult != VK_SUCCESS)
 	{
-		REFRESH_LogError("Failed to create command pool!");
+		Refresh_LogError("Failed to create command pool!");
 		LogVulkanResult("vkCreateCommandPool", vulkanResult);
 		return NULL;
 	}
@@ -7863,8 +7863,8 @@ static VulkanCommandBuffer* VULKAN_INTERNAL_GetInactiveCommandBufferFromPool(
 	return commandBuffer;
 }
 
-static REFRESH_CommandBuffer* VULKAN_AcquireCommandBuffer(
-	REFRESH_Renderer *driverData,
+static Refresh_CommandBuffer* VULKAN_AcquireCommandBuffer(
+	Refresh_Renderer *driverData,
 	uint8_t fixed
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
@@ -7894,20 +7894,20 @@ static REFRESH_CommandBuffer* VULKAN_AcquireCommandBuffer(
 
 	VULKAN_INTERNAL_BeginCommandBuffer(renderer, commandBuffer);
 
-	return (REFRESH_CommandBuffer*) commandBuffer;
+	return (Refresh_CommandBuffer*) commandBuffer;
 }
 
 static void VULKAN_QueuePresent(
-	REFRESH_Renderer *driverData,
-	REFRESH_CommandBuffer *commandBuffer,
-	REFRESH_TextureSlice *textureSlice,
-	REFRESH_Rect *destinationRectangle,
-	REFRESH_Filter filter
+	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_TextureSlice *textureSlice,
+	Refresh_Rect *destinationRectangle,
+	Refresh_Filter filter
 ) {
 	VkResult acquireResult;
 	uint32_t swapChainImageIndex;
 
-	REFRESH_Rect dstRect;
+	Refresh_Rect dstRect;
 
 	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
 	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
@@ -7915,7 +7915,7 @@ static void VULKAN_QueuePresent(
 
 	if (renderer->headless)
 	{
-		REFRESH_LogError("Cannot call QueuePresent in headless mode!");
+		Refresh_LogError("Cannot call QueuePresent in headless mode!");
 		return;
 	}
 
@@ -8162,9 +8162,9 @@ static void VULKAN_INTERNAL_ResetCommandBuffer(
 }
 
 static void VULKAN_Submit(
-    REFRESH_Renderer *driverData,
+    Refresh_Renderer *driverData,
 	uint32_t commandBufferCount,
-	REFRESH_CommandBuffer **pCommandBuffers
+	Refresh_CommandBuffer **pCommandBuffers
 ) {
 	VulkanRenderer* renderer = (VulkanRenderer*)driverData;
 	VkSubmitInfo transferSubmitInfo, submitInfo;
@@ -8367,7 +8367,7 @@ static void VULKAN_Submit(
 }
 
 static void VULKAN_Wait(
-    REFRESH_Renderer *driverData
+    Refresh_Renderer *driverData
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 
@@ -8505,7 +8505,7 @@ static uint8_t VULKAN_INTERNAL_CreateInstance(
         &instanceExtensionCount,
         NULL
     )) {
-        REFRESH_LogError(
+        Refresh_LogError(
             "SDL_Vulkan_GetInstanceExtensions(): getExtensionCount: %s",
             SDL_GetError()
         );
@@ -8527,7 +8527,7 @@ static uint8_t VULKAN_INTERNAL_CreateInstance(
 		&instanceExtensionCount,
 		instanceExtensionNames
 	)) {
-		REFRESH_LogError(
+		Refresh_LogError(
 			"SDL_Vulkan_GetInstanceExtensions(): %s",
 			SDL_GetError()
 		);
@@ -8545,7 +8545,7 @@ static uint8_t VULKAN_INTERNAL_CreateInstance(
 		instanceExtensionCount,
 		&renderer->supportsDebugUtils
 	)) {
-		REFRESH_LogError(
+		Refresh_LogError(
 			"Required Vulkan instance extensions not supported"
 		);
 
@@ -8561,7 +8561,7 @@ static uint8_t VULKAN_INTERNAL_CreateInstance(
 	}
 	else
 	{
-		REFRESH_LogWarn(
+		Refresh_LogWarn(
 			"%s is not supported!",
 			VK_EXT_DEBUG_UTILS_EXTENSION_NAME
 		);
@@ -8581,7 +8581,7 @@ static uint8_t VULKAN_INTERNAL_CreateInstance(
 			layerNames,
 			createInfo.enabledLayerCount
 		)) {
-			REFRESH_LogWarn("Validation layers not found, continuing without validation");
+			Refresh_LogWarn("Validation layers not found, continuing without validation");
 			createInfo.enabledLayerCount = 0;
 		}
 	}
@@ -8593,7 +8593,7 @@ static uint8_t VULKAN_INTERNAL_CreateInstance(
     vulkanResult = vkCreateInstance(&createInfo, NULL, &renderer->instance);
 	if (vulkanResult != VK_SUCCESS)
 	{
-		REFRESH_LogError(
+		Refresh_LogError(
 			"vkCreateInstance failed: %s",
 			VkErrorMessages(vulkanResult)
 		);
@@ -8788,7 +8788,7 @@ static uint8_t VULKAN_INTERNAL_DeterminePhysicalDevice(
 
 	if (vulkanResult != VK_SUCCESS)
 	{
-		REFRESH_LogError(
+		Refresh_LogError(
 			"vkEnumeratePhysicalDevices failed: %s",
 			VkErrorMessages(vulkanResult)
 		);
@@ -8797,7 +8797,7 @@ static uint8_t VULKAN_INTERNAL_DeterminePhysicalDevice(
 
 	if (physicalDeviceCount == 0)
 	{
-		REFRESH_LogError("Failed to find any GPUs with Vulkan support");
+		Refresh_LogError("Failed to find any GPUs with Vulkan support");
 		return 0;
 	}
 
@@ -8811,7 +8811,7 @@ static uint8_t VULKAN_INTERNAL_DeterminePhysicalDevice(
 
 	if (vulkanResult != VK_SUCCESS)
 	{
-		REFRESH_LogError(
+		Refresh_LogError(
 			"vkEnumeratePhysicalDevices failed: %s",
 			VkErrorMessages(vulkanResult)
 		);
@@ -8847,7 +8847,7 @@ static uint8_t VULKAN_INTERNAL_DeterminePhysicalDevice(
 	}
 	else
 	{
-		REFRESH_LogError("No suitable physical devices found");
+		Refresh_LogError("No suitable physical devices found");
 		SDL_stack_free(physicalDevices);
 		return 0;
 	}
@@ -8943,7 +8943,7 @@ static uint8_t VULKAN_INTERNAL_CreateLogicalDevice(
 	);
 	if (vulkanResult != VK_SUCCESS)
 	{
-		REFRESH_LogError(
+		Refresh_LogError(
 			"vkCreateDevice failed: %s",
 			VkErrorMessages(vulkanResult)
 		);
@@ -8991,11 +8991,11 @@ static uint8_t VULKAN_INTERNAL_CreateLogicalDevice(
 	return 1;
 }
 
-static REFRESH_Device* VULKAN_CreateDevice(
-	REFRESH_PresentationParameters *presentationParameters,
+static Refresh_Device* VULKAN_CreateDevice(
+	Refresh_PresentationParameters *presentationParameters,
     uint8_t debugMode
 ) {
-    REFRESH_Device *result;
+    Refresh_Device *result;
     VulkanRenderer *renderer;
 
     VkResult vulkanResult;
@@ -9025,7 +9025,7 @@ static REFRESH_Device* VULKAN_CreateDevice(
 	VkDescriptorPoolSize poolSizes[4];
 	VkDescriptorSetAllocateInfo descriptorAllocateInfo;
 
-    result = (REFRESH_Device*) SDL_malloc(sizeof(REFRESH_Device));
+    result = (Refresh_Device*) SDL_malloc(sizeof(Refresh_Device));
     ASSIGN_DRIVER(VULKAN)
 
     renderer = (VulkanRenderer*) SDL_malloc(sizeof(VulkanRenderer));
@@ -9033,7 +9033,7 @@ static REFRESH_Device* VULKAN_CreateDevice(
 	/* Load Vulkan entry points */
 	if (SDL_Vulkan_LoadLibrary(NULL) < 0)
 	{
-		REFRESH_LogWarn("Vulkan: SDL_Vulkan_LoadLibrary failed!");
+		Refresh_LogWarn("Vulkan: SDL_Vulkan_LoadLibrary failed!");
 		return 0;
 	}
 
@@ -9043,7 +9043,7 @@ static REFRESH_Device* VULKAN_CreateDevice(
 #pragma GCC diagnostic pop
 	if (vkGetInstanceProcAddr == NULL)
 	{
-		REFRESH_LogWarn(
+		Refresh_LogWarn(
 			"SDL_Vulkan_GetVkGetInstanceProcAddr(): %s",
 			SDL_GetError()
 		);
@@ -9054,19 +9054,19 @@ static REFRESH_Device* VULKAN_CreateDevice(
 		name = (PFN_##name) vkGetInstanceProcAddr(VK_NULL_HANDLE, #name);			\
 		if (name == NULL)									\
 		{											\
-			REFRESH_LogWarn("vkGetInstanceProcAddr(VK_NULL_HANDLE, \"" #name "\") failed");	\
+			Refresh_LogWarn("vkGetInstanceProcAddr(VK_NULL_HANDLE, \"" #name "\") failed");	\
 			return 0;									\
 		}
 	#include "Refresh_Driver_Vulkan_vkfuncs.h"
 
-    result->driverData = (REFRESH_Renderer*) renderer;
+    result->driverData = (Refresh_Renderer*) renderer;
     renderer->debugMode = debugMode;
     renderer->headless = presentationParameters->deviceWindowHandle == NULL;
 
     /* Create the VkInstance */
 	if (!VULKAN_INTERNAL_CreateInstance(renderer, presentationParameters->deviceWindowHandle))
 	{
-		REFRESH_LogError("Error creating vulkan instance");
+		Refresh_LogError("Error creating vulkan instance");
 		return NULL;
 	}
 
@@ -9082,7 +9082,7 @@ static REFRESH_Device* VULKAN_CreateDevice(
 		renderer->instance,
 		&renderer->surface
 	)) {
-		REFRESH_LogError(
+		Refresh_LogError(
 			"SDL_Vulkan_CreateSurface failed: %s",
 			SDL_GetError()
 		);
@@ -9110,27 +9110,27 @@ static REFRESH_Device* VULKAN_CreateDevice(
 		deviceExtensionNames,
 		deviceExtensionCount
 	)) {
-		REFRESH_LogError("Failed to determine a suitable physical device");
+		Refresh_LogError("Failed to determine a suitable physical device");
 		return NULL;
 	}
 
-	REFRESH_LogInfo("Refresh Driver: Vulkan");
-	REFRESH_LogInfo(
+	Refresh_LogInfo("Refresh Driver: Vulkan");
+	Refresh_LogInfo(
 		"Vulkan Device: %s",
 		renderer->physicalDeviceProperties.properties.deviceName
 	);
-	REFRESH_LogInfo(
+	Refresh_LogInfo(
 		"Vulkan Driver: %s %s",
 		renderer->physicalDeviceDriverProperties.driverName,
 		renderer->physicalDeviceDriverProperties.driverInfo
 	);
-	REFRESH_LogInfo(
+	Refresh_LogInfo(
 		"Vulkan Conformance: %u.%u.%u",
 		renderer->physicalDeviceDriverProperties.conformanceVersion.major,
 		renderer->physicalDeviceDriverProperties.conformanceVersion.minor,
 		renderer->physicalDeviceDriverProperties.conformanceVersion.patch
 	);
-	REFRESH_LogWarn(
+	Refresh_LogWarn(
 		"\n!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n"
 		"! Refresh Vulkan is still in development!    !\n"
         "! The API is unstable and subject to change! !\n"
@@ -9143,7 +9143,7 @@ static REFRESH_Device* VULKAN_CreateDevice(
 		deviceExtensionNames,
 		deviceExtensionCount
 	)) {
-		REFRESH_LogError("Failed to create logical device");
+		Refresh_LogError("Failed to create logical device");
 		return NULL;
 	}
 
@@ -9155,7 +9155,7 @@ static REFRESH_Device* VULKAN_CreateDevice(
     {
         if (VULKAN_INTERNAL_CreateSwapchain(renderer) != CREATE_SWAPCHAIN_SUCCESS)
         {
-            REFRESH_LogError("Failed to create swap chain");
+            Refresh_LogError("Failed to create swap chain");
             return NULL;
         }
     }
@@ -9315,7 +9315,7 @@ static REFRESH_Device* VULKAN_CreateDevice(
 		1,
 		renderer->vertexUBO
 	)) {
-		REFRESH_LogError("Failed to create vertex UBO!");
+		Refresh_LogError("Failed to create vertex UBO!");
 		return NULL;
 	}
 
@@ -9329,7 +9329,7 @@ static REFRESH_Device* VULKAN_CreateDevice(
 		1,
 		renderer->fragmentUBO
 	)) {
-		REFRESH_LogError("Failed to create fragment UBO!");
+		Refresh_LogError("Failed to create fragment UBO!");
 		return NULL;
 	}
 
@@ -9343,7 +9343,7 @@ static REFRESH_Device* VULKAN_CreateDevice(
 		1,
 		renderer->computeUBO
 	)) {
-		REFRESH_LogError("Failed to create compute UBO!");
+		Refresh_LogError("Failed to create compute UBO!");
 		return NULL;
 	}
 
@@ -9439,7 +9439,7 @@ static REFRESH_Device* VULKAN_CreateDevice(
 
 	if (vulkanResult != VK_SUCCESS)
 	{
-		REFRESH_LogError("Failed to create vertex UBO layout!");
+		Refresh_LogError("Failed to create vertex UBO layout!");
 		return NULL;
 	}
 
@@ -9461,7 +9461,7 @@ static REFRESH_Device* VULKAN_CreateDevice(
 
 	if (vulkanResult != VK_SUCCESS)
 	{
-		REFRESH_LogError("Failed to create fragment UBO layout!");
+		Refresh_LogError("Failed to create fragment UBO layout!");
 		return NULL;
 	}
 
@@ -9573,7 +9573,7 @@ static REFRESH_Device* VULKAN_CreateDevice(
 		1,
 		renderer->textureStagingBuffer
 	)) {
-		REFRESH_LogError("Failed to create texture staging buffer!");
+		Refresh_LogError("Failed to create texture staging buffer!");
 		return NULL;
 	}
 
@@ -9591,7 +9591,7 @@ static REFRESH_Device* VULKAN_CreateDevice(
 		1,
 		renderer->dummyVertexUniformBuffer
 	)) {
-		REFRESH_LogError("Failed to create dummy vertex uniform buffer!");
+		Refresh_LogError("Failed to create dummy vertex uniform buffer!");
 		return NULL;
 	}
 
@@ -9605,7 +9605,7 @@ static REFRESH_Device* VULKAN_CreateDevice(
 		1,
 		renderer->dummyFragmentUniformBuffer
 	)) {
-		REFRESH_LogError("Failed to create dummy fragment uniform buffer!");
+		Refresh_LogError("Failed to create dummy fragment uniform buffer!");
 		return NULL;
 	}
 
@@ -9619,7 +9619,7 @@ static REFRESH_Device* VULKAN_CreateDevice(
 		1,
 		renderer->dummyComputeUniformBuffer
 	)) {
-		REFRESH_LogError("Fialed to create dummy compute uniform buffer!");
+		Refresh_LogError("Fialed to create dummy compute uniform buffer!");
 		return NULL;
 	}
 
@@ -9818,7 +9818,7 @@ static REFRESH_Device* VULKAN_CreateDevice(
     return result;
 }
 
-REFRESH_Driver VulkanDriver = {
+Refresh_Driver VulkanDriver = {
     "Vulkan",
     VULKAN_CreateDevice
 };

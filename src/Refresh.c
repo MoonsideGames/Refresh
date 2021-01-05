@@ -33,14 +33,14 @@
 
 /* Drivers */
 
-static const REFRESH_Driver *drivers[] = {
+static const Refresh_Driver *drivers[] = {
     &VulkanDriver,
     NULL
 };
 
 /* Logging */
 
-static void REFRESH_Default_LogInfo(const char *msg)
+static void Refresh_Default_LogInfo(const char *msg)
 {
 	SDL_LogInfo(
 		SDL_LOG_CATEGORY_APPLICATION,
@@ -49,7 +49,7 @@ static void REFRESH_Default_LogInfo(const char *msg)
 	);
 }
 
-static void REFRESH_Default_LogWarn(const char *msg)
+static void Refresh_Default_LogWarn(const char *msg)
 {
 	SDL_LogWarn(
 		SDL_LOG_CATEGORY_APPLICATION,
@@ -58,7 +58,7 @@ static void REFRESH_Default_LogWarn(const char *msg)
 	);
 }
 
-static void REFRESH_Default_LogError(const char *msg)
+static void Refresh_Default_LogError(const char *msg)
 {
 	SDL_LogError(
 		SDL_LOG_CATEGORY_APPLICATION,
@@ -67,57 +67,57 @@ static void REFRESH_Default_LogError(const char *msg)
 	);
 }
 
-static REFRESH_LogFunc REFRESH_LogInfoFunc = REFRESH_Default_LogInfo;
-static REFRESH_LogFunc REFRESH_LogWarnFunc = REFRESH_Default_LogWarn;
-static REFRESH_LogFunc REFRESH_LogErrorFunc = REFRESH_Default_LogError;
+static Refresh_LogFunc Refresh_LogInfoFunc = Refresh_Default_LogInfo;
+static Refresh_LogFunc Refresh_LogWarnFunc = Refresh_Default_LogWarn;
+static Refresh_LogFunc Refresh_LogErrorFunc = Refresh_Default_LogError;
 
 #define MAX_MESSAGE_SIZE 1024
 
-void REFRESH_LogInfo(const char *fmt, ...)
+void Refresh_LogInfo(const char *fmt, ...)
 {
 	char msg[MAX_MESSAGE_SIZE];
 	va_list ap;
 	va_start(ap, fmt);
 	SDL_vsnprintf(msg, sizeof(msg), fmt, ap);
 	va_end(ap);
-	REFRESH_LogInfoFunc(msg);
+	Refresh_LogInfoFunc(msg);
 }
 
-void REFRESH_LogWarn(const char *fmt, ...)
+void Refresh_LogWarn(const char *fmt, ...)
 {
 	char msg[MAX_MESSAGE_SIZE];
 	va_list ap;
 	va_start(ap, fmt);
 	SDL_vsnprintf(msg, sizeof(msg), fmt, ap);
 	va_end(ap);
-	REFRESH_LogWarnFunc(msg);
+	Refresh_LogWarnFunc(msg);
 }
 
-void REFRESH_LogError(const char *fmt, ...)
+void Refresh_LogError(const char *fmt, ...)
 {
 	char msg[MAX_MESSAGE_SIZE];
 	va_list ap;
 	va_start(ap, fmt);
 	SDL_vsnprintf(msg, sizeof(msg), fmt, ap);
 	va_end(ap);
-	REFRESH_LogErrorFunc(msg);
+	Refresh_LogErrorFunc(msg);
 }
 
 #undef MAX_MESSAGE_SIZE
 
-void REFRESH_HookLogFunctions(
-	REFRESH_LogFunc info,
-	REFRESH_LogFunc warn,
-	REFRESH_LogFunc error
+void Refresh_HookLogFunctions(
+	Refresh_LogFunc info,
+	Refresh_LogFunc warn,
+	Refresh_LogFunc error
 ) {
-	REFRESH_LogInfoFunc = info;
-	REFRESH_LogWarnFunc = warn;
-	REFRESH_LogErrorFunc = error;
+	Refresh_LogInfoFunc = info;
+	Refresh_LogWarnFunc = warn;
+	Refresh_LogErrorFunc = error;
 }
 
 /* Version API */
 
-uint32_t REFRESH_LinkedVersion(void)
+uint32_t Refresh_LinkedVersion(void)
 {
 	return REFRESH_COMPILED_VERSION;
 }
@@ -126,8 +126,8 @@ uint32_t REFRESH_LinkedVersion(void)
 
 static int32_t selectedDriver = 0;
 
-REFRESH_Device* REFRESH_CreateDevice(
-    REFRESH_PresentationParameters *presentationParameters,
+Refresh_Device* Refresh_CreateDevice(
+    Refresh_PresentationParameters *presentationParameters,
     uint8_t debugMode
 ) {
     if (selectedDriver < 0)
@@ -141,18 +141,18 @@ REFRESH_Device* REFRESH_CreateDevice(
     );
 }
 
-void REFRESH_DestroyDevice(REFRESH_Device *device)
+void Refresh_DestroyDevice(Refresh_Device *device)
 {
     NULL_RETURN(device);
     device->DestroyDevice(device);
 }
 
-void REFRESH_Clear(
-    REFRESH_Device *device,
-	REFRESH_CommandBuffer *commandBuffer,
-	REFRESH_Rect *clearRect,
-	REFRESH_ClearOptions options,
-	REFRESH_Color *colors,
+void Refresh_Clear(
+    Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_Rect *clearRect,
+	Refresh_ClearOptions options,
+	Refresh_Color *colors,
 	uint32_t colorCount,
 	float depth,
 	int32_t stencil
@@ -170,16 +170,16 @@ void REFRESH_Clear(
     );
 }
 
-void REFRESH_DrawIndexedPrimitives(
-	REFRESH_Device *device,
-    REFRESH_CommandBuffer *commandBuffer,
+void Refresh_DrawIndexedPrimitives(
+	Refresh_Device *device,
+    Refresh_CommandBuffer *commandBuffer,
 	uint32_t baseVertex,
 	uint32_t minVertexIndex,
 	uint32_t numVertices,
 	uint32_t startIndex,
 	uint32_t primitiveCount,
-	REFRESH_Buffer *indices,
-	REFRESH_IndexElementSize indexElementSize,
+	Refresh_Buffer *indices,
+	Refresh_IndexElementSize indexElementSize,
     uint32_t vertexParamOffset,
 	uint32_t fragmentParamOffset
 ) {
@@ -199,17 +199,17 @@ void REFRESH_DrawIndexedPrimitives(
     );
 }
 
-void REFRESH_DrawInstancedPrimitives(
-	REFRESH_Device *device,
-    REFRESH_CommandBuffer *commandBuffer,
+void Refresh_DrawInstancedPrimitives(
+	Refresh_Device *device,
+    Refresh_CommandBuffer *commandBuffer,
 	uint32_t baseVertex,
 	uint32_t minVertexIndex,
 	uint32_t numVertices,
 	uint32_t startIndex,
 	uint32_t primitiveCount,
 	uint32_t instanceCount,
-	REFRESH_Buffer *indices,
-	REFRESH_IndexElementSize indexElementSize,
+	Refresh_Buffer *indices,
+	Refresh_IndexElementSize indexElementSize,
     uint32_t vertexParamOffset,
 	uint32_t fragmentParamOffset
 ) {
@@ -230,9 +230,9 @@ void REFRESH_DrawInstancedPrimitives(
     );
 }
 
-void REFRESH_DrawPrimitives(
-	REFRESH_Device *device,
-    REFRESH_CommandBuffer *commandBuffer,
+void Refresh_DrawPrimitives(
+	Refresh_Device *device,
+    Refresh_CommandBuffer *commandBuffer,
 	uint32_t vertexStart,
 	uint32_t primitiveCount,
     uint32_t vertexParamOffset,
@@ -249,9 +249,9 @@ void REFRESH_DrawPrimitives(
     );
 }
 
-void REFRESH_DispatchCompute(
-    REFRESH_Device *device,
-    REFRESH_CommandBuffer *commandBuffer,
+void Refresh_DispatchCompute(
+    Refresh_Device *device,
+    Refresh_CommandBuffer *commandBuffer,
     uint32_t groupCountX,
     uint32_t groupCountY,
     uint32_t groupCountZ,
@@ -268,9 +268,9 @@ void REFRESH_DispatchCompute(
     );
 }
 
-REFRESH_RenderPass* REFRESH_CreateRenderPass(
-	REFRESH_Device *device,
-	REFRESH_RenderPassCreateInfo *renderPassCreateInfo
+Refresh_RenderPass* Refresh_CreateRenderPass(
+	Refresh_Device *device,
+	Refresh_RenderPassCreateInfo *renderPassCreateInfo
 ) {
     NULL_RETURN_NULL(device);
     return device->CreateRenderPass(
@@ -279,9 +279,9 @@ REFRESH_RenderPass* REFRESH_CreateRenderPass(
     );
 }
 
-REFRESH_ComputePipeline* REFRESH_CreateComputePipeline(
-    REFRESH_Device *device,
-    REFRESH_ComputePipelineCreateInfo *pipelineCreateInfo
+Refresh_ComputePipeline* Refresh_CreateComputePipeline(
+    Refresh_Device *device,
+    Refresh_ComputePipelineCreateInfo *pipelineCreateInfo
 ) {
     NULL_RETURN_NULL(device);
     return device->CreateComputePipeline(
@@ -290,9 +290,9 @@ REFRESH_ComputePipeline* REFRESH_CreateComputePipeline(
     );
 }
 
-REFRESH_GraphicsPipeline* REFRESH_CreateGraphicsPipeline(
-	REFRESH_Device *device,
-	REFRESH_GraphicsPipelineCreateInfo *pipelineCreateInfo
+Refresh_GraphicsPipeline* Refresh_CreateGraphicsPipeline(
+	Refresh_Device *device,
+	Refresh_GraphicsPipelineCreateInfo *pipelineCreateInfo
 ) {
     NULL_RETURN_NULL(device);
     return device->CreateGraphicsPipeline(
@@ -301,9 +301,9 @@ REFRESH_GraphicsPipeline* REFRESH_CreateGraphicsPipeline(
     );
 }
 
-REFRESH_Sampler* REFRESH_CreateSampler(
-	REFRESH_Device *device,
-	REFRESH_SamplerStateCreateInfo *samplerStateCreateInfo
+Refresh_Sampler* Refresh_CreateSampler(
+	Refresh_Device *device,
+	Refresh_SamplerStateCreateInfo *samplerStateCreateInfo
 ) {
     NULL_RETURN_NULL(device);
     return device->CreateSampler(
@@ -312,9 +312,9 @@ REFRESH_Sampler* REFRESH_CreateSampler(
     );
 }
 
-REFRESH_Framebuffer* REFRESH_CreateFramebuffer(
-	REFRESH_Device *device,
-	REFRESH_FramebufferCreateInfo *framebufferCreateInfo
+Refresh_Framebuffer* Refresh_CreateFramebuffer(
+	Refresh_Device *device,
+	Refresh_FramebufferCreateInfo *framebufferCreateInfo
 ) {
     NULL_RETURN_NULL(device);
     return device->CreateFramebuffer(
@@ -323,9 +323,9 @@ REFRESH_Framebuffer* REFRESH_CreateFramebuffer(
     );
 }
 
-REFRESH_ShaderModule* REFRESH_CreateShaderModule(
-	REFRESH_Device *device,
-	REFRESH_ShaderModuleCreateInfo *shaderModuleCreateInfo
+Refresh_ShaderModule* Refresh_CreateShaderModule(
+	Refresh_Device *device,
+	Refresh_ShaderModuleCreateInfo *shaderModuleCreateInfo
 ) {
     NULL_RETURN_NULL(device);
     return device->CreateShaderModule(
@@ -334,13 +334,13 @@ REFRESH_ShaderModule* REFRESH_CreateShaderModule(
     );
 }
 
-REFRESH_Texture* REFRESH_CreateTexture2D(
-	REFRESH_Device *device,
-	REFRESH_ColorFormat format,
+Refresh_Texture* Refresh_CreateTexture2D(
+	Refresh_Device *device,
+	Refresh_ColorFormat format,
 	uint32_t width,
 	uint32_t height,
 	uint32_t levelCount,
-    REFRESH_TextureUsageFlags usageFlags
+    Refresh_TextureUsageFlags usageFlags
 ) {
     NULL_RETURN_NULL(device);
     return device->CreateTexture2D(
@@ -353,14 +353,14 @@ REFRESH_Texture* REFRESH_CreateTexture2D(
     );
 }
 
-REFRESH_Texture* REFRESH_CreateTexture3D(
-	REFRESH_Device *device,
-	REFRESH_ColorFormat format,
+Refresh_Texture* Refresh_CreateTexture3D(
+	Refresh_Device *device,
+	Refresh_ColorFormat format,
 	uint32_t width,
 	uint32_t height,
 	uint32_t depth,
 	uint32_t levelCount,
-    REFRESH_TextureUsageFlags usageFlags
+    Refresh_TextureUsageFlags usageFlags
 ) {
     NULL_RETURN_NULL(device);
     return device->CreateTexture3D(
@@ -374,12 +374,12 @@ REFRESH_Texture* REFRESH_CreateTexture3D(
     );
 }
 
-REFRESH_Texture* REFRESH_CreateTextureCube(
-	REFRESH_Device *device,
-	REFRESH_ColorFormat format,
+Refresh_Texture* Refresh_CreateTextureCube(
+	Refresh_Device *device,
+	Refresh_ColorFormat format,
 	uint32_t size,
 	uint32_t levelCount,
-    REFRESH_TextureUsageFlags usageFlags
+    Refresh_TextureUsageFlags usageFlags
 ) {
     NULL_RETURN_NULL(device);
     return device->CreateTextureCube(
@@ -391,10 +391,10 @@ REFRESH_Texture* REFRESH_CreateTextureCube(
     );
 }
 
-REFRESH_ColorTarget* REFRESH_CreateColorTarget(
-	REFRESH_Device *device,
-    REFRESH_SampleCount multisampleCount,
-	REFRESH_TextureSlice *textureSlice
+Refresh_ColorTarget* Refresh_CreateColorTarget(
+	Refresh_Device *device,
+    Refresh_SampleCount multisampleCount,
+	Refresh_TextureSlice *textureSlice
 ) {
     NULL_RETURN_NULL(device);
     return device->CreateColorTarget(
@@ -404,11 +404,11 @@ REFRESH_ColorTarget* REFRESH_CreateColorTarget(
     );
 }
 
-REFRESH_DepthStencilTarget* REFRESH_CreateDepthStencilTarget(
-	REFRESH_Device *device,
+Refresh_DepthStencilTarget* Refresh_CreateDepthStencilTarget(
+	Refresh_Device *device,
 	uint32_t width,
 	uint32_t height,
-	REFRESH_DepthFormat format
+	Refresh_DepthFormat format
 ) {
     NULL_RETURN_NULL(device);
     return device->CreateDepthStencilTarget(
@@ -419,9 +419,9 @@ REFRESH_DepthStencilTarget* REFRESH_CreateDepthStencilTarget(
     );
 }
 
-REFRESH_Buffer* REFRESH_CreateBuffer(
-	REFRESH_Device *device,
-    REFRESH_BufferUsageFlags usageFlags,
+Refresh_Buffer* Refresh_CreateBuffer(
+	Refresh_Device *device,
+    Refresh_BufferUsageFlags usageFlags,
 	uint32_t sizeInBytes
 ) {
     NULL_RETURN_NULL(device);
@@ -432,9 +432,9 @@ REFRESH_Buffer* REFRESH_CreateBuffer(
     );
 }
 
-void REFRESH_SetTextureData(
-	REFRESH_Device *device,
-	REFRESH_TextureSlice *textureSlice,
+void Refresh_SetTextureData(
+	Refresh_Device *device,
+	Refresh_TextureSlice *textureSlice,
 	void *data,
 	uint32_t dataLengthInBytes
 ) {
@@ -447,11 +447,11 @@ void REFRESH_SetTextureData(
     );
 }
 
-void REFRESH_SetTextureDataYUV(
-	REFRESH_Device *device,
-	REFRESH_Texture *y,
-	REFRESH_Texture *u,
-	REFRESH_Texture *v,
+void Refresh_SetTextureDataYUV(
+	Refresh_Device *device,
+	Refresh_Texture *y,
+	Refresh_Texture *u,
+	Refresh_Texture *v,
 	uint32_t yWidth,
 	uint32_t yHeight,
 	uint32_t uvWidth,
@@ -474,12 +474,12 @@ void REFRESH_SetTextureDataYUV(
     );
 }
 
-void REFRESH_CopyTextureToTexture(
-    REFRESH_Device *device,
-	REFRESH_CommandBuffer *commandBuffer,
-	REFRESH_TextureSlice *sourceTextureSlice,
-	REFRESH_TextureSlice *destinationTextureSlice,
-	REFRESH_Filter filter
+void Refresh_CopyTextureToTexture(
+    Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_TextureSlice *sourceTextureSlice,
+	Refresh_TextureSlice *destinationTextureSlice,
+	Refresh_Filter filter
 ) {
     NULL_RETURN(device);
     device->CopyTextureToTexture(
@@ -491,11 +491,11 @@ void REFRESH_CopyTextureToTexture(
     );
 }
 
-void REFRESH_CopyTextureToBuffer(
-	REFRESH_Device *device,
-	REFRESH_CommandBuffer *commandBuffer,
-	REFRESH_TextureSlice *textureSlice,
-	REFRESH_Buffer *buffer
+void Refresh_CopyTextureToBuffer(
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_TextureSlice *textureSlice,
+	Refresh_Buffer *buffer
 ) {
     NULL_RETURN(device);
     device->CopyTextureToBuffer(
@@ -506,9 +506,9 @@ void REFRESH_CopyTextureToBuffer(
     );
 }
 
-void REFRESH_SetBufferData(
-	REFRESH_Device *device,
-	REFRESH_Buffer *buffer,
+void Refresh_SetBufferData(
+	Refresh_Device *device,
+	Refresh_Buffer *buffer,
 	uint32_t offsetInBytes,
 	void* data,
 	uint32_t dataLength
@@ -523,9 +523,9 @@ void REFRESH_SetBufferData(
     );
 }
 
-uint32_t REFRESH_PushVertexShaderParams(
-	REFRESH_Device *device,
-    REFRESH_CommandBuffer *commandBuffer,
+uint32_t Refresh_PushVertexShaderParams(
+	Refresh_Device *device,
+    Refresh_CommandBuffer *commandBuffer,
 	void *data,
 	uint32_t elementCount
 ) {
@@ -538,9 +538,9 @@ uint32_t REFRESH_PushVertexShaderParams(
     );
 }
 
-uint32_t REFRESH_PushFragmentShaderParams(
-	REFRESH_Device *device,
-    REFRESH_CommandBuffer *commandBuffer,
+uint32_t Refresh_PushFragmentShaderParams(
+	Refresh_Device *device,
+    Refresh_CommandBuffer *commandBuffer,
 	void *data,
 	uint32_t elementCount
 ) {
@@ -553,9 +553,9 @@ uint32_t REFRESH_PushFragmentShaderParams(
     );
 }
 
-uint32_t REFRESH_PushComputeShaderParams(
-    REFRESH_Device *device,
-    REFRESH_CommandBuffer *commandBuffer,
+uint32_t Refresh_PushComputeShaderParams(
+    Refresh_Device *device,
+    Refresh_CommandBuffer *commandBuffer,
     void *data,
     uint32_t elementCount
 ) {
@@ -568,11 +568,11 @@ uint32_t REFRESH_PushComputeShaderParams(
     );
 }
 
-void REFRESH_SetVertexSamplers(
-	REFRESH_Device *device,
-    REFRESH_CommandBuffer *commandBuffer,
-	REFRESH_Texture **pTextures,
-	REFRESH_Sampler **pSamplers
+void Refresh_SetVertexSamplers(
+	Refresh_Device *device,
+    Refresh_CommandBuffer *commandBuffer,
+	Refresh_Texture **pTextures,
+	Refresh_Sampler **pSamplers
 ) {
     NULL_RETURN(device);
     device->SetVertexSamplers(
@@ -583,11 +583,11 @@ void REFRESH_SetVertexSamplers(
     );
 }
 
-void REFRESH_SetFragmentSamplers(
-	REFRESH_Device *device,
-    REFRESH_CommandBuffer *commandBuffer,
-	REFRESH_Texture **pTextures,
-	REFRESH_Sampler **pSamplers
+void Refresh_SetFragmentSamplers(
+	Refresh_Device *device,
+    Refresh_CommandBuffer *commandBuffer,
+	Refresh_Texture **pTextures,
+	Refresh_Sampler **pSamplers
 ) {
     NULL_RETURN(device);
     device->SetFragmentSamplers(
@@ -598,9 +598,9 @@ void REFRESH_SetFragmentSamplers(
     );
 }
 
-void REFRESH_GetBufferData(
-    REFRESH_Device *device,
-    REFRESH_Buffer *buffer,
+void Refresh_GetBufferData(
+    Refresh_Device *device,
+    Refresh_Buffer *buffer,
     void *data,
     uint32_t dataLengthInBytes
 ) {
@@ -613,9 +613,9 @@ void REFRESH_GetBufferData(
     );
 }
 
-void REFRESH_AddDisposeTexture(
-	REFRESH_Device *device,
-	REFRESH_Texture *texture
+void Refresh_AddDisposeTexture(
+	Refresh_Device *device,
+	Refresh_Texture *texture
 ) {
     NULL_RETURN(device);
     device->AddDisposeTexture(
@@ -624,9 +624,9 @@ void REFRESH_AddDisposeTexture(
     );
 }
 
-void REFRESH_AddDisposeSampler(
-	REFRESH_Device *device,
-	REFRESH_Sampler *sampler
+void Refresh_AddDisposeSampler(
+	Refresh_Device *device,
+	Refresh_Sampler *sampler
 ) {
     NULL_RETURN(device);
     device->AddDisposeSampler(
@@ -635,9 +635,9 @@ void REFRESH_AddDisposeSampler(
     );
 }
 
-void REFRESH_AddDisposeBuffer(
-	REFRESH_Device *device,
-	REFRESH_Buffer *buffer
+void Refresh_AddDisposeBuffer(
+	Refresh_Device *device,
+	Refresh_Buffer *buffer
 ) {
     NULL_RETURN(device);
     device->AddDisposeBuffer(
@@ -646,9 +646,9 @@ void REFRESH_AddDisposeBuffer(
     );
 }
 
-void REFRESH_AddDisposeColorTarget(
-	REFRESH_Device *device,
-	REFRESH_ColorTarget *colorTarget
+void Refresh_AddDisposeColorTarget(
+	Refresh_Device *device,
+	Refresh_ColorTarget *colorTarget
 ) {
     NULL_RETURN(device);
     device->AddDisposeColorTarget(
@@ -657,9 +657,9 @@ void REFRESH_AddDisposeColorTarget(
     );
 }
 
-void REFRESH_AddDisposeDepthStencilTarget(
-	REFRESH_Device *device,
-	REFRESH_DepthStencilTarget *depthStencilTarget
+void Refresh_AddDisposeDepthStencilTarget(
+	Refresh_Device *device,
+	Refresh_DepthStencilTarget *depthStencilTarget
 ) {
     NULL_RETURN(device);
     device->AddDisposeDepthStencilTarget(
@@ -668,9 +668,9 @@ void REFRESH_AddDisposeDepthStencilTarget(
     );
 }
 
-void REFRESH_AddDisposeFramebuffer(
-	REFRESH_Device *device,
-	REFRESH_Framebuffer *frameBuffer
+void Refresh_AddDisposeFramebuffer(
+	Refresh_Device *device,
+	Refresh_Framebuffer *frameBuffer
 ) {
     NULL_RETURN(device);
     device->AddDisposeFramebuffer(
@@ -679,9 +679,9 @@ void REFRESH_AddDisposeFramebuffer(
     );
 }
 
-void REFRESH_AddDisposeShaderModule(
-	REFRESH_Device *device,
-	REFRESH_ShaderModule *shaderModule
+void Refresh_AddDisposeShaderModule(
+	Refresh_Device *device,
+	Refresh_ShaderModule *shaderModule
 ) {
     NULL_RETURN(device);
     device->AddDisposeShaderModule(
@@ -690,9 +690,9 @@ void REFRESH_AddDisposeShaderModule(
     );
 }
 
-void REFRESH_AddDisposeRenderPass(
-	REFRESH_Device *device,
-	REFRESH_RenderPass *renderPass
+void Refresh_AddDisposeRenderPass(
+	Refresh_Device *device,
+	Refresh_RenderPass *renderPass
 ) {
     NULL_RETURN(device);
     device->AddDisposeRenderPass(
@@ -701,9 +701,9 @@ void REFRESH_AddDisposeRenderPass(
     );
 }
 
-void REFRESH_AddDisposeComputePipeline(
-	REFRESH_Device *device,
-	REFRESH_ComputePipeline *computePipeline
+void Refresh_AddDisposeComputePipeline(
+	Refresh_Device *device,
+	Refresh_ComputePipeline *computePipeline
 ) {
     NULL_RETURN(device);
     device->AddDisposeComputePipeline(
@@ -712,9 +712,9 @@ void REFRESH_AddDisposeComputePipeline(
     );
 }
 
-void REFRESH_AddDisposeGraphicsPipeline(
-	REFRESH_Device *device,
-	REFRESH_GraphicsPipeline *graphicsPipeline
+void Refresh_AddDisposeGraphicsPipeline(
+	Refresh_Device *device,
+	Refresh_GraphicsPipeline *graphicsPipeline
 ) {
     NULL_RETURN(device);
     device->AddDisposeGraphicsPipeline(
@@ -723,15 +723,15 @@ void REFRESH_AddDisposeGraphicsPipeline(
     );
 }
 
-void REFRESH_BeginRenderPass(
-	REFRESH_Device *device,
-    REFRESH_CommandBuffer *commandBuffer,
-	REFRESH_RenderPass *renderPass,
-	REFRESH_Framebuffer *framebuffer,
-	REFRESH_Rect renderArea,
-	REFRESH_Color *pColorClearValues,
+void Refresh_BeginRenderPass(
+	Refresh_Device *device,
+    Refresh_CommandBuffer *commandBuffer,
+	Refresh_RenderPass *renderPass,
+	Refresh_Framebuffer *framebuffer,
+	Refresh_Rect renderArea,
+	Refresh_Color *pColorClearValues,
 	uint32_t colorClearCount,
-	REFRESH_DepthStencilValue *depthStencilClearValue
+	Refresh_DepthStencilValue *depthStencilClearValue
 ) {
     NULL_RETURN(device);
     device->BeginRenderPass(
@@ -746,9 +746,9 @@ void REFRESH_BeginRenderPass(
     );
 }
 
-void REFRESH_EndRenderPass(
-	REFRESH_Device *device,
-    REFRESH_CommandBuffer *commandBuffer
+void Refresh_EndRenderPass(
+	Refresh_Device *device,
+    Refresh_CommandBuffer *commandBuffer
 ) {
     NULL_RETURN(device);
     device->EndRenderPass(
@@ -757,10 +757,10 @@ void REFRESH_EndRenderPass(
     );
 }
 
-void REFRESH_BindGraphicsPipeline(
-	REFRESH_Device *device,
-    REFRESH_CommandBuffer *commandBuffer,
-	REFRESH_GraphicsPipeline *graphicsPipeline
+void Refresh_BindGraphicsPipeline(
+	Refresh_Device *device,
+    Refresh_CommandBuffer *commandBuffer,
+	Refresh_GraphicsPipeline *graphicsPipeline
 ) {
     NULL_RETURN(device);
     device->BindGraphicsPipeline(
@@ -770,12 +770,12 @@ void REFRESH_BindGraphicsPipeline(
     );
 }
 
-void REFRESH_BindVertexBuffers(
-	REFRESH_Device *device,
-    REFRESH_CommandBuffer *commandBuffer,
+void Refresh_BindVertexBuffers(
+	Refresh_Device *device,
+    Refresh_CommandBuffer *commandBuffer,
 	uint32_t firstBinding,
 	uint32_t bindingCount,
-	REFRESH_Buffer **pBuffers,
+	Refresh_Buffer **pBuffers,
 	uint64_t *pOffsets
 ) {
     NULL_RETURN(device);
@@ -789,12 +789,12 @@ void REFRESH_BindVertexBuffers(
     );
 }
 
-void REFRESH_BindIndexBuffer(
-    REFRESH_Device *device,
-    REFRESH_CommandBuffer *commandBuffer,
-    REFRESH_Buffer *buffer,
+void Refresh_BindIndexBuffer(
+    Refresh_Device *device,
+    Refresh_CommandBuffer *commandBuffer,
+    Refresh_Buffer *buffer,
 	uint64_t offset,
-	REFRESH_IndexElementSize indexElementSize
+	Refresh_IndexElementSize indexElementSize
 ) {
     NULL_RETURN(device);
     device->BindIndexBuffer(
@@ -806,10 +806,10 @@ void REFRESH_BindIndexBuffer(
     );
 }
 
-void REFRESH_BindComputePipeline(
-    REFRESH_Device *device,
-    REFRESH_CommandBuffer *commandBuffer,
-    REFRESH_ComputePipeline *computePipeline
+void Refresh_BindComputePipeline(
+    Refresh_Device *device,
+    Refresh_CommandBuffer *commandBuffer,
+    Refresh_ComputePipeline *computePipeline
 ) {
     NULL_RETURN(device);
     device->BindComputePipeline(
@@ -819,10 +819,10 @@ void REFRESH_BindComputePipeline(
     );
 }
 
-void REFRESH_BindComputeBuffers(
-    REFRESH_Device *device,
-    REFRESH_CommandBuffer *commandBuffer,
-    REFRESH_Buffer **pBuffers
+void Refresh_BindComputeBuffers(
+    Refresh_Device *device,
+    Refresh_CommandBuffer *commandBuffer,
+    Refresh_Buffer **pBuffers
 ) {
     NULL_RETURN(device);
     device->BindComputeBuffers(
@@ -832,10 +832,10 @@ void REFRESH_BindComputeBuffers(
     );
 }
 
-void REFRESH_BindComputeTextures(
-    REFRESH_Device *device,
-    REFRESH_CommandBuffer *commandBuffer,
-    REFRESH_Texture **pTextures
+void Refresh_BindComputeTextures(
+    Refresh_Device *device,
+    Refresh_CommandBuffer *commandBuffer,
+    Refresh_Texture **pTextures
 ) {
     NULL_RETURN(device);
     device->BindComputeTextures(
@@ -845,8 +845,8 @@ void REFRESH_BindComputeTextures(
     );
 }
 
-REFRESH_CommandBuffer* REFRESH_AcquireCommandBuffer(
-    REFRESH_Device *device,
+Refresh_CommandBuffer* Refresh_AcquireCommandBuffer(
+    Refresh_Device *device,
     uint8_t fixed
 ) {
     NULL_RETURN_NULL(device);
@@ -856,12 +856,12 @@ REFRESH_CommandBuffer* REFRESH_AcquireCommandBuffer(
     );
 }
 
-void REFRESH_QueuePresent(
-    REFRESH_Device *device,
-    REFRESH_CommandBuffer *commandBuffer,
-    REFRESH_TextureSlice* textureSlice,
-    REFRESH_Rect *destinationRectangle,
-    REFRESH_Filter filter
+void Refresh_QueuePresent(
+    Refresh_Device *device,
+    Refresh_CommandBuffer *commandBuffer,
+    Refresh_TextureSlice* textureSlice,
+    Refresh_Rect *destinationRectangle,
+    Refresh_Filter filter
 ) {
     NULL_RETURN(device);
     device->QueuePresent(
@@ -873,10 +873,10 @@ void REFRESH_QueuePresent(
     );
 }
 
-void REFRESH_Submit(
-    REFRESH_Device *device,
+void Refresh_Submit(
+    Refresh_Device *device,
 	uint32_t commandBufferCount,
-	REFRESH_CommandBuffer **pCommandBuffers
+	Refresh_CommandBuffer **pCommandBuffers
 ) {
     NULL_RETURN(device);
     device->Submit(
@@ -886,8 +886,8 @@ void REFRESH_Submit(
     );
 }
 
-void REFRESH_Wait(
-    REFRESH_Device *device
+void Refresh_Wait(
+    Refresh_Device *device
 ) {
     NULL_RETURN(device);
     device->Wait(

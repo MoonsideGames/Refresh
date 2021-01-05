@@ -36,14 +36,14 @@
 
 /* Logging */
 
-extern void REFRESH_LogInfo(const char *fmt, ...);
-extern void REFRESH_LogWarn(const char *fmt, ...);
-extern void REFRESH_LogError(const char *fmt, ...);
+extern void Refresh_LogInfo(const char *fmt, ...);
+extern void Refresh_LogWarn(const char *fmt, ...);
+extern void Refresh_LogError(const char *fmt, ...);
 
 /* Internal Helper Utilities */
 
 static inline uint32_t Texture_GetFormatSize(
-	REFRESH_ColorFormat format
+	Refresh_ColorFormat format
 ) {
 	switch (format)
 	{
@@ -73,7 +73,7 @@ static inline uint32_t Texture_GetFormatSize(
 		case REFRESH_COLORFORMAT_R32G32B32A32_SFLOAT:
 			return 16;
 		default:
-			REFRESH_LogError(
+			Refresh_LogError(
 				"Unrecognized SurfaceFormat!"
 			);
 			return 0;
@@ -81,7 +81,7 @@ static inline uint32_t Texture_GetFormatSize(
 }
 
 static inline uint32_t PrimitiveVerts(
-	REFRESH_PrimitiveType primitiveType,
+	Refresh_PrimitiveType primitiveType,
 	uint32_t primitiveCount
 ) {
 	switch (primitiveType)
@@ -97,21 +97,21 @@ static inline uint32_t PrimitiveVerts(
 		case REFRESH_PRIMITIVETYPE_POINTLIST:
 			return primitiveCount;
 		default:
-			REFRESH_LogError(
+			Refresh_LogError(
 				"Unrecognized primitive type!"
 			);
 			return 0;
 	}
 }
 
-static inline uint32_t IndexSize(REFRESH_IndexElementSize size)
+static inline uint32_t IndexSize(Refresh_IndexElementSize size)
 {
 	return (size == REFRESH_INDEXELEMENTSIZE_16BIT) ? 2 : 4;
 }
 
 static inline uint32_t BytesPerRow(
 	int32_t width,
-	REFRESH_ColorFormat format
+	Refresh_ColorFormat format
 ) {
 	uint32_t blocksPerRow = width;
 
@@ -128,7 +128,7 @@ static inline uint32_t BytesPerRow(
 static inline int32_t BytesPerImage(
 	uint32_t width,
 	uint32_t height,
-	REFRESH_ColorFormat format
+	Refresh_ColorFormat format
 ) {
 	uint32_t blocksPerRow = width;
 	uint32_t blocksPerColumn = height;
@@ -155,61 +155,61 @@ static inline int32_t BytesPerImage(
 
 #define MAX_COLOR_TARGET_BINDINGS	4
 
-/* REFRESH_Device Definition */
+/* Refresh_Device Definition */
 
-typedef struct REFRESH_Renderer REFRESH_Renderer;
+typedef struct Refresh_Renderer Refresh_Renderer;
 
-struct REFRESH_Device
+struct Refresh_Device
 {
 	/* Quit */
 
-	void (*DestroyDevice)(REFRESH_Device *device);
+	void (*DestroyDevice)(Refresh_Device *device);
 
 	/* Drawing */
 
 	void (*Clear)(
-        REFRESH_Renderer *driverData,
-        REFRESH_CommandBuffer *commandBuffer,
-        REFRESH_Rect *clearRect,
-        REFRESH_ClearOptions options,
-        REFRESH_Color *colors,
+        Refresh_Renderer *driverData,
+        Refresh_CommandBuffer *commandBuffer,
+        Refresh_Rect *clearRect,
+        Refresh_ClearOptions options,
+        Refresh_Color *colors,
         uint32_t colorCount,
         float depth,
         int32_t stencil
 	);
 
 	void (*DrawInstancedPrimitives)(
-        REFRESH_Renderer *driverData,
-        REFRESH_CommandBuffer *commandBuffer,
+        Refresh_Renderer *driverData,
+        Refresh_CommandBuffer *commandBuffer,
         uint32_t baseVertex,
         uint32_t minVertexIndex,
         uint32_t numVertices,
         uint32_t startIndex,
         uint32_t primitiveCount,
         uint32_t instanceCount,
-        REFRESH_Buffer *indices,
-        REFRESH_IndexElementSize indexElementSize,
+        Refresh_Buffer *indices,
+        Refresh_IndexElementSize indexElementSize,
         uint32_t vertexParamOffset,
         uint32_t fragmentParamOffset
 	);
 
 	void (*DrawIndexedPrimitives)(
-        REFRESH_Renderer *driverData,
-        REFRESH_CommandBuffer *commandBuffer,
+        Refresh_Renderer *driverData,
+        Refresh_CommandBuffer *commandBuffer,
         uint32_t baseVertex,
         uint32_t minVertexIndex,
         uint32_t numVertices,
         uint32_t startIndex,
         uint32_t primitiveCount,
-        REFRESH_Buffer *indices,
-        REFRESH_IndexElementSize indexElementSize,
+        Refresh_Buffer *indices,
+        Refresh_IndexElementSize indexElementSize,
         uint32_t vertexParamOffset,
         uint32_t fragmentParamOffset
 	);
 
 	void (*DrawPrimitives)(
-	    REFRESH_Renderer *driverData,
-        REFRESH_CommandBuffer *commandBuffer,
+	    Refresh_Renderer *driverData,
+        Refresh_CommandBuffer *commandBuffer,
         uint32_t vertexStart,
         uint32_t primitiveCount,
         uint32_t vertexParamOffset,
@@ -217,8 +217,8 @@ struct REFRESH_Device
 	);
 
     void (*DispatchCompute)(
-        REFRESH_Renderer *device,
-        REFRESH_CommandBuffer *commandBuffer,
+        Refresh_Renderer *device,
+        Refresh_CommandBuffer *commandBuffer,
         uint32_t groupCountX,
         uint32_t groupCountY,
         uint32_t groupCountZ,
@@ -227,96 +227,96 @@ struct REFRESH_Device
 
     /* State Creation */
 
-    REFRESH_RenderPass* (*CreateRenderPass)(
-        REFRESH_Renderer *driverData,
-        REFRESH_RenderPassCreateInfo *renderPassCreateInfo
+    Refresh_RenderPass* (*CreateRenderPass)(
+        Refresh_Renderer *driverData,
+        Refresh_RenderPassCreateInfo *renderPassCreateInfo
     );
 
-    REFRESH_ComputePipeline* (*CreateComputePipeline)(
-        REFRESH_Renderer *driverData,
-        REFRESH_ComputePipelineCreateInfo *pipelineCreateInfo
+    Refresh_ComputePipeline* (*CreateComputePipeline)(
+        Refresh_Renderer *driverData,
+        Refresh_ComputePipelineCreateInfo *pipelineCreateInfo
     );
 
-    REFRESH_GraphicsPipeline* (*CreateGraphicsPipeline)(
-        REFRESH_Renderer *driverData,
-        REFRESH_GraphicsPipelineCreateInfo *pipelineCreateInfo
+    Refresh_GraphicsPipeline* (*CreateGraphicsPipeline)(
+        Refresh_Renderer *driverData,
+        Refresh_GraphicsPipelineCreateInfo *pipelineCreateInfo
     );
 
-    REFRESH_Sampler* (*CreateSampler)(
-        REFRESH_Renderer *driverData,
-	    REFRESH_SamplerStateCreateInfo *samplerStateCreateInfo
+    Refresh_Sampler* (*CreateSampler)(
+        Refresh_Renderer *driverData,
+	    Refresh_SamplerStateCreateInfo *samplerStateCreateInfo
     );
 
-    REFRESH_Framebuffer* (*CreateFramebuffer)(
-        REFRESH_Renderer *driverData,
-        REFRESH_FramebufferCreateInfo *framebufferCreateInfo
+    Refresh_Framebuffer* (*CreateFramebuffer)(
+        Refresh_Renderer *driverData,
+        Refresh_FramebufferCreateInfo *framebufferCreateInfo
     );
 
-    REFRESH_ShaderModule* (*CreateShaderModule)(
-        REFRESH_Renderer *driverData,
-	    REFRESH_ShaderModuleCreateInfo *shaderModuleCreateInfo
+    Refresh_ShaderModule* (*CreateShaderModule)(
+        Refresh_Renderer *driverData,
+	    Refresh_ShaderModuleCreateInfo *shaderModuleCreateInfo
     );
 
-    REFRESH_Texture* (*CreateTexture2D)(
-        REFRESH_Renderer *driverData,
-        REFRESH_ColorFormat format,
+    Refresh_Texture* (*CreateTexture2D)(
+        Refresh_Renderer *driverData,
+        Refresh_ColorFormat format,
         uint32_t width,
         uint32_t height,
         uint32_t levelCount,
-        REFRESH_TextureUsageFlags usageFlags
+        Refresh_TextureUsageFlags usageFlags
     );
 
-    REFRESH_Texture* (*CreateTexture3D)(
-        REFRESH_Renderer *driverData,
-        REFRESH_ColorFormat format,
+    Refresh_Texture* (*CreateTexture3D)(
+        Refresh_Renderer *driverData,
+        Refresh_ColorFormat format,
         uint32_t width,
         uint32_t height,
         uint32_t depth,
         uint32_t levelCount,
-        REFRESH_TextureUsageFlags usageFlags
+        Refresh_TextureUsageFlags usageFlags
     );
 
-    REFRESH_Texture* (*CreateTextureCube)(
-        REFRESH_Renderer *driverData,
-        REFRESH_ColorFormat format,
+    Refresh_Texture* (*CreateTextureCube)(
+        Refresh_Renderer *driverData,
+        Refresh_ColorFormat format,
         uint32_t size,
         uint32_t levelCount,
-        REFRESH_TextureUsageFlags usageFlags
+        Refresh_TextureUsageFlags usageFlags
     );
 
-    REFRESH_ColorTarget* (*CreateColorTarget)(
-        REFRESH_Renderer *driverData,
-        REFRESH_SampleCount multisampleCount,
-        REFRESH_TextureSlice *textureSlice
+    Refresh_ColorTarget* (*CreateColorTarget)(
+        Refresh_Renderer *driverData,
+        Refresh_SampleCount multisampleCount,
+        Refresh_TextureSlice *textureSlice
     );
 
-    REFRESH_DepthStencilTarget* (*CreateDepthStencilTarget)(
-        REFRESH_Renderer *driverData,
+    Refresh_DepthStencilTarget* (*CreateDepthStencilTarget)(
+        Refresh_Renderer *driverData,
         uint32_t width,
         uint32_t height,
-        REFRESH_DepthFormat format
+        Refresh_DepthFormat format
     );
 
-    REFRESH_Buffer* (*CreateBuffer)(
-        REFRESH_Renderer *driverData,
-        REFRESH_BufferUsageFlags usageFlags,
+    Refresh_Buffer* (*CreateBuffer)(
+        Refresh_Renderer *driverData,
+        Refresh_BufferUsageFlags usageFlags,
         uint32_t sizeInBytes
     );
 
     /* Setters */
 
     void(*SetTextureData)(
-        REFRESH_Renderer *driverData,
-        REFRESH_TextureSlice *textureSlice,
+        Refresh_Renderer *driverData,
+        Refresh_TextureSlice *textureSlice,
         void *data,
         uint32_t dataLengthInBytes
     );
 
     void(*SetTextureDataYUV)(
-        REFRESH_Renderer *driverData,
-        REFRESH_Texture *y,
-        REFRESH_Texture *u,
-        REFRESH_Texture *v,
+        Refresh_Renderer *driverData,
+        Refresh_Texture *y,
+        Refresh_Texture *u,
+        Refresh_Texture *v,
         uint32_t yWidth,
         uint32_t yHeight,
         uint32_t uvWidth,
@@ -326,68 +326,68 @@ struct REFRESH_Device
     );
 
     void(*CopyTextureToTexture)(
-        REFRESH_Renderer *driverData,
-        REFRESH_CommandBuffer *commandBuffer,
-        REFRESH_TextureSlice *sourceTextureSlice,
-        REFRESH_TextureSlice *destinationTextureSlice,
-        REFRESH_Filter filter
+        Refresh_Renderer *driverData,
+        Refresh_CommandBuffer *commandBuffer,
+        Refresh_TextureSlice *sourceTextureSlice,
+        Refresh_TextureSlice *destinationTextureSlice,
+        Refresh_Filter filter
     );
 
     void(*CopyTextureToBuffer)(
-        REFRESH_Renderer *driverData,
-        REFRESH_CommandBuffer *commandBuffer,
-        REFRESH_TextureSlice *textureSlice,
-        REFRESH_Buffer *buffer
+        Refresh_Renderer *driverData,
+        Refresh_CommandBuffer *commandBuffer,
+        Refresh_TextureSlice *textureSlice,
+        Refresh_Buffer *buffer
     );
 
     void(*SetBufferData)(
-        REFRESH_Renderer *driverData,
-        REFRESH_Buffer *buffer,
+        Refresh_Renderer *driverData,
+        Refresh_Buffer *buffer,
         uint32_t offsetInBytes,
         void* data,
         uint32_t dataLength
     );
 
     uint32_t(*PushVertexShaderParams)(
-        REFRESH_Renderer *driverData,
-        REFRESH_CommandBuffer *commandBuffer,
+        Refresh_Renderer *driverData,
+        Refresh_CommandBuffer *commandBuffer,
         void *data,
         uint32_t elementCount
     );
 
     uint32_t(*PushFragmentShaderParams)(
-        REFRESH_Renderer *driverData,
-        REFRESH_CommandBuffer *commandBuffer,
+        Refresh_Renderer *driverData,
+        Refresh_CommandBuffer *commandBuffer,
         void *data,
         uint32_t elementCount
     );
 
     uint32_t (*PushComputeShaderParams)(
-        REFRESH_Renderer *driverData,
-        REFRESH_CommandBuffer *commandBuffer,
+        Refresh_Renderer *driverData,
+        Refresh_CommandBuffer *commandBuffer,
         void *data,
         uint32_t elementCount
     );
 
     void(*SetVertexSamplers)(
-        REFRESH_Renderer *driverData,
-        REFRESH_CommandBuffer *commandBuffer,
-        REFRESH_Texture **pTextures,
-        REFRESH_Sampler **pSamplers
+        Refresh_Renderer *driverData,
+        Refresh_CommandBuffer *commandBuffer,
+        Refresh_Texture **pTextures,
+        Refresh_Sampler **pSamplers
     );
 
     void(*SetFragmentSamplers)(
-        REFRESH_Renderer *driverData,
-        REFRESH_CommandBuffer *commandBuffer,
-        REFRESH_Texture **pTextures,
-        REFRESH_Sampler **pSamplers
+        Refresh_Renderer *driverData,
+        Refresh_CommandBuffer *commandBuffer,
+        Refresh_Texture **pTextures,
+        Refresh_Sampler **pSamplers
     );
 
     /* Getters */
 
     void(*GetBufferData)(
-        REFRESH_Renderer *driverData,
-        REFRESH_Buffer *buffer,
+        Refresh_Renderer *driverData,
+        Refresh_Buffer *buffer,
         void *data,
         uint32_t dataLengthInBytes
     );
@@ -395,139 +395,139 @@ struct REFRESH_Device
     /* Disposal */
 
     void(*AddDisposeTexture)(
-        REFRESH_Renderer *driverData,
-        REFRESH_Texture *texture
+        Refresh_Renderer *driverData,
+        Refresh_Texture *texture
     );
 
     void(*AddDisposeSampler)(
-        REFRESH_Renderer *driverData,
-        REFRESH_Sampler *sampler
+        Refresh_Renderer *driverData,
+        Refresh_Sampler *sampler
     );
 
     void(*AddDisposeBuffer)(
-        REFRESH_Renderer *driverData,
-        REFRESH_Buffer *buffer
+        Refresh_Renderer *driverData,
+        Refresh_Buffer *buffer
     );
 
     void(*AddDisposeColorTarget)(
-        REFRESH_Renderer *driverData,
-	    REFRESH_ColorTarget *colorTarget
+        Refresh_Renderer *driverData,
+	    Refresh_ColorTarget *colorTarget
     );
 
     void(*AddDisposeDepthStencilTarget)(
-        REFRESH_Renderer *driverData,
-	    REFRESH_DepthStencilTarget *depthStencilTarget
+        Refresh_Renderer *driverData,
+	    Refresh_DepthStencilTarget *depthStencilTarget
     );
 
     void(*AddDisposeFramebuffer)(
-        REFRESH_Renderer *driverData,
-        REFRESH_Framebuffer *frameBuffer
+        Refresh_Renderer *driverData,
+        Refresh_Framebuffer *frameBuffer
     );
 
     void(*AddDisposeShaderModule)(
-        REFRESH_Renderer *driverData,
-        REFRESH_ShaderModule *shaderModule
+        Refresh_Renderer *driverData,
+        Refresh_ShaderModule *shaderModule
     );
 
     void(*AddDisposeRenderPass)(
-        REFRESH_Renderer *driverData,
-        REFRESH_RenderPass *renderPass
+        Refresh_Renderer *driverData,
+        Refresh_RenderPass *renderPass
     );
 
     void(*AddDisposeComputePipeline)(
-        REFRESH_Renderer *driverData,
-        REFRESH_ComputePipeline *computePipeline
+        Refresh_Renderer *driverData,
+        Refresh_ComputePipeline *computePipeline
     );
 
     void(*AddDisposeGraphicsPipeline)(
-        REFRESH_Renderer *driverData,
-        REFRESH_GraphicsPipeline *graphicsPipeline
+        Refresh_Renderer *driverData,
+        Refresh_GraphicsPipeline *graphicsPipeline
     );
 
     /* Graphics State */
 
     void(*BeginRenderPass)(
-        REFRESH_Renderer *driverData,
-        REFRESH_CommandBuffer *commandBuffer,
-        REFRESH_RenderPass *renderPass,
-        REFRESH_Framebuffer *framebuffer,
-        REFRESH_Rect renderArea,
-        REFRESH_Color *pColorClearValues,
+        Refresh_Renderer *driverData,
+        Refresh_CommandBuffer *commandBuffer,
+        Refresh_RenderPass *renderPass,
+        Refresh_Framebuffer *framebuffer,
+        Refresh_Rect renderArea,
+        Refresh_Color *pColorClearValues,
         uint32_t colorClearCount,
-        REFRESH_DepthStencilValue *depthStencilClearValue
+        Refresh_DepthStencilValue *depthStencilClearValue
     );
 
     void(*EndRenderPass)(
-        REFRESH_Renderer *driverData,
-        REFRESH_CommandBuffer *commandBuffer
+        Refresh_Renderer *driverData,
+        Refresh_CommandBuffer *commandBuffer
     );
 
     void(*BindGraphicsPipeline)(
-        REFRESH_Renderer *driverData,
-        REFRESH_CommandBuffer *commandBuffer,
-        REFRESH_GraphicsPipeline *graphicsPipeline
+        Refresh_Renderer *driverData,
+        Refresh_CommandBuffer *commandBuffer,
+        Refresh_GraphicsPipeline *graphicsPipeline
     );
 
     void(*BindVertexBuffers)(
-        REFRESH_Renderer *driverData,
-        REFRESH_CommandBuffer *commandBuffer,
+        Refresh_Renderer *driverData,
+        Refresh_CommandBuffer *commandBuffer,
         uint32_t firstBinding,
         uint32_t bindingCount,
-        REFRESH_Buffer **pBuffers,
+        Refresh_Buffer **pBuffers,
         uint64_t *pOffsets
     );
 
     void(*BindIndexBuffer)(
-        REFRESH_Renderer *driverData,
-        REFRESH_CommandBuffer *commandBuffer,
-        REFRESH_Buffer *buffer,
+        Refresh_Renderer *driverData,
+        Refresh_CommandBuffer *commandBuffer,
+        Refresh_Buffer *buffer,
         uint64_t offset,
-        REFRESH_IndexElementSize indexElementSize
+        Refresh_IndexElementSize indexElementSize
     );
 
     void(*BindComputePipeline)(
-        REFRESH_Renderer *driverData,
-        REFRESH_CommandBuffer *commandBuffer,
-        REFRESH_ComputePipeline *computePipeline
+        Refresh_Renderer *driverData,
+        Refresh_CommandBuffer *commandBuffer,
+        Refresh_ComputePipeline *computePipeline
     );
 
     void(*BindComputeBuffers)(
-        REFRESH_Renderer *driverData,
-        REFRESH_CommandBuffer *commandBuffer,
-        REFRESH_Buffer **pBuffers
+        Refresh_Renderer *driverData,
+        Refresh_CommandBuffer *commandBuffer,
+        Refresh_Buffer **pBuffers
     );
 
     void(*BindComputeTextures)(
-        REFRESH_Renderer *driverData,
-        REFRESH_CommandBuffer *commandBuffer,
-        REFRESH_Texture **pTextures
+        Refresh_Renderer *driverData,
+        Refresh_CommandBuffer *commandBuffer,
+        Refresh_Texture **pTextures
     );
 
-    REFRESH_CommandBuffer* (*AcquireCommandBuffer)(
-        REFRESH_Renderer *driverData,
+    Refresh_CommandBuffer* (*AcquireCommandBuffer)(
+        Refresh_Renderer *driverData,
         uint8_t fixed
     );
 
     void(*QueuePresent)(
-        REFRESH_Renderer *driverData,
-        REFRESH_CommandBuffer *commandBuffer,
-        REFRESH_TextureSlice *textureSlice,
-        REFRESH_Rect *destinationRectangle,
-        REFRESH_Filter filter
+        Refresh_Renderer *driverData,
+        Refresh_CommandBuffer *commandBuffer,
+        Refresh_TextureSlice *textureSlice,
+        Refresh_Rect *destinationRectangle,
+        Refresh_Filter filter
     );
 
     void(*Submit)(
-        REFRESH_Renderer *driverData,
+        Refresh_Renderer *driverData,
         uint32_t commandBufferCount,
-        REFRESH_CommandBuffer **pCommandBuffers
+        Refresh_CommandBuffer **pCommandBuffers
     );
 
     void(*Wait)(
-        REFRESH_Renderer *driverData
+        Refresh_Renderer *driverData
     );
 
 	/* Opaque pointer for the Driver */
-	REFRESH_Renderer *driverData;
+	Refresh_Renderer *driverData;
 };
 
 #define ASSIGN_DRIVER_FUNC(func, name) \
@@ -585,16 +585,16 @@ struct REFRESH_Device
     ASSIGN_DRIVER_FUNC(Submit, name) \
     ASSIGN_DRIVER_FUNC(Wait, name)
 
-typedef struct REFRESH_Driver
+typedef struct Refresh_Driver
 {
 	const char *Name;
-	REFRESH_Device* (*CreateDevice)(
-		REFRESH_PresentationParameters *presentationParameters,
+	Refresh_Device* (*CreateDevice)(
+		Refresh_PresentationParameters *presentationParameters,
         uint8_t debugMode
 	);
-} REFRESH_Driver;
+} Refresh_Driver;
 
-extern REFRESH_Driver VulkanDriver;
+extern Refresh_Driver VulkanDriver;
 
 #endif /* REFRESH_DRIVER_H */
 

@@ -189,7 +189,7 @@ static unsigned char* dgibson_stbi_zlib_compress(
 
 /* Image Read API */
 
-uint8_t* REFRESH_Image_Load(
+uint8_t* Refresh_Image_Load(
     char const *filename,
 	int32_t *w,
 	int32_t *h,
@@ -198,14 +198,14 @@ uint8_t* REFRESH_Image_Load(
     return stbi_load(filename, w, h, numChannels, STBI_rgb_alpha);
 }
 
-void REFRESH_Image_Free(uint8_t *mem)
+void Refresh_Image_Free(uint8_t *mem)
 {
     stbi_image_free(mem);
 }
 
 /* Image Write API */
 
-void REFRESH_Image_SavePNG(
+void Refresh_Image_SavePNG(
     const char *filename,
     int32_t w,
     int32_t h,
