@@ -54,64 +54,64 @@ extern "C" {
 
 /* Type Declarations */
 
-typedef struct REFRESH_Device REFRESH_Device;
-typedef struct REFRESH_Buffer REFRESH_Buffer;
-typedef struct REFRESH_Texture REFRESH_Texture;
-typedef struct REFRESH_DepthStencilTexture REFRESH_DepthStencilTexture;
-typedef struct REFRESH_Sampler REFRESH_Sampler;
-typedef struct REFRESH_ColorTarget REFRESH_ColorTarget;
-typedef struct REFRESH_DepthStencilTarget REFRESH_DepthStencilTarget;
-typedef struct REFRESH_Framebuffer REFRESH_Framebuffer;
-typedef struct REFRESH_ShaderModule REFRESH_ShaderModule;
-typedef struct REFRESH_RenderPass REFRESH_RenderPass;
-typedef struct REFRESH_ComputePipeline REFRESH_ComputePipeline;
-typedef struct REFRESH_GraphicsPipeline REFRESH_GraphicsPipeline;
-typedef struct REFRESH_CommandBuffer REFRESH_CommandBuffer;
+typedef struct Refresh_Device Refresh_Device;
+typedef struct Refresh_Buffer Refresh_Buffer;
+typedef struct Refresh_Texture Refresh_Texture;
+typedef struct Refresh_DepthStencilTexture Refresh_DepthStencilTexture;
+typedef struct Refresh_Sampler Refresh_Sampler;
+typedef struct Refresh_ColorTarget Refresh_ColorTarget;
+typedef struct Refresh_DepthStencilTarget Refresh_DepthStencilTarget;
+typedef struct Refresh_Framebuffer Refresh_Framebuffer;
+typedef struct Refresh_ShaderModule Refresh_ShaderModule;
+typedef struct Refresh_RenderPass Refresh_RenderPass;
+typedef struct Refresh_ComputePipeline Refresh_ComputePipeline;
+typedef struct Refresh_GraphicsPipeline Refresh_GraphicsPipeline;
+typedef struct Refresh_CommandBuffer Refresh_CommandBuffer;
 
-typedef enum REFRESH_PresentMode
+typedef enum Refresh_PresentMode
 {
 	REFRESH_PRESENTMODE_IMMEDIATE,
 	REFRESH_PRESENTMODE_MAILBOX,
 	REFRESH_PRESENTMODE_FIFO,
 	REFRESH_PRESENTMODE_FIFO_RELAXED
-} REFRESH_PresentMode;
+} Refresh_PresentMode;
 
-typedef enum REFRESH_PrimitiveType
+typedef enum Refresh_PrimitiveType
 {
     REFRESH_PRIMITIVETYPE_POINTLIST,
 	REFRESH_PRIMITIVETYPE_LINELIST,
 	REFRESH_PRIMITIVETYPE_LINESTRIP,
 	REFRESH_PRIMITIVETYPE_TRIANGLELIST,
 	REFRESH_PRIMITIVETYPE_TRIANGLESTRIP
-} REFRESH_PrimitiveType;
+} Refresh_PrimitiveType;
 
-typedef enum REFRESH_LoadOp
+typedef enum Refresh_LoadOp
 {
     REFRESH_LOADOP_LOAD,
     REFRESH_LOADOP_CLEAR,
     REFRESH_LOADOP_DONT_CARE
-} REFRESH_LoadOp;
+} Refresh_LoadOp;
 
-typedef enum REFRESH_StoreOp
+typedef enum Refresh_StoreOp
 {
     REFRESH_STOREOP_STORE,
     REFRESH_STOREOP_DONT_CARE
-} REFRESH_StoreOp;
+} Refresh_StoreOp;
 
-typedef enum REFRESH_ClearOptions
+typedef enum Refresh_ClearOptions
 {
     REFRESH_CLEAROPTIONS_COLOR   = 1,
     REFRESH_CLEAROPTIONS_DEPTH   = 2,
     REFRESH_CLEAROPTIONS_STENCIL = 4,
-} REFRESH_ClearOptions;
+} Refresh_ClearOptions;
 
-typedef enum REFRESH_IndexElementSize
+typedef enum Refresh_IndexElementSize
 {
     REFRESH_INDEXELEMENTSIZE_16BIT,
     REFRESH_INDEXELEMENTSIZE_32BIT
-} REFRESH_IndexElementSize;
+} Refresh_IndexElementSize;
 
-typedef enum REFRESH_ColorFormat
+typedef enum Refresh_ColorFormat
 {
     REFRESH_COLORFORMAT_R8G8B8A8,
     REFRESH_COLORFORMAT_R5G6B5,
@@ -132,25 +132,25 @@ typedef enum REFRESH_ColorFormat
     REFRESH_COLORFORMAT_R16_SFLOAT,
     REFRESH_COLORFORMAT_R16G16_SFLOAT,
     REFRESH_COLORFORMAT_R16G16B16A16_SFLOAT
-} REFRESH_ColorFormat;
+} Refresh_ColorFormat;
 
-typedef enum REFRESH_DepthFormat
+typedef enum Refresh_DepthFormat
 {
 	REFRESH_DEPTHFORMAT_D16_UNORM,
 	REFRESH_DEPTHFORMAT_D32_SFLOAT,
     REFRESH_DEPTHFORMAT_D16_UNORM_S8_UINT,
     REFRESH_DEPTHFORMAT_D32_SFLOAT_S8_UINT
-} REFRESH_DepthFormat;
+} Refresh_DepthFormat;
 
-typedef enum REFRESH_TextureUsageFlagBits
+typedef enum Refresh_TextureUsageFlagBits
 {
 	REFRESH_TEXTUREUSAGE_SAMPLER_BIT          = 0x00000001,
 	REFRESH_TEXTUREUSAGE_COLOR_TARGET_BIT     = 0x00000002
-} REFRESH_TextureUsageFlagBits;
+} Refresh_TextureUsageFlagBits;
 
-typedef uint32_t REFRESH_TextureUsageFlags;
+typedef uint32_t Refresh_TextureUsageFlags;
 
-typedef enum REFRESH_SampleCount
+typedef enum Refresh_SampleCount
 {
 	REFRESH_SAMPLECOUNT_1,
 	REFRESH_SAMPLECOUNT_2,
@@ -159,9 +159,9 @@ typedef enum REFRESH_SampleCount
 	REFRESH_SAMPLECOUNT_16,
 	REFRESH_SAMPLECOUNT_32,
 	REFRESH_SAMPLECOUNT_64
-} REFRESH_SampleCount;
+} Refresh_SampleCount;
 
-typedef enum REFRESH_CubeMapFace
+typedef enum Refresh_CubeMapFace
 {
     REFRESH_CUBEMAPFACE_POSITIVEX,
     REFRESH_CUBEMAPFACE_NEGATIVEX,
@@ -169,18 +169,18 @@ typedef enum REFRESH_CubeMapFace
     REFRESH_CUBEMAPFACE_NEGATIVEY,
     REFRESH_CUBEMAPFACE_POSITIVEZ,
     REFRESH_CUBEMAPFACE_NEGATIVEZ
-} REFRESH_CubeMapFace;
+} Refresh_CubeMapFace;
 
-typedef enum REFRESH_BufferUsageFlagBits
+typedef enum Refresh_BufferUsageFlagBits
 {
 	REFRESH_BUFFERUSAGE_VERTEX_BIT 	=	0x00000001,
 	REFRESH_BUFFERUSAGE_INDEX_BIT  	=	0x00000002,
 	REFRESH_BUFFERUSAGE_COMPUTE_BIT =	0x00000004
-} REFRESH_BufferUsageFlagBits;
+} Refresh_BufferUsageFlagBits;
 
-typedef uint32_t REFRESH_BufferUsageFlags;
+typedef uint32_t Refresh_BufferUsageFlags;
 
-typedef enum REFRESH_VertexElementFormat
+typedef enum Refresh_VertexElementFormat
 {
 	REFRESH_VERTEXELEMENTFORMAT_SINGLE,
 	REFRESH_VERTEXELEMENTFORMAT_VECTOR2,
@@ -194,36 +194,36 @@ typedef enum REFRESH_VertexElementFormat
 	REFRESH_VERTEXELEMENTFORMAT_NORMALIZEDSHORT4,
 	REFRESH_VERTEXELEMENTFORMAT_HALFVECTOR2,
 	REFRESH_VERTEXELEMENTFORMAT_HALFVECTOR4
-} REFRESH_VertexElementFormat;
+} Refresh_VertexElementFormat;
 
-typedef enum REFRESH_VertexInputRate
+typedef enum Refresh_VertexInputRate
 {
 	REFRESH_VERTEXINPUTRATE_VERTEX = 0,
 	REFRESH_VERTEXINPUTRATE_INSTANCE = 1
-} REFRESH_VertexInputRate;
+} Refresh_VertexInputRate;
 
-typedef enum REFRESH_FillMode
+typedef enum Refresh_FillMode
 {
 	REFRESH_FILLMODE_FILL,
 	REFRESH_FILLMODE_LINE,
 	REFRESH_FILLMODE_POINT
-} REFRESH_FillMode;
+} Refresh_FillMode;
 
-typedef enum REFRESH_CullMode
+typedef enum Refresh_CullMode
 {
 	REFRESH_CULLMODE_NONE,
 	REFRESH_CULLMODE_FRONT,
 	REFRESH_CULLMODE_BACK,
 	REFRESH_CULLMODE_FRONT_AND_BACK
-} REFRESH_CullMode;
+} Refresh_CullMode;
 
-typedef enum REFRESH_FrontFace
+typedef enum Refresh_FrontFace
 {
 	REFRESH_FRONTFACE_COUNTER_CLOCKWISE,
 	REFRESH_FRONTFACE_CLOCKWISE
-} REFRESH_FrontFace;
+} Refresh_FrontFace;
 
-typedef enum REFRESH_CompareOp
+typedef enum Refresh_CompareOp
 {
 	REFRESH_COMPAREOP_NEVER,
 	REFRESH_COMPAREOP_LESS,
@@ -233,9 +233,9 @@ typedef enum REFRESH_CompareOp
 	REFRESH_COMPAREOP_NOT_EQUAL,
 	REFRESH_COMPAREOP_GREATER_OR_EQUAL,
 	REFRESH_COMPAREOP_ALWAYS
-} REFRESH_CompareOp;
+} Refresh_CompareOp;
 
-typedef enum REFRESH_StencilOp
+typedef enum Refresh_StencilOp
 {
 	REFRESH_STENCILOP_KEEP,
 	REFRESH_STENCILOP_ZERO,
@@ -245,18 +245,18 @@ typedef enum REFRESH_StencilOp
 	REFRESH_STENCILOP_INVERT,
 	REFRESH_STENCILOP_INCREMENT_AND_WRAP,
 	REFRESH_STENCILOP_DECREMENT_AND_WRAP
-} REFRESH_StencilOp;
+} Refresh_StencilOp;
 
-typedef enum REFRESH_BlendOp
+typedef enum Refresh_BlendOp
 {
 	REFRESH_BLENDOP_ADD,
 	REFRESH_BLENDOP_SUBTRACT,
 	REFRESH_BLENDOP_REVERSE_SUBTRACT,
 	REFRESH_BLENDOP_MIN,
 	REFRESH_BLENDOP_MAX
-} REFRESH_BlendOp;
+} Refresh_BlendOp;
 
-typedef enum REFRESH_LogicOp
+typedef enum Refresh_LogicOp
 {
 	REFRESH_LOGICOP_CLEAR = 0,
     REFRESH_LOGICOP_AND = 1,
@@ -274,9 +274,9 @@ typedef enum REFRESH_LogicOp
     REFRESH_LOGICOP_OR_INVERTED = 13,
     REFRESH_LOGICOP_NAND = 14,
     REFRESH_LOGICOP_SET = 15
-} REFRESH_LogicOp;
+} Refresh_LogicOp;
 
-typedef enum REFRESH_BlendFactor
+typedef enum Refresh_BlendFactor
 {
     REFRESH_BLENDFACTOR_ZERO = 0,
     REFRESH_BLENDFACTOR_ONE = 1,
@@ -297,46 +297,46 @@ typedef enum REFRESH_BlendFactor
     REFRESH_BLENDFACTOR_ONE_MINUS_SRC1_COLOR = 16,
     REFRESH_BLENDFACTOR_SRC1_ALPHA = 17,
     REFRESH_BLENDFACTOR_ONE_MINUS_SRC1_ALPHA = 18
-} REFRESH_BlendFactor;
+} Refresh_BlendFactor;
 
-typedef enum REFRESH_ColorComponentFlagBits
+typedef enum Refresh_ColorComponentFlagBits
 {
     REFRESH_COLORCOMPONENT_R_BIT = 0x00000001,
     REFRESH_COLORCOMPONENT_G_BIT = 0x00000002,
     REFRESH_COLORCOMPONENT_B_BIT = 0x00000004,
     REFRESH_COLORCOMPONENT_A_BIT = 0x00000008
-} REFRESH_ColorComponentFlagBits;
+} Refresh_ColorComponentFlagBits;
 
-typedef uint32_t REFRESH_ColorComponentFlags;
+typedef uint32_t Refresh_ColorComponentFlags;
 
-typedef enum REFRESH_ShaderStageType
+typedef enum Refresh_ShaderStageType
 {
 	REFRESH_SHADERSTAGE_VERTEX,
 	REFRESH_SHADERSTAGE_FRAGMENT
-} REFRESH_ShaderStageType;
+} Refresh_ShaderStageType;
 
-typedef enum REFRESH_Filter
+typedef enum Refresh_Filter
 {
 	REFRESH_FILTER_NEAREST,
 	REFRESH_FILTER_LINEAR,
 	REFRESH_FILTER_CUBIC
-} REFRESH_Filter;
+} Refresh_Filter;
 
-typedef enum REFRESH_SamplerMipmapMode
+typedef enum Refresh_SamplerMipmapMode
 {
 	REFRESH_SAMPLERMIPMAPMODE_NEAREST,
 	REFRESH_SAMPLERMIPMAPMODE_LINEAR
-} REFRESH_SamplerMipmapMode;
+} Refresh_SamplerMipmapMode;
 
-typedef enum REFRESH_SamplerAddressMode
+typedef enum Refresh_SamplerAddressMode
 {
 	REFRESH_SAMPLERADDRESSMODE_REPEAT,
 	REFRESH_SAMPLERADDRESSMODE_MIRRORED_REPEAT,
 	REFRESH_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
 	REFRESH_SAMPLERADDRESSMODE_CLAMP_TO_BORDER
-} REFRESH_SamplerAddressMode;
+} Refresh_SamplerAddressMode;
 
-typedef enum REFRESH_BorderColor
+typedef enum Refresh_BorderColor
 {
     REFRESH_BORDERCOLOR_FLOAT_TRANSPARENT_BLACK = 0,
     REFRESH_BORDERCOLOR_INT_TRANSPARENT_BLACK = 1,
@@ -344,41 +344,41 @@ typedef enum REFRESH_BorderColor
     REFRESH_BORDERCOLOR_INT_OPAQUE_BLACK = 3,
     REFRESH_BORDERCOLOR_FLOAT_OPAQUE_WHITE = 4,
     REFRESH_BORDERCOLOR_INT_OPAQUE_WHITE = 5
-} REFRESH_BorderColor;
+} Refresh_BorderColor;
 
 /* Structures */
 
-typedef struct REFRESH_Color
+typedef struct Refresh_Color
 {
 	uint8_t r;
 	uint8_t g;
 	uint8_t b;
 	uint8_t a;
-} REFRESH_Color;
+} Refresh_Color;
 
-typedef struct REFRESH_DepthStencilValue
+typedef struct Refresh_DepthStencilValue
 {
 	float depth;
 	uint32_t stencil;
-} REFRESH_DepthStencilValue;
+} Refresh_DepthStencilValue;
 
-typedef struct REFRESH_Rect
+typedef struct Refresh_Rect
 {
 	int32_t x;
 	int32_t y;
 	int32_t w;
 	int32_t h;
-} REFRESH_Rect;
+} Refresh_Rect;
 
-typedef struct REFRESH_Vec4
+typedef struct Refresh_Vec4
 {
 	float x;
 	float y;
 	float z;
 	float w;
-} REFRESH_Vec4;
+} Refresh_Vec4;
 
-typedef struct REFRESH_Viewport
+typedef struct Refresh_Viewport
 {
 	float x;
 	float y;
@@ -386,224 +386,224 @@ typedef struct REFRESH_Viewport
 	float h;
 	float minDepth;
 	float maxDepth;
-} REFRESH_Viewport;
+} Refresh_Viewport;
 
-typedef struct REFRESH_TextureSlice
+typedef struct Refresh_TextureSlice
 {
-	REFRESH_Texture *texture;
-	REFRESH_Rect rectangle;
+	Refresh_Texture *texture;
+	Refresh_Rect rectangle;
 	uint32_t depth; /* 0 unless 3D */
 	uint32_t layer; /* 0 unless cube */
 	uint32_t level;
-} REFRESH_TextureSlice;
+} Refresh_TextureSlice;
 
-typedef struct REFRESH_PresentationParameters
+typedef struct Refresh_PresentationParameters
 {
 	void* deviceWindowHandle;
-	REFRESH_PresentMode presentMode;
-} REFRESH_PresentationParameters;
+	Refresh_PresentMode presentMode;
+} Refresh_PresentationParameters;
 
 /* State structures */
 
-typedef struct REFRESH_SamplerStateCreateInfo
+typedef struct Refresh_SamplerStateCreateInfo
 {
-	REFRESH_Filter minFilter;
-	REFRESH_Filter magFilter;
-	REFRESH_SamplerMipmapMode mipmapMode;
-	REFRESH_SamplerAddressMode addressModeU;
-	REFRESH_SamplerAddressMode addressModeV;
-	REFRESH_SamplerAddressMode addressModeW;
+	Refresh_Filter minFilter;
+	Refresh_Filter magFilter;
+	Refresh_SamplerMipmapMode mipmapMode;
+	Refresh_SamplerAddressMode addressModeU;
+	Refresh_SamplerAddressMode addressModeV;
+	Refresh_SamplerAddressMode addressModeW;
 	float mipLodBias;
 	uint8_t anisotropyEnable;
 	float maxAnisotropy;
 	uint8_t compareEnable;
-	REFRESH_CompareOp compareOp;
+	Refresh_CompareOp compareOp;
 	float minLod;
 	float maxLod;
-	REFRESH_BorderColor borderColor;
-} REFRESH_SamplerStateCreateInfo;
+	Refresh_BorderColor borderColor;
+} Refresh_SamplerStateCreateInfo;
 
-typedef struct REFRESH_VertexBinding
+typedef struct Refresh_VertexBinding
 {
 	uint32_t binding;
 	uint32_t stride;
-	REFRESH_VertexInputRate inputRate;
-} REFRESH_VertexBinding;
+	Refresh_VertexInputRate inputRate;
+} Refresh_VertexBinding;
 
-typedef struct REFRESH_VertexAttribute
+typedef struct Refresh_VertexAttribute
 {
 	uint32_t location;
 	uint32_t binding;
-	REFRESH_VertexElementFormat format;
+	Refresh_VertexElementFormat format;
 	uint32_t offset;
-} REFRESH_VertexAttribute;
+} Refresh_VertexAttribute;
 
-typedef struct REFRESH_VertexInputState
+typedef struct Refresh_VertexInputState
 {
-	const REFRESH_VertexBinding *vertexBindings;
+	const Refresh_VertexBinding *vertexBindings;
 	uint32_t vertexBindingCount;
-	const REFRESH_VertexAttribute *vertexAttributes;
+	const Refresh_VertexAttribute *vertexAttributes;
 	uint32_t vertexAttributeCount;
-} REFRESH_VertexInputState;
+} Refresh_VertexInputState;
 
-typedef struct REFRESH_StencilOpState
+typedef struct Refresh_StencilOpState
 {
-	REFRESH_StencilOp failOp;
-	REFRESH_StencilOp passOp;
-	REFRESH_StencilOp depthFailOp;
-	REFRESH_CompareOp compareOp;
+	Refresh_StencilOp failOp;
+	Refresh_StencilOp passOp;
+	Refresh_StencilOp depthFailOp;
+	Refresh_CompareOp compareOp;
 	uint32_t compareMask;
 	uint32_t writeMask;
 	uint32_t reference;
-} REFRESH_StencilOpState;
+} Refresh_StencilOpState;
 
-typedef struct REFRESH_ColorTargetBlendState
+typedef struct Refresh_ColorTargetBlendState
 {
 	uint8_t blendEnable;
-	REFRESH_BlendFactor srcColorBlendFactor;
-	REFRESH_BlendFactor dstColorBlendFactor;
-	REFRESH_BlendOp colorBlendOp;
-	REFRESH_BlendFactor srcAlphaBlendFactor;
-	REFRESH_BlendFactor dstAlphaBlendFactor;
-	REFRESH_BlendOp alphaBlendOp;
-	REFRESH_ColorComponentFlags colorWriteMask;
-} REFRESH_ColorTargetBlendState;
+	Refresh_BlendFactor srcColorBlendFactor;
+	Refresh_BlendFactor dstColorBlendFactor;
+	Refresh_BlendOp colorBlendOp;
+	Refresh_BlendFactor srcAlphaBlendFactor;
+	Refresh_BlendFactor dstAlphaBlendFactor;
+	Refresh_BlendOp alphaBlendOp;
+	Refresh_ColorComponentFlags colorWriteMask;
+} Refresh_ColorTargetBlendState;
 
-typedef struct REFRESH_ComputePipelineLayoutCreateInfo
+typedef struct Refresh_ComputePipelineLayoutCreateInfo
 {
 	uint32_t bufferBindingCount;
 	uint32_t imageBindingCount;
-} REFRESH_ComputePipelineLayoutCreateInfo;
+} Refresh_ComputePipelineLayoutCreateInfo;
 
-typedef struct REFRESH_GraphicsPipelineLayoutCreateInfo
+typedef struct Refresh_GraphicsPipelineLayoutCreateInfo
 {
 	uint32_t vertexSamplerBindingCount;
 	uint32_t fragmentSamplerBindingCount;
-} REFRESH_GraphicsPipelineLayoutCreateInfo;
+} Refresh_GraphicsPipelineLayoutCreateInfo;
 
-typedef struct REFRESH_ColorTargetDescription
+typedef struct Refresh_ColorTargetDescription
 {
-	REFRESH_ColorFormat format;
-	REFRESH_SampleCount multisampleCount;
-	REFRESH_LoadOp loadOp;
-	REFRESH_StoreOp storeOp;
-} REFRESH_ColorTargetDescription;
+	Refresh_ColorFormat format;
+	Refresh_SampleCount multisampleCount;
+	Refresh_LoadOp loadOp;
+	Refresh_StoreOp storeOp;
+} Refresh_ColorTargetDescription;
 
-typedef struct REFRESH_DepthStencilTargetDescription
+typedef struct Refresh_DepthStencilTargetDescription
 {
-	REFRESH_DepthFormat depthFormat;
-	REFRESH_LoadOp loadOp;
-	REFRESH_StoreOp storeOp;
-	REFRESH_LoadOp stencilLoadOp;
-	REFRESH_StoreOp stencilStoreOp;
-} REFRESH_DepthStencilTargetDescription;
+	Refresh_DepthFormat depthFormat;
+	Refresh_LoadOp loadOp;
+	Refresh_StoreOp storeOp;
+	Refresh_LoadOp stencilLoadOp;
+	Refresh_StoreOp stencilStoreOp;
+} Refresh_DepthStencilTargetDescription;
 
-typedef struct REFRESH_RenderPassCreateInfo
+typedef struct Refresh_RenderPassCreateInfo
 {
-	const REFRESH_ColorTargetDescription *colorTargetDescriptions;
+	const Refresh_ColorTargetDescription *colorTargetDescriptions;
 	uint32_t colorTargetCount;
-	const REFRESH_DepthStencilTargetDescription *depthTargetDescription; /* can be NULL */
-} REFRESH_RenderPassCreateInfo;
+	const Refresh_DepthStencilTargetDescription *depthTargetDescription; /* can be NULL */
+} Refresh_RenderPassCreateInfo;
 
-typedef struct REFRESH_ShaderModuleCreateInfo
+typedef struct Refresh_ShaderModuleCreateInfo
 {
 	size_t codeSize;
 	const uint32_t *byteCode;
-} REFRESH_ShaderModuleCreateInfo;
+} Refresh_ShaderModuleCreateInfo;
 
 /* Pipeline state structures */
 
-typedef struct REFRESH_ShaderStageState
+typedef struct Refresh_ShaderStageState
 {
-	REFRESH_ShaderModule *shaderModule;
+	Refresh_ShaderModule *shaderModule;
 	const char* entryPointName;
 	uint64_t uniformBufferSize;
-} REFRESH_ShaderStageState;
+} Refresh_ShaderStageState;
 
-typedef struct REFRESH_TopologyState
+typedef struct Refresh_TopologyState
 {
-	REFRESH_PrimitiveType topology;
-} REFRESH_TopologyState;
+	Refresh_PrimitiveType topology;
+} Refresh_TopologyState;
 
-typedef struct REFRESH_ViewportState
+typedef struct Refresh_ViewportState
 {
-	const REFRESH_Viewport *viewports;
+	const Refresh_Viewport *viewports;
 	uint32_t viewportCount;
-	const REFRESH_Rect *scissors;
+	const Refresh_Rect *scissors;
 	uint32_t scissorCount;
-} REFRESH_ViewportState;
+} Refresh_ViewportState;
 
-typedef struct REFRESH_RasterizerState
+typedef struct Refresh_RasterizerState
 {
 	uint8_t depthClampEnable;
-	REFRESH_FillMode fillMode;
-	REFRESH_CullMode cullMode;
-	REFRESH_FrontFace frontFace;
+	Refresh_FillMode fillMode;
+	Refresh_CullMode cullMode;
+	Refresh_FrontFace frontFace;
 	uint8_t depthBiasEnable;
 	float depthBiasConstantFactor;
 	float depthBiasClamp;
 	float depthBiasSlopeFactor;
 	float lineWidth;
-} REFRESH_RasterizerState;
+} Refresh_RasterizerState;
 
-typedef struct REFRESH_MultisampleState
+typedef struct Refresh_MultisampleState
 {
-	REFRESH_SampleCount multisampleCount;
+	Refresh_SampleCount multisampleCount;
 	const uint32_t *sampleMask;
-} REFRESH_MultisampleState;
+} Refresh_MultisampleState;
 
-typedef struct REFRESH_DepthStencilState
+typedef struct Refresh_DepthStencilState
 {
 	uint8_t depthTestEnable;
 	uint8_t depthWriteEnable;
-	REFRESH_CompareOp compareOp;
+	Refresh_CompareOp compareOp;
 	uint8_t depthBoundsTestEnable;
 	uint8_t stencilTestEnable;
-	REFRESH_StencilOpState frontStencilState;
-	REFRESH_StencilOpState backStencilState;
+	Refresh_StencilOpState frontStencilState;
+	Refresh_StencilOpState backStencilState;
 	float minDepthBounds;
 	float maxDepthBounds;
-} REFRESH_DepthStencilState;
+} Refresh_DepthStencilState;
 
-typedef struct REFRESH_ColorBlendState
+typedef struct Refresh_ColorBlendState
 {
 	uint8_t logicOpEnable;
-	REFRESH_LogicOp logicOp;
-	const REFRESH_ColorTargetBlendState *blendStates;
+	Refresh_LogicOp logicOp;
+	const Refresh_ColorTargetBlendState *blendStates;
 	uint32_t blendStateCount;
 	float blendConstants[4];
-} REFRESH_ColorBlendState;
+} Refresh_ColorBlendState;
 
-typedef struct REFRESH_ComputePipelineCreateInfo
+typedef struct Refresh_ComputePipelineCreateInfo
 {
-	REFRESH_ShaderStageState computeShaderState;
-	REFRESH_ComputePipelineLayoutCreateInfo pipelineLayoutCreateInfo;
-} REFRESH_ComputePipelineCreateInfo;
+	Refresh_ShaderStageState computeShaderState;
+	Refresh_ComputePipelineLayoutCreateInfo pipelineLayoutCreateInfo;
+} Refresh_ComputePipelineCreateInfo;
 
-typedef struct REFRESH_GraphicsPipelineCreateInfo
+typedef struct Refresh_GraphicsPipelineCreateInfo
 {
-	REFRESH_ShaderStageState vertexShaderState;
-	REFRESH_ShaderStageState fragmentShaderState;
-	REFRESH_VertexInputState vertexInputState;
-	REFRESH_TopologyState topologyState;
-	REFRESH_ViewportState viewportState;
-	REFRESH_RasterizerState rasterizerState;
-	REFRESH_MultisampleState multisampleState;
-	REFRESH_DepthStencilState depthStencilState;
-	REFRESH_ColorBlendState colorBlendState;
-	REFRESH_GraphicsPipelineLayoutCreateInfo pipelineLayoutCreateInfo;
-	REFRESH_RenderPass *renderPass;
-} REFRESH_GraphicsPipelineCreateInfo;
+	Refresh_ShaderStageState vertexShaderState;
+	Refresh_ShaderStageState fragmentShaderState;
+	Refresh_VertexInputState vertexInputState;
+	Refresh_TopologyState topologyState;
+	Refresh_ViewportState viewportState;
+	Refresh_RasterizerState rasterizerState;
+	Refresh_MultisampleState multisampleState;
+	Refresh_DepthStencilState depthStencilState;
+	Refresh_ColorBlendState colorBlendState;
+	Refresh_GraphicsPipelineLayoutCreateInfo pipelineLayoutCreateInfo;
+	Refresh_RenderPass *renderPass;
+} Refresh_GraphicsPipelineCreateInfo;
 
-typedef struct REFRESH_FramebufferCreateInfo
+typedef struct Refresh_FramebufferCreateInfo
 {
-	REFRESH_RenderPass *renderPass;
-	REFRESH_ColorTarget **pColorTargets;
+	Refresh_RenderPass *renderPass;
+	Refresh_ColorTarget **pColorTargets;
 	uint32_t colorTargetCount;
-	REFRESH_DepthStencilTarget *pDepthStencilTarget;
+	Refresh_DepthStencilTarget *pDepthStencilTarget;
 	uint32_t width;
 	uint32_t height;
-} REFRESH_FramebufferCreateInfo;
+} Refresh_FramebufferCreateInfo;
 
 /* Version API */
 
@@ -619,13 +619,13 @@ typedef struct REFRESH_FramebufferCreateInfo
 	(REFRESH_PATCH_VERSION) \
 )
 
-REFRESHAPI uint32_t REFRESH_LinkedVersion(void);
+REFRESHAPI uint32_t Refresh_LinkedVersion(void);
 
 /* Functions */
 
 /* Logging */
 
-typedef void (REFRESHCALL * REFRESH_LogFunc)(const char *msg);
+typedef void (REFRESHCALL * Refresh_LogFunc)(const char *msg);
 
 /* Device */
 
@@ -635,13 +635,13 @@ typedef void (REFRESHCALL * REFRESH_LogFunc)(const char *msg);
  * 		If the windowHandle is NULL, Refresh will run in headless mode.
  * debugMode: Enable debug mode properties.
  */
-REFRESHAPI REFRESH_Device* REFRESH_CreateDevice(
-	REFRESH_PresentationParameters *presentationParameters,
+REFRESHAPI Refresh_Device* Refresh_CreateDevice(
+	Refresh_PresentationParameters *presentationParameters,
 	uint8_t debugMode
 );
 
-/* Destroys a rendering context previously returned by REFRESH_CreateDevice. */
-REFRESHAPI void REFRESH_DestroyDevice(REFRESH_Device *device);
+/* Destroys a rendering context previously returned by Refresh_CreateDevice. */
+REFRESHAPI void Refresh_DestroyDevice(Refresh_Device *device);
 
 /* Drawing */
 
@@ -660,12 +660,12 @@ REFRESHAPI void REFRESH_DestroyDevice(REFRESH_Device *device);
  * depth:		The new value of the cleared depth buffer.
  * stencil:		The new value of the cleared stencil buffer.
  */
-REFRESHAPI void REFRESH_Clear(
-	REFRESH_Device *device,
-	REFRESH_CommandBuffer *commandBuffer,
-	REFRESH_Rect *clearRect,
-	REFRESH_ClearOptions options,
-	REFRESH_Color *colors,
+REFRESHAPI void Refresh_Clear(
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_Rect *clearRect,
+	Refresh_ClearOptions options,
+	Refresh_Color *colors,
 	uint32_t colorCount,
 	float depth,
 	int32_t stencil
@@ -684,17 +684,17 @@ REFRESHAPI void REFRESH_Clear(
  * vertexParamOffset:	The offset of the vertex shader param data.
  * fragmentParamOffset:	The offset of the fragment shader param data.
  */
-REFRESHAPI void REFRESH_DrawInstancedPrimitives(
-	REFRESH_Device *device,
-	REFRESH_CommandBuffer *commandBuffer,
+REFRESHAPI void Refresh_DrawInstancedPrimitives(
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer,
 	uint32_t baseVertex,
 	uint32_t minVertexIndex,
 	uint32_t numVertices,
 	uint32_t startIndex,
 	uint32_t primitiveCount,
 	uint32_t instanceCount,
-	REFRESH_Buffer *indices,
-	REFRESH_IndexElementSize indexElementSize,
+	Refresh_Buffer *indices,
+	Refresh_IndexElementSize indexElementSize,
 	uint32_t vertexParamOffset,
 	uint32_t fragmentParamOffset
 );
@@ -711,16 +711,16 @@ REFRESHAPI void REFRESH_DrawInstancedPrimitives(
  * vertexParamOffset:	The offset of the vertex shader param data.
  * fragmentParamOffset:	The offset of the fragment shader param data.
  */
-REFRESHAPI void REFRESH_DrawIndexedPrimitives(
-	REFRESH_Device *device,
-	REFRESH_CommandBuffer *commandBuffer,
+REFRESHAPI void Refresh_DrawIndexedPrimitives(
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer,
 	uint32_t baseVertex,
 	uint32_t minVertexIndex,
 	uint32_t numVertices,
 	uint32_t startIndex,
 	uint32_t primitiveCount,
-	REFRESH_Buffer *indices,
-	REFRESH_IndexElementSize indexElementSize,
+	Refresh_Buffer *indices,
+	Refresh_IndexElementSize indexElementSize,
 	uint32_t vertexParamOffset,
 	uint32_t fragmentParamOffset
 );
@@ -732,9 +732,9 @@ REFRESHAPI void REFRESH_DrawIndexedPrimitives(
  * vertexParamOffset:		The offset of the vertex shader param data.
  * fragmentParamOffset:		The offset of the fragment shader param data.
  */
-REFRESHAPI void REFRESH_DrawPrimitives(
-	REFRESH_Device *device,
-	REFRESH_CommandBuffer *commandBuffer,
+REFRESHAPI void Refresh_DrawPrimitives(
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer,
 	uint32_t vertexStart,
 	uint32_t primitiveCount,
 	uint32_t vertexParamOffset,
@@ -748,9 +748,9 @@ REFRESHAPI void REFRESH_DrawPrimitives(
  * groupCountZ:			Number of local workgroups to dispatch in the Z dimension.
  * computeParamOffset:	The offset of the compute shader param data.
  */
-REFRESHAPI void REFRESH_DispatchCompute(
-	REFRESH_Device *device,
-	REFRESH_CommandBuffer *commandBuffer,
+REFRESHAPI void Refresh_DispatchCompute(
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer,
 	uint32_t groupCountX,
 	uint32_t groupCountY,
 	uint32_t groupCountZ,
@@ -760,39 +760,39 @@ REFRESHAPI void REFRESH_DispatchCompute(
 /* State Creation */
 
 /* Returns an allocated RenderPass* object. */
-REFRESHAPI REFRESH_RenderPass* REFRESH_CreateRenderPass(
-	REFRESH_Device *device,
-	REFRESH_RenderPassCreateInfo *renderPassCreateInfo
+REFRESHAPI Refresh_RenderPass* Refresh_CreateRenderPass(
+	Refresh_Device *device,
+	Refresh_RenderPassCreateInfo *renderPassCreateInfo
 );
 
 /* Returns an allocated ComputePipeline* object. */
-REFRESHAPI REFRESH_ComputePipeline* REFRESH_CreateComputePipeline(
-	REFRESH_Device *device,
-	REFRESH_ComputePipelineCreateInfo *pipelineCreateInfo
+REFRESHAPI Refresh_ComputePipeline* Refresh_CreateComputePipeline(
+	Refresh_Device *device,
+	Refresh_ComputePipelineCreateInfo *pipelineCreateInfo
 );
 
 /* Returns an allocated GraphicsPipeline* object. */
-REFRESHAPI REFRESH_GraphicsPipeline* REFRESH_CreateGraphicsPipeline(
-	REFRESH_Device *device,
-	REFRESH_GraphicsPipelineCreateInfo *pipelineCreateInfo
+REFRESHAPI Refresh_GraphicsPipeline* Refresh_CreateGraphicsPipeline(
+	Refresh_Device *device,
+	Refresh_GraphicsPipelineCreateInfo *pipelineCreateInfo
 );
 
 /* Returns an allocated Sampler* object. */
-REFRESHAPI REFRESH_Sampler* REFRESH_CreateSampler(
-	REFRESH_Device *device,
-	REFRESH_SamplerStateCreateInfo *samplerStateCreateInfo
+REFRESHAPI Refresh_Sampler* Refresh_CreateSampler(
+	Refresh_Device *device,
+	Refresh_SamplerStateCreateInfo *samplerStateCreateInfo
 );
 
 /* Returns an allocated Framebuffer* object. */
-REFRESHAPI REFRESH_Framebuffer* REFRESH_CreateFramebuffer(
-	REFRESH_Device *device,
-	REFRESH_FramebufferCreateInfo *framebufferCreateInfo
+REFRESHAPI Refresh_Framebuffer* Refresh_CreateFramebuffer(
+	Refresh_Device *device,
+	Refresh_FramebufferCreateInfo *framebufferCreateInfo
 );
 
 /* Returns an allocated ShaderModule* object. */
-REFRESHAPI REFRESH_ShaderModule* REFRESH_CreateShaderModule(
-	REFRESH_Device *device,
-	REFRESH_ShaderModuleCreateInfo *shaderModuleCreateInfo
+REFRESHAPI Refresh_ShaderModule* Refresh_CreateShaderModule(
+	Refresh_Device *device,
+	Refresh_ShaderModuleCreateInfo *shaderModuleCreateInfo
 );
 
 /* Creates a 2D texture.
@@ -803,16 +803,16 @@ REFRESHAPI REFRESH_ShaderModule* REFRESH_CreateShaderModule(
  * levelCount:	The number of mipmap levels to allocate.
  * usageFlags:	Specifies how the texture will be used.
  *
- * Returns an allocated REFRESH_Texture* object. Note that the contents of
+ * Returns an allocated Refresh_Texture* object. Note that the contents of
  * the texture are undefined until SetData is called.
  */
-REFRESHAPI REFRESH_Texture* REFRESH_CreateTexture2D(
-	REFRESH_Device *device,
-	REFRESH_ColorFormat format,
+REFRESHAPI Refresh_Texture* Refresh_CreateTexture2D(
+	Refresh_Device *device,
+	Refresh_ColorFormat format,
 	uint32_t width,
 	uint32_t height,
 	uint32_t levelCount,
-	REFRESH_TextureUsageFlags usageFlags
+	Refresh_TextureUsageFlags usageFlags
 );
 
 /* Creates a 3D texture.
@@ -824,17 +824,17 @@ REFRESHAPI REFRESH_Texture* REFRESH_CreateTexture2D(
  * levelCount: 	The number of mipmap levels to allocate.
  * usageFlags:	Specifies how the texture will be used.
  *
- * Returns an allocated REFRESH_Texture* object. Note that the contents of
+ * Returns an allocated Refresh_Texture* object. Note that the contents of
  * the texture are undefined until SetData is called.
  */
-REFRESHAPI REFRESH_Texture* REFRESH_CreateTexture3D(
-	REFRESH_Device *device,
-	REFRESH_ColorFormat format,
+REFRESHAPI Refresh_Texture* Refresh_CreateTexture3D(
+	Refresh_Device *device,
+	Refresh_ColorFormat format,
 	uint32_t width,
 	uint32_t height,
 	uint32_t depth,
 	uint32_t levelCount,
-	REFRESH_TextureUsageFlags usageFlags
+	Refresh_TextureUsageFlags usageFlags
 );
 
 /* Creates a texture cube.
@@ -844,15 +844,15 @@ REFRESHAPI REFRESH_Texture* REFRESH_CreateTexture3D(
  * levelCount: 	The number of mipmap levels to allocate.
  * usageFlags:	Specifies how the texture will be used.
  *
- * Returns an allocated REFRESH_Texture* object. Note that the contents of
+ * Returns an allocated Refresh_Texture* object. Note that the contents of
  * the texture are undefined until SetData is called.
  */
-REFRESHAPI REFRESH_Texture* REFRESH_CreateTextureCube(
-	REFRESH_Device *device,
-	REFRESH_ColorFormat format,
+REFRESHAPI Refresh_Texture* Refresh_CreateTextureCube(
+	Refresh_Device *device,
+	Refresh_ColorFormat format,
 	uint32_t size,
 	uint32_t levelCount,
-	REFRESH_TextureUsageFlags usageFlags
+	Refresh_TextureUsageFlags usageFlags
 );
 
 /* Creates a color target.
@@ -860,10 +860,10 @@ REFRESHAPI REFRESH_Texture* REFRESH_CreateTextureCube(
  * multisampleCount:	The MSAA value for the color target.
  * textureSlice: 		The texture slice that the color target will resolve to.
  */
-REFRESHAPI REFRESH_ColorTarget* REFRESH_CreateColorTarget(
-	REFRESH_Device *device,
-	REFRESH_SampleCount multisampleCount,
-	REFRESH_TextureSlice *textureSlice
+REFRESHAPI Refresh_ColorTarget* Refresh_CreateColorTarget(
+	Refresh_Device *device,
+	Refresh_SampleCount multisampleCount,
+	Refresh_TextureSlice *textureSlice
 );
 
 /* Creates a depth/stencil target.
@@ -872,11 +872,11 @@ REFRESHAPI REFRESH_ColorTarget* REFRESH_CreateColorTarget(
  * height: 	The height of the depth/stencil target.
  * format:	The storage format of the depth/stencil target.
  */
-REFRESHAPI REFRESH_DepthStencilTarget* REFRESH_CreateDepthStencilTarget(
-	REFRESH_Device *device,
+REFRESHAPI Refresh_DepthStencilTarget* Refresh_CreateDepthStencilTarget(
+	Refresh_Device *device,
 	uint32_t width,
 	uint32_t height,
-	REFRESH_DepthFormat format
+	Refresh_DepthFormat format
 );
 
 /* Creates a buffer.
@@ -884,9 +884,9 @@ REFRESHAPI REFRESH_DepthStencilTarget* REFRESH_CreateDepthStencilTarget(
  * usageFlags:	Specifies how the buffer will be used.
  * sizeInBytes:	The length of the buffer.
  */
-REFRESHAPI REFRESH_Buffer* REFRESH_CreateBuffer(
-	REFRESH_Device *device,
-	REFRESH_BufferUsageFlags usageFlags,
+REFRESHAPI Refresh_Buffer* Refresh_CreateBuffer(
+	Refresh_Device *device,
+	Refresh_BufferUsageFlags usageFlags,
 	uint32_t sizeInBytes
 );
 
@@ -898,9 +898,9 @@ REFRESHAPI REFRESH_Buffer* REFRESH_CreateBuffer(
  * 	data:				A pointer to the image data.
  * 	dataLengthInBytes:	The size of the image data.
  */
-REFRESHAPI void REFRESH_SetTextureData(
-	REFRESH_Device *driverData,
-	REFRESH_TextureSlice *textureSlice,
+REFRESHAPI void Refresh_SetTextureData(
+	Refresh_Device *driverData,
+	Refresh_TextureSlice *textureSlice,
 	void *data,
 	uint32_t dataLengthInBytes
 );
@@ -917,11 +917,11 @@ REFRESHAPI void REFRESH_SetTextureData(
  * data:	A pointer to the raw YUV image data.
  * dataLength:	The size of the image data in bytes.
  */
-REFRESHAPI void REFRESH_SetTextureDataYUV(
-	REFRESH_Device *driverData,
-	REFRESH_Texture *y,
-	REFRESH_Texture *u,
-	REFRESH_Texture *v,
+REFRESHAPI void Refresh_SetTextureDataYUV(
+	Refresh_Device *driverData,
+	Refresh_Texture *y,
+	Refresh_Texture *u,
+	Refresh_Texture *v,
 	uint32_t yWidth,
 	uint32_t yHeight,
 	uint32_t uvWidth,
@@ -936,12 +936,12 @@ REFRESHAPI void REFRESH_SetTextureDataYUV(
  * destinationTextureSlice:	The texture slice to copy to.
  * filter:					The filter that will be used if the copy requires scaling.
  */
-REFRESHAPI void REFRESH_CopyTextureToTexture(
-	REFRESH_Device *driverData,
-	REFRESH_CommandBuffer *commandBuffer,
-	REFRESH_TextureSlice *sourceTextureSlice,
-	REFRESH_TextureSlice *destinationTextureSlice,
-	REFRESH_Filter filter
+REFRESHAPI void Refresh_CopyTextureToTexture(
+	Refresh_Device *driverData,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_TextureSlice *sourceTextureSlice,
+	Refresh_TextureSlice *destinationTextureSlice,
+	Refresh_Filter filter
 );
 
 /* Asynchronously copies image data from a texture slice into a buffer.
@@ -953,11 +953,11 @@ REFRESHAPI void REFRESH_CopyTextureToTexture(
  * textureSlice:	The texture object being copied.
  * buffer:			The buffer being filled with the image data.
  */
-REFRESHAPI void REFRESH_CopyTextureToBuffer(
-	REFRESH_Device *device,
-	REFRESH_CommandBuffer *commandBuffer,
-	REFRESH_TextureSlice *textureSlice,
-	REFRESH_Buffer *buffer
+REFRESHAPI void Refresh_CopyTextureToBuffer(
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_TextureSlice *textureSlice,
+	Refresh_Buffer *buffer
 );
 
 /* Sets a region of the buffer with client data.
@@ -971,9 +971,9 @@ REFRESHAPI void REFRESH_CopyTextureToBuffer(
  * data:			The client data to write into the buffer.
  * dataLength:		The length of data from the client buffer to write.
  */
-REFRESHAPI void REFRESH_SetBufferData(
-	REFRESH_Device *device,
-	REFRESH_Buffer *buffer,
+REFRESHAPI void Refresh_SetBufferData(
+	Refresh_Device *device,
+	Refresh_Buffer *buffer,
 	uint32_t offsetInBytes,
 	void* data,
 	uint32_t dataLength
@@ -989,9 +989,9 @@ REFRESHAPI void REFRESH_SetBufferData(
  * data: 				The client data to write into the buffer.
  * paramBlockCount: 	The number of param-sized blocks from the client buffer to write.
  */
-REFRESHAPI uint32_t REFRESH_PushVertexShaderParams(
-	REFRESH_Device *device,
-	REFRESH_CommandBuffer *commandBuffer,
+REFRESHAPI uint32_t Refresh_PushVertexShaderParams(
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer,
 	void *data,
 	uint32_t paramBlockCount
 );
@@ -1006,9 +1006,9 @@ REFRESHAPI uint32_t REFRESH_PushVertexShaderParams(
  * data: 				The client data to write into the buffer.
  * paramBlockCount: 	The number of param-sized blocks from the client buffer to write.
  */
-REFRESHAPI uint32_t REFRESH_PushFragmentShaderParams(
-	REFRESH_Device *device,
-	REFRESH_CommandBuffer *commandBuffer,
+REFRESHAPI uint32_t Refresh_PushFragmentShaderParams(
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer,
 	void *data,
 	uint32_t paramBlockCount
 );
@@ -1023,9 +1023,9 @@ REFRESHAPI uint32_t REFRESH_PushFragmentShaderParams(
  * data:			The client data to write into the buffer.
  * paramBlockData:	The number of param-sized blocks from the client buffer to write.
  */
-REFRESHAPI uint32_t REFRESH_PushComputeShaderParams(
-	REFRESH_Device *device,
-	REFRESH_CommandBuffer *commandBuffer,
+REFRESHAPI uint32_t Refresh_PushComputeShaderParams(
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer,
 	void *data,
 	uint32_t paramBlockCount
 );
@@ -1039,11 +1039,11 @@ REFRESHAPI uint32_t REFRESH_PushComputeShaderParams(
  * textures:	A pointer to an array of textures.
  * samplers:	A pointer to an array of samplers.
  */
-REFRESHAPI void REFRESH_SetVertexSamplers(
-	REFRESH_Device *device,
-	REFRESH_CommandBuffer *commandBuffer,
-	REFRESH_Texture **pTextures,
-	REFRESH_Sampler **pSamplers
+REFRESHAPI void Refresh_SetVertexSamplers(
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_Texture **pTextures,
+	Refresh_Sampler **pSamplers
 );
 
 /* Sets textures/samplers for use with the currently bound fragment shader.
@@ -1055,11 +1055,11 @@ REFRESHAPI void REFRESH_SetVertexSamplers(
  * textures: 	A pointer to an array of textures.
  * samplers:	A pointer to an array of samplers.
  */
-REFRESHAPI void REFRESH_SetFragmentSamplers(
-	REFRESH_Device *device,
-	REFRESH_CommandBuffer *commandBuffer,
-	REFRESH_Texture **pTextures,
-	REFRESH_Sampler **pSamplers
+REFRESHAPI void Refresh_SetFragmentSamplers(
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_Texture **pTextures,
+	Refresh_Sampler **pSamplers
 );
 
 /* Getters */
@@ -1071,9 +1071,9 @@ REFRESHAPI void REFRESH_SetFragmentSamplers(
  * data:				The pointer to copy data to.
  * dataLengthInBytes:	The length of data to copy.
  */
-REFRESHAPI void REFRESH_GetBufferData(
-	REFRESH_Device *device,
-	REFRESH_Buffer *buffer,
+REFRESHAPI void Refresh_GetBufferData(
+	Refresh_Device *device,
+	Refresh_Buffer *buffer,
 	void *data,
 	uint32_t dataLengthInBytes
 );
@@ -1085,11 +1085,11 @@ REFRESHAPI void REFRESH_GetBufferData(
  * this is not called from the main thread (for example, if a garbage collector
  * deletes the resource instead of the programmer).
  *
- * texture: The REFRESH_Texture to be destroyed.
+ * texture: The Refresh_Texture to be destroyed.
  */
-REFRESHAPI void REFRESH_AddDisposeTexture(
-	REFRESH_Device *device,
-	REFRESH_Texture *texture
+REFRESHAPI void Refresh_AddDisposeTexture(
+	Refresh_Device *device,
+	Refresh_Texture *texture
 );
 
 /* Sends a sampler to be destroyed by the renderer. Note that we call it
@@ -1097,11 +1097,11 @@ REFRESHAPI void REFRESH_AddDisposeTexture(
  * this is not called from the main thread (for example, if a garbage collector
  * deletes the resource instead of the programmer).
  *
- * texture: The REFRESH_Sampler to be destroyed.
+ * texture: The Refresh_Sampler to be destroyed.
  */
-REFRESHAPI void REFRESH_AddDisposeSampler(
-	REFRESH_Device *device,
-	REFRESH_Sampler *sampler
+REFRESHAPI void Refresh_AddDisposeSampler(
+	Refresh_Device *device,
+	Refresh_Sampler *sampler
 );
 
 /* Sends a buffer to be destroyed by the renderer. Note that we call it
@@ -1109,11 +1109,11 @@ REFRESHAPI void REFRESH_AddDisposeSampler(
  * this is not called from the main thread (for example, if a garbage collector
  * deletes the resource instead of the programmer).
  *
- * buffer: The REFRESH_Buffer to be destroyed.
+ * buffer: The Refresh_Buffer to be destroyed.
  */
-REFRESHAPI void REFRESH_AddDisposeBuffer(
-	REFRESH_Device *device,
-	REFRESH_Buffer *buffer
+REFRESHAPI void Refresh_AddDisposeBuffer(
+	Refresh_Device *device,
+	Refresh_Buffer *buffer
 );
 
 /* Sends a color target to be destroyed by the renderer. Note that we call it
@@ -1121,11 +1121,11 @@ REFRESHAPI void REFRESH_AddDisposeBuffer(
  * this is not called from the main thread (for example, if a garbage collector
  * deletes the resource instead of the programmer).
  *
- * colorTarget: The REFRESH_ColorTarget to be destroyed.
+ * colorTarget: The Refresh_ColorTarget to be destroyed.
  */
-REFRESHAPI void REFRESH_AddDisposeColorTarget(
-	REFRESH_Device *device,
-	REFRESH_ColorTarget *colorTarget
+REFRESHAPI void Refresh_AddDisposeColorTarget(
+	Refresh_Device *device,
+	Refresh_ColorTarget *colorTarget
 );
 
 /* Sends a depth/stencil target to be destroyed by the renderer. Note that we call it
@@ -1133,11 +1133,11 @@ REFRESHAPI void REFRESH_AddDisposeColorTarget(
  * this is not called from the main thread (for example, if a garbage collector
  * deletes the resource instead of the programmer).
  *
- * depthStencilTarget: The REFRESH_DepthStencilTarget to be destroyed.
+ * depthStencilTarget: The Refresh_DepthStencilTarget to be destroyed.
  */
-REFRESHAPI void REFRESH_AddDisposeDepthStencilTarget(
-	REFRESH_Device *device,
-	REFRESH_DepthStencilTarget *depthStencilTarget
+REFRESHAPI void Refresh_AddDisposeDepthStencilTarget(
+	Refresh_Device *device,
+	Refresh_DepthStencilTarget *depthStencilTarget
 );
 
 /* Sends a framebuffer to be destroyed by the renderer. Note that we call it
@@ -1145,11 +1145,11 @@ REFRESHAPI void REFRESH_AddDisposeDepthStencilTarget(
  * this is not called from the main thread (for example, if a garbage collector
  * deletes the resource instead of the programmer).
  *
- * framebuffer: The REFRESH_Framebuffer to be destroyed.
+ * framebuffer: The Refresh_Framebuffer to be destroyed.
  */
-REFRESHAPI void REFRESH_AddDisposeFramebuffer(
-	REFRESH_Device *device,
-	REFRESH_Framebuffer *frameBuffer
+REFRESHAPI void Refresh_AddDisposeFramebuffer(
+	Refresh_Device *device,
+	Refresh_Framebuffer *frameBuffer
 );
 
 /* Sends a shader module to be destroyed by the renderer. Note that we call it
@@ -1157,11 +1157,11 @@ REFRESHAPI void REFRESH_AddDisposeFramebuffer(
  * this is not called from the main thread (for example, if a garbage collector
  * deletes the resource instead of the programmer).
  *
- * shaderModule: The REFRESH_ShaderModule to be destroyed.
+ * shaderModule: The Refresh_ShaderModule to be destroyed.
  */
-REFRESHAPI void REFRESH_AddDisposeShaderModule(
-	REFRESH_Device *device,
-	REFRESH_ShaderModule *shaderModule
+REFRESHAPI void Refresh_AddDisposeShaderModule(
+	Refresh_Device *device,
+	Refresh_ShaderModule *shaderModule
 );
 
 /* Sends a render pass to be destroyed by the renderer. Note that we call it
@@ -1169,11 +1169,11 @@ REFRESHAPI void REFRESH_AddDisposeShaderModule(
  * this is not called from the main thread (for example, if a garbage collector
  * deletes the resource instead of the programmer).
  *
- * renderPass: The REFRESH_RenderPass to be destroyed.
+ * renderPass: The Refresh_RenderPass to be destroyed.
  */
-REFRESHAPI void REFRESH_AddDisposeRenderPass(
-	REFRESH_Device *device,
-	REFRESH_RenderPass *renderPass
+REFRESHAPI void Refresh_AddDisposeRenderPass(
+	Refresh_Device *device,
+	Refresh_RenderPass *renderPass
 );
 
 /* Sends a compute pipeline to be destroyed by the renderer. Note that we call it
@@ -1181,11 +1181,11 @@ REFRESHAPI void REFRESH_AddDisposeRenderPass(
  * this is not called from the main thread (for example, if a garbage collector
  * deletes the resource instead of the programmer).
  *
- * computePipeline: The REFRESH_ComputePipeline to be destroyed.
+ * computePipeline: The Refresh_ComputePipeline to be destroyed.
  */
-REFRESHAPI void REFRESH_AddDisposeComputePipeline(
-	REFRESH_Device *device,
-	REFRESH_ComputePipeline *computePipeline
+REFRESHAPI void Refresh_AddDisposeComputePipeline(
+	Refresh_Device *device,
+	Refresh_ComputePipeline *computePipeline
 );
 
 /* Sends a graphics pipeline to be destroyed by the renderer. Note that we call it
@@ -1193,11 +1193,11 @@ REFRESHAPI void REFRESH_AddDisposeComputePipeline(
  * this is not called from the main thread (for example, if a garbage collector
  * deletes the resource instead of the programmer).
  *
- * graphicsPipeline: The REFRESH_GraphicsPipeline to be destroyed.
+ * graphicsPipeline: The Refresh_GraphicsPipeline to be destroyed.
  */
-REFRESHAPI void REFRESH_AddDisposeGraphicsPipeline(
-	REFRESH_Device *device,
-	REFRESH_GraphicsPipeline *graphicsPipeline
+REFRESHAPI void Refresh_AddDisposeGraphicsPipeline(
+	Refresh_Device *device,
+	Refresh_GraphicsPipeline *graphicsPipeline
 );
 
 /* Graphics State */
@@ -1211,60 +1211,60 @@ REFRESHAPI void REFRESH_AddDisposeGraphicsPipeline(
  * 		All load, store and resolve operations are restricted
  * 		to the given rectangle.
  * clearValues:
- * 		A pointer to an array of REFRESH_Color structures
+ * 		A pointer to an array of Refresh_Color structures
  * 		that contains clear values for each color target in the
  * 		framebuffer. May be NULL.
  * clearCount: The amount of color structs in the above array.
  * depthStencilClearValue: The depth/stencil clear value. May be NULL.
  */
-REFRESHAPI void REFRESH_BeginRenderPass(
-	REFRESH_Device *device,
-	REFRESH_CommandBuffer *commandBuffer,
-	REFRESH_RenderPass *renderPass,
-	REFRESH_Framebuffer *framebuffer,
-	REFRESH_Rect renderArea,
-	REFRESH_Color *pColorClearValues,
+REFRESHAPI void Refresh_BeginRenderPass(
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_RenderPass *renderPass,
+	Refresh_Framebuffer *framebuffer,
+	Refresh_Rect renderArea,
+	Refresh_Color *pColorClearValues,
 	uint32_t colorClearCount,
-	REFRESH_DepthStencilValue *depthStencilClearValue
+	Refresh_DepthStencilValue *depthStencilClearValue
 );
 
 /* Ends the current render pass. */
-REFRESHAPI void REFRESH_EndRenderPass(
-	REFRESH_Device *device,
-	REFRESH_CommandBuffer *commandBuffer
+REFRESHAPI void Refresh_EndRenderPass(
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer
 );
 
 /* Binds a graphics pipeline to the graphics bind point. */
-REFRESHAPI void REFRESH_BindGraphicsPipeline(
-	REFRESH_Device *device,
-	REFRESH_CommandBuffer *commandBuffer,
-	REFRESH_GraphicsPipeline *graphicsPipeline
+REFRESHAPI void Refresh_BindGraphicsPipeline(
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_GraphicsPipeline *graphicsPipeline
 );
 
 /* Binds vertex buffers for use with subsequent draw calls. */
-REFRESHAPI void REFRESH_BindVertexBuffers(
-	REFRESH_Device *device,
-	REFRESH_CommandBuffer *commandBuffer,
+REFRESHAPI void Refresh_BindVertexBuffers(
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer,
 	uint32_t firstBinding,
 	uint32_t bindingCount,
-	REFRESH_Buffer **pBuffers,
+	Refresh_Buffer **pBuffers,
 	uint64_t *pOffsets
 );
 
 /* Binds an index buffer for use with subsequent draw calls. */
-REFRESHAPI void REFRESH_BindIndexBuffer(
-	REFRESH_Device *device,
-	REFRESH_CommandBuffer *commandBuffer,
-	REFRESH_Buffer *buffer,
+REFRESHAPI void Refresh_BindIndexBuffer(
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_Buffer *buffer,
 	uint64_t offset,
-	REFRESH_IndexElementSize indexElementSize
+	Refresh_IndexElementSize indexElementSize
 );
 
 /* Binds a compute pipeline to the compute bind point. */
-REFRESHAPI void REFRESH_BindComputePipeline(
-	REFRESH_Device *device,
-	REFRESH_CommandBuffer *commandBuffer,
-	REFRESH_ComputePipeline *computePipeline
+REFRESHAPI void Refresh_BindComputePipeline(
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_ComputePipeline *computePipeline
 );
 
 /* Binds buffers for use with the currently bound compute pipeline.
@@ -1273,10 +1273,10 @@ REFRESHAPI void REFRESH_BindComputePipeline(
  * 	Length must be equal to the number of buffers
  * 	specified by the compute pipeline.
  */
-REFRESHAPI void REFRESH_BindComputeBuffers(
-	REFRESH_Device *device,
-	REFRESH_CommandBuffer *commandBuffer,
-	REFRESH_Buffer **pBuffers
+REFRESHAPI void Refresh_BindComputeBuffers(
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_Buffer **pBuffers
 );
 
 /* Binds textures for use with the currently bound compute pipeline.
@@ -1285,15 +1285,15 @@ REFRESHAPI void REFRESH_BindComputeBuffers(
  * 	Length must be equal to the number of buffers
  * 	specified by the compute pipeline.
  */
-REFRESHAPI void REFRESH_BindComputeTextures(
-	REFRESH_Device *device,
-	REFRESH_CommandBuffer *commandBuffer,
-	REFRESH_Texture **pTextures
+REFRESHAPI void Refresh_BindComputeTextures(
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_Texture **pTextures
 );
 
 /* Submission/Presentation */
 
-/* Returns an allocated REFRESH_CommandBuffer* object.
+/* Returns an allocated Refresh_CommandBuffer* object.
  * This command buffer is managed by the implementation and
  * should NOT be freed by the user.
  *
@@ -1307,13 +1307,13 @@ REFRESHAPI void REFRESH_BindComputeTextures(
  * 	be re-submitted indefinitely.
  *
  */
-REFRESHAPI REFRESH_CommandBuffer* REFRESH_AcquireCommandBuffer(
-	REFRESH_Device *device,
+REFRESHAPI Refresh_CommandBuffer* Refresh_AcquireCommandBuffer(
+	Refresh_Device *device,
 	uint8_t fixed
 );
 
 /* Queues an image to be presented to the screen.
- * The image will be presented upon the next REFRESH_Submit call.
+ * The image will be presented upon the next Refresh_Submit call.
  *
  * NOTE:
  *		It is an error to call this function in headless mode.
@@ -1322,24 +1322,24 @@ REFRESHAPI REFRESH_CommandBuffer* REFRESH_AcquireCommandBuffer(
  * destinationRectangle:	The region of the window to update. Can be NULL.
  * filter:					The filter to use if scaling is required.
  */
-REFRESHAPI void REFRESH_QueuePresent(
-	REFRESH_Device *device,
-	REFRESH_CommandBuffer *commandBuffer,
-	REFRESH_TextureSlice *textureSlice,
-	REFRESH_Rect *destinationRectangle,
-	REFRESH_Filter filter
+REFRESHAPI void Refresh_QueuePresent(
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_TextureSlice *textureSlice,
+	Refresh_Rect *destinationRectangle,
+	Refresh_Filter filter
 );
 
 /* Submits all of the enqueued commands. */
-REFRESHAPI void REFRESH_Submit(
-	REFRESH_Device* device,
+REFRESHAPI void Refresh_Submit(
+	Refresh_Device* device,
 	uint32_t commandBufferCount,
-	REFRESH_CommandBuffer **pCommandBuffers
+	Refresh_CommandBuffer **pCommandBuffers
 );
 
 /* Waits for the previous submission to complete. */
-REFRESHAPI void REFRESH_Wait(
-	REFRESH_Device *device
+REFRESHAPI void Refresh_Wait(
+	Refresh_Device *device
 );
 
 #ifdef __cplusplus
