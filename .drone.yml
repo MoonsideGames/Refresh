@@ -11,7 +11,7 @@ steps:
 - name: build
   image: fedora
   commands:
-    - dnf install SDL2-devel
+    - dnf install cmake SDL2-devel
     - cmake -E make_directory ./build
     - cd ./build
     - cmake -S .. -B .
