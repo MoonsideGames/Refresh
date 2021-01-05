@@ -6,7 +6,7 @@ steps:
 - name: dependencies
   image: fedora
   commands:
-    - dnf install git cmake SDL2-devel
+    - dnf install -y git cmake SDL2-devel
 
 - name: submodules
   image: fedora
