@@ -4,12 +4,10 @@ name: default
 
 steps:
 - name: submodules
-  image: scratch
   commands:
     - git submodule update --recursive --init
 
 - name: build
-  image: scratch
   commands:
     - cmake -E make_directory ./build
     - cd ./build
