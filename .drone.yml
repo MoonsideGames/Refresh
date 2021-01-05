@@ -4,10 +4,12 @@ name: default
 
 steps:
 - name: submodules
+  image: alpine/git
   commands:
     - git submodule update --recursive --init
 
 - name: build
+  image: kitware/cmake
   commands:
     - cmake -E make_directory ./build
     - cd ./build
