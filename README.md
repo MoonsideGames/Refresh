@@ -1,3 +1,5 @@
+[![Build Status](https://github.drone.moonside.games/api/badges/thatcosmonaut/Refresh/status.svg)](https://github.drone.moonside.games/thatcosmonaut/Refresh)
+
 This is Refresh, an XNA-inspired 3D graphics library with modern capabilities.
 
 License

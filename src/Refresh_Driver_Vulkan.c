@@ -7264,7 +7264,7 @@ static void VULKAN_AddDisposeFramebuffer(
 		VulkanFramebuffer*,
 		renderer->framebuffersToDestroyCount + 1,
 		renderer->framebuffersToDestroyCapacity,
-		renderer->framebuffersToDestroyCapacity *= 2
+		renderer->framebuffersToDestroyCapacity * 2
 	)
 
 	renderer->framebuffersToDestroy[renderer->framebuffersToDestroyCount] = vulkanFramebuffer;
@@ -7812,6 +7812,13 @@ static VulkanCommandPool* VULKAN_INTERNAL_FetchCommandPool(
 		&vulkanCommandPool->commandPool
 	);
 
+	if (vulkanResult != VK_SUCCESS)
+	{
+		REFRESH_LogError("Failed to create command pool!");
+		LogVulkanResult("vkCreateCommandPool", vulkanResult);
+		return NULL;
+	}
+
 	vulkanCommandPool->threadID = threadID;
 
 	vulkanCommandPool->inactiveCommandBufferCapacity = 0;
@@ -8345,7 +8352,7 @@ static void VULKAN_Submit(
 			&presentInfo
 		);
 
-		if (renderer->needNewSwapChain)
+		if (presentResult != VK_SUCCESS || renderer->needNewSwapChain)
 		{
 			VULKAN_INTERNAL_RecreateSwapchain(renderer);
 		}
