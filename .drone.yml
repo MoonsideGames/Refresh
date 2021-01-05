@@ -1,0 +1,15 @@
+kind: pipeline
+type: exec
+name: default
+
+steps:
+- name: submodules
+  commands:
+    - git submodule update --recursive --init
+
+- name: build
+  commands:
+    - cmake -E make_directory ./build
+    - cd ./build
+    - cmake -S .. -B .
+    - make
