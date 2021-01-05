@@ -4,13 +4,14 @@ name: default
 
 steps:
 - name: submodules
-  image: alpine/git
+  image: fedora
   commands:
     - git submodule update --recursive --init
 
 - name: build
-  image: kitware/cmake
+  image: fedora
   commands:
+    - dnf install SDL2-devel
     - cmake -E make_directory ./build
     - cd ./build
     - cmake -S .. -B .
