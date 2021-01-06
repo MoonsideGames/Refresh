@@ -98,12 +98,14 @@ typedef enum Refresh_StoreOp
     REFRESH_STOREOP_DONT_CARE
 } Refresh_StoreOp;
 
-typedef enum Refresh_ClearOptions
+typedef enum Refresh_ClearOptionsBits
 {
-    REFRESH_CLEAROPTIONS_COLOR   = 1,
-    REFRESH_CLEAROPTIONS_DEPTH   = 2,
-    REFRESH_CLEAROPTIONS_STENCIL = 4,
-} Refresh_ClearOptions;
+    REFRESH_CLEAROPTIONS_COLOR   = 0x00000001,
+    REFRESH_CLEAROPTIONS_DEPTH   = 0x00000002,
+    REFRESH_CLEAROPTIONS_STENCIL = 0x00000004,
+} Refresh_ClearOptionsBits;
+
+typedef uint32_t Refresh_ClearOptions;
 
 typedef enum Refresh_IndexElementSize
 {
