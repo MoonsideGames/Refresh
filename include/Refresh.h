@@ -629,6 +629,18 @@ REFRESHAPI uint32_t Refresh_LinkedVersion(void);
 
 typedef void (REFRESHCALL * Refresh_LogFunc)(const char *msg);
 
+/* Reroutes Refresh's logging to custom logging functions.
+ *
+ * info:	Basic logs that might be useful to have stored for support.
+ * warn:	Something went wrong, but it's really just annoying, not fatal.
+ * error:	You better have this stored somewhere because it's crashing now!
+ */
+REFRESHAPI void Refresh_HookLogFunctions(
+	Refresh_LogFunc info,
+	Refresh_LogFunc warn,
+	Refresh_LogFunc error
+);
+
 /* Device */
 
 /* Create a rendering context for use on the calling thread.
