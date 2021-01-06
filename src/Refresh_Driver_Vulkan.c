@@ -7133,7 +7133,7 @@ static void VULKAN_CopyTextureToBuffer(
 	);
 }
 
-static void VULKAN_AddDisposeTexture(
+static void VULKAN_QueueDestroyTexture(
 	Refresh_Renderer *driverData,
 	Refresh_Texture *texture
 ) {
@@ -7156,7 +7156,7 @@ static void VULKAN_AddDisposeTexture(
 	SDL_UnlockMutex(renderer->disposeLock);
 }
 
-static void VULKAN_AddDisposeSampler(
+static void VULKAN_QueueDestroySampler(
 	Refresh_Renderer *driverData,
 	Refresh_Sampler *sampler
 ) {
@@ -7179,7 +7179,7 @@ static void VULKAN_AddDisposeSampler(
 	SDL_UnlockMutex(renderer->disposeLock);
 }
 
-static void VULKAN_AddDisposeBuffer(
+static void VULKAN_QueueDestroyBuffer(
 	Refresh_Renderer *driverData,
 	Refresh_Buffer *buffer
 ) {
@@ -7204,7 +7204,7 @@ static void VULKAN_AddDisposeBuffer(
 	SDL_UnlockMutex(renderer->disposeLock);
 }
 
-static void VULKAN_AddDisposeColorTarget(
+static void VULKAN_QueueDestroyColorTarget(
 	Refresh_Renderer *driverData,
 	Refresh_ColorTarget *colorTarget
 ) {
@@ -7227,7 +7227,7 @@ static void VULKAN_AddDisposeColorTarget(
 	SDL_UnlockMutex(renderer->disposeLock);
 }
 
-static void VULKAN_AddDisposeDepthStencilTarget(
+static void VULKAN_QueueDestroyDepthStencilTarget(
 	Refresh_Renderer *driverData,
 	Refresh_DepthStencilTarget *depthStencilTarget
 ) {
@@ -7250,7 +7250,7 @@ static void VULKAN_AddDisposeDepthStencilTarget(
 	SDL_UnlockMutex(renderer->disposeLock);
 }
 
-static void VULKAN_AddDisposeFramebuffer(
+static void VULKAN_QueueDestroyFramebuffer(
 	Refresh_Renderer *driverData,
 	Refresh_Framebuffer *framebuffer
 ) {
@@ -7273,7 +7273,7 @@ static void VULKAN_AddDisposeFramebuffer(
 	SDL_UnlockMutex(renderer->disposeLock);
 }
 
-static void VULKAN_AddDisposeShaderModule(
+static void VULKAN_QueueDestroyShaderModule(
 	Refresh_Renderer *driverData,
 	Refresh_ShaderModule *shaderModule
 ) {
@@ -7296,7 +7296,7 @@ static void VULKAN_AddDisposeShaderModule(
 	SDL_UnlockMutex(renderer->disposeLock);
 }
 
-static void VULKAN_AddDisposeRenderPass(
+static void VULKAN_QueueDestroyRenderPass(
 	Refresh_Renderer *driverData,
 	Refresh_RenderPass *renderPass
 ) {
@@ -7319,7 +7319,7 @@ static void VULKAN_AddDisposeRenderPass(
 	SDL_UnlockMutex(renderer->disposeLock);
 }
 
-static void VULKAN_AddDisposeComputePipeline(
+static void VULKAN_QueueDestroyComputePipeline(
 	Refresh_Renderer *driverData,
 	Refresh_ComputePipeline *computePipeline
 ) {
@@ -7342,7 +7342,7 @@ static void VULKAN_AddDisposeComputePipeline(
 	SDL_UnlockMutex(renderer->disposeLock);
 }
 
-static void VULKAN_AddDisposeGraphicsPipeline(
+static void VULKAN_QueueDestroyGraphicsPipeline(
 	Refresh_Renderer *driverData,
 	Refresh_GraphicsPipeline *graphicsPipeline
 ) {

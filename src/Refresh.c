@@ -613,111 +613,111 @@ void Refresh_GetBufferData(
     );
 }
 
-void Refresh_AddDisposeTexture(
+void Refresh_QueueDestroyTexture(
 	Refresh_Device *device,
 	Refresh_Texture *texture
 ) {
     NULL_RETURN(device);
-    device->AddDisposeTexture(
+    device->QueueDestroyTexture(
         device->driverData,
         texture
     );
 }
 
-void Refresh_AddDisposeSampler(
+void Refresh_QueueDestroySampler(
 	Refresh_Device *device,
 	Refresh_Sampler *sampler
 ) {
     NULL_RETURN(device);
-    device->AddDisposeSampler(
+    device->QueueDestroySampler(
         device->driverData,
         sampler
     );
 }
 
-void Refresh_AddDisposeBuffer(
+void Refresh_QueueDestroyBuffer(
 	Refresh_Device *device,
 	Refresh_Buffer *buffer
 ) {
     NULL_RETURN(device);
-    device->AddDisposeBuffer(
+    device->QueueDestroyBuffer(
         device->driverData,
         buffer
     );
 }
 
-void Refresh_AddDisposeColorTarget(
+void Refresh_QueueDestroyColorTarget(
 	Refresh_Device *device,
 	Refresh_ColorTarget *colorTarget
 ) {
     NULL_RETURN(device);
-    device->AddDisposeColorTarget(
+    device->QueueDestroyColorTarget(
         device->driverData,
         colorTarget
     );
 }
 
-void Refresh_AddDisposeDepthStencilTarget(
+void Refresh_QueueDestroyDepthStencilTarget(
 	Refresh_Device *device,
 	Refresh_DepthStencilTarget *depthStencilTarget
 ) {
     NULL_RETURN(device);
-    device->AddDisposeDepthStencilTarget(
+    device->QueueDestroyDepthStencilTarget(
         device->driverData,
         depthStencilTarget
     );
 }
 
-void Refresh_AddDisposeFramebuffer(
+void Refresh_QueueDestroyFramebuffer(
 	Refresh_Device *device,
 	Refresh_Framebuffer *frameBuffer
 ) {
     NULL_RETURN(device);
-    device->AddDisposeFramebuffer(
+    device->QueueDestroyFramebuffer(
         device->driverData,
         frameBuffer
     );
 }
 
-void Refresh_AddDisposeShaderModule(
+void Refresh_QueueDestroyShaderModule(
 	Refresh_Device *device,
 	Refresh_ShaderModule *shaderModule
 ) {
     NULL_RETURN(device);
-    device->AddDisposeShaderModule(
+    device->QueueDestroyShaderModule(
         device->driverData,
         shaderModule
     );
 }
 
-void Refresh_AddDisposeRenderPass(
+void Refresh_QueueDestroyRenderPass(
 	Refresh_Device *device,
 	Refresh_RenderPass *renderPass
 ) {
     NULL_RETURN(device);
-    device->AddDisposeRenderPass(
+    device->QueueDestroyRenderPass(
         device->driverData,
         renderPass
     );
 }
 
-void Refresh_AddDisposeComputePipeline(
+void Refresh_QueueDestroyComputePipeline(
 	Refresh_Device *device,
 	Refresh_ComputePipeline *computePipeline
 ) {
     NULL_RETURN(device);
-    device->AddDisposeComputePipeline(
+    device->QueueDestroyComputePipeline(
         device->driverData,
         computePipeline
     );
 }
 
-void Refresh_AddDisposeGraphicsPipeline(
+void Refresh_QueueDestroyGraphicsPipeline(
 	Refresh_Device *device,
 	Refresh_GraphicsPipeline *graphicsPipeline
 ) {
     NULL_RETURN(device);
-    device->AddDisposeGraphicsPipeline(
+    device->QueueDestroyGraphicsPipeline(
         device->driverData,
         graphicsPipeline
     );

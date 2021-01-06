@@ -394,52 +394,52 @@ struct Refresh_Device
 
     /* Disposal */
 
-    void(*AddDisposeTexture)(
+    void(*QueueDestroyTexture)(
         Refresh_Renderer *driverData,
         Refresh_Texture *texture
     );
 
-    void(*AddDisposeSampler)(
+    void(*QueueDestroySampler)(
         Refresh_Renderer *driverData,
         Refresh_Sampler *sampler
     );
 
-    void(*AddDisposeBuffer)(
+    void(*QueueDestroyBuffer)(
         Refresh_Renderer *driverData,
         Refresh_Buffer *buffer
     );
 
-    void(*AddDisposeColorTarget)(
+    void(*QueueDestroyColorTarget)(
         Refresh_Renderer *driverData,
 	    Refresh_ColorTarget *colorTarget
     );
 
-    void(*AddDisposeDepthStencilTarget)(
+    void(*QueueDestroyDepthStencilTarget)(
         Refresh_Renderer *driverData,
 	    Refresh_DepthStencilTarget *depthStencilTarget
     );
 
-    void(*AddDisposeFramebuffer)(
+    void(*QueueDestroyFramebuffer)(
         Refresh_Renderer *driverData,
         Refresh_Framebuffer *frameBuffer
     );
 
-    void(*AddDisposeShaderModule)(
+    void(*QueueDestroyShaderModule)(
         Refresh_Renderer *driverData,
         Refresh_ShaderModule *shaderModule
     );
 
-    void(*AddDisposeRenderPass)(
+    void(*QueueDestroyRenderPass)(
         Refresh_Renderer *driverData,
         Refresh_RenderPass *renderPass
     );
 
-    void(*AddDisposeComputePipeline)(
+    void(*QueueDestroyComputePipeline)(
         Refresh_Renderer *driverData,
         Refresh_ComputePipeline *computePipeline
     );
 
-    void(*AddDisposeGraphicsPipeline)(
+    void(*QueueDestroyGraphicsPipeline)(
         Refresh_Renderer *driverData,
         Refresh_GraphicsPipeline *graphicsPipeline
     );
@@ -562,16 +562,16 @@ struct Refresh_Device
     ASSIGN_DRIVER_FUNC(BindVertexSamplers, name) \
     ASSIGN_DRIVER_FUNC(BindFragmentSamplers, name) \
     ASSIGN_DRIVER_FUNC(GetBufferData, name) \
-    ASSIGN_DRIVER_FUNC(AddDisposeTexture, name) \
-    ASSIGN_DRIVER_FUNC(AddDisposeSampler, name) \
-    ASSIGN_DRIVER_FUNC(AddDisposeBuffer, name) \
-    ASSIGN_DRIVER_FUNC(AddDisposeColorTarget, name) \
-    ASSIGN_DRIVER_FUNC(AddDisposeDepthStencilTarget, name) \
-    ASSIGN_DRIVER_FUNC(AddDisposeFramebuffer, name) \
-    ASSIGN_DRIVER_FUNC(AddDisposeShaderModule, name) \
-    ASSIGN_DRIVER_FUNC(AddDisposeRenderPass, name) \
-    ASSIGN_DRIVER_FUNC(AddDisposeComputePipeline, name) \
-    ASSIGN_DRIVER_FUNC(AddDisposeGraphicsPipeline, name) \
+    ASSIGN_DRIVER_FUNC(QueueDestroyTexture, name) \
+    ASSIGN_DRIVER_FUNC(QueueDestroySampler, name) \
+    ASSIGN_DRIVER_FUNC(QueueDestroyBuffer, name) \
+    ASSIGN_DRIVER_FUNC(QueueDestroyColorTarget, name) \
+    ASSIGN_DRIVER_FUNC(QueueDestroyDepthStencilTarget, name) \
+    ASSIGN_DRIVER_FUNC(QueueDestroyFramebuffer, name) \
+    ASSIGN_DRIVER_FUNC(QueueDestroyShaderModule, name) \
+    ASSIGN_DRIVER_FUNC(QueueDestroyRenderPass, name) \
+    ASSIGN_DRIVER_FUNC(QueueDestroyComputePipeline, name) \
+    ASSIGN_DRIVER_FUNC(QueueDestroyGraphicsPipeline, name) \
     ASSIGN_DRIVER_FUNC(BeginRenderPass, name) \
     ASSIGN_DRIVER_FUNC(EndRenderPass, name) \
     ASSIGN_DRIVER_FUNC(BindGraphicsPipeline, name) \

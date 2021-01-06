@@ -1065,121 +1065,121 @@ REFRESHAPI void Refresh_GetBufferData(
 /* Disposal */
 
 /* Sends a texture to be destroyed by the renderer. Note that we call it
- * "AddDispose" because it may not be immediately destroyed by the renderer if
+ * "QueueDestroy" because it may not be immediately destroyed by the renderer if
  * this is not called from the main thread (for example, if a garbage collector
  * deletes the resource instead of the programmer).
  *
  * texture: The Refresh_Texture to be destroyed.
  */
-REFRESHAPI void Refresh_AddDisposeTexture(
+REFRESHAPI void Refresh_QueueDestroyTexture(
 	Refresh_Device *device,
 	Refresh_Texture *texture
 );
 
 /* Sends a sampler to be destroyed by the renderer. Note that we call it
- * "AddDispose" because it may not be immediately destroyed by the renderer if
+ * "QueueDestroy" because it may not be immediately destroyed by the renderer if
  * this is not called from the main thread (for example, if a garbage collector
  * deletes the resource instead of the programmer).
  *
  * texture: The Refresh_Sampler to be destroyed.
  */
-REFRESHAPI void Refresh_AddDisposeSampler(
+REFRESHAPI void Refresh_QueueDestroySampler(
 	Refresh_Device *device,
 	Refresh_Sampler *sampler
 );
 
 /* Sends a buffer to be destroyed by the renderer. Note that we call it
- * "AddDispose" because it may not be immediately destroyed by the renderer if
+ * "QueueDestroy" because it may not be immediately destroyed by the renderer if
  * this is not called from the main thread (for example, if a garbage collector
  * deletes the resource instead of the programmer).
  *
  * buffer: The Refresh_Buffer to be destroyed.
  */
-REFRESHAPI void Refresh_AddDisposeBuffer(
+REFRESHAPI void Refresh_QueueDestroyBuffer(
 	Refresh_Device *device,
 	Refresh_Buffer *buffer
 );
 
 /* Sends a color target to be destroyed by the renderer. Note that we call it
- * "AddDispose" because it may not be immediately destroyed by the renderer if
+ * "QueueDestroy" because it may not be immediately destroyed by the renderer if
  * this is not called from the main thread (for example, if a garbage collector
  * deletes the resource instead of the programmer).
  *
  * colorTarget: The Refresh_ColorTarget to be destroyed.
  */
-REFRESHAPI void Refresh_AddDisposeColorTarget(
+REFRESHAPI void Refresh_QueueDestroyColorTarget(
 	Refresh_Device *device,
 	Refresh_ColorTarget *colorTarget
 );
 
 /* Sends a depth/stencil target to be destroyed by the renderer. Note that we call it
- * "AddDispose" because it may not be immediately destroyed by the renderer if
+ * "QueueDestroy" because it may not be immediately destroyed by the renderer if
  * this is not called from the main thread (for example, if a garbage collector
  * deletes the resource instead of the programmer).
  *
  * depthStencilTarget: The Refresh_DepthStencilTarget to be destroyed.
  */
-REFRESHAPI void Refresh_AddDisposeDepthStencilTarget(
+REFRESHAPI void Refresh_QueueDestroyDepthStencilTarget(
 	Refresh_Device *device,
 	Refresh_DepthStencilTarget *depthStencilTarget
 );
 
 /* Sends a framebuffer to be destroyed by the renderer. Note that we call it
- * "AddDispose" because it may not be immediately destroyed by the renderer if
+ * "QueueDestroy" because it may not be immediately destroyed by the renderer if
  * this is not called from the main thread (for example, if a garbage collector
  * deletes the resource instead of the programmer).
  *
  * framebuffer: The Refresh_Framebuffer to be destroyed.
  */
-REFRESHAPI void Refresh_AddDisposeFramebuffer(
+REFRESHAPI void Refresh_QueueDestroyFramebuffer(
 	Refresh_Device *device,
 	Refresh_Framebuffer *frameBuffer
 );
 
 /* Sends a shader module to be destroyed by the renderer. Note that we call it
- * "AddDispose" because it may not be immediately destroyed by the renderer if
+ * "QueueDestroy" because it may not be immediately destroyed by the renderer if
  * this is not called from the main thread (for example, if a garbage collector
  * deletes the resource instead of the programmer).
  *
  * shaderModule: The Refresh_ShaderModule to be destroyed.
  */
-REFRESHAPI void Refresh_AddDisposeShaderModule(
+REFRESHAPI void Refresh_QueueDestroyShaderModule(
 	Refresh_Device *device,
 	Refresh_ShaderModule *shaderModule
 );
 
 /* Sends a render pass to be destroyed by the renderer. Note that we call it
- * "AddDispose" because it may not be immediately destroyed by the renderer if
+ * "QueueDestroy" because it may not be immediately destroyed by the renderer if
  * this is not called from the main thread (for example, if a garbage collector
  * deletes the resource instead of the programmer).
  *
  * renderPass: The Refresh_RenderPass to be destroyed.
  */
-REFRESHAPI void Refresh_AddDisposeRenderPass(
+REFRESHAPI void Refresh_QueueDestroyRenderPass(
 	Refresh_Device *device,
 	Refresh_RenderPass *renderPass
 );
 
 /* Sends a compute pipeline to be destroyed by the renderer. Note that we call it
- * "AddDispose" because it may not be immediately destroyed by the renderer if
+ * "QueueDestroy" because it may not be immediately destroyed by the renderer if
  * this is not called from the main thread (for example, if a garbage collector
  * deletes the resource instead of the programmer).
  *
  * computePipeline: The Refresh_ComputePipeline to be destroyed.
  */
-REFRESHAPI void Refresh_AddDisposeComputePipeline(
+REFRESHAPI void Refresh_QueueDestroyComputePipeline(
 	Refresh_Device *device,
 	Refresh_ComputePipeline *computePipeline
 );
 
 /* Sends a graphics pipeline to be destroyed by the renderer. Note that we call it
- * "AddDispose" because it may not be immediately destroyed by the renderer if
+ * "QueueDestroy" because it may not be immediately destroyed by the renderer if
  * this is not called from the main thread (for example, if a garbage collector
  * deletes the resource instead of the programmer).
  *
  * graphicsPipeline: The Refresh_GraphicsPipeline to be destroyed.
  */
-REFRESHAPI void Refresh_AddDisposeGraphicsPipeline(
+REFRESHAPI void Refresh_QueueDestroyGraphicsPipeline(
 	Refresh_Device *device,
 	Refresh_GraphicsPipeline *graphicsPipeline
 );
