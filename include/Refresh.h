@@ -553,7 +553,7 @@ typedef struct Refresh_RasterizerState
 typedef struct Refresh_MultisampleState
 {
 	Refresh_SampleCount multisampleCount;
-	const uint32_t sampleMask;
+	uint32_t sampleMask;
 } Refresh_MultisampleState;
 
 typedef struct Refresh_DepthStencilState
