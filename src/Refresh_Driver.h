@@ -369,14 +369,14 @@ struct Refresh_Device
         uint32_t elementCount
     );
 
-    void(*SetVertexSamplers)(
+    void(*BindVertexSamplers)(
         Refresh_Renderer *driverData,
         Refresh_CommandBuffer *commandBuffer,
         Refresh_Texture **pTextures,
         Refresh_Sampler **pSamplers
     );
 
-    void(*SetFragmentSamplers)(
+    void(*BindFragmentSamplers)(
         Refresh_Renderer *driverData,
         Refresh_CommandBuffer *commandBuffer,
         Refresh_Texture **pTextures,
@@ -559,8 +559,8 @@ struct Refresh_Device
     ASSIGN_DRIVER_FUNC(PushVertexShaderParams, name) \
     ASSIGN_DRIVER_FUNC(PushFragmentShaderParams, name) \
     ASSIGN_DRIVER_FUNC(PushComputeShaderParams, name) \
-    ASSIGN_DRIVER_FUNC(SetVertexSamplers, name) \
-    ASSIGN_DRIVER_FUNC(SetFragmentSamplers, name) \
+    ASSIGN_DRIVER_FUNC(BindVertexSamplers, name) \
+    ASSIGN_DRIVER_FUNC(BindFragmentSamplers, name) \
     ASSIGN_DRIVER_FUNC(GetBufferData, name) \
     ASSIGN_DRIVER_FUNC(AddDisposeTexture, name) \
     ASSIGN_DRIVER_FUNC(AddDisposeSampler, name) \

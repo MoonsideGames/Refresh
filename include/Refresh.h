@@ -1046,38 +1046,6 @@ REFRESHAPI uint32_t Refresh_PushComputeShaderParams(
 	uint32_t paramBlockCount
 );
 
-/* Sets textures/samplers for use with the currently bound vertex shader.
- *
- * NOTE:
- * 		The length of the passed arrays must be equal to the number
- * 		of sampler bindings specified by the pipeline.
- *
- * textures:	A pointer to an array of textures.
- * samplers:	A pointer to an array of samplers.
- */
-REFRESHAPI void Refresh_SetVertexSamplers(
-	Refresh_Device *device,
-	Refresh_CommandBuffer *commandBuffer,
-	Refresh_Texture **pTextures,
-	Refresh_Sampler **pSamplers
-);
-
-/* Sets textures/samplers for use with the currently bound fragment shader.
- *
- * NOTE:
- *		The length of the passed arrays must be equal to the number
- * 		of sampler bindings specified by the pipeline.
- *
- * textures: 	A pointer to an array of textures.
- * samplers:	A pointer to an array of samplers.
- */
-REFRESHAPI void Refresh_SetFragmentSamplers(
-	Refresh_Device *device,
-	Refresh_CommandBuffer *commandBuffer,
-	Refresh_Texture **pTextures,
-	Refresh_Sampler **pSamplers
-);
-
 /* Getters */
 
 /* Synchronously copies data from a buffer to a pointer.
@@ -1274,6 +1242,38 @@ REFRESHAPI void Refresh_BindIndexBuffer(
 	Refresh_Buffer *buffer,
 	uint64_t offset,
 	Refresh_IndexElementSize indexElementSize
+);
+
+/* Sets textures/samplers for use with the currently bound vertex shader.
+ *
+ * NOTE:
+ * 		The length of the passed arrays must be equal to the number
+ * 		of sampler bindings specified by the pipeline.
+ *
+ * textures:	A pointer to an array of textures.
+ * samplers:	A pointer to an array of samplers.
+ */
+REFRESHAPI void Refresh_BindVertexSamplers(
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_Texture **pTextures,
+	Refresh_Sampler **pSamplers
+);
+
+/* Sets textures/samplers for use with the currently bound fragment shader.
+ *
+ * NOTE:
+ *		The length of the passed arrays must be equal to the number
+ * 		of sampler bindings specified by the pipeline.
+ *
+ * textures: 	A pointer to an array of textures.
+ * samplers:	A pointer to an array of samplers.
+ */
+REFRESHAPI void Refresh_BindFragmentSamplers(
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_Texture **pTextures,
+	Refresh_Sampler **pSamplers
 );
 
 /* Binds a compute pipeline to the compute bind point. */

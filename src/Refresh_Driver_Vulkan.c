@@ -713,8 +713,8 @@ typedef struct VulkanGraphicsPipeline
 	VkPipeline pipeline;
 	VulkanGraphicsPipelineLayout *pipelineLayout;
 	Refresh_PrimitiveType primitiveType;
-	VkDescriptorSet vertexSamplerDescriptorSet; /* updated by SetVertexSamplers */
-	VkDescriptorSet fragmentSamplerDescriptorSet; /* updated by SetFragmentSamplers */
+	VkDescriptorSet vertexSamplerDescriptorSet; /* updated by BindVertexSamplers */
+	VkDescriptorSet fragmentSamplerDescriptorSet; /* updated by BindFragmentSamplers */
 
 	VkDescriptorSet vertexUBODescriptorSet; /* permanently set in Create function */
 	VkDescriptorSet fragmentUBODescriptorSet; /* permanently set in Create function */
@@ -6944,7 +6944,7 @@ static VkDescriptorSet VULKAN_INTERNAL_FetchImageDescriptorSet(
 	return newDescriptorSet;
 }
 
-static void VULKAN_SetVertexSamplers(
+static void VULKAN_BindVertexSamplers(
 	Refresh_Renderer *driverData,
 	Refresh_CommandBuffer *commandBuffer,
 	Refresh_Texture **pTextures,
@@ -6980,7 +6980,7 @@ static void VULKAN_SetVertexSamplers(
 	);
 }
 
-static void VULKAN_SetFragmentSamplers(
+static void VULKAN_BindFragmentSamplers(
 	Refresh_Renderer *driverData,
 	Refresh_CommandBuffer *commandBuffer,
 	Refresh_Texture **pTextures,

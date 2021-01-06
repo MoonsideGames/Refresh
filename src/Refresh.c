@@ -568,14 +568,14 @@ uint32_t Refresh_PushComputeShaderParams(
     );
 }
 
-void Refresh_SetVertexSamplers(
+void Refresh_BindVertexSamplers(
 	Refresh_Device *device,
     Refresh_CommandBuffer *commandBuffer,
 	Refresh_Texture **pTextures,
 	Refresh_Sampler **pSamplers
 ) {
     NULL_RETURN(device);
-    device->SetVertexSamplers(
+    device->BindVertexSamplers(
         device->driverData,
         commandBuffer,
         pTextures,
@@ -583,14 +583,14 @@ void Refresh_SetVertexSamplers(
     );
 }
 
-void Refresh_SetFragmentSamplers(
+void Refresh_BindFragmentSamplers(
 	Refresh_Device *device,
     Refresh_CommandBuffer *commandBuffer,
 	Refresh_Texture **pTextures,
 	Refresh_Sampler **pSamplers
 ) {
     NULL_RETURN(device);
-    device->SetFragmentSamplers(
+    device->BindFragmentSamplers(
         device->driverData,
         commandBuffer,
         pTextures,
