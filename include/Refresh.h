@@ -57,7 +57,6 @@ extern "C" {
 typedef struct Refresh_Device Refresh_Device;
 typedef struct Refresh_Buffer Refresh_Buffer;
 typedef struct Refresh_Texture Refresh_Texture;
-typedef struct Refresh_DepthStencilTexture Refresh_DepthStencilTexture;
 typedef struct Refresh_Sampler Refresh_Sampler;
 typedef struct Refresh_ColorTarget Refresh_ColorTarget;
 typedef struct Refresh_DepthStencilTarget Refresh_DepthStencilTarget;
