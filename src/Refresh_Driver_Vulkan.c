@@ -9870,6 +9870,52 @@ static Refresh_Device* VULKAN_CreateDeviceExternal_EXT(
 	
 	VULKAN_INTERNAL_LoadEntryPoints(renderer);
 
+	/*
+	 * Get vkInstance entry points
+	 */
+
+	#define VULKAN_INSTANCE_FUNCTION(ext, ret, func, params) \
+			renderer->func = (vkfntype_##func) vkGetInstanceProcAddr(renderer->instance, #func);
+	#include "Refresh_Driver_Vulkan_vkfuncs.h"
+
+	 /* Load vkDevice entry points */
+
+	#define VULKAN_DEVICE_FUNCTION(ext, ret, func, params) \
+			renderer->func = (vkfntype_##func) \
+				renderer->vkGetDeviceProcAddr( \
+					renderer->logicalDevice, \
+					#func \
+				);
+	#include "Refresh_Driver_Vulkan_vkfuncs.h"
+
+	renderer->vkGetDeviceQueue(
+		renderer->logicalDevice,
+		renderer->queueFamilyIndices.graphicsFamily,
+		0,
+		&renderer->graphicsQueue
+	);
+
+	renderer->vkGetDeviceQueue(
+		renderer->logicalDevice,
+		renderer->queueFamilyIndices.presentFamily,
+		0,
+		&renderer->presentQueue
+	);
+
+	renderer->vkGetDeviceQueue(
+		renderer->logicalDevice,
+		renderer->queueFamilyIndices.computeFamily,
+		0,
+		&renderer->computeQueue
+	);
+
+	renderer->vkGetDeviceQueue(
+		renderer->logicalDevice,
+		renderer->queueFamilyIndices.transferFamily,
+		0,
+		&renderer->transferQueue
+	);
+
 	VULKAN_INTERNAL_GetPhysicalDeviceProperties(renderer);
 
 	return VULKAN_INTERNAL_CreateDevice(renderer);
@@ -9878,7 +9924,8 @@ static Refresh_Device* VULKAN_CreateDeviceExternal_EXT(
 
 Refresh_Driver VulkanDriver = {
     "Vulkan",
-    VULKAN_CreateDevice
+    VULKAN_CreateDevice,
+	VULKAN_CreateDeviceExternal_EXT
 };
 
 #endif //REFRESH_DRIVER_VULKAN
