@@ -141,6 +141,24 @@ Refresh_Device* Refresh_CreateDevice(
     );
 }
 
+Refresh_Device* Refresh_CreateDeviceExternal_EXT(
+    VkInstance instance,
+    VkPhysicalDevice physicalDevice,
+    VkDevice device,
+    uint32_t deviceQueueFamilyIndex,
+    uint8_t debugMode
+) {
+    selectedDriver = 0; /* VULKAN */
+
+    return drivers[selectedDriver]->CreateDeviceExternal_EXT(
+        instance,
+        physicalDevice,
+        device,
+        deviceQueueFamilyIndex,
+        debugMode
+    );
+}
+
 void Refresh_DestroyDevice(Refresh_Device *device)
 {
     NULL_RETURN(device);
@@ -892,6 +910,17 @@ void Refresh_Wait(
     NULL_RETURN(device);
     device->Wait(
         device->driverData
+    );
+}
+
+VkImageView Refresh_GetVkImageView_EXT(
+    Refresh_Device* device,
+    Refresh_Texture* texture
+) {
+    NULL_RETURN_NULL(device);
+    return device->GetVkImageView_EXT(
+        device->driverData,
+        texture
     );
 }
 

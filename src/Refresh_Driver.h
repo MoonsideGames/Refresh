@@ -526,6 +526,11 @@ struct Refresh_Device
         Refresh_Renderer *driverData
     );
 
+    VkImageView(*GetVkImageView_EXT)(
+        Refresh_Renderer *driverData,
+        Refresh_Texture *texture
+    );
+
 	/* Opaque pointer for the Driver */
 	Refresh_Renderer *driverData;
 };
@@ -583,7 +588,8 @@ struct Refresh_Device
     ASSIGN_DRIVER_FUNC(AcquireCommandBuffer, name) \
     ASSIGN_DRIVER_FUNC(QueuePresent, name) \
     ASSIGN_DRIVER_FUNC(Submit, name) \
-    ASSIGN_DRIVER_FUNC(Wait, name)
+    ASSIGN_DRIVER_FUNC(Wait, name) \
+    ASSIGN_DRIVER_FUNC(GetVkImageView_EXT, name)
 
 typedef struct Refresh_Driver
 {
@@ -592,6 +598,13 @@ typedef struct Refresh_Driver
 		Refresh_PresentationParameters *presentationParameters,
         uint8_t debugMode
 	);
+    Refresh_Device* (*CreateDeviceExternal_EXT)(
+        VkInstance instance,
+        VkPhysicalDevice physicalDevice,
+        VkDevice device,
+        uint32_t deviceQueueFamilyIndex,
+        uint8_t debugMode
+    );
 } Refresh_Driver;
 
 extern Refresh_Driver VulkanDriver;

@@ -46,6 +46,19 @@
 #endif /* __GNUC__ */
 #endif /* REFRESHNAMELESS */
 
+#define VK_DEFINE_HANDLE(object) typedef struct object##_T* object;
+
+#if defined(__LP64__) || defined(_WIN64) || defined(__x86_64__) || defined(_M_X64) || defined(__ia64) || defined (_M_IA64) || defined(__aarch64__) || defined(__powerpc64__)
+#define VK_DEFINE_NON_DISPATCHABLE_HANDLE(object) typedef struct object##_T *object;
+#else
+#define VK_DEFINE_NON_DISPATCHABLE_HANDLE(object) typedef unsigned long long object;
+#endif
+
+VK_DEFINE_HANDLE(VkInstance)
+VK_DEFINE_HANDLE(VkDevice)
+VK_DEFINE_HANDLE(VkPhysicalDevice)
+VK_DEFINE_NON_DISPATCHABLE_HANDLE(VkImageView)
+
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -652,6 +665,24 @@ REFRESHAPI void Refresh_HookLogFunctions(
  */
 REFRESHAPI Refresh_Device* Refresh_CreateDevice(
 	Refresh_PresentationParameters *presentationParameters,
+	uint8_t debugMode
+);
+
+/* Create a rendering context by taking an externally-initialized VkDevice.
+ * Only valid with Vulkan backend. 
+ * Useful for piggybacking on a separate graphics library like FNA3D.
+ * 
+ * instance: An externally-initialized VkInstance.
+ * physicalDevice: An externally-initialized VkPhysicalDevice.
+ * device: An externally-initialized VkDevice.
+ * deviceQueueFamilyIndex: The queue family index to use.
+ * debugMode: Enable debug mode properties.
+ */
+REFRESHAPI Refresh_Device* Refresh_CreateDeviceExternal_EXT(
+	VkInstance instance,
+	VkPhysicalDevice physicalDevice,
+	VkDevice device,
+	uint32_t deviceQueueFamilyIndex,
 	uint8_t debugMode
 );
 
@@ -1355,6 +1386,12 @@ REFRESHAPI void Refresh_Submit(
 /* Waits for the previous submission to complete. */
 REFRESHAPI void Refresh_Wait(
 	Refresh_Device *device
+);
+
+/* External interop */
+REFRESHAPI VkImageView Refresh_GetVkImageView_EXT(
+	Refresh_Device *device,
+	Refresh_Texture *texture
 );
 
 #ifdef __cplusplus
