@@ -8381,14 +8381,19 @@ static void VULKAN_Wait(
 }
 
 /* External interop */
-static VkImageView VULKAN_GetVkImageView_EXT(
+
+static void VULKAN_GetTextureHandlesEXT(
 	Refresh_Renderer* driverData,
-	Refresh_Texture* texture
+	Refresh_Texture* texture,
+	Refresh_TextureHandlesEXT *handles
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VulkanTexture *vulkanTexture = (VulkanTexture*) texture;
 
-	return vulkanTexture->view;
+	handles->rendererType = REFRESH_RENDERER_TYPE_VULKAN_EXT;
+	handles->texture.vulkan.image = vulkanTexture->image;
+	handles->texture.vulkan.view = vulkanTexture->view;
+	handles->version = REFRESH_SYSRENDERER_VERSION_EXT;
 }
 
 /* Device instantiation */
@@ -9847,7 +9852,7 @@ static Refresh_Device* VULKAN_CreateDevice(
 	return VULKAN_INTERNAL_CreateDevice(renderer);
 }
 
-static Refresh_Device* VULKAN_CreateDeviceExternal_EXT(
+static Refresh_Device* VULKAN_CreateDeviceUsingExternal(
 	VkInstance instance,
 	VkPhysicalDevice physicalDevice,
 	VkDevice device,
@@ -9855,7 +9860,7 @@ static Refresh_Device* VULKAN_CreateDeviceExternal_EXT(
 	uint8_t debugMode
 ) {
 	VulkanRenderer* renderer = (VulkanRenderer*)SDL_malloc(sizeof(VulkanRenderer));
-	
+
 	renderer->instance = instance;
 	renderer->physicalDevice = physicalDevice;
 	renderer->logicalDevice = device;
@@ -9867,7 +9872,7 @@ static Refresh_Device* VULKAN_CreateDeviceExternal_EXT(
 	renderer->presentMode = 0;
 	renderer->debugMode = debugMode;
 	renderer->headless = 1;
-	
+
 	VULKAN_INTERNAL_LoadEntryPoints(renderer);
 
 	/*
@@ -9925,7 +9930,7 @@ static Refresh_Device* VULKAN_CreateDeviceExternal_EXT(
 Refresh_Driver VulkanDriver = {
     "Vulkan",
     VULKAN_CreateDevice,
-	VULKAN_CreateDeviceExternal_EXT
+	VULKAN_CreateDeviceUsingExternal
 };
 
 #endif //REFRESH_DRIVER_VULKAN

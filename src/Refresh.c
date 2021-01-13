@@ -141,7 +141,7 @@ Refresh_Device* Refresh_CreateDevice(
     );
 }
 
-Refresh_Device* Refresh_CreateDeviceExternal_EXT(
+Refresh_Device* Refresh_CreateDeviceUsingExternal(
     VkInstance instance,
     VkPhysicalDevice physicalDevice,
     VkDevice device,
@@ -150,7 +150,7 @@ Refresh_Device* Refresh_CreateDeviceExternal_EXT(
 ) {
     selectedDriver = 0; /* VULKAN */
 
-    return drivers[selectedDriver]->CreateDeviceExternal_EXT(
+    return drivers[selectedDriver]->CreateDeviceUsingExternal(
         instance,
         physicalDevice,
         device,
@@ -913,14 +913,16 @@ void Refresh_Wait(
     );
 }
 
-VkImageView Refresh_GetVkImageView_EXT(
+void Refresh_GetTextureHandlesEXT(
     Refresh_Device* device,
-    Refresh_Texture* texture
+    Refresh_Texture* texture,
+    Refresh_TextureHandlesEXT *handles
 ) {
-    NULL_RETURN_NULL(device);
-    return device->GetVkImageView_EXT(
+    NULL_RETURN(device);
+    return device->GetTextureHandlesEXT(
         device->driverData,
-        texture
+        texture,
+        handles
     );
 }
 

@@ -669,16 +669,16 @@ REFRESHAPI Refresh_Device* Refresh_CreateDevice(
 );
 
 /* Create a rendering context by taking an externally-initialized VkDevice.
- * Only valid with Vulkan backend. 
+ * Only valid with Vulkan backend.
  * Useful for piggybacking on a separate graphics library like FNA3D.
- * 
+ *
  * instance: An externally-initialized VkInstance.
  * physicalDevice: An externally-initialized VkPhysicalDevice.
  * device: An externally-initialized VkDevice.
  * deviceQueueFamilyIndex: The queue family index to use.
  * debugMode: Enable debug mode properties.
  */
-REFRESHAPI Refresh_Device* Refresh_CreateDeviceExternal_EXT(
+REFRESHAPI Refresh_Device* Refresh_CreateDeviceUsingExternal(
 	VkInstance instance,
 	VkPhysicalDevice physicalDevice,
 	VkDevice device,
@@ -1386,12 +1386,6 @@ REFRESHAPI void Refresh_Submit(
 /* Waits for the previous submission to complete. */
 REFRESHAPI void Refresh_Wait(
 	Refresh_Device *device
-);
-
-/* External interop */
-REFRESHAPI VkImageView Refresh_GetVkImageView_EXT(
-	Refresh_Device *device,
-	Refresh_Texture *texture
 );
 
 #ifdef __cplusplus

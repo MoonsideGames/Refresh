@@ -90,6 +90,7 @@
   <ItemGroup>
     <ClInclude Include="..\include\Refresh.h" />
     <ClInclude Include="..\include\Refresh_Image.h" />
+    <ClInclude Include="..\include\Refresh_SysRenderer.h" />
     <ClInclude Include="..\src\Refresh_Driver.h" />
     <ClInclude Include="..\src\Refresh_Driver_Vulkan_vkfuncs.h" />
   </ItemGroup>
