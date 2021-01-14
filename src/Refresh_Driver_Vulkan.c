@@ -4705,10 +4705,10 @@ static Refresh_GraphicsPipeline* VULKAN_CreateGraphicsPipeline(
 	inputAssemblyStateCreateInfo.flags = 0;
 	inputAssemblyStateCreateInfo.primitiveRestartEnable = VK_FALSE;
 	inputAssemblyStateCreateInfo.topology = RefreshToVK_PrimitiveType[
-		pipelineCreateInfo->topologyState.topology
+		pipelineCreateInfo->primitiveType
 	];
 
-	graphicsPipeline->primitiveType = pipelineCreateInfo->topologyState.topology;
+	graphicsPipeline->primitiveType = pipelineCreateInfo->primitiveType;
 
 	/* Viewport */
 

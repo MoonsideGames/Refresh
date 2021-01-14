@@ -528,12 +528,6 @@ typedef struct Refresh_ShaderStageState
 	uint64_t uniformBufferSize;
 } Refresh_ShaderStageState;
 
-/* FIXME: this is awkwardly named */
-typedef struct Refresh_TopologyState
-{
-	Refresh_PrimitiveType topology;
-} Refresh_TopologyState;
-
 typedef struct Refresh_ViewportState
 {
 	const Refresh_Viewport *viewports;
@@ -594,7 +588,7 @@ typedef struct Refresh_GraphicsPipelineCreateInfo
 	Refresh_ShaderStageState vertexShaderState;
 	Refresh_ShaderStageState fragmentShaderState;
 	Refresh_VertexInputState vertexInputState;
-	Refresh_TopologyState topologyState;
+	Refresh_PrimitiveType primitiveType;
 	Refresh_ViewportState viewportState;
 	Refresh_RasterizerState rasterizerState;
 	Refresh_MultisampleState multisampleState;
