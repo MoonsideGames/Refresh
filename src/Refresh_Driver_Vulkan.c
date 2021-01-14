@@ -3804,13 +3804,9 @@ static void VULKAN_DrawInstancedPrimitives(
 	Refresh_Renderer *driverData,
 	Refresh_CommandBuffer *commandBuffer,
 	uint32_t baseVertex,
-	uint32_t minVertexIndex,
-	uint32_t numVertices,
 	uint32_t startIndex,
 	uint32_t primitiveCount,
 	uint32_t instanceCount,
-	Refresh_Buffer *indices,
-	Refresh_IndexElementSize indexElementSize,
 	uint32_t vertexParamOffset,
 	uint32_t fragmentParamOffset
 ) {
@@ -3856,12 +3852,8 @@ static void VULKAN_DrawIndexedPrimitives(
 	Refresh_Renderer *driverData,
 	Refresh_CommandBuffer *commandBuffer,
 	uint32_t baseVertex,
-	uint32_t minVertexIndex,
-	uint32_t numVertices,
 	uint32_t startIndex,
 	uint32_t primitiveCount,
-	Refresh_Buffer *indices,
-	Refresh_IndexElementSize indexElementSize,
 	uint32_t vertexParamOffset,
 	uint32_t fragmentParamOffset
 ) {
@@ -3869,13 +3861,9 @@ static void VULKAN_DrawIndexedPrimitives(
 		driverData,
 		commandBuffer,
 		baseVertex,
-		minVertexIndex,
-		numVertices,
 		startIndex,
 		primitiveCount,
 		1,
-		indices,
-		indexElementSize,
 		vertexParamOffset,
 		fragmentParamOffset
 	);
@@ -6052,7 +6040,6 @@ static void VULKAN_SetTextureData(
 
 	VkCommandBuffer commandBuffer = renderer->transferCommandBuffers[renderer->frameIndex];
 	VkBufferImageCopy imageCopy;
-	VkResult vulkanResult;
 	uint8_t *stagingBufferPointer;
 
 	SDL_LockMutex(renderer->stagingLock);
@@ -6467,7 +6454,6 @@ static void VULKAN_SetBufferData(
 ) {
 	VulkanRenderer* renderer = (VulkanRenderer*)driverData;
 	VulkanBuffer* vulkanBuffer = (VulkanBuffer*)buffer;
-	VkResult vulkanResult;
 	uint32_t i;
 
 	#define CURIDX vulkanBuffer->currentSubBufferIndex
@@ -8961,7 +8947,7 @@ static void VULKAN_INTERNAL_LoadEntryPoints(
 	if (SDL_Vulkan_LoadLibrary(NULL) < 0)
 	{
 		Refresh_LogWarn("Vulkan: SDL_Vulkan_LoadLibrary failed!");
-		return 0;
+		return;
 	}
 
 	#pragma GCC diagnostic push
@@ -8974,7 +8960,7 @@ static void VULKAN_INTERNAL_LoadEntryPoints(
 				"SDL_Vulkan_GetVkGetInstanceProcAddr(): %s",
 				SDL_GetError()
 			);
-			return 0;
+			return;
 		}
 
 	#define VULKAN_GLOBAL_FUNCTION(name)								\
@@ -8982,7 +8968,7 @@ static void VULKAN_INTERNAL_LoadEntryPoints(
 			if (name == NULL)									\
 			{											\
 				Refresh_LogWarn("vkGetInstanceProcAddr(VK_NULL_HANDLE, \"" #name "\") failed");	\
-				return 0;									\
+				return;									\
 			}
 	#include "Refresh_Driver_Vulkan_vkfuncs.h"
 }

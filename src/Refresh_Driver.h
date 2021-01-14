@@ -182,13 +182,9 @@ struct Refresh_Device
         Refresh_Renderer *driverData,
         Refresh_CommandBuffer *commandBuffer,
         uint32_t baseVertex,
-        uint32_t minVertexIndex,
-        uint32_t numVertices,
         uint32_t startIndex,
         uint32_t primitiveCount,
         uint32_t instanceCount,
-        Refresh_Buffer *indices,
-        Refresh_IndexElementSize indexElementSize,
         uint32_t vertexParamOffset,
         uint32_t fragmentParamOffset
 	);
@@ -197,12 +193,8 @@ struct Refresh_Device
         Refresh_Renderer *driverData,
         Refresh_CommandBuffer *commandBuffer,
         uint32_t baseVertex,
-        uint32_t minVertexIndex,
-        uint32_t numVertices,
         uint32_t startIndex,
         uint32_t primitiveCount,
-        Refresh_Buffer *indices,
-        Refresh_IndexElementSize indexElementSize,
         uint32_t vertexParamOffset,
         uint32_t fragmentParamOffset
 	);

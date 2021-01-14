@@ -194,12 +194,8 @@ void Refresh_DrawIndexedPrimitives(
 	Refresh_Device *device,
     Refresh_CommandBuffer *commandBuffer,
 	uint32_t baseVertex,
-	uint32_t minVertexIndex,
-	uint32_t numVertices,
 	uint32_t startIndex,
 	uint32_t primitiveCount,
-	Refresh_Buffer *indices,
-	Refresh_IndexElementSize indexElementSize,
     uint32_t vertexParamOffset,
 	uint32_t fragmentParamOffset
 ) {
@@ -208,12 +204,8 @@ void Refresh_DrawIndexedPrimitives(
         device->driverData,
         commandBuffer,
         baseVertex,
-        minVertexIndex,
-        numVertices,
         startIndex,
         primitiveCount,
-        indices,
-        indexElementSize,
         vertexParamOffset,
         fragmentParamOffset
     );
@@ -223,13 +215,9 @@ void Refresh_DrawInstancedPrimitives(
 	Refresh_Device *device,
     Refresh_CommandBuffer *commandBuffer,
 	uint32_t baseVertex,
-	uint32_t minVertexIndex,
-	uint32_t numVertices,
 	uint32_t startIndex,
 	uint32_t primitiveCount,
 	uint32_t instanceCount,
-	Refresh_Buffer *indices,
-	Refresh_IndexElementSize indexElementSize,
     uint32_t vertexParamOffset,
 	uint32_t fragmentParamOffset
 ) {
@@ -238,13 +226,9 @@ void Refresh_DrawInstancedPrimitives(
         device->driverData,
         commandBuffer,
         baseVertex,
-        minVertexIndex,
-        numVertices,
         startIndex,
         primitiveCount,
         instanceCount,
-        indices,
-        indexElementSize,
         vertexParamOffset,
         fragmentParamOffset
     );

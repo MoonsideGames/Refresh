@@ -757,13 +757,9 @@ REFRESHAPI void Refresh_Clear(
 /* Draws data from vertex/index buffers with instancing enabled.
  *
  * baseVertex:			The starting offset to read from the vertex buffer.
- * minVertexIndex:		The lowest index value expected from the index buffer.
- * numVertices:			The highest offset expected from the index buffer.
  * startIndex:			The starting offset to read from the index buffer.
  * primitiveCount:		The number of primitives to draw.
  * instanceCount:		The number of instances that will be drawn.
- * indices:				The index buffer to bind for this draw call.
- * indexElementSize:	The size of the index type for this index buffer.
  * vertexParamOffset:	The offset of the vertex shader param data.
  * fragmentParamOffset:	The offset of the fragment shader param data.
  */
@@ -771,13 +767,9 @@ REFRESHAPI void Refresh_DrawInstancedPrimitives(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
 	uint32_t baseVertex,
-	uint32_t minVertexIndex,
-	uint32_t numVertices,
 	uint32_t startIndex,
 	uint32_t primitiveCount,
 	uint32_t instanceCount,
-	Refresh_Buffer *indices,
-	Refresh_IndexElementSize indexElementSize,
 	uint32_t vertexParamOffset,
 	uint32_t fragmentParamOffset
 );
@@ -785,12 +777,8 @@ REFRESHAPI void Refresh_DrawInstancedPrimitives(
 /* Draws data from vertex/index buffers.
  *
  * baseVertex:			The starting offset to read from the vertex buffer.
- * minVertexIndex:		The lowest index value expected from the index buffer.
- * numVertices:			The highest offset expected from the index buffer.
  * startIndex:			The starting offset to read from the index buffer.
  * primitiveCount:		The number of primitives to draw.
- * indices:				The index buffer to bind for this draw call.
- * indexElementSize:	The size of the index type for this index buffer.
  * vertexParamOffset:	The offset of the vertex shader param data.
  * fragmentParamOffset:	The offset of the fragment shader param data.
  */
@@ -798,12 +786,8 @@ REFRESHAPI void Refresh_DrawIndexedPrimitives(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
 	uint32_t baseVertex,
-	uint32_t minVertexIndex,
-	uint32_t numVertices,
 	uint32_t startIndex,
 	uint32_t primitiveCount,
-	Refresh_Buffer *indices,
-	Refresh_IndexElementSize indexElementSize,
 	uint32_t vertexParamOffset,
 	uint32_t fragmentParamOffset
 );
