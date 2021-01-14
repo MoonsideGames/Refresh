@@ -715,10 +715,7 @@ REFRESHAPI Refresh_Device* Refresh_CreateDevice(
  * Only valid with Vulkan backend.
  * Useful for piggybacking on a separate graphics library like FNA3D.
  *
- * instance: An externally-initialized VkInstance.
- * physicalDevice: An externally-initialized VkPhysicalDevice.
- * device: An externally-initialized VkDevice.
- * deviceQueueFamilyIndex: The queue family index to use.
+ * sysRenderer: Externally-initialized device info.
  * debugMode: Enable debug mode properties.
  */
 REFRESHAPI Refresh_Device* Refresh_CreateDeviceUsingExternal(
