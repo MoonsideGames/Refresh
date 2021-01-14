@@ -921,7 +921,7 @@ void Refresh_GetTextureHandles(
     Refresh_TextureHandles *handles
 ) {
     NULL_RETURN(device);
-    return device->GetTextureHandles(
+    device->GetTextureHandles(
         device->driverData,
         texture,
         handles
