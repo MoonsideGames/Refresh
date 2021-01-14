@@ -526,6 +526,12 @@ struct Refresh_Device
         Refresh_Renderer *driverData
     );
 
+    void(*GetTextureHandles)(
+        Refresh_Renderer *driverData,
+        Refresh_Texture *texture,
+        Refresh_TextureHandles *handles
+    );
+
 	/* Opaque pointer for the Driver */
 	Refresh_Renderer *driverData;
 };
@@ -583,7 +589,8 @@ struct Refresh_Device
     ASSIGN_DRIVER_FUNC(AcquireCommandBuffer, name) \
     ASSIGN_DRIVER_FUNC(QueuePresent, name) \
     ASSIGN_DRIVER_FUNC(Submit, name) \
-    ASSIGN_DRIVER_FUNC(Wait, name)
+    ASSIGN_DRIVER_FUNC(Wait, name) \
+    ASSIGN_DRIVER_FUNC(GetTextureHandles, name)
 
 typedef struct Refresh_Driver
 {
@@ -592,6 +599,10 @@ typedef struct Refresh_Driver
 		Refresh_PresentationParameters *presentationParameters,
         uint8_t debugMode
 	);
+    Refresh_Device* (*CreateDeviceUsingExternal)(
+        Refresh_SysRenderer *sysRenderer,
+        uint8_t debugMode
+    );
 } Refresh_Driver;
 
 extern Refresh_Driver VulkanDriver;

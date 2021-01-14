@@ -46,6 +46,12 @@
 #endif /* __GNUC__ */
 #endif /* REFRESHNAMELESS */
 
+#define VK_DEFINE_HANDLE(object) typedef struct object##_T* object;
+
+VK_DEFINE_HANDLE(VkInstance)
+VK_DEFINE_HANDLE(VkDevice)
+VK_DEFINE_HANDLE(VkPhysicalDevice)
+
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -608,6 +614,56 @@ typedef struct Refresh_FramebufferCreateInfo
 	uint32_t height;
 } Refresh_FramebufferCreateInfo;
 
+/* Interop Structs */
+
+typedef enum Refresh_SysRendererType
+{
+	REFRESH_RENDERER_TYPE_VULKAN
+} Refresh_SysRendererType;
+
+typedef struct Refresh_SysRenderer
+{
+	Refresh_SysRendererType rendererType;
+
+	union
+	{
+#if REFRESH_DRIVER_VULKAN
+		struct
+		{
+			VkInstance instance;
+			VkPhysicalDevice physicalDevice;
+			VkDevice logicalDevice;
+			uint32_t queueFamilyIndex;
+		} vulkan;
+#endif /* REFRESH_DRIVER_VULKAN */
+		uint8_t filler[64];
+	} renderer;
+} Refresh_SysRenderer;
+
+typedef struct Refresh_TextureHandles
+{
+	Refresh_SysRendererType rendererType;
+
+	union
+	{
+#if REFRESH_DRIVER_VULKAN
+
+#if defined(__LP64__) || defined(_WIN64) || defined(__x86_64__) || defined(_M_X64) || defined(__ia64) || defined (_M_IA64) || defined(__aarch64__) || defined(__powerpc64__)
+#define REFRESH_VULKAN_HANDLE_TYPE void*
+#else
+#define REFRESH_VULKAN_HANDLE_TYPE uint64_t
+#endif
+
+		struct
+		{
+			REFRESH_VULKAN_HANDLE_TYPE image;	/* VkImage */
+			REFRESH_VULKAN_HANDLE_TYPE view;	/* VkImageView */
+		} vulkan;
+#endif /* REFRESH_DRIVER_VULKAN */
+		uint8_t filler[64];
+	} texture;
+} Refresh_TextureHandles;
+
 /* Version API */
 
 #define REFRESH_ABI_VERSION	 0
@@ -652,6 +708,18 @@ REFRESHAPI void Refresh_HookLogFunctions(
  */
 REFRESHAPI Refresh_Device* Refresh_CreateDevice(
 	Refresh_PresentationParameters *presentationParameters,
+	uint8_t debugMode
+);
+
+/* Create a rendering context by taking an externally-initialized VkDevice.
+ * Only valid with Vulkan backend.
+ * Useful for piggybacking on a separate graphics library like FNA3D.
+ *
+ * sysRenderer: Externally-initialized device info.
+ * debugMode: Enable debug mode properties.
+ */
+REFRESHAPI Refresh_Device* Refresh_CreateDeviceUsingExternal(
+	Refresh_SysRenderer *sysRenderer,
 	uint8_t debugMode
 );
 
@@ -1355,6 +1423,13 @@ REFRESHAPI void Refresh_Submit(
 /* Waits for the previous submission to complete. */
 REFRESHAPI void Refresh_Wait(
 	Refresh_Device *device
+);
+
+/* Export handles to be consumed by another API */
+REFRESHAPI void Refresh_GetTextureHandles(
+	Refresh_Device* device,
+	Refresh_Texture* texture,
+	Refresh_TextureHandles* handles
 );
 
 #ifdef __cplusplus

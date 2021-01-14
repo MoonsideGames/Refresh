@@ -1446,6 +1446,10 @@ typedef struct VulkanRenderer
 	uint32_t submittedRenderPassesToDestroyCount;
 	uint32_t submittedRenderPassesToDestroyCapacity;
 
+	/* External Interop */
+
+	uint8_t usesExternalDevice;
+
     #define VULKAN_INSTANCE_FUNCTION(ext, ret, func, params) \
 		vkfntype_##func func;
 	#define VULKAN_DEVICE_FUNCTION(ext, ret, func, params) \
@@ -3650,8 +3654,11 @@ static void VULKAN_DestroyDevice(
 
 	SDL_free(renderer->buffersInUse);
 
-	renderer->vkDestroyDevice(renderer->logicalDevice, NULL);
-	renderer->vkDestroyInstance(renderer->instance, NULL);
+	if (!renderer->usesExternalDevice)
+	{
+		renderer->vkDestroyDevice(renderer->logicalDevice, NULL);
+		renderer->vkDestroyInstance(renderer->instance, NULL);
+	}
 
 	SDL_free(renderer);
 	SDL_free(device);
@@ -8226,7 +8233,7 @@ static void VULKAN_Submit(
 	}
 	else
 	{
-		submitInfo.pWaitDstStageMask = NULL;
+		submitInfo.pWaitDstStageMask = waitStages;
 		submitInfo.signalSemaphoreCount = 0;
 		submitInfo.pSignalSemaphores = NULL;
 	}
@@ -8378,6 +8385,21 @@ static void VULKAN_Wait(
 		VK_TRUE,
 		UINT64_MAX
 	);
+}
+
+/* External interop */
+
+static void VULKAN_GetTextureHandles(
+	Refresh_Renderer* driverData,
+	Refresh_Texture* texture,
+	Refresh_TextureHandles *handles
+) {
+	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	VulkanTexture *vulkanTexture = (VulkanTexture*) texture;
+
+	handles->rendererType = REFRESH_RENDERER_TYPE_VULKAN;
+	handles->texture.vulkan.image = vulkanTexture->image;
+	handles->texture.vulkan.view = vulkanTexture->view;
 }
 
 /* Device instantiation */
@@ -8768,6 +8790,24 @@ static uint8_t VULKAN_INTERNAL_IsDeviceSuitable(
 	return 0;
 }
 
+static VULKAN_INTERNAL_GetPhysicalDeviceProperties(
+	VulkanRenderer *renderer
+) {
+	renderer->physicalDeviceDriverProperties.sType =
+		VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES_KHR;
+	renderer->physicalDeviceDriverProperties.pNext = NULL;
+
+	renderer->physicalDeviceProperties.sType =
+		VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+	renderer->physicalDeviceProperties.pNext =
+		&renderer->physicalDeviceDriverProperties;
+
+	renderer->vkGetPhysicalDeviceProperties2KHR(
+		renderer->physicalDevice,
+		&renderer->physicalDeviceProperties
+	);
+}
+
 static uint8_t VULKAN_INTERNAL_DeterminePhysicalDevice(
 	VulkanRenderer *renderer,
 	const char **deviceExtensionNames,
@@ -8855,19 +8895,7 @@ static uint8_t VULKAN_INTERNAL_DeterminePhysicalDevice(
 	renderer->physicalDevice = physicalDevice;
 	renderer->queueFamilyIndices = queueFamilyIndices;
 
-	renderer->physicalDeviceDriverProperties.sType =
-		VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES_KHR;
-	renderer->physicalDeviceDriverProperties.pNext = NULL;
-
-	renderer->physicalDeviceProperties.sType =
-		VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
-	renderer->physicalDeviceProperties.pNext =
-		&renderer->physicalDeviceDriverProperties;
-
-	renderer->vkGetPhysicalDeviceProperties2KHR(
-		renderer->physicalDevice,
-		&renderer->physicalDeviceProperties
-	);
+	VULKAN_INTERNAL_GetPhysicalDeviceProperties(renderer);
 
 	SDL_stack_free(physicalDevices);
 	return 1;
@@ -8991,12 +9019,44 @@ static uint8_t VULKAN_INTERNAL_CreateLogicalDevice(
 	return 1;
 }
 
-static Refresh_Device* VULKAN_CreateDevice(
-	Refresh_PresentationParameters *presentationParameters,
-    uint8_t debugMode
+static void VULKAN_INTERNAL_LoadEntryPoints(
+	VulkanRenderer *renderer
+) {
+	/* Load Vulkan entry points */
+	if (SDL_Vulkan_LoadLibrary(NULL) < 0)
+	{
+		Refresh_LogWarn("Vulkan: SDL_Vulkan_LoadLibrary failed!");
+		return 0;
+	}
+
+	#pragma GCC diagnostic push
+	#pragma GCC diagnostic ignored "-Wpedantic"
+		vkGetInstanceProcAddr = (PFN_vkGetInstanceProcAddr)SDL_Vulkan_GetVkGetInstanceProcAddr();
+	#pragma GCC diagnostic pop
+		if (vkGetInstanceProcAddr == NULL)
+		{
+			Refresh_LogWarn(
+				"SDL_Vulkan_GetVkGetInstanceProcAddr(): %s",
+				SDL_GetError()
+			);
+			return 0;
+		}
+
+	#define VULKAN_GLOBAL_FUNCTION(name)								\
+			name = (PFN_##name) vkGetInstanceProcAddr(VK_NULL_HANDLE, #name);			\
+			if (name == NULL)									\
+			{											\
+				Refresh_LogWarn("vkGetInstanceProcAddr(VK_NULL_HANDLE, \"" #name "\") failed");	\
+				return 0;									\
+			}
+	#include "Refresh_Driver_Vulkan_vkfuncs.h"
+}
+
+/* Expects a partially initialized VulkanRenderer */
+static Refresh_Device* VULKAN_INTERNAL_CreateDevice(
+	VulkanRenderer *renderer
 ) {
     Refresh_Device *result;
-    VulkanRenderer *renderer;
 
     VkResult vulkanResult;
 	uint32_t i;
@@ -9028,124 +9088,7 @@ static Refresh_Device* VULKAN_CreateDevice(
     result = (Refresh_Device*) SDL_malloc(sizeof(Refresh_Device));
     ASSIGN_DRIVER(VULKAN)
 
-    renderer = (VulkanRenderer*) SDL_malloc(sizeof(VulkanRenderer));
-
-	/* Load Vulkan entry points */
-	if (SDL_Vulkan_LoadLibrary(NULL) < 0)
-	{
-		Refresh_LogWarn("Vulkan: SDL_Vulkan_LoadLibrary failed!");
-		return 0;
-	}
-
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wpedantic"
-	vkGetInstanceProcAddr = (PFN_vkGetInstanceProcAddr) SDL_Vulkan_GetVkGetInstanceProcAddr();
-#pragma GCC diagnostic pop
-	if (vkGetInstanceProcAddr == NULL)
-	{
-		Refresh_LogWarn(
-			"SDL_Vulkan_GetVkGetInstanceProcAddr(): %s",
-			SDL_GetError()
-		);
-		return 0;
-	}
-
-	#define VULKAN_GLOBAL_FUNCTION(name)								\
-		name = (PFN_##name) vkGetInstanceProcAddr(VK_NULL_HANDLE, #name);			\
-		if (name == NULL)									\
-		{											\
-			Refresh_LogWarn("vkGetInstanceProcAddr(VK_NULL_HANDLE, \"" #name "\") failed");	\
-			return 0;									\
-		}
-	#include "Refresh_Driver_Vulkan_vkfuncs.h"
-
     result->driverData = (Refresh_Renderer*) renderer;
-    renderer->debugMode = debugMode;
-    renderer->headless = presentationParameters->deviceWindowHandle == NULL;
-
-    /* Create the VkInstance */
-	if (!VULKAN_INTERNAL_CreateInstance(renderer, presentationParameters->deviceWindowHandle))
-	{
-		Refresh_LogError("Error creating vulkan instance");
-		return NULL;
-	}
-
-    renderer->deviceWindowHandle = presentationParameters->deviceWindowHandle;
-	renderer->presentMode = presentationParameters->presentMode;
-
-	/*
-	 * Create the WSI vkSurface
-	 */
-
-	if (!SDL_Vulkan_CreateSurface(
-		(SDL_Window*) renderer->deviceWindowHandle,
-		renderer->instance,
-		&renderer->surface
-	)) {
-		Refresh_LogError(
-			"SDL_Vulkan_CreateSurface failed: %s",
-			SDL_GetError()
-		);
-		return NULL;
-	}
-
-	/*
-	 * Get vkInstance entry points
-	 */
-
-	#define VULKAN_INSTANCE_FUNCTION(ext, ret, func, params) \
-		renderer->func = (vkfntype_##func) vkGetInstanceProcAddr(renderer->instance, #func);
-	#include "Refresh_Driver_Vulkan_vkfuncs.h"
-
-	/*
-	 * Choose/Create vkDevice
-	 */
-
-	if (SDL_strcmp(SDL_GetPlatform(), "Stadia") != 0)
-	{
-		deviceExtensionCount -= 1;
-	}
-	if (!VULKAN_INTERNAL_DeterminePhysicalDevice(
-		renderer,
-		deviceExtensionNames,
-		deviceExtensionCount
-	)) {
-		Refresh_LogError("Failed to determine a suitable physical device");
-		return NULL;
-	}
-
-	Refresh_LogInfo("Refresh Driver: Vulkan");
-	Refresh_LogInfo(
-		"Vulkan Device: %s",
-		renderer->physicalDeviceProperties.properties.deviceName
-	);
-	Refresh_LogInfo(
-		"Vulkan Driver: %s %s",
-		renderer->physicalDeviceDriverProperties.driverName,
-		renderer->physicalDeviceDriverProperties.driverInfo
-	);
-	Refresh_LogInfo(
-		"Vulkan Conformance: %u.%u.%u",
-		renderer->physicalDeviceDriverProperties.conformanceVersion.major,
-		renderer->physicalDeviceDriverProperties.conformanceVersion.minor,
-		renderer->physicalDeviceDriverProperties.conformanceVersion.patch
-	);
-	Refresh_LogWarn(
-		"\n!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n"
-		"! Refresh Vulkan is still in development!    !\n"
-        "! The API is unstable and subject to change! !\n"
-        "! You have been warned!                      !\n"
-		"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-	);
-
-	if (!VULKAN_INTERNAL_CreateLogicalDevice(
-		renderer,
-		deviceExtensionNames,
-		deviceExtensionCount
-	)) {
-		Refresh_LogError("Failed to create logical device");
-		return NULL;
-	}
 
 	/*
 	 * Create initial swapchain
@@ -9818,9 +9761,181 @@ static Refresh_Device* VULKAN_CreateDevice(
     return result;
 }
 
+static Refresh_Device* VULKAN_CreateDevice(
+	Refresh_PresentationParameters *presentationParameters,
+	uint8_t debugMode
+) {
+	VulkanRenderer *renderer = (VulkanRenderer*) SDL_malloc(sizeof(VulkanRenderer));
+
+	VULKAN_INTERNAL_LoadEntryPoints(renderer);
+
+	/* Create the VkInstance */
+	if (!VULKAN_INTERNAL_CreateInstance(renderer, presentationParameters->deviceWindowHandle))
+	{
+		Refresh_LogError("Error creating vulkan instance");
+		return NULL;
+	}
+
+	renderer->deviceWindowHandle = presentationParameters->deviceWindowHandle;
+	renderer->presentMode = presentationParameters->presentMode;
+	renderer->debugMode = debugMode;
+	renderer->headless = presentationParameters->deviceWindowHandle == NULL;
+	renderer->usesExternalDevice = 0;
+
+	/*
+	 * Create the WSI vkSurface
+	 */
+
+	if (!SDL_Vulkan_CreateSurface(
+		(SDL_Window*)renderer->deviceWindowHandle,
+		renderer->instance,
+		&renderer->surface
+	)) {
+		Refresh_LogError(
+			"SDL_Vulkan_CreateSurface failed: %s",
+			SDL_GetError()
+		);
+		return NULL;
+	}
+
+	/*
+	 * Get vkInstance entry points
+	 */
+
+	#define VULKAN_INSTANCE_FUNCTION(ext, ret, func, params) \
+			renderer->func = (vkfntype_##func) vkGetInstanceProcAddr(renderer->instance, #func);
+	#include "Refresh_Driver_Vulkan_vkfuncs.h"
+
+	/*
+	* Choose/Create vkDevice
+	*/
+
+	if (SDL_strcmp(SDL_GetPlatform(), "Stadia") != 0)
+	{
+		deviceExtensionCount -= 1;
+	}
+	if (!VULKAN_INTERNAL_DeterminePhysicalDevice(
+		renderer,
+		deviceExtensionNames,
+		deviceExtensionCount
+	)) {
+		Refresh_LogError("Failed to determine a suitable physical device");
+		return NULL;
+	}
+
+	Refresh_LogInfo("Refresh Driver: Vulkan");
+	Refresh_LogInfo(
+		"Vulkan Device: %s",
+		renderer->physicalDeviceProperties.properties.deviceName
+	);
+	Refresh_LogInfo(
+		"Vulkan Driver: %s %s",
+		renderer->physicalDeviceDriverProperties.driverName,
+		renderer->physicalDeviceDriverProperties.driverInfo
+	);
+	Refresh_LogInfo(
+		"Vulkan Conformance: %u.%u.%u",
+		renderer->physicalDeviceDriverProperties.conformanceVersion.major,
+		renderer->physicalDeviceDriverProperties.conformanceVersion.minor,
+		renderer->physicalDeviceDriverProperties.conformanceVersion.patch
+	);
+	Refresh_LogWarn(
+		"\n!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n"
+		"! Refresh Vulkan is still in development!    !\n"
+		"! The API is unstable and subject to change! !\n"
+		"! You have been warned!                      !\n"
+		"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+	);
+
+	if (!VULKAN_INTERNAL_CreateLogicalDevice(
+		renderer,
+		deviceExtensionNames,
+		deviceExtensionCount
+	)) {
+		Refresh_LogError("Failed to create logical device");
+		return NULL;
+	}
+
+	return VULKAN_INTERNAL_CreateDevice(renderer);
+}
+
+static Refresh_Device* VULKAN_CreateDeviceUsingExternal(
+	Refresh_SysRenderer *sysRenderer,
+	uint8_t debugMode
+) {
+	VulkanRenderer* renderer = (VulkanRenderer*)SDL_malloc(sizeof(VulkanRenderer));
+
+	renderer->instance = sysRenderer->renderer.vulkan.instance;
+	renderer->physicalDevice = sysRenderer->renderer.vulkan.physicalDevice;
+	renderer->logicalDevice = sysRenderer->renderer.vulkan.logicalDevice;
+	renderer->queueFamilyIndices.computeFamily = sysRenderer->renderer.vulkan.queueFamilyIndex;
+	renderer->queueFamilyIndices.graphicsFamily = sysRenderer->renderer.vulkan.queueFamilyIndex;
+	renderer->queueFamilyIndices.presentFamily = sysRenderer->renderer.vulkan.queueFamilyIndex;
+	renderer->queueFamilyIndices.transferFamily = sysRenderer->renderer.vulkan.queueFamilyIndex;
+	renderer->deviceWindowHandle = NULL;
+	renderer->presentMode = 0;
+	renderer->debugMode = debugMode;
+	renderer->headless = 1;
+	renderer->usesExternalDevice = 1;
+
+	VULKAN_INTERNAL_LoadEntryPoints(renderer);
+
+	/*
+	 * Get vkInstance entry points
+	 */
+
+	#define VULKAN_INSTANCE_FUNCTION(ext, ret, func, params) \
+			renderer->func = (vkfntype_##func) vkGetInstanceProcAddr(renderer->instance, #func);
+	#include "Refresh_Driver_Vulkan_vkfuncs.h"
+
+	 /* Load vkDevice entry points */
+
+	#define VULKAN_DEVICE_FUNCTION(ext, ret, func, params) \
+			renderer->func = (vkfntype_##func) \
+				renderer->vkGetDeviceProcAddr( \
+					renderer->logicalDevice, \
+					#func \
+				);
+	#include "Refresh_Driver_Vulkan_vkfuncs.h"
+
+	renderer->vkGetDeviceQueue(
+		renderer->logicalDevice,
+		renderer->queueFamilyIndices.graphicsFamily,
+		0,
+		&renderer->graphicsQueue
+	);
+
+	renderer->vkGetDeviceQueue(
+		renderer->logicalDevice,
+		renderer->queueFamilyIndices.presentFamily,
+		0,
+		&renderer->presentQueue
+	);
+
+	renderer->vkGetDeviceQueue(
+		renderer->logicalDevice,
+		renderer->queueFamilyIndices.computeFamily,
+		0,
+		&renderer->computeQueue
+	);
+
+	renderer->vkGetDeviceQueue(
+		renderer->logicalDevice,
+		renderer->queueFamilyIndices.transferFamily,
+		0,
+		&renderer->transferQueue
+	);
+
+	VULKAN_INTERNAL_GetPhysicalDeviceProperties(renderer);
+
+	return VULKAN_INTERNAL_CreateDevice(renderer);
+}
+
+
 Refresh_Driver VulkanDriver = {
     "Vulkan",
-    VULKAN_CreateDevice
+    VULKAN_CreateDevice,
+	VULKAN_CreateDeviceUsingExternal
 };
 
 #endif //REFRESH_DRIVER_VULKAN
