@@ -524,7 +524,7 @@ typedef struct Refresh_TextureCreateInfo
 	uint32_t width;
 	uint32_t height;
 	uint32_t depth;
-	uint32_t isCube;
+	uint8_t isCube;
 	Refresh_SampleCount sampleCount;
 	uint32_t levelCount;
 	Refresh_ColorFormat format;
