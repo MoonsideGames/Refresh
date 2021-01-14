@@ -1446,6 +1446,10 @@ typedef struct VulkanRenderer
 	uint32_t submittedRenderPassesToDestroyCount;
 	uint32_t submittedRenderPassesToDestroyCapacity;
 
+	/* External Interop */
+
+	uint8_t usesExternalDevice;
+
     #define VULKAN_INSTANCE_FUNCTION(ext, ret, func, params) \
 		vkfntype_##func func;
 	#define VULKAN_DEVICE_FUNCTION(ext, ret, func, params) \
@@ -3650,8 +3654,11 @@ static void VULKAN_DestroyDevice(
 
 	SDL_free(renderer->buffersInUse);
 
-	renderer->vkDestroyDevice(renderer->logicalDevice, NULL);
-	renderer->vkDestroyInstance(renderer->instance, NULL);
+	if (!renderer->usesExternalDevice)
+	{
+		renderer->vkDestroyDevice(renderer->logicalDevice, NULL);
+		renderer->vkDestroyInstance(renderer->instance, NULL);
+	}
 
 	SDL_free(renderer);
 	SDL_free(device);
@@ -8382,18 +8389,17 @@ static void VULKAN_Wait(
 
 /* External interop */
 
-static void VULKAN_GetTextureHandlesEXT(
+static void VULKAN_GetTextureHandles(
 	Refresh_Renderer* driverData,
 	Refresh_Texture* texture,
-	Refresh_TextureHandlesEXT *handles
+	Refresh_TextureHandles *handles
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VulkanTexture *vulkanTexture = (VulkanTexture*) texture;
 
-	handles->rendererType = REFRESH_RENDERER_TYPE_VULKAN_EXT;
+	handles->rendererType = REFRESH_RENDERER_TYPE_VULKAN;
 	handles->texture.vulkan.image = vulkanTexture->image;
 	handles->texture.vulkan.view = vulkanTexture->view;
-	handles->version = REFRESH_SYSRENDERER_VERSION_EXT;
 }
 
 /* Device instantiation */
@@ -9774,6 +9780,7 @@ static Refresh_Device* VULKAN_CreateDevice(
 	renderer->presentMode = presentationParameters->presentMode;
 	renderer->debugMode = debugMode;
 	renderer->headless = presentationParameters->deviceWindowHandle == NULL;
+	renderer->usesExternalDevice = 0;
 
 	/*
 	 * Create the WSI vkSurface
@@ -9853,25 +9860,23 @@ static Refresh_Device* VULKAN_CreateDevice(
 }
 
 static Refresh_Device* VULKAN_CreateDeviceUsingExternal(
-	VkInstance instance,
-	VkPhysicalDevice physicalDevice,
-	VkDevice device,
-	uint32_t deviceQueueFamilyIndex,
+	Refresh_SysRenderer *sysRenderer,
 	uint8_t debugMode
 ) {
 	VulkanRenderer* renderer = (VulkanRenderer*)SDL_malloc(sizeof(VulkanRenderer));
 
-	renderer->instance = instance;
-	renderer->physicalDevice = physicalDevice;
-	renderer->logicalDevice = device;
-	renderer->queueFamilyIndices.computeFamily = deviceQueueFamilyIndex;
-	renderer->queueFamilyIndices.graphicsFamily = deviceQueueFamilyIndex;
-	renderer->queueFamilyIndices.presentFamily = deviceQueueFamilyIndex;
-	renderer->queueFamilyIndices.transferFamily = deviceQueueFamilyIndex;
+	renderer->instance = sysRenderer->renderer.vulkan.instance;
+	renderer->physicalDevice = sysRenderer->renderer.vulkan.physicalDevice;
+	renderer->logicalDevice = sysRenderer->renderer.vulkan.logicalDevice;
+	renderer->queueFamilyIndices.computeFamily = sysRenderer->renderer.vulkan.queueFamilyIndex;
+	renderer->queueFamilyIndices.graphicsFamily = sysRenderer->renderer.vulkan.queueFamilyIndex;
+	renderer->queueFamilyIndices.presentFamily = sysRenderer->renderer.vulkan.queueFamilyIndex;
+	renderer->queueFamilyIndices.transferFamily = sysRenderer->renderer.vulkan.queueFamilyIndex;
 	renderer->deviceWindowHandle = NULL;
 	renderer->presentMode = 0;
 	renderer->debugMode = debugMode;
 	renderer->headless = 1;
+	renderer->usesExternalDevice = 1;
 
 	VULKAN_INTERNAL_LoadEntryPoints(renderer);
 

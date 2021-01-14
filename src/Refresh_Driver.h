@@ -28,7 +28,6 @@
 #define REFRESH_DRIVER_H
 
 #include "Refresh.h"
-#include "Refresh_SysRenderer.h"
 
 /* Windows/Visual Studio cruft */
 #ifdef _WIN32
@@ -527,10 +526,10 @@ struct Refresh_Device
         Refresh_Renderer *driverData
     );
 
-    void(*GetTextureHandlesEXT)(
+    void(*GetTextureHandles)(
         Refresh_Renderer *driverData,
         Refresh_Texture *texture,
-        Refresh_TextureHandlesEXT *handles
+        Refresh_TextureHandles *handles
     );
 
 	/* Opaque pointer for the Driver */
@@ -591,7 +590,7 @@ struct Refresh_Device
     ASSIGN_DRIVER_FUNC(QueuePresent, name) \
     ASSIGN_DRIVER_FUNC(Submit, name) \
     ASSIGN_DRIVER_FUNC(Wait, name) \
-    ASSIGN_DRIVER_FUNC(GetTextureHandlesEXT, name)
+    ASSIGN_DRIVER_FUNC(GetTextureHandles, name)
 
 typedef struct Refresh_Driver
 {
@@ -601,10 +600,7 @@ typedef struct Refresh_Driver
         uint8_t debugMode
 	);
     Refresh_Device* (*CreateDeviceUsingExternal)(
-        VkInstance instance,
-        VkPhysicalDevice physicalDevice,
-        VkDevice device,
-        uint32_t deviceQueueFamilyIndex,
+        Refresh_SysRenderer *sysRenderer,
         uint8_t debugMode
     );
 } Refresh_Driver;

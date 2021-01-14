@@ -142,19 +142,21 @@ Refresh_Device* Refresh_CreateDevice(
 }
 
 Refresh_Device* Refresh_CreateDeviceUsingExternal(
-    VkInstance instance,
-    VkPhysicalDevice physicalDevice,
-    VkDevice device,
-    uint32_t deviceQueueFamilyIndex,
+    Refresh_SysRenderer *sysRenderer,
     uint8_t debugMode
 ) {
-    selectedDriver = 0; /* VULKAN */
+    if (selectedDriver < 0)
+    {
+        return NULL;
+    }
+
+    if (sysRenderer == NULL)
+    {
+        return NULL;
+    }
 
     return drivers[selectedDriver]->CreateDeviceUsingExternal(
-        instance,
-        physicalDevice,
-        device,
-        deviceQueueFamilyIndex,
+        sysRenderer,
         debugMode
     );
 }
@@ -913,13 +915,13 @@ void Refresh_Wait(
     );
 }
 
-void Refresh_GetTextureHandlesEXT(
+void Refresh_GetTextureHandles(
     Refresh_Device* device,
     Refresh_Texture* texture,
-    Refresh_TextureHandlesEXT *handles
+    Refresh_TextureHandles *handles
 ) {
     NULL_RETURN(device);
-    return device->GetTextureHandlesEXT(
+    return device->GetTextureHandles(
         device->driverData,
         texture,
         handles
