@@ -8226,7 +8226,7 @@ static void VULKAN_Submit(
 	}
 	else
 	{
-		submitInfo.pWaitDstStageMask = NULL;
+		submitInfo.pWaitDstStageMask = waitStages;
 		submitInfo.signalSemaphoreCount = 0;
 		submitInfo.pSignalSemaphores = NULL;
 	}
