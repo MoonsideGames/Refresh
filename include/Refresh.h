@@ -519,6 +519,18 @@ typedef struct Refresh_ShaderModuleCreateInfo
 	const uint32_t *byteCode;
 } Refresh_ShaderModuleCreateInfo;
 
+typedef struct Refresh_TextureCreateInfo
+{
+	uint32_t width;
+	uint32_t height;
+	uint32_t depth;
+	uint32_t isCube;
+	Refresh_SampleCount sampleCount;
+	uint32_t levelCount;
+	Refresh_ColorFormat format;
+	Refresh_TextureUsageFlags usageFlags;
+} Refresh_TextureCreateInfo;
+
 /* Pipeline state structures */
 
 typedef struct Refresh_ShaderStageState
@@ -856,64 +868,12 @@ REFRESHAPI Refresh_ShaderModule* Refresh_CreateShaderModule(
 	Refresh_ShaderModuleCreateInfo *shaderModuleCreateInfo
 );
 
-/* Creates a 2D texture.
- *
- * format:		The pixel format of the texture data.
- * width:		The width of the texture image.
- * height: 		The height of the texture image.
- * levelCount:	The number of mipmap levels to allocate.
- * usageFlags:	Specifies how the texture will be used.
- *
- * Returns an allocated Refresh_Texture* object. Note that the contents of
+/* Returns an allocated Refresh_Texture* object. Note that the contents of
  * the texture are undefined until SetData is called.
  */
-REFRESHAPI Refresh_Texture* Refresh_CreateTexture2D(
+REFRESHAPI Refresh_Texture* Refresh_CreateTexture(
 	Refresh_Device *device,
-	Refresh_ColorFormat format,
-	uint32_t width,
-	uint32_t height,
-	uint32_t levelCount,
-	Refresh_TextureUsageFlags usageFlags
-);
-
-/* Creates a 3D texture.
- *
- * format:		The pixel format of the texture data.
- * width:		The width of the texture image.
- * height: 		The height of the texture image.
- * depth: 		The depth of the texture image.
- * levelCount: 	The number of mipmap levels to allocate.
- * usageFlags:	Specifies how the texture will be used.
- *
- * Returns an allocated Refresh_Texture* object. Note that the contents of
- * the texture are undefined until SetData is called.
- */
-REFRESHAPI Refresh_Texture* Refresh_CreateTexture3D(
-	Refresh_Device *device,
-	Refresh_ColorFormat format,
-	uint32_t width,
-	uint32_t height,
-	uint32_t depth,
-	uint32_t levelCount,
-	Refresh_TextureUsageFlags usageFlags
-);
-
-/* Creates a texture cube.
- *
- * format:		The pixel format of the texture data.
- * size: 		The length of the cube side.
- * levelCount: 	The number of mipmap levels to allocate.
- * usageFlags:	Specifies how the texture will be used.
- *
- * Returns an allocated Refresh_Texture* object. Note that the contents of
- * the texture are undefined until SetData is called.
- */
-REFRESHAPI Refresh_Texture* Refresh_CreateTextureCube(
-	Refresh_Device *device,
-	Refresh_ColorFormat format,
-	uint32_t size,
-	uint32_t levelCount,
-	Refresh_TextureUsageFlags usageFlags
+	Refresh_TextureCreateInfo *textureCreateInfo
 );
 
 /* Creates a color target.

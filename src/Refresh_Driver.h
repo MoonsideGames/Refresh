@@ -249,31 +249,9 @@ struct Refresh_Device
 	    Refresh_ShaderModuleCreateInfo *shaderModuleCreateInfo
     );
 
-    Refresh_Texture* (*CreateTexture2D)(
+    Refresh_Texture* (*CreateTexture)(
         Refresh_Renderer *driverData,
-        Refresh_ColorFormat format,
-        uint32_t width,
-        uint32_t height,
-        uint32_t levelCount,
-        Refresh_TextureUsageFlags usageFlags
-    );
-
-    Refresh_Texture* (*CreateTexture3D)(
-        Refresh_Renderer *driverData,
-        Refresh_ColorFormat format,
-        uint32_t width,
-        uint32_t height,
-        uint32_t depth,
-        uint32_t levelCount,
-        Refresh_TextureUsageFlags usageFlags
-    );
-
-    Refresh_Texture* (*CreateTextureCube)(
-        Refresh_Renderer *driverData,
-        Refresh_ColorFormat format,
-        uint32_t size,
-        uint32_t levelCount,
-        Refresh_TextureUsageFlags usageFlags
+        Refresh_TextureCreateInfo *textureCreateInfo
     );
 
     Refresh_ColorTarget* (*CreateColorTarget)(
@@ -543,9 +521,7 @@ struct Refresh_Device
     ASSIGN_DRIVER_FUNC(CreateSampler, name) \
     ASSIGN_DRIVER_FUNC(CreateFramebuffer, name) \
     ASSIGN_DRIVER_FUNC(CreateShaderModule, name) \
-    ASSIGN_DRIVER_FUNC(CreateTexture2D, name) \
-    ASSIGN_DRIVER_FUNC(CreateTexture3D, name) \
-    ASSIGN_DRIVER_FUNC(CreateTextureCube, name) \
+    ASSIGN_DRIVER_FUNC(CreateTexture, name) \
     ASSIGN_DRIVER_FUNC(CreateColorTarget, name) \
     ASSIGN_DRIVER_FUNC(CreateDepthStencilTarget, name) \
     ASSIGN_DRIVER_FUNC(CreateBuffer, name) \

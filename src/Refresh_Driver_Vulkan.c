@@ -5570,13 +5570,9 @@ static uint8_t VULKAN_INTERNAL_CreateTexture(
 	return 1;
 }
 
-static Refresh_Texture* VULKAN_CreateTexture2D(
+static Refresh_Texture* VULKAN_CreateTexture(
 	Refresh_Renderer *driverData,
-	Refresh_ColorFormat format,
-	uint32_t width,
-	uint32_t height,
-	uint32_t levelCount,
-	Refresh_TextureUsageFlags usageFlags
+	Refresh_TextureCreateInfo *textureCreateInfo
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VulkanTexture *result;
@@ -5586,7 +5582,7 @@ static Refresh_Texture* VULKAN_CreateTexture2D(
 		VK_IMAGE_USAGE_TRANSFER_SRC_BIT
 	);
 
-	if (usageFlags & REFRESH_TEXTUREUSAGE_COLOR_TARGET_BIT)
+	if (textureCreateInfo->usageFlags & REFRESH_TEXTUREUSAGE_COLOR_TARGET_BIT)
 	{
 		imageUsageFlags |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 	}
@@ -5595,109 +5591,21 @@ static Refresh_Texture* VULKAN_CreateTexture2D(
 
 	VULKAN_INTERNAL_CreateTexture(
 		renderer,
-		width,
-		height,
-		1,
-		0,
+		textureCreateInfo->width,
+		textureCreateInfo->height,
+		textureCreateInfo->depth,
+		textureCreateInfo->isCube,
 		VK_SAMPLE_COUNT_1_BIT,
-		levelCount,
-		RefreshToVK_SurfaceFormat[format],
+		textureCreateInfo->levelCount,
+		RefreshToVK_SurfaceFormat[textureCreateInfo->format],
 		VK_IMAGE_ASPECT_COLOR_BIT,
 		VK_IMAGE_TILING_OPTIMAL,
 		VK_IMAGE_TYPE_2D,
 		imageUsageFlags,
-		usageFlags,
+		textureCreateInfo->usageFlags,
 		result
 	);
-	result->colorFormat = format;
-
-	return (Refresh_Texture*) result;
-}
-
-static Refresh_Texture* VULKAN_CreateTexture3D(
-	Refresh_Renderer *driverData,
-	Refresh_ColorFormat format,
-	uint32_t width,
-	uint32_t height,
-	uint32_t depth,
-	uint32_t levelCount,
-	Refresh_TextureUsageFlags usageFlags
-) {
-	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
-	VulkanTexture *result;
-	VkImageUsageFlags imageUsageFlags = (
-		VK_IMAGE_USAGE_SAMPLED_BIT |
-		VK_IMAGE_USAGE_TRANSFER_DST_BIT |
-		VK_IMAGE_USAGE_TRANSFER_SRC_BIT
-	);
-
-	if (usageFlags & REFRESH_TEXTUREUSAGE_COLOR_TARGET_BIT)
-	{
-		imageUsageFlags |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-	}
-
-	result = (VulkanTexture*) SDL_malloc(sizeof(VulkanTexture));
-
-	VULKAN_INTERNAL_CreateTexture(
-		renderer,
-		width,
-		height,
-		depth,
-		0,
-		VK_SAMPLE_COUNT_1_BIT,
-		levelCount,
-		RefreshToVK_SurfaceFormat[format],
-		VK_IMAGE_ASPECT_COLOR_BIT,
-		VK_IMAGE_TILING_OPTIMAL,
-		VK_IMAGE_TYPE_3D,
-		imageUsageFlags,
-		usageFlags,
-		result
-	);
-	result->colorFormat = format;
-
-	return (Refresh_Texture*) result;
-}
-
-static Refresh_Texture* VULKAN_CreateTextureCube(
-	Refresh_Renderer *driverData,
-	Refresh_ColorFormat format,
-	uint32_t size,
-	uint32_t levelCount,
-	Refresh_TextureUsageFlags usageFlags
-) {
-	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
-	VulkanTexture *result;
-	VkImageUsageFlags imageUsageFlags = (
-		VK_IMAGE_USAGE_SAMPLED_BIT |
-		VK_IMAGE_USAGE_TRANSFER_DST_BIT |
-		VK_IMAGE_USAGE_TRANSFER_SRC_BIT
-	);
-
-	if (usageFlags & REFRESH_TEXTUREUSAGE_COLOR_TARGET_BIT)
-	{
-		imageUsageFlags |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-	}
-
-	result = (VulkanTexture*) SDL_malloc(sizeof(VulkanTexture));
-
-	VULKAN_INTERNAL_CreateTexture(
-		renderer,
-		size,
-		size,
-		1,
-		1,
-		VK_SAMPLE_COUNT_1_BIT,
-		levelCount,
-		RefreshToVK_SurfaceFormat[format],
-		VK_IMAGE_ASPECT_COLOR_BIT,
-		VK_IMAGE_TILING_OPTIMAL,
-		VK_IMAGE_TYPE_2D,
-		imageUsageFlags,
-		usageFlags,
-		result
-	);
-	result->colorFormat = format;
+	result->colorFormat = textureCreateInfo->format;
 
 	return (Refresh_Texture*) result;
 }

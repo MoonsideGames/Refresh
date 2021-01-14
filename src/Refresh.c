@@ -338,60 +338,14 @@ Refresh_ShaderModule* Refresh_CreateShaderModule(
     );
 }
 
-Refresh_Texture* Refresh_CreateTexture2D(
+Refresh_Texture* Refresh_CreateTexture(
 	Refresh_Device *device,
-	Refresh_ColorFormat format,
-	uint32_t width,
-	uint32_t height,
-	uint32_t levelCount,
-    Refresh_TextureUsageFlags usageFlags
+    Refresh_TextureCreateInfo *textureCreateInfo
 ) {
     NULL_RETURN_NULL(device);
-    return device->CreateTexture2D(
+    return device->CreateTexture(
         device->driverData,
-        format,
-        width,
-        height,
-        levelCount,
-        usageFlags
-    );
-}
-
-Refresh_Texture* Refresh_CreateTexture3D(
-	Refresh_Device *device,
-	Refresh_ColorFormat format,
-	uint32_t width,
-	uint32_t height,
-	uint32_t depth,
-	uint32_t levelCount,
-    Refresh_TextureUsageFlags usageFlags
-) {
-    NULL_RETURN_NULL(device);
-    return device->CreateTexture3D(
-        device->driverData,
-        format,
-        width,
-        height,
-        depth,
-        levelCount,
-        usageFlags
-    );
-}
-
-Refresh_Texture* Refresh_CreateTextureCube(
-	Refresh_Device *device,
-	Refresh_ColorFormat format,
-	uint32_t size,
-	uint32_t levelCount,
-    Refresh_TextureUsageFlags usageFlags
-) {
-    NULL_RETURN_NULL(device);
-    return device->CreateTextureCube(
-        device->driverData,
-        format,
-        size,
-        levelCount,
-        usageFlags
+        textureCreateInfo
     );
 }
 
