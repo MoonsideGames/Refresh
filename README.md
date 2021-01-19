@@ -1,4 +1,4 @@
-[![Build Status](https://github.drone.moonside.games/api/badges/thatcosmonaut/Refresh/status.svg)](https://github.drone.moonside.games/thatcosmonaut/Refresh)
+[![Build Status](https://gitea.drone.moonside.games/api/badges/thatcosmonaut/Refresh/status.svg)](https://gitea.drone.moonside.games/thatcosmonaut/Refresh)
 
 This is Refresh, an XNA-inspired 3D graphics library with modern capabilities.
 
@@ -10,7 +10,7 @@ About Refresh
 -------------
 Refresh is directly inspired by FNA3D and intended to be a replacement for XNA's Graphics namespace.
 XNA 4.0 is a powerful API, but its shader system is outdated and certain restrictions are awkward to handle in a modern context.
-In the way that XNA was "one step above" DX9, Refresh intends to be "one step above" Vulkan. It should map nicely to modern graphics APIs. 
+In the way that XNA was "one step above" DX9, Refresh intends to be "one step above" Vulkan. It should map nicely to modern graphics APIs.
 Refresh will initially have a Vulkan runtime implementation. Support for other APIs like DX12 may come later.
 For shaders, we consume SPIR-V bytecode.
 
