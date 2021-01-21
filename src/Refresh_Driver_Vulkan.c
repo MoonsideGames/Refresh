@@ -5926,12 +5926,6 @@ static void VULKAN_INTERNAL_FlushTransfers(
 			return;
 		}
 
-		renderer->vkResetFences(
-			renderer->logicalDevice,
-			1,
-			&renderer->inFlightFence
-		);
-
 		renderer->pendingTransfer = 0;
 		renderer->textureStagingBufferOffset = 0;
 	}
