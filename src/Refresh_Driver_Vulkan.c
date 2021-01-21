@@ -5902,7 +5902,7 @@ static void VULKAN_INTERNAL_FlushTransfers(
 			renderer->transferQueue,
 			1,
 			&transferSubmitInfo,
-			NULL
+			renderer->inFlightFence
 		);
 
 		if (vulkanResult != VK_SUCCESS)
@@ -5962,7 +5962,7 @@ static void VULKAN_SetTextureData(
 
 	SDL_memcpy(
 		stagingBufferPointer,
-		data, 
+		data,
 		dataLengthInBytes
 	);
 
