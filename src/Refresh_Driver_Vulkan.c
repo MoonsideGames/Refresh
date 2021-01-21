@@ -7446,7 +7446,7 @@ static void VULKAN_BindIndexBuffer(
 
 	renderer->vkCmdBindIndexBuffer(
 		vulkanCommandBuffer->commandBuffer,
-		vulkanBuffer->subBuffers[renderer->frameIndex]->buffer,
+		vulkanBuffer->subBuffers[vulkanBuffer->currentSubBufferIndex]->buffer,
 		offset,
 		RefreshToVK_IndexType[indexElementSize]
 	);
