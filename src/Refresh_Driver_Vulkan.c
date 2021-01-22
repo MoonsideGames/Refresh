@@ -3694,8 +3694,7 @@ static void VULKAN_Clear(
 	Refresh_ClearOptions options,
 	Refresh_Color *colors,
 	uint32_t colorCount,
-	float depth,
-	int32_t stencil
+	Refresh_DepthStencilValue depthStencil
 ) {
 	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
 	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
@@ -3762,16 +3761,16 @@ static void VULKAN_Clear(
 
 		if (shouldClearDepth)
 		{
-			if (depth < 0.0f)
+			if (depthStencil.depth < 0.0f)
 			{
-				depth = 0.0f;
+				depthStencil.depth = 0.0f;
 			}
-			else if (depth > 1.0f)
+			else if (depthStencil.depth > 1.0f)
 			{
-				depth = 1.0f;
+				depthStencil.depth = 1.0f;
 			}
 			clearAttachments[attachmentCount].aspectMask |= VK_IMAGE_ASPECT_DEPTH_BIT;
-			clearAttachments[attachmentCount].clearValue.depthStencil.depth = depth;
+			clearAttachments[attachmentCount].clearValue.depthStencil.depth = depthStencil.depth;
 		}
 		else
 		{
@@ -3781,7 +3780,7 @@ static void VULKAN_Clear(
 		if (shouldClearStencil)
 		{
 			clearAttachments[attachmentCount].aspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
-			clearAttachments[attachmentCount].clearValue.depthStencil.stencil = stencil;
+			clearAttachments[attachmentCount].clearValue.depthStencil.stencil = depthStencil.stencil;
 		}
 		else
 		{

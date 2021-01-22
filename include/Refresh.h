@@ -742,12 +742,11 @@ REFRESHAPI void Refresh_DestroyDevice(Refresh_Device *device);
  * 		It is generally recommended to clear in BeginRenderPass
  * 		rather than by calling this function unless necessary.
  *
- * clearRect:	Area to clear.
- * options:		Bitflags to specify color/depth/stencil buffers for clearing.
- * colors:		An array of color values for the cleared color buffers.
- * colorCount:	The number of colors in the above array.
- * depth:		The new value of the cleared depth buffer.
- * stencil:		The new value of the cleared stencil buffer.
+ * clearRect:	 Area to clear.
+ * options:		 Bitflags to specify color/depth/stencil buffers for clearing.
+ * colors:		 An array of color values for the cleared color buffers.
+ * colorCount:	 The number of colors in the above array.
+ * depthStencil: Depth and stencil values for the cleared depth stencil buffer.
  */
 REFRESHAPI void Refresh_Clear(
 	Refresh_Device *device,
@@ -756,8 +755,7 @@ REFRESHAPI void Refresh_Clear(
 	Refresh_ClearOptions options,
 	Refresh_Color *colors,
 	uint32_t colorCount,
-	float depth,
-	int32_t stencil
+	Refresh_DepthStencilValue depthStencil
 );
 
 /* Draws data from vertex/index buffers with instancing enabled.

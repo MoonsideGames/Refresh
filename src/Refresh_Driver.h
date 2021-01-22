@@ -174,8 +174,7 @@ struct Refresh_Device
         Refresh_ClearOptions options,
         Refresh_Color *colors,
         uint32_t colorCount,
-        float depth,
-        int32_t stencil
+        Refresh_DepthStencilValue depthStencil
 	);
 
 	void (*DrawInstancedPrimitives)(

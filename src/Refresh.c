@@ -174,8 +174,7 @@ void Refresh_Clear(
 	Refresh_ClearOptions options,
 	Refresh_Color *colors,
 	uint32_t colorCount,
-	float depth,
-	int32_t stencil
+    Refresh_DepthStencilValue depthStencil
 ) {
     NULL_RETURN(device);
     device->Clear(
@@ -185,8 +184,7 @@ void Refresh_Clear(
         options,
         colors,
         colorCount,
-        depth,
-        stencil
+        depthStencil
     );
 }
 
