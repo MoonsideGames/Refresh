@@ -1,4 +1,4 @@
-[![Build Status](https://gitea.drone.moonside.games/api/badges/thatcosmonaut/Refresh/status.svg)](https://gitea.drone.moonside.games/thatcosmonaut/Refresh)
+[![Build Status](https://gitea.drone.moonside.games/api/badges/MoonsideGames/Refresh/status.svg)](https://gitea.drone.moonside.games/MoonsideGames/Refresh)
 
 This is Refresh, an XNA-inspired 3D graphics library with modern capabilities.
 
