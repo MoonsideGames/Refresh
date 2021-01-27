@@ -2217,27 +2217,27 @@ static void VULKAN_INTERNAL_DestroyTexture(
 
 static void VULKAN_INTERNAL_DestroyRenderTarget(
 	VulkanRenderer *renderer,
-	VulkanRenderTarget *colorTarget
+	VulkanRenderTarget *renderTargetTarget
 ) {
 	renderer->vkDestroyImageView(
 		renderer->logicalDevice,
-		colorTarget->view,
+		renderTargetTarget->view,
 		NULL
 	);
 
-	/* The texture is not owned by the ColorTarget
+	/* The texture is not owned by the RenderTarget
 	 * so we don't free it here
 	 * But the multisampleTexture is!
 	 */
-	if (colorTarget->multisampleTexture != NULL)
+	if (renderTargetTarget->multisampleTexture != NULL)
 	{
 		VULKAN_INTERNAL_DestroyTexture(
 			renderer,
-			colorTarget->multisampleTexture
+			renderTargetTarget->multisampleTexture
 		);
 	}
 
-	SDL_free(colorTarget);
+	SDL_free(renderTargetTarget);
 }
 
 static void VULKAN_INTERNAL_DestroyBuffer(
@@ -7105,7 +7105,7 @@ static void VULKAN_BeginRenderPass(
 	Refresh_CommandBuffer *commandBuffer,
 	Refresh_RenderPass *renderPass,
 	Refresh_Framebuffer *framebuffer,
-	Refresh_Rect renderArea,
+	Refresh_Rect *renderArea,
 	Refresh_Color *pColorClearValues,
 	uint32_t colorClearCount,
 	Refresh_DepthStencilValue *depthStencilClearValue
@@ -7189,10 +7189,10 @@ static void VULKAN_BeginRenderPass(
 	renderPassBeginInfo.pNext = NULL;
 	renderPassBeginInfo.renderPass = (VkRenderPass) renderPass;
 	renderPassBeginInfo.framebuffer = vulkanFramebuffer->framebuffer;
-	renderPassBeginInfo.renderArea.extent.width = renderArea.w;
-	renderPassBeginInfo.renderArea.extent.height = renderArea.h;
-	renderPassBeginInfo.renderArea.offset.x = renderArea.x;
-	renderPassBeginInfo.renderArea.offset.y = renderArea.y;
+	renderPassBeginInfo.renderArea.extent.width = renderArea->w;
+	renderPassBeginInfo.renderArea.extent.height = renderArea->h;
+	renderPassBeginInfo.renderArea.offset.x = renderArea->x;
+	renderPassBeginInfo.renderArea.offset.y = renderArea->y;
 	renderPassBeginInfo.pClearValues = clearValues;
 	renderPassBeginInfo.clearValueCount = clearCount;
 
@@ -9470,6 +9470,8 @@ static Refresh_Device* VULKAN_INTERNAL_CreateDevice(
 		sizeof(VkRenderPass) *
 		renderer->submittedRenderPassesToDestroyCapacity
 	);
+
+	renderer->frameIndex = 0;
 
     return result;
 }

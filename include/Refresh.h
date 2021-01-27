@@ -1182,7 +1182,7 @@ REFRESHAPI void Refresh_BeginRenderPass(
 	Refresh_CommandBuffer *commandBuffer,
 	Refresh_RenderPass *renderPass,
 	Refresh_Framebuffer *framebuffer,
-	Refresh_Rect renderArea,
+	Refresh_Rect *renderArea,
 	Refresh_Color *pColorClearValues,
 	uint32_t colorClearCount,
 	Refresh_DepthStencilValue *depthStencilClearValue

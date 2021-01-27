@@ -347,7 +347,7 @@ Refresh_Texture* Refresh_CreateTexture(
     );
 }
 
-Refresh_RenderTarget* Refresh_CreateColorTarget(
+Refresh_RenderTarget* Refresh_CreateRenderTarget(
 	Refresh_Device *device,
 	Refresh_TextureSlice *textureSlice,
     Refresh_SampleCount multisampleCount
@@ -587,7 +587,7 @@ void Refresh_QueueDestroyBuffer(
     );
 }
 
-void Refresh_QueueDestroyColorTarget(
+void Refresh_QueueDestroyRenderTarget(
 	Refresh_Device *device,
 	Refresh_RenderTarget *renderTarget
 ) {
@@ -658,7 +658,7 @@ void Refresh_BeginRenderPass(
     Refresh_CommandBuffer *commandBuffer,
 	Refresh_RenderPass *renderPass,
 	Refresh_Framebuffer *framebuffer,
-	Refresh_Rect renderArea,
+	Refresh_Rect *renderArea,
 	Refresh_Color *pColorClearValues,
 	uint32_t colorClearCount,
 	Refresh_DepthStencilValue *depthStencilClearValue

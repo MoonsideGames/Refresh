@@ -408,7 +408,7 @@ struct Refresh_Device
         Refresh_CommandBuffer *commandBuffer,
         Refresh_RenderPass *renderPass,
         Refresh_Framebuffer *framebuffer,
-        Refresh_Rect renderArea,
+        Refresh_Rect *renderArea,
         Refresh_Color *pColorClearValues,
         uint32_t colorClearCount,
         Refresh_DepthStencilValue *depthStencilClearValue
