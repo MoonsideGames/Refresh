@@ -758,38 +758,27 @@ typedef struct VulkanTexture
 	uint32_t layerCount;
 	uint32_t levelCount;
 	VkFormat format;
-	Refresh_ColorFormat refreshFormat;
+	Refresh_TextureFormat refreshFormat;
 	VulkanResourceAccessType resourceAccessType;
 	uint32_t queueFamilyIndex;
-	Refresh_TextureUsageFlags usageFlags;
-	REFRESHNAMELESS union
-	{
-		Refresh_ColorFormat colorFormat;
-		Refresh_DepthFormat depthStencilFormat;
-	};
+	VkImageUsageFlags usageFlags;
 } VulkanTexture;
 
-typedef struct VulkanColorTarget
+typedef struct VulkanRenderTarget
 {
 	VulkanTexture *texture;
 	uint32_t layer;
 	VkImageView view;
 	VulkanTexture *multisampleTexture;
 	VkSampleCountFlags multisampleCount;
-} VulkanColorTarget;
-
-typedef struct VulkanDepthStencilTarget
-{
-	VulkanTexture *texture;
-	VkImageView view;
-} VulkanDepthStencilTarget;
+} VulkanRenderTarget;
 
 typedef struct VulkanFramebuffer
 {
 	VkFramebuffer framebuffer;
-	VulkanColorTarget *colorTargets[MAX_COLOR_TARGET_BINDINGS];
+	VulkanRenderTarget *colorTargets[MAX_COLOR_TARGET_BINDINGS];
 	uint32_t colorTargetCount;
-	VulkanDepthStencilTarget *depthStencilTarget;
+	VulkanRenderTarget *depthStencilTarget;
 	uint32_t width;
 	uint32_t height;
 } VulkanFramebuffer;
@@ -1367,21 +1356,13 @@ typedef struct VulkanRenderer
 
 	/* Deferred destroy storage */
 
-	VulkanColorTarget **colorTargetsToDestroy;
-	uint32_t colorTargetsToDestroyCount;
-	uint32_t colorTargetsToDestroyCapacity;
+	VulkanRenderTarget **renderTargetsToDestroy;
+	uint32_t renderTargetsToDestroyCount;
+	uint32_t renderTargetsToDestroyCapacity;
 
-	VulkanColorTarget **submittedColorTargetsToDestroy;
-	uint32_t submittedColorTargetsToDestroyCount;
-	uint32_t submittedColorTargetsToDestroyCapacity;
-
-	VulkanDepthStencilTarget **depthStencilTargetsToDestroy;
-	uint32_t depthStencilTargetsToDestroyCount;
-	uint32_t depthStencilTargetsToDestroyCapacity;
-
-	VulkanDepthStencilTarget **submittedDepthStencilTargetsToDestroy;
-	uint32_t submittedDepthStencilTargetsToDestroyCount;
-	uint32_t submittedDepthStencilTargetsToDestroyCapacity;
+	VulkanRenderTarget **submittedRenderTargetsToDestroy;
+	uint32_t submittedRenderTargetsToDestroyCount;
+	uint32_t submittedRenderTargetsToDestroyCapacity;
 
 	VulkanTexture **texturesToDestroy;
 	uint32_t texturesToDestroyCount;
@@ -1508,19 +1489,30 @@ static inline void LogVulkanResult(
 
 /* Utility */
 
-static inline uint8_t DepthFormatContainsStencil(VkFormat format)
+static inline uint8_t IsDepthFormat(Refresh_TextureFormat format)
 {
 	switch(format)
 	{
-		case VK_FORMAT_D16_UNORM:
-		case VK_FORMAT_D32_SFLOAT:
-			return 0;
-		case VK_FORMAT_D16_UNORM_S8_UINT:
-		case VK_FORMAT_D24_UNORM_S8_UINT:
-		case VK_FORMAT_D32_SFLOAT_S8_UINT:
+		case REFRESH_TEXTUREFORMAT_D16_UNORM:
+		case REFRESH_TEXTUREFORMAT_D32_SFLOAT:
+		case REFRESH_TEXTUREFORMAT_D16_UNORM_S8_UINT:
+		case REFRESH_TEXTUREFORMAT_D32_SFLOAT_S8_UINT:
 			return 1;
+
 		default:
-			SDL_assert(0 && "Invalid depth format");
+			return 0;
+	}
+}
+
+static inline uint8_t IsStencilFormat(Refresh_TextureFormat format)
+{
+	switch(format)
+	{
+		case REFRESH_TEXTUREFORMAT_D16_UNORM_S8_UINT:
+		case REFRESH_TEXTUREFORMAT_D32_SFLOAT_S8_UINT:
+			return 1;
+
+		default:
 			return 0;
 	}
 }
@@ -2223,9 +2215,9 @@ static void VULKAN_INTERNAL_DestroyTexture(
 	SDL_free(texture);
 }
 
-static void VULKAN_INTERNAL_DestroyColorTarget(
+static void VULKAN_INTERNAL_DestroyRenderTarget(
 	VulkanRenderer *renderer,
-	VulkanColorTarget *colorTarget
+	VulkanRenderTarget *colorTarget
 ) {
 	renderer->vkDestroyImageView(
 		renderer->logicalDevice,
@@ -2246,14 +2238,6 @@ static void VULKAN_INTERNAL_DestroyColorTarget(
 	}
 
 	SDL_free(colorTarget);
-}
-
-static void VULKAN_INTERNAL_DestroyDepthStencilTarget(
-	VulkanRenderer *renderer,
-	VulkanDepthStencilTarget *depthStencilTarget
-) {
-	VULKAN_INTERNAL_DestroyTexture(renderer, depthStencilTarget->texture);
-	SDL_free(depthStencilTarget);
 }
 
 static void VULKAN_INTERNAL_DestroyBuffer(
@@ -2523,23 +2507,14 @@ static void VULKAN_INTERNAL_PostWorkCleanup(VulkanRenderer* renderer)
 
 	SDL_LockMutex(renderer->disposeLock);
 
-	for (i = 0; i < renderer->submittedColorTargetsToDestroyCount; i += 1)
+	for (i = 0; i < renderer->submittedRenderTargetsToDestroyCount; i += 1)
 	{
-		VULKAN_INTERNAL_DestroyColorTarget(
+		VULKAN_INTERNAL_DestroyRenderTarget(
 			renderer,
-			renderer->submittedColorTargetsToDestroy[i]
+			renderer->submittedRenderTargetsToDestroy[i]
 		);
 	}
-	renderer->submittedColorTargetsToDestroyCount = 0;
-
-	for (i = 0; i < renderer->submittedDepthStencilTargetsToDestroyCount; i += 1)
-	{
-		VULKAN_INTERNAL_DestroyDepthStencilTarget(
-			renderer,
-			renderer->submittedDepthStencilTargetsToDestroy[i]
-		);
-	}
-	renderer->submittedDepthStencilTargetsToDestroyCount = 0;
+	renderer->submittedRenderTargetsToDestroyCount = 0;
 
 	for (i = 0; i < renderer->submittedTexturesToDestroyCount; i += 1)
 	{
@@ -2616,19 +2591,11 @@ static void VULKAN_INTERNAL_PostWorkCleanup(VulkanRenderer* renderer)
 	/* Re-size submitted destroy lists */
 
 	EXPAND_ARRAY_IF_NEEDED(
-		renderer->submittedColorTargetsToDestroy,
-		VulkanColorTarget*,
-		renderer->colorTargetsToDestroyCount,
-		renderer->submittedColorTargetsToDestroyCapacity,
-		renderer->colorTargetsToDestroyCount
-	)
-
-	EXPAND_ARRAY_IF_NEEDED(
-		renderer->submittedDepthStencilTargetsToDestroy,
-		VulkanDepthStencilTarget*,
-		renderer->depthStencilTargetsToDestroyCount,
-		renderer->submittedDepthStencilTargetsToDestroyCapacity,
-		renderer->depthStencilTargetsToDestroyCount
+		renderer->submittedRenderTargetsToDestroy,
+		VulkanRenderTarget*,
+		renderer->renderTargetsToDestroyCount,
+		renderer->submittedRenderTargetsToDestroyCapacity,
+		renderer->renderTargetsToDestroyCount
 	)
 
 	EXPAND_ARRAY_IF_NEEDED(
@@ -2699,18 +2666,10 @@ static void VULKAN_INTERNAL_PostWorkCleanup(VulkanRenderer* renderer)
 
 	MOVE_ARRAY_CONTENTS_AND_RESET(
 		i,
-		renderer->submittedColorTargetsToDestroy,
-		renderer->submittedColorTargetsToDestroyCount,
-		renderer->colorTargetsToDestroy,
-		renderer->colorTargetsToDestroyCount
-	)
-
-	MOVE_ARRAY_CONTENTS_AND_RESET(
-		i,
-		renderer->submittedDepthStencilTargetsToDestroy,
-		renderer->submittedDepthStencilTargetsToDestroyCount,
-		renderer->depthStencilTargetsToDestroy,
-		renderer->depthStencilTargetsToDestroyCount
+		renderer->submittedRenderTargetsToDestroy,
+		renderer->submittedRenderTargetsToDestroyCount,
+		renderer->renderTargetsToDestroy,
+		renderer->renderTargetsToDestroyCount
 	)
 
 	MOVE_ARRAY_CONTENTS_AND_RESET(
@@ -4127,7 +4086,7 @@ static Refresh_RenderPass* VULKAN_CreateRenderPass(
     {
         attachmentDescriptions[attachmentDescriptionCount].flags = 0;
         attachmentDescriptions[attachmentDescriptionCount].format = RefreshToVK_DepthFormat[
-            renderPassCreateInfo->depthTargetDescription->depthFormat
+            renderPassCreateInfo->depthTargetDescription->depthStencilFormat
         ];
         attachmentDescriptions[attachmentDescriptionCount].samples =
             VK_SAMPLE_COUNT_1_BIT; /* FIXME: do these take multisamples? */
@@ -5326,12 +5285,12 @@ static Refresh_Framebuffer* VULKAN_CreateFramebuffer(
 
 	for (i = 0; i < colorAttachmentCount; i += 1)
 	{
-		imageViews[i] = ((VulkanColorTarget*)framebufferCreateInfo->pColorTargets[i])->view;
+		imageViews[i] = ((VulkanRenderTarget*)framebufferCreateInfo->pColorTargets[i])->view;
 	}
 
 	if (framebufferCreateInfo->pDepthStencilTarget != NULL)
 	{
-		imageViews[colorAttachmentCount] = ((VulkanDepthStencilTarget*)framebufferCreateInfo->pDepthStencilTarget)->view;
+		imageViews[colorAttachmentCount] = ((VulkanRenderTarget*)framebufferCreateInfo->pDepthStencilTarget)->view;
 	}
 
 	vkFramebufferCreateInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
@@ -5361,12 +5320,12 @@ static Refresh_Framebuffer* VULKAN_CreateFramebuffer(
 	for (i = 0; i < colorAttachmentCount; i += 1)
 	{
 		vulkanFramebuffer->colorTargets[i] =
-			(VulkanColorTarget*) framebufferCreateInfo->pColorTargets[i];
+			(VulkanRenderTarget*) framebufferCreateInfo->pColorTargets[i];
 	}
 
 	vulkanFramebuffer->colorTargetCount = colorAttachmentCount;
 	vulkanFramebuffer->depthStencilTarget =
-		(VulkanDepthStencilTarget*) framebufferCreateInfo->pDepthStencilTarget;
+		(VulkanRenderTarget*) framebufferCreateInfo->pDepthStencilTarget;
 
 	vulkanFramebuffer->width = framebufferCreateInfo->width;
 	vulkanFramebuffer->height = framebufferCreateInfo->height;
@@ -5421,7 +5380,6 @@ static uint8_t VULKAN_INTERNAL_CreateTexture(
 	VkImageTiling tiling,
 	VkImageType imageType,
 	VkImageUsageFlags imageUsageFlags,
-	Refresh_TextureUsageFlags textureUsageFlags,
 	VulkanTexture *texture
 ) {
 	VkResult vulkanResult;
@@ -5564,7 +5522,7 @@ static uint8_t VULKAN_INTERNAL_CreateTexture(
 	texture->layerCount = layerCount;
 	texture->resourceAccessType = RESOURCE_ACCESS_NONE;
 	texture->queueFamilyIndex = renderer->queueFamilyIndices.graphicsFamily;
-	texture->usageFlags = textureUsageFlags;
+	texture->usageFlags = imageUsageFlags;
 
 	return 1;
 }
@@ -5576,14 +5534,23 @@ static Refresh_Texture* VULKAN_CreateTexture(
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VulkanTexture *result;
 	VkImageUsageFlags imageUsageFlags = (
-		VK_IMAGE_USAGE_SAMPLED_BIT |
 		VK_IMAGE_USAGE_TRANSFER_DST_BIT |
 		VK_IMAGE_USAGE_TRANSFER_SRC_BIT
 	);
 
+	if (textureCreateInfo->usageFlags & REFRESH_TEXTUREUSAGE_SAMPLER_BIT)
+	{
+		imageUsageFlags |= VK_IMAGE_USAGE_SAMPLED_BIT;
+	}
+
 	if (textureCreateInfo->usageFlags & REFRESH_TEXTUREUSAGE_COLOR_TARGET_BIT)
 	{
 		imageUsageFlags |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+	}
+
+	if (textureCreateInfo->usageFlags & REFRESH_TEXTUREUSAGE_DEPTH_STENCIL_TARGET_BIT)
+	{
+		imageUsageFlags |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
 	}
 
 	result = (VulkanTexture*) SDL_malloc(sizeof(VulkanTexture));
@@ -5601,72 +5568,86 @@ static Refresh_Texture* VULKAN_CreateTexture(
 		VK_IMAGE_TILING_OPTIMAL,
 		VK_IMAGE_TYPE_2D,
 		imageUsageFlags,
-		textureCreateInfo->usageFlags,
 		result
 	);
-	result->colorFormat = textureCreateInfo->format;
+	result->refreshFormat = textureCreateInfo->format;
 
 	return (Refresh_Texture*) result;
 }
 
-static Refresh_ColorTarget* VULKAN_CreateColorTarget(
+static Refresh_RenderTarget* VULKAN_CreateRenderTarget(
 	Refresh_Renderer *driverData,
-	Refresh_SampleCount multisampleCount,
-	Refresh_TextureSlice *textureSlice
+	Refresh_TextureSlice *textureSlice,
+	Refresh_SampleCount multisampleCount
 ) {
 	VkResult vulkanResult;
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
-	VulkanColorTarget *colorTarget = (VulkanColorTarget*) SDL_malloc(sizeof(VulkanColorTarget));
+	VulkanRenderTarget *renderTarget = (VulkanRenderTarget*) SDL_malloc(sizeof(VulkanRenderTarget));
 	VkImageViewCreateInfo imageViewCreateInfo;
 	VkComponentMapping swizzle = IDENTITY_SWIZZLE;
+	VkImageAspectFlags aspectFlags = 0;
 
-	colorTarget->texture = (VulkanTexture*) textureSlice->texture;
-	colorTarget->layer = textureSlice->layer;
-	colorTarget->multisampleTexture = NULL;
-	colorTarget->multisampleCount = 1;
+	renderTarget->texture = (VulkanTexture*) textureSlice->texture;
+	renderTarget->layer = textureSlice->layer;
+	renderTarget->multisampleTexture = NULL;
+	renderTarget->multisampleCount = 1;
+
+	if (IsDepthFormat(renderTarget->texture->refreshFormat))
+	{
+		aspectFlags |= VK_IMAGE_ASPECT_DEPTH_BIT;
+
+		if (IsStencilFormat(renderTarget->texture->refreshFormat))
+		{
+			aspectFlags |= VK_IMAGE_ASPECT_STENCIL_BIT;
+		}
+	}
+	else
+	{
+		aspectFlags |= VK_IMAGE_ASPECT_COLOR_BIT;
+	}
+
 
 	/* create resolve target for multisample */
 	if (multisampleCount > REFRESH_SAMPLECOUNT_1)
 	{
-		colorTarget->multisampleTexture =
+		renderTarget->multisampleTexture =
 			(VulkanTexture*) SDL_malloc(sizeof(VulkanTexture));
 
 		VULKAN_INTERNAL_CreateTexture(
 			renderer,
-			colorTarget->texture->dimensions.width,
-			colorTarget->texture->dimensions.height,
+			renderTarget->texture->dimensions.width,
+			renderTarget->texture->dimensions.height,
 			1,
 			0,
 			RefreshToVK_SampleCount[multisampleCount],
 			1,
-			colorTarget->texture->format,
-			VK_IMAGE_ASPECT_COLOR_BIT,
+			renderTarget->texture->format,
+			aspectFlags,
 			VK_IMAGE_TILING_OPTIMAL,
 			VK_IMAGE_TYPE_2D,
 			VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
-			REFRESH_TEXTUREUSAGE_COLOR_TARGET_BIT,
-			colorTarget->multisampleTexture
+			renderTarget->multisampleTexture
 		);
-		colorTarget->multisampleTexture->colorFormat = colorTarget->texture->colorFormat;
-		colorTarget->multisampleCount = multisampleCount;
+		renderTarget->multisampleTexture->refreshFormat = renderTarget->texture->refreshFormat;
+		renderTarget->multisampleCount = multisampleCount;
 	}
 
 	/* create framebuffer compatible views for RenderTarget */
 	imageViewCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
 	imageViewCreateInfo.pNext = NULL;
 	imageViewCreateInfo.flags = 0;
-	imageViewCreateInfo.image = colorTarget->texture->image;
-	imageViewCreateInfo.format = colorTarget->texture->format;
+	imageViewCreateInfo.image = renderTarget->texture->image;
+	imageViewCreateInfo.format = renderTarget->texture->format;
 	imageViewCreateInfo.components = swizzle;
 	imageViewCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 	imageViewCreateInfo.subresourceRange.baseMipLevel = 0;
 	imageViewCreateInfo.subresourceRange.levelCount = 1;
 	imageViewCreateInfo.subresourceRange.baseArrayLayer = 0;
-	if (colorTarget->texture->is3D)
+	if (renderTarget->texture->is3D)
 	{
 		imageViewCreateInfo.subresourceRange.baseArrayLayer = textureSlice->depth;
 	}
-	else if (colorTarget->texture->isCube)
+	else if (renderTarget->texture->isCube)
 	{
 		imageViewCreateInfo.subresourceRange.baseArrayLayer = textureSlice->layer;
 	}
@@ -5677,7 +5658,7 @@ static Refresh_ColorTarget* VULKAN_CreateColorTarget(
 		renderer->logicalDevice,
 		&imageViewCreateInfo,
 		NULL,
-		&colorTarget->view
+		&renderTarget->view
 	);
 
 	if (vulkanResult != VK_SUCCESS)
@@ -5690,59 +5671,7 @@ static Refresh_ColorTarget* VULKAN_CreateColorTarget(
 		return NULL;
 	}
 
-	return (Refresh_ColorTarget*) colorTarget;
-}
-
-static Refresh_DepthStencilTarget* VULKAN_CreateDepthStencilTarget(
-	Refresh_Renderer *driverData,
-	uint32_t width,
-	uint32_t height,
-	Refresh_DepthFormat format
-) {
-	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
-	VulkanDepthStencilTarget *depthStencilTarget =
-		(VulkanDepthStencilTarget*) SDL_malloc(
-			sizeof(VulkanDepthStencilTarget)
-		);
-
-	VulkanTexture *texture =
-		(VulkanTexture*) SDL_malloc(sizeof(VulkanTexture));
-
-	VkImageAspectFlags imageAspectFlags = VK_IMAGE_ASPECT_DEPTH_BIT;
-
-	VkImageUsageFlags imageUsageFlags =
-		VK_IMAGE_USAGE_SAMPLED_BIT |
-		VK_IMAGE_USAGE_TRANSFER_DST_BIT |
-		VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
-		VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
-
-	if (DepthFormatContainsStencil(RefreshToVK_DepthFormat[format]))
-	{
-		imageAspectFlags |= VK_IMAGE_ASPECT_STENCIL_BIT;
-	}
-
-	VULKAN_INTERNAL_CreateTexture(
-		renderer,
-		width,
-		height,
-		1,
-		0,
-		VK_SAMPLE_COUNT_1_BIT,
-		1,
-		RefreshToVK_DepthFormat[format],
-		imageAspectFlags,
-		VK_IMAGE_TILING_OPTIMAL,
-		VK_IMAGE_TYPE_2D,
-		imageUsageFlags,
-		0,
-		texture
-	);
-	texture->depthStencilFormat = format;
-
-	depthStencilTarget->texture = texture;
-	depthStencilTarget->view = texture->view;
-
-    return (Refresh_DepthStencilTarget*) depthStencilTarget;
+	return (Refresh_RenderTarget*) renderTarget;
 }
 
 static Refresh_Buffer* VULKAN_CreateBuffer(
@@ -5998,7 +5927,7 @@ static void VULKAN_SetTextureData(
 
 	renderer->textureStagingBufferOffset += dataLengthInBytes;
 
-	if (vulkanTexture->usageFlags & REFRESH_TEXTUREUSAGE_SAMPLER_BIT)
+	if (vulkanTexture->usageFlags & VK_IMAGE_USAGE_SAMPLED_BIT)
 	{
 		VULKAN_INTERNAL_ImageMemoryBarrier(
 			renderer,
@@ -6035,8 +5964,8 @@ static void VULKAN_SetTextureDataYUV(
 
 	VkCommandBuffer commandBuffer = renderer->transferCommandBuffers[renderer->frameIndex];
 	uint8_t *dataPtr = (uint8_t*) data;
-	int32_t yDataLength = BytesPerImage(yWidth, yHeight, REFRESH_COLORFORMAT_R8);
-	int32_t uvDataLength = BytesPerImage(uvWidth, uvHeight, REFRESH_COLORFORMAT_R8);
+	int32_t yDataLength = BytesPerImage(yWidth, yHeight, REFRESH_TEXTUREFORMAT_R8);
+	int32_t uvDataLength = BytesPerImage(uvWidth, uvHeight, REFRESH_TEXTUREFORMAT_R8);
 	VkBufferImageCopy imageCopy;
 	uint8_t * stagingBufferPointer;
 
@@ -6180,7 +6109,7 @@ static void VULKAN_SetTextureDataYUV(
 
 	renderer->textureStagingBufferOffset += dataLength;
 
-	if (tex->usageFlags & REFRESH_TEXTUREUSAGE_SAMPLER_BIT)
+	if (tex->usageFlags & VK_IMAGE_USAGE_SAMPLED_BIT)
 	{
 		VULKAN_INTERNAL_ImageMemoryBarrier(
 			renderer,
@@ -7033,48 +6962,25 @@ static void VULKAN_QueueDestroyBuffer(
 	SDL_UnlockMutex(renderer->disposeLock);
 }
 
-static void VULKAN_QueueDestroyColorTarget(
+static void VULKAN_QueueDestroyRenderTarget(
 	Refresh_Renderer *driverData,
-	Refresh_ColorTarget *colorTarget
+	Refresh_RenderTarget *renderTarget
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
-	VulkanColorTarget *vulkanColorTarget = (VulkanColorTarget*) colorTarget;
+	VulkanRenderTarget *vulkanRenderTarget = (VulkanRenderTarget*) renderTarget;
 
 	SDL_LockMutex(renderer->disposeLock);
 
 	EXPAND_ARRAY_IF_NEEDED(
-		renderer->colorTargetsToDestroy,
-		VulkanColorTarget*,
-		renderer->colorTargetsToDestroyCount + 1,
-		renderer->colorTargetsToDestroyCapacity,
-		renderer->colorTargetsToDestroyCapacity * 2
+		renderer->renderTargetsToDestroy,
+		VulkanRenderTarget*,
+		renderer->renderTargetsToDestroyCount + 1,
+		renderer->renderTargetsToDestroyCapacity,
+		renderer->renderTargetsToDestroyCapacity * 2
 	)
 
-	renderer->colorTargetsToDestroy[renderer->colorTargetsToDestroyCount] = vulkanColorTarget;
-	renderer->colorTargetsToDestroyCount += 1;
-
-	SDL_UnlockMutex(renderer->disposeLock);
-}
-
-static void VULKAN_QueueDestroyDepthStencilTarget(
-	Refresh_Renderer *driverData,
-	Refresh_DepthStencilTarget *depthStencilTarget
-) {
-	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
-	VulkanDepthStencilTarget *vulkanDepthStencilTarget = (VulkanDepthStencilTarget*) depthStencilTarget;
-
-	SDL_LockMutex(renderer->disposeLock);
-
-	EXPAND_ARRAY_IF_NEEDED(
-		renderer->depthStencilTargetsToDestroy,
-		VulkanDepthStencilTarget*,
-		renderer->depthStencilTargetsToDestroyCount + 1,
-		renderer->depthStencilTargetsToDestroyCapacity,
-		renderer->depthStencilTargetsToDestroyCapacity * 2
-	)
-
-	renderer->depthStencilTargetsToDestroy[renderer->depthStencilTargetsToDestroyCount] = vulkanDepthStencilTarget;
-	renderer->depthStencilTargetsToDestroyCount += 1;
+	renderer->renderTargetsToDestroy[renderer->renderTargetsToDestroyCount] = vulkanRenderTarget;
+	renderer->renderTargetsToDestroyCount += 1;
 
 	SDL_UnlockMutex(renderer->disposeLock);
 }
@@ -7235,8 +7141,8 @@ static void VULKAN_BeginRenderPass(
 	if (depthStencilClearValue != NULL)
 	{
 		depthAspectFlags = VK_IMAGE_ASPECT_DEPTH_BIT;
-		if (DepthFormatContainsStencil(
-			vulkanFramebuffer->depthStencilTarget->texture->format
+		if (IsStencilFormat(
+			vulkanFramebuffer->depthStencilTarget->texture->refreshFormat
 		)) {
 			depthAspectFlags |= VK_IMAGE_ASPECT_STENCIL_BIT;
 		}
@@ -7317,7 +7223,8 @@ static void VULKAN_EndRenderPass(
 	for (i = 0; i < vulkanCommandBuffer->currentFramebuffer->colorTargetCount; i += 1)
 	{
 		currentTexture = vulkanCommandBuffer->currentFramebuffer->colorTargets[i]->texture;
-		if (currentTexture->usageFlags & REFRESH_TEXTUREUSAGE_SAMPLER_BIT)
+
+		if (currentTexture->usageFlags & VK_IMAGE_USAGE_SAMPLED_BIT)
 		{
 			VULKAN_INTERNAL_ImageMemoryBarrier(
 				renderer,
@@ -8612,7 +8519,7 @@ static uint8_t VULKAN_INTERNAL_IsDeviceSuitable(
 	return 0;
 }
 
-static VULKAN_INTERNAL_GetPhysicalDeviceProperties(
+static void VULKAN_INTERNAL_GetPhysicalDeviceProperties(
 	VulkanRenderer *renderer
 ) {
 	renderer->physicalDeviceDriverProperties.sType =
@@ -9420,36 +9327,20 @@ static Refresh_Device* VULKAN_INTERNAL_CreateDevice(
 
 	/* Deferred destroy storage */
 
-	renderer->colorTargetsToDestroyCapacity = 16;
-	renderer->colorTargetsToDestroyCount = 0;
+	renderer->renderTargetsToDestroyCapacity = 16;
+	renderer->renderTargetsToDestroyCount = 0;
 
-	renderer->colorTargetsToDestroy = (VulkanColorTarget**) SDL_malloc(
-		sizeof(VulkanColorTarget*) *
-		renderer->colorTargetsToDestroyCapacity
+	renderer->renderTargetsToDestroy = (VulkanRenderTarget**) SDL_malloc(
+		sizeof(VulkanRenderTarget*) *
+		renderer->renderTargetsToDestroyCapacity
 	);
 
-	renderer->submittedColorTargetsToDestroyCapacity = 16;
-	renderer->submittedColorTargetsToDestroyCount = 0;
+	renderer->submittedRenderTargetsToDestroyCapacity = 16;
+	renderer->submittedRenderTargetsToDestroyCount = 0;
 
-	renderer->submittedColorTargetsToDestroy = (VulkanColorTarget**) SDL_malloc(
-		sizeof(VulkanColorTarget*) *
-		renderer->submittedColorTargetsToDestroyCapacity
-	);
-
-	renderer->depthStencilTargetsToDestroyCapacity = 16;
-	renderer->depthStencilTargetsToDestroyCount = 0;
-
-	renderer->depthStencilTargetsToDestroy = (VulkanDepthStencilTarget**) SDL_malloc(
-		sizeof(VulkanDepthStencilTarget*) *
-		renderer->depthStencilTargetsToDestroyCapacity
-	);
-
-	renderer->submittedDepthStencilTargetsToDestroyCapacity = 16;
-	renderer->submittedDepthStencilTargetsToDestroyCount = 0;
-
-	renderer->submittedDepthStencilTargetsToDestroy = (VulkanDepthStencilTarget**) SDL_malloc(
-		sizeof(VulkanDepthStencilTarget*) *
-		renderer->submittedDepthStencilTargetsToDestroyCapacity
+	renderer->submittedRenderTargetsToDestroy = (VulkanRenderTarget**) SDL_malloc(
+		sizeof(VulkanRenderTarget*) *
+		renderer->submittedRenderTargetsToDestroyCapacity
 	);
 
 	renderer->texturesToDestroyCapacity = 16;

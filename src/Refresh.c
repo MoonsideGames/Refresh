@@ -347,31 +347,16 @@ Refresh_Texture* Refresh_CreateTexture(
     );
 }
 
-Refresh_ColorTarget* Refresh_CreateColorTarget(
+Refresh_RenderTarget* Refresh_CreateColorTarget(
 	Refresh_Device *device,
-    Refresh_SampleCount multisampleCount,
-	Refresh_TextureSlice *textureSlice
+	Refresh_TextureSlice *textureSlice,
+    Refresh_SampleCount multisampleCount
 ) {
     NULL_RETURN_NULL(device);
-    return device->CreateColorTarget(
+    return device->CreateRenderTarget(
         device->driverData,
-        multisampleCount,
-        textureSlice
-    );
-}
-
-Refresh_DepthStencilTarget* Refresh_CreateDepthStencilTarget(
-	Refresh_Device *device,
-	uint32_t width,
-	uint32_t height,
-	Refresh_DepthFormat format
-) {
-    NULL_RETURN_NULL(device);
-    return device->CreateDepthStencilTarget(
-        device->driverData,
-        width,
-        height,
-        format
+        textureSlice,
+        multisampleCount
     );
 }
 
@@ -604,23 +589,12 @@ void Refresh_QueueDestroyBuffer(
 
 void Refresh_QueueDestroyColorTarget(
 	Refresh_Device *device,
-	Refresh_ColorTarget *colorTarget
+	Refresh_RenderTarget *renderTarget
 ) {
     NULL_RETURN(device);
-    device->QueueDestroyColorTarget(
+    device->QueueDestroyRenderTarget(
         device->driverData,
-        colorTarget
-    );
-}
-
-void Refresh_QueueDestroyDepthStencilTarget(
-	Refresh_Device *device,
-	Refresh_DepthStencilTarget *depthStencilTarget
-) {
-    NULL_RETURN(device);
-    device->QueueDestroyDepthStencilTarget(
-        device->driverData,
-        depthStencilTarget
+        renderTarget
     );
 }
 

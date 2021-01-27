@@ -43,34 +43,34 @@ extern void Refresh_LogError(const char *fmt, ...);
 /* Internal Helper Utilities */
 
 static inline uint32_t Texture_GetFormatSize(
-	Refresh_ColorFormat format
+	Refresh_TextureFormat format
 ) {
 	switch (format)
 	{
-		case REFRESH_COLORFORMAT_BC1:
+		case REFRESH_TEXTUREFORMAT_BC1:
 			return 8;
-		case REFRESH_COLORFORMAT_BC2:
-		case REFRESH_COLORFORMAT_BC3:
+		case REFRESH_TEXTUREFORMAT_BC2:
+		case REFRESH_TEXTUREFORMAT_BC3:
 			return 16;
-		case REFRESH_COLORFORMAT_R8:
+		case REFRESH_TEXTUREFORMAT_R8:
 			return 1;
-		case REFRESH_COLORFORMAT_R5G6B5:
-		case REFRESH_COLORFORMAT_B4G4R4A4:
-		case REFRESH_COLORFORMAT_A1R5G5B5:
-		case REFRESH_COLORFORMAT_R16_SFLOAT:
-		case REFRESH_COLORFORMAT_R8G8_SNORM:
+		case REFRESH_TEXTUREFORMAT_R5G6B5:
+		case REFRESH_TEXTUREFORMAT_B4G4R4A4:
+		case REFRESH_TEXTUREFORMAT_A1R5G5B5:
+		case REFRESH_TEXTUREFORMAT_R16_SFLOAT:
+		case REFRESH_TEXTUREFORMAT_R8G8_SNORM:
 			return 2;
-		case REFRESH_COLORFORMAT_R8G8B8A8:
-		case REFRESH_COLORFORMAT_R32_SFLOAT:
-		case REFRESH_COLORFORMAT_R16G16_SFLOAT:
-		case REFRESH_COLORFORMAT_R8G8B8A8_SNORM:
-		case REFRESH_COLORFORMAT_A2R10G10B10:
+		case REFRESH_TEXTUREFORMAT_R8G8B8A8:
+		case REFRESH_TEXTUREFORMAT_R32_SFLOAT:
+		case REFRESH_TEXTUREFORMAT_R16G16_SFLOAT:
+		case REFRESH_TEXTUREFORMAT_R8G8B8A8_SNORM:
+		case REFRESH_TEXTUREFORMAT_A2R10G10B10:
 			return 4;
-		case REFRESH_COLORFORMAT_R16G16B16A16_SFLOAT:
-		case REFRESH_COLORFORMAT_R16G16B16A16:
-		case REFRESH_COLORFORMAT_R32G32_SFLOAT:
+		case REFRESH_TEXTUREFORMAT_R16G16B16A16_SFLOAT:
+		case REFRESH_TEXTUREFORMAT_R16G16B16A16:
+		case REFRESH_TEXTUREFORMAT_R32G32_SFLOAT:
 			return 8;
-		case REFRESH_COLORFORMAT_R32G32B32A32_SFLOAT:
+		case REFRESH_TEXTUREFORMAT_R32G32B32A32_SFLOAT:
 			return 16;
 		default:
 			Refresh_LogError(
@@ -111,13 +111,13 @@ static inline uint32_t IndexSize(Refresh_IndexElementSize size)
 
 static inline uint32_t BytesPerRow(
 	int32_t width,
-	Refresh_ColorFormat format
+	Refresh_TextureFormat format
 ) {
 	uint32_t blocksPerRow = width;
 
-	if (	format == REFRESH_COLORFORMAT_BC1 ||
-		format == REFRESH_COLORFORMAT_BC2 ||
-		format == REFRESH_COLORFORMAT_BC3	)
+	if (	format == REFRESH_TEXTUREFORMAT_BC1 ||
+		format == REFRESH_TEXTUREFORMAT_BC2 ||
+		format == REFRESH_TEXTUREFORMAT_BC3	)
 	{
 		blocksPerRow = (width + 3) / 4;
 	}
@@ -128,14 +128,14 @@ static inline uint32_t BytesPerRow(
 static inline int32_t BytesPerImage(
 	uint32_t width,
 	uint32_t height,
-	Refresh_ColorFormat format
+	Refresh_TextureFormat format
 ) {
 	uint32_t blocksPerRow = width;
 	uint32_t blocksPerColumn = height;
 
-	if (	format == REFRESH_COLORFORMAT_BC1 ||
-		format == REFRESH_COLORFORMAT_BC2 ||
-		format == REFRESH_COLORFORMAT_BC3	)
+	if (	format == REFRESH_TEXTUREFORMAT_BC1 ||
+		format == REFRESH_TEXTUREFORMAT_BC2 ||
+		format == REFRESH_TEXTUREFORMAT_BC3	)
 	{
 		blocksPerRow = (width + 3) / 4;
 		blocksPerColumn = (height + 3) / 4;
@@ -253,17 +253,10 @@ struct Refresh_Device
         Refresh_TextureCreateInfo *textureCreateInfo
     );
 
-    Refresh_ColorTarget* (*CreateColorTarget)(
+    Refresh_RenderTarget* (*CreateRenderTarget)(
         Refresh_Renderer *driverData,
-        Refresh_SampleCount multisampleCount,
-        Refresh_TextureSlice *textureSlice
-    );
-
-    Refresh_DepthStencilTarget* (*CreateDepthStencilTarget)(
-        Refresh_Renderer *driverData,
-        uint32_t width,
-        uint32_t height,
-        Refresh_DepthFormat format
+        Refresh_TextureSlice *textureSlice,
+        Refresh_SampleCount multisampleCount
     );
 
     Refresh_Buffer* (*CreateBuffer)(
@@ -378,14 +371,9 @@ struct Refresh_Device
         Refresh_Buffer *buffer
     );
 
-    void(*QueueDestroyColorTarget)(
+    void(*QueueDestroyRenderTarget)(
         Refresh_Renderer *driverData,
-	    Refresh_ColorTarget *colorTarget
-    );
-
-    void(*QueueDestroyDepthStencilTarget)(
-        Refresh_Renderer *driverData,
-	    Refresh_DepthStencilTarget *depthStencilTarget
+	    Refresh_RenderTarget *renderTarget
     );
 
     void(*QueueDestroyFramebuffer)(
@@ -521,8 +509,7 @@ struct Refresh_Device
     ASSIGN_DRIVER_FUNC(CreateFramebuffer, name) \
     ASSIGN_DRIVER_FUNC(CreateShaderModule, name) \
     ASSIGN_DRIVER_FUNC(CreateTexture, name) \
-    ASSIGN_DRIVER_FUNC(CreateColorTarget, name) \
-    ASSIGN_DRIVER_FUNC(CreateDepthStencilTarget, name) \
+    ASSIGN_DRIVER_FUNC(CreateRenderTarget, name) \
     ASSIGN_DRIVER_FUNC(CreateBuffer, name) \
     ASSIGN_DRIVER_FUNC(SetTextureData, name) \
     ASSIGN_DRIVER_FUNC(SetTextureDataYUV, name) \
@@ -538,8 +525,7 @@ struct Refresh_Device
     ASSIGN_DRIVER_FUNC(QueueDestroyTexture, name) \
     ASSIGN_DRIVER_FUNC(QueueDestroySampler, name) \
     ASSIGN_DRIVER_FUNC(QueueDestroyBuffer, name) \
-    ASSIGN_DRIVER_FUNC(QueueDestroyColorTarget, name) \
-    ASSIGN_DRIVER_FUNC(QueueDestroyDepthStencilTarget, name) \
+    ASSIGN_DRIVER_FUNC(QueueDestroyRenderTarget, name) \
     ASSIGN_DRIVER_FUNC(QueueDestroyFramebuffer, name) \
     ASSIGN_DRIVER_FUNC(QueueDestroyShaderModule, name) \
     ASSIGN_DRIVER_FUNC(QueueDestroyRenderPass, name) \

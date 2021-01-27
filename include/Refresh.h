@@ -64,8 +64,7 @@ typedef struct Refresh_Device Refresh_Device;
 typedef struct Refresh_Buffer Refresh_Buffer;
 typedef struct Refresh_Texture Refresh_Texture;
 typedef struct Refresh_Sampler Refresh_Sampler;
-typedef struct Refresh_ColorTarget Refresh_ColorTarget;
-typedef struct Refresh_DepthStencilTarget Refresh_DepthStencilTarget;
+typedef struct Refresh_RenderTarget Refresh_RenderTarget;
 typedef struct Refresh_Framebuffer Refresh_Framebuffer;
 typedef struct Refresh_ShaderModule Refresh_ShaderModule;
 typedef struct Refresh_RenderPass Refresh_RenderPass;
@@ -118,41 +117,40 @@ typedef enum Refresh_IndexElementSize
     REFRESH_INDEXELEMENTSIZE_32BIT
 } Refresh_IndexElementSize;
 
-typedef enum Refresh_ColorFormat
+typedef enum Refresh_TextureFormat
 {
-    REFRESH_COLORFORMAT_R8G8B8A8,
-    REFRESH_COLORFORMAT_R5G6B5,
-    REFRESH_COLORFORMAT_A1R5G5B5,
-    REFRESH_COLORFORMAT_B4G4R4A4,
-    REFRESH_COLORFORMAT_BC1,
-    REFRESH_COLORFORMAT_BC2,
-    REFRESH_COLORFORMAT_BC3,
-    REFRESH_COLORFORMAT_R8G8_SNORM,
-    REFRESH_COLORFORMAT_R8G8B8A8_SNORM,
-    REFRESH_COLORFORMAT_A2R10G10B10,
-    REFRESH_COLORFORMAT_R16G16,
-    REFRESH_COLORFORMAT_R16G16B16A16,
-    REFRESH_COLORFORMAT_R8,
-    REFRESH_COLORFORMAT_R32_SFLOAT,
-    REFRESH_COLORFORMAT_R32G32_SFLOAT,
-    REFRESH_COLORFORMAT_R32G32B32A32_SFLOAT,
-    REFRESH_COLORFORMAT_R16_SFLOAT,
-    REFRESH_COLORFORMAT_R16G16_SFLOAT,
-    REFRESH_COLORFORMAT_R16G16B16A16_SFLOAT
-} Refresh_ColorFormat;
-
-typedef enum Refresh_DepthFormat
-{
-	REFRESH_DEPTHFORMAT_D16_UNORM,
-	REFRESH_DEPTHFORMAT_D32_SFLOAT,
-    REFRESH_DEPTHFORMAT_D16_UNORM_S8_UINT,
-    REFRESH_DEPTHFORMAT_D32_SFLOAT_S8_UINT
-} Refresh_DepthFormat;
+	/* Color Formats */
+    REFRESH_TEXTUREFORMAT_R8G8B8A8,
+    REFRESH_TEXTUREFORMAT_R5G6B5,
+    REFRESH_TEXTUREFORMAT_A1R5G5B5,
+    REFRESH_TEXTUREFORMAT_B4G4R4A4,
+    REFRESH_TEXTUREFORMAT_BC1,
+    REFRESH_TEXTUREFORMAT_BC2,
+    REFRESH_TEXTUREFORMAT_BC3,
+    REFRESH_TEXTUREFORMAT_R8G8_SNORM,
+    REFRESH_TEXTUREFORMAT_R8G8B8A8_SNORM,
+    REFRESH_TEXTUREFORMAT_A2R10G10B10,
+    REFRESH_TEXTUREFORMAT_R16G16,
+    REFRESH_TEXTUREFORMAT_R16G16B16A16,
+    REFRESH_TEXTUREFORMAT_R8,
+    REFRESH_TEXTUREFORMAT_R32_SFLOAT,
+    REFRESH_TEXTUREFORMAT_R32G32_SFLOAT,
+    REFRESH_TEXTUREFORMAT_R32G32B32A32_SFLOAT,
+    REFRESH_TEXTUREFORMAT_R16_SFLOAT,
+    REFRESH_TEXTUREFORMAT_R16G16_SFLOAT,
+    REFRESH_TEXTUREFORMAT_R16G16B16A16_SFLOAT,
+	/* Depth Formats */
+	REFRESH_TEXTUREFORMAT_D16_UNORM,
+	REFRESH_TEXTUREFORMAT_D32_SFLOAT,
+    REFRESH_TEXTUREFORMAT_D16_UNORM_S8_UINT,
+    REFRESH_TEXTUREFORMAT_D32_SFLOAT_S8_UINT
+} Refresh_TextureFormat;
 
 typedef enum Refresh_TextureUsageFlagBits
 {
-	REFRESH_TEXTUREUSAGE_SAMPLER_BIT          = 0x00000001,
-	REFRESH_TEXTUREUSAGE_COLOR_TARGET_BIT     = 0x00000002
+	REFRESH_TEXTUREUSAGE_SAMPLER_BIT              = 0x00000001,
+	REFRESH_TEXTUREUSAGE_COLOR_TARGET_BIT         = 0x00000002,
+	REFRESH_TEXTUREUSAGE_DEPTH_STENCIL_TARGET_BIT = 0x00000004
 } Refresh_TextureUsageFlagBits;
 
 typedef uint32_t Refresh_TextureUsageFlags;
@@ -491,7 +489,7 @@ typedef struct Refresh_GraphicsPipelineLayoutCreateInfo
 
 typedef struct Refresh_ColorTargetDescription
 {
-	Refresh_ColorFormat format;
+	Refresh_TextureFormat format;
 	Refresh_SampleCount multisampleCount;
 	Refresh_LoadOp loadOp;
 	Refresh_StoreOp storeOp;
@@ -499,7 +497,7 @@ typedef struct Refresh_ColorTargetDescription
 
 typedef struct Refresh_DepthStencilTargetDescription
 {
-	Refresh_DepthFormat depthFormat;
+	Refresh_TextureFormat depthStencilFormat;
 	Refresh_LoadOp loadOp;
 	Refresh_StoreOp storeOp;
 	Refresh_LoadOp stencilLoadOp;
@@ -527,7 +525,7 @@ typedef struct Refresh_TextureCreateInfo
 	uint8_t isCube;
 	Refresh_SampleCount sampleCount;
 	uint32_t levelCount;
-	Refresh_ColorFormat format;
+	Refresh_TextureFormat format;
 	Refresh_TextureUsageFlags usageFlags;
 } Refresh_TextureCreateInfo;
 
@@ -613,9 +611,9 @@ typedef struct Refresh_GraphicsPipelineCreateInfo
 typedef struct Refresh_FramebufferCreateInfo
 {
 	Refresh_RenderPass *renderPass;
-	Refresh_ColorTarget **pColorTargets;
+	Refresh_RenderTarget **pColorTargets;
 	uint32_t colorTargetCount;
-	Refresh_DepthStencilTarget *pDepthStencilTarget;
+	Refresh_RenderTarget *pDepthStencilTarget;
 	uint32_t width;
 	uint32_t height;
 } Refresh_FramebufferCreateInfo;
@@ -876,26 +874,13 @@ REFRESHAPI Refresh_Texture* Refresh_CreateTexture(
 
 /* Creates a color target.
  *
- * multisampleCount:	The MSAA value for the color target.
  * textureSlice: 		The texture slice that the color target will resolve to.
+ * multisampleCount:	The MSAA value for the color target.
  */
-REFRESHAPI Refresh_ColorTarget* Refresh_CreateColorTarget(
+REFRESHAPI Refresh_RenderTarget* Refresh_CreateRenderTarget(
 	Refresh_Device *device,
-	Refresh_SampleCount multisampleCount,
-	Refresh_TextureSlice *textureSlice
-);
-
-/* Creates a depth/stencil target.
- *
- * width:	The width of the depth/stencil target.
- * height: 	The height of the depth/stencil target.
- * format:	The storage format of the depth/stencil target.
- */
-REFRESHAPI Refresh_DepthStencilTarget* Refresh_CreateDepthStencilTarget(
-	Refresh_Device *device,
-	uint32_t width,
-	uint32_t height,
-	Refresh_DepthFormat format
+	Refresh_TextureSlice *textureSlice,
+	Refresh_SampleCount multisampleCount
 );
 
 /* Creates a buffer.
@@ -1108,23 +1093,11 @@ REFRESHAPI void Refresh_QueueDestroyBuffer(
  * this is not called from the main thread (for example, if a garbage collector
  * deletes the resource instead of the programmer).
  *
- * colorTarget: The Refresh_ColorTarget to be destroyed.
+ * renderTarget: The Refresh_ColorTarget to be destroyed.
  */
-REFRESHAPI void Refresh_QueueDestroyColorTarget(
+REFRESHAPI void Refresh_QueueDestroyRenderTarget(
 	Refresh_Device *device,
-	Refresh_ColorTarget *colorTarget
-);
-
-/* Sends a depth/stencil target to be destroyed by the renderer. Note that we call it
- * "QueueDestroy" because it may not be immediately destroyed by the renderer if
- * this is not called from the main thread (for example, if a garbage collector
- * deletes the resource instead of the programmer).
- *
- * depthStencilTarget: The Refresh_DepthStencilTarget to be destroyed.
- */
-REFRESHAPI void Refresh_QueueDestroyDepthStencilTarget(
-	Refresh_Device *device,
-	Refresh_DepthStencilTarget *depthStencilTarget
+	Refresh_RenderTarget *renderTarget
 );
 
 /* Sends a framebuffer to be destroyed by the renderer. Note that we call it
