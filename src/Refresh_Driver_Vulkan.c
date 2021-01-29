@@ -178,6 +178,15 @@ typedef enum CreateSwapchainResult
 
 /* Conversions */
 
+static const uint8_t DEVICE_PRIORITY[] =
+{
+	0,	/* VK_PHYSICAL_DEVICE_TYPE_OTHER */
+	3,	/* VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU */
+	4,	/* VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU */
+	2,	/* VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU */
+	1	/* VK_PHYSICAL_DEVICE_TYPE_CPU */
+};
+
 static VkFormat RefreshToVK_SurfaceFormat[] =
 {
 	VK_FORMAT_R8G8B8A8_UNORM,		    /* R8G8B8A8 */
@@ -1253,6 +1262,7 @@ typedef struct VulkanRenderer
     uint8_t headless;
 
 	VulkanMemoryAllocator *memoryAllocator;
+	VkPhysicalDeviceMemoryProperties memoryProperties;
 
     Refresh_PresentMode presentMode;
     VkSurfaceKHR surface;
@@ -1637,28 +1647,24 @@ static void VULKAN_INTERNAL_RemoveMemoryFreeRegion(
 static uint8_t VULKAN_INTERNAL_FindMemoryType(
 	VulkanRenderer *renderer,
 	uint32_t typeFilter,
-	VkMemoryPropertyFlags properties,
+	VkMemoryPropertyFlags requiredProperties,
+	VkMemoryPropertyFlags ignoredProperties,
 	uint32_t *result
 ) {
-	VkPhysicalDeviceMemoryProperties memoryProperties;
 	uint32_t i;
 
-	renderer->vkGetPhysicalDeviceMemoryProperties(
-		renderer->physicalDevice,
-		&memoryProperties
-	);
-
-	for (i = 0; i < memoryProperties.memoryTypeCount; i += 1)
+	for (i = 0; i < renderer->memoryProperties.memoryTypeCount; i += 1)
 	{
 		if (	(typeFilter & (1 << i)) &&
-			(memoryProperties.memoryTypes[i].propertyFlags & properties) == properties	)
+			(renderer->memoryProperties.memoryTypes[i].propertyFlags & requiredProperties) == requiredProperties &&
+			(renderer->memoryProperties.memoryTypes[i].propertyFlags & ignoredProperties) == 0	)
 		{
 			*result = i;
 			return 1;
 		}
 	}
 
-	Refresh_LogError("Failed to find memory properties %X, filter %X", properties, typeFilter);
+	Refresh_LogError("Failed to find memory properties %X, required %X, ignored %X", requiredProperties, ignoredProperties, typeFilter);
 	return 0;
 }
 
@@ -1684,6 +1690,7 @@ static uint8_t VULKAN_INTERNAL_FindBufferMemoryRequirements(
 		renderer,
 		pMemoryRequirements->memoryRequirements.memoryTypeBits,
 		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+		0,
 		pMemoryTypeIndex
 	)) {
 		Refresh_LogError(
@@ -1698,7 +1705,8 @@ static uint8_t VULKAN_INTERNAL_FindBufferMemoryRequirements(
 static uint8_t VULKAN_INTERNAL_FindImageMemoryRequirements(
 	VulkanRenderer *renderer,
 	VkImage image,
-	VkMemoryPropertyFlags memoryPropertyFlags,
+	VkMemoryPropertyFlags requiredMemoryPropertyFlags,
+	VkMemoryPropertyFlags ignoredMemoryPropertyFlags,
 	VkMemoryRequirements2KHR *pMemoryRequirements,
 	uint32_t *pMemoryTypeIndex
 ) {
@@ -1717,7 +1725,8 @@ static uint8_t VULKAN_INTERNAL_FindImageMemoryRequirements(
 	if (!VULKAN_INTERNAL_FindMemoryType(
 		renderer,
 		pMemoryRequirements->memoryRequirements.memoryTypeBits,
-		memoryPropertyFlags,
+		requiredMemoryPropertyFlags,
+		ignoredMemoryPropertyFlags,
 		pMemoryTypeIndex
 	)) {
 		Refresh_LogError(
@@ -1736,7 +1745,7 @@ static uint8_t VULKAN_INTERNAL_AllocateMemory(
 	uint32_t memoryTypeIndex,
 	VkDeviceSize allocationSize,
 	uint8_t dedicated,
-	uint8_t cpuAllocation,
+	uint8_t isHostVisible,
 	VulkanMemoryAllocation **pMemoryAllocation
 ) {
 	VulkanMemoryAllocation *allocation;
@@ -1812,7 +1821,7 @@ static uint8_t VULKAN_INTERNAL_AllocateMemory(
 	}
 
 	/* persistent mapping for host memory */
-	if (cpuAllocation)
+	if (isHostVisible)
 	{
 		result = renderer->vkMapMemory(
 			renderer->logicalDevice,
@@ -1847,7 +1856,6 @@ static uint8_t VULKAN_INTERNAL_AllocateMemory(
 static uint8_t VULKAN_INTERNAL_FindAvailableMemory(
 	VulkanRenderer *renderer,
 	uint32_t memoryTypeIndex,
-	uint8_t cpuAllocation,
 	VkMemoryRequirements2KHR *memoryRequirements,
 	VkMemoryDedicatedRequirementsKHR *dedicatedRequirements,
 	VkBuffer buffer, /* may be VK_NULL_HANDLE */
@@ -1866,7 +1874,11 @@ static uint8_t VULKAN_INTERNAL_FindAvailableMemory(
 	uint8_t shouldAllocDedicated =
 		dedicatedRequirements->prefersDedicatedAllocation ||
 		dedicatedRequirements->requiresDedicatedAllocation;
-	uint8_t allocationResult;
+	uint8_t isHostVisible, allocationResult;
+
+	isHostVisible =
+		(renderer->memoryProperties.memoryTypes[memoryTypeIndex].propertyFlags &
+		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) != 0;
 
 	allocator = &renderer->memoryAllocator->subAllocators[memoryTypeIndex];
 	requiredSize = memoryRequirements->memoryRequirements.size;
@@ -1948,7 +1960,7 @@ static uint8_t VULKAN_INTERNAL_FindAvailableMemory(
 		memoryTypeIndex,
 		allocationSize,
 		shouldAllocDedicated,
-		cpuAllocation,
+		isHostVisible,
 		&allocation
 	);
 
@@ -2019,7 +2031,6 @@ static uint8_t VULKAN_INTERNAL_FindAvailableBufferMemory(
 	return VULKAN_INTERNAL_FindAvailableMemory(
 		renderer,
 		memoryTypeIndex,
-		1,
 		&memoryRequirements,
 		&dedicatedRequirements,
 		buffer,
@@ -2039,7 +2050,8 @@ static uint8_t VULKAN_INTERNAL_FindAvailableTextureMemory(
 	VkDeviceSize *pSize
 ) {
 	uint32_t memoryTypeIndex;
-	VkMemoryPropertyFlags memoryPropertyFlags;
+	VkMemoryPropertyFlags requiredMemoryPropertyFlags;
+	VkMemoryPropertyFlags ignoredMemoryPropertyFlags;
 	VkMemoryDedicatedRequirementsKHR dedicatedRequirements =
 	{
 		VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS_KHR,
@@ -2053,17 +2065,20 @@ static uint8_t VULKAN_INTERNAL_FindAvailableTextureMemory(
 
 	if (cpuAllocation)
 	{
-		memoryPropertyFlags = 0;
+		requiredMemoryPropertyFlags = 0;
+		ignoredMemoryPropertyFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
 	}
 	else
 	{
-		memoryPropertyFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+		requiredMemoryPropertyFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+		ignoredMemoryPropertyFlags = 0;
 	}
 
 	if (!VULKAN_INTERNAL_FindImageMemoryRequirements(
 		renderer,
 		image,
-		memoryPropertyFlags,
+		requiredMemoryPropertyFlags,
+		ignoredMemoryPropertyFlags,
 		&memoryRequirements,
 		&memoryTypeIndex
 	)) {
@@ -2074,7 +2089,6 @@ static uint8_t VULKAN_INTERNAL_FindAvailableTextureMemory(
 	return VULKAN_INTERNAL_FindAvailableMemory(
 		renderer,
 		memoryTypeIndex,
-		cpuAllocation,
 		&memoryRequirements,
 		&dedicatedRequirements,
 		VK_NULL_HANDLE,
@@ -5533,8 +5547,7 @@ static uint8_t VULKAN_INTERNAL_CreateTexture(
 	{
 		if (isRenderTarget)
 		{
-			Refresh_LogError("Cannot allocate render target to host memory!");
-			return 0;
+			Refresh_LogWarn("RenderTarget is allocated in host memory, pre-allocate your targets!");
 		}
 
 		Refresh_LogWarn("Out of device local memory, falling back to host memory");
@@ -8528,14 +8541,13 @@ static uint8_t VULKAN_INTERNAL_IsDeviceSuitable(
 	uint32_t requiredExtensionNamesLength,
 	VkSurfaceKHR surface,
 	QueueFamilyIndices *queueFamilyIndices,
-	uint8_t *isIdeal
+	uint8_t *deviceRank
 ) {
 	uint32_t queueFamilyCount, i;
 	SwapChainSupportDetails swapChainSupportDetails;
 	VkQueueFamilyProperties *queueProps;
 	VkBool32 supportsPresent;
 	uint8_t querySuccess = 0;
-	uint8_t foundFamily = 0;
 	uint8_t foundSuitableDevice = 0;
 	VkPhysicalDeviceProperties deviceProperties;
 
@@ -8543,7 +8555,7 @@ static uint8_t VULKAN_INTERNAL_IsDeviceSuitable(
 	queueFamilyIndices->presentFamily = UINT32_MAX;
 	queueFamilyIndices->computeFamily = UINT32_MAX;
 	queueFamilyIndices->transferFamily = UINT32_MAX;
-	*isIdeal = 0;
+	*deviceRank = 0;
 
 	/* Note: If no dedicated device exists,
 	 * one that supports our features would be fine
@@ -8598,23 +8610,16 @@ static uint8_t VULKAN_INTERNAL_IsDeviceSuitable(
 			surface,
 			&supportsPresent
 		);
-		if (!foundFamily)
-		{
-			if (	supportsPresent &&
-				(queueProps[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) &&
-				(queueProps[i].queueFlags & VK_QUEUE_COMPUTE_BIT) &&
-				(queueProps[i].queueFlags & VK_QUEUE_TRANSFER_BIT)	)
-			{
-				queueFamilyIndices->graphicsFamily = i;
-				queueFamilyIndices->presentFamily = i;
-				queueFamilyIndices->computeFamily = i;
-				queueFamilyIndices->transferFamily = i;
-				foundFamily = 1;
-			}
-		}
 
-		if (foundFamily)
+		if (	supportsPresent &&
+			(queueProps[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) &&
+			(queueProps[i].queueFlags & VK_QUEUE_COMPUTE_BIT) &&
+			(queueProps[i].queueFlags & VK_QUEUE_TRANSFER_BIT)	)
 		{
+			queueFamilyIndices->graphicsFamily = i;
+			queueFamilyIndices->presentFamily = i;
+			queueFamilyIndices->computeFamily = i;
+			queueFamilyIndices->transferFamily = i;
 			foundSuitableDevice = 1;
 			break;
 		}
@@ -8624,15 +8629,12 @@ static uint8_t VULKAN_INTERNAL_IsDeviceSuitable(
 
 	if (foundSuitableDevice)
 	{
-		/* We'd really like a discrete GPU, but it's OK either way! */
+		/* Try to make sure we pick the best device available */
 		renderer->vkGetPhysicalDeviceProperties(
 			physicalDevice,
 			&deviceProperties
 		);
-		if (deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
-		{
-			*isIdeal = 1;
-		}
+		*deviceRank = DEVICE_PRIORITY[deviceProperties.deviceType];
 		return 1;
 	}
 
@@ -8656,6 +8658,11 @@ static void VULKAN_INTERNAL_GetPhysicalDeviceProperties(
 		renderer->physicalDevice,
 		&renderer->physicalDeviceProperties
 	);
+
+	renderer->vkGetPhysicalDeviceMemoryProperties(
+		renderer->physicalDevice,
+		&renderer->memoryProperties
+	);
 }
 
 static uint8_t VULKAN_INTERNAL_DeterminePhysicalDevice(
@@ -8666,9 +8673,8 @@ static uint8_t VULKAN_INTERNAL_DeterminePhysicalDevice(
 	VkResult vulkanResult;
 	VkPhysicalDevice *physicalDevices;
 	uint32_t physicalDeviceCount, i, suitableIndex;
-	VkPhysicalDevice physicalDevice;
-	QueueFamilyIndices queueFamilyIndices;
-	uint8_t isIdeal;
+	QueueFamilyIndices queueFamilyIndices, suitableQueueFamilyIndices;
+	uint8_t deviceRank, highestRank;
 
 	vulkanResult = renderer->vkEnumeratePhysicalDevices(
 		renderer->instance,
@@ -8711,29 +8717,50 @@ static uint8_t VULKAN_INTERNAL_DeterminePhysicalDevice(
 
 	/* Any suitable device will do, but we'd like the best */
 	suitableIndex = -1;
+	deviceRank = 0;
+	highestRank = 0;
 	for (i = 0; i < physicalDeviceCount; i += 1)
 	{
-		if (VULKAN_INTERNAL_IsDeviceSuitable(
+		const uint8_t suitable = VULKAN_INTERNAL_IsDeviceSuitable(
 			renderer,
 			physicalDevices[i],
 			deviceExtensionNames,
 			deviceExtensionCount,
 			renderer->surface,
 			&queueFamilyIndices,
-			&isIdeal
-		)) {
-			suitableIndex = i;
-			if (isIdeal)
+			&deviceRank
+		);
+
+		if (deviceRank >= highestRank)
+		{
+			if (suitable)
 			{
-				/* This is the one we want! */
-				break;
+				suitableIndex = i;
+				suitableQueueFamilyIndices.computeFamily = queueFamilyIndices.computeFamily;
+				suitableQueueFamilyIndices.graphicsFamily = queueFamilyIndices.graphicsFamily;
+				suitableQueueFamilyIndices.presentFamily = queueFamilyIndices.presentFamily;
+				suitableQueueFamilyIndices.transferFamily = queueFamilyIndices.transferFamily;
 			}
+			else if (deviceRank > highestRank)
+			{
+				/* In this case, we found a... "realer?" GPU,
+				 * but it doesn't actually support our Vulkan.
+				 * We should disqualify all devices below as a
+				 * result, because if we don't we end up
+				 * ignoring real hardware and risk using
+				 * something like LLVMpipe instead!
+				 * -flibit
+				 */
+				suitableIndex = -1;
+			}
+			highestRank = deviceRank;
 		}
 	}
 
 	if (suitableIndex != -1)
 	{
-		physicalDevice = physicalDevices[suitableIndex];
+		renderer->physicalDevice = physicalDevices[suitableIndex];
+		renderer->queueFamilyIndices = suitableQueueFamilyIndices;
 	}
 	else
 	{
@@ -8741,9 +8768,6 @@ static uint8_t VULKAN_INTERNAL_DeterminePhysicalDevice(
 		SDL_stack_free(physicalDevices);
 		return 0;
 	}
-
-	renderer->physicalDevice = physicalDevice;
-	renderer->queueFamilyIndices = queueFamilyIndices;
 
 	VULKAN_INTERNAL_GetPhysicalDeviceProperties(renderer);
 
