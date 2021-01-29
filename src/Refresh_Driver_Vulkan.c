@@ -5818,7 +5818,7 @@ static Refresh_RenderTarget* VULKAN_CreateRenderTarget(
 	imageViewCreateInfo.image = renderTarget->texture->image;
 	imageViewCreateInfo.format = renderTarget->texture->format;
 	imageViewCreateInfo.components = swizzle;
-	imageViewCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	imageViewCreateInfo.subresourceRange.aspectMask = aspectFlags;
 	imageViewCreateInfo.subresourceRange.baseMipLevel = 0;
 	imageViewCreateInfo.subresourceRange.levelCount = 1;
 	imageViewCreateInfo.subresourceRange.baseArrayLayer = 0;
