@@ -198,15 +198,11 @@ static VkFormat RefreshToVK_SurfaceFormat[] =
 	VK_FORMAT_R32G32B32A32_SFLOAT,		/* R32G32B32A32_SFLOAT */
 	VK_FORMAT_R16_SFLOAT,			    /* R16_SFLOAT */
 	VK_FORMAT_R16G16_SFLOAT,		    /* R16G16_SFLOAT */
-	VK_FORMAT_R16G16B16A16_SFLOAT		/* R16G16B16A16_SFLOAT */
-};
-
-static VkFormat RefreshToVK_DepthFormat[] =
-{
-    VK_FORMAT_D16_UNORM,
-    VK_FORMAT_D32_SFLOAT,
-    VK_FORMAT_D16_UNORM_S8_UINT,
-    VK_FORMAT_D32_SFLOAT_S8_UINT
+	VK_FORMAT_R16G16B16A16_SFLOAT,		/* R16G16B16A16_SFLOAT */
+	VK_FORMAT_D16_UNORM,				/* D16 */
+	VK_FORMAT_D32_SFLOAT,				/* D32 */
+	VK_FORMAT_D16_UNORM_S8_UINT,		/* D16S8 */
+	VK_FORMAT_D32_SFLOAT_S8_UINT		/* D32S8 */
 };
 
 static VkFormat RefreshToVK_VertexFormat[] =
@@ -4202,7 +4198,7 @@ static Refresh_RenderPass* VULKAN_CreateRenderPass(
     else
     {
         attachmentDescriptions[attachmentDescriptionCount].flags = 0;
-        attachmentDescriptions[attachmentDescriptionCount].format = RefreshToVK_DepthFormat[
+        attachmentDescriptions[attachmentDescriptionCount].format = RefreshToVK_SurfaceFormat[
             renderPassCreateInfo->depthTargetDescription->depthStencilFormat
         ];
         attachmentDescriptions[attachmentDescriptionCount].samples =
@@ -5708,6 +5704,8 @@ static Refresh_Texture* VULKAN_CreateTexture(
 		VK_IMAGE_USAGE_TRANSFER_DST_BIT |
 		VK_IMAGE_USAGE_TRANSFER_SRC_BIT
 	);
+	VkImageAspectFlags imageAspectFlags;
+	VkFormat format = RefreshToVK_SurfaceFormat[textureCreateInfo->format];
 
 	if (textureCreateInfo->usageFlags & REFRESH_TEXTUREUSAGE_SAMPLER_BIT)
 	{
@@ -5724,6 +5722,20 @@ static Refresh_Texture* VULKAN_CreateTexture(
 		imageUsageFlags |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
 	}
 
+	if (IsDepthFormat(format))
+	{
+		imageAspectFlags = VK_IMAGE_ASPECT_DEPTH_BIT;
+
+		if (IsStencilFormat(format))
+		{
+			imageAspectFlags |= VK_IMAGE_ASPECT_STENCIL_BIT;
+		}
+	}
+	else
+	{
+		imageAspectFlags = VK_IMAGE_ASPECT_COLOR_BIT;
+	}
+
 	result = (VulkanTexture*) SDL_malloc(sizeof(VulkanTexture));
 
 	VULKAN_INTERNAL_CreateTexture(
@@ -5734,8 +5746,8 @@ static Refresh_Texture* VULKAN_CreateTexture(
 		textureCreateInfo->isCube,
 		VK_SAMPLE_COUNT_1_BIT,
 		textureCreateInfo->levelCount,
-		RefreshToVK_SurfaceFormat[textureCreateInfo->format],
-		VK_IMAGE_ASPECT_COLOR_BIT,
+		format,
+		imageAspectFlags,
 		VK_IMAGE_TYPE_2D,
 		imageUsageFlags,
 		result
