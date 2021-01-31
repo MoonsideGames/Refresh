@@ -9256,7 +9256,7 @@ static Refresh_Device* VULKAN_INTERNAL_CreateDevice(
 	);
 
 	emptyComputeImageDescriptorSetLayoutBinding.binding = 0;
-	emptyComputeImageDescriptorSetLayoutBinding.descriptorCount = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+	emptyComputeImageDescriptorSetLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
 	emptyComputeImageDescriptorSetLayoutBinding.descriptorCount = 0;
 	emptyComputeImageDescriptorSetLayoutBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
 	emptyComputeImageDescriptorSetLayoutBinding.pImmutableSamplers = NULL;
