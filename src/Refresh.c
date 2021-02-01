@@ -464,14 +464,14 @@ void Refresh_SetBufferData(
     );
 }
 
-uint32_t Refresh_PushVertexShaderParams(
+uint32_t Refresh_PushVertexShaderUniforms(
 	Refresh_Device *device,
     Refresh_CommandBuffer *commandBuffer,
 	void *data,
 	uint32_t elementCount
 ) {
     if (device == NULL) { return 0; }
-    return device->PushVertexShaderParams(
+    return device->PushVertexShaderUniforms(
         device->driverData,
         commandBuffer,
         data,
@@ -479,14 +479,14 @@ uint32_t Refresh_PushVertexShaderParams(
     );
 }
 
-uint32_t Refresh_PushFragmentShaderParams(
+uint32_t Refresh_PushFragmentShaderUniforms(
 	Refresh_Device *device,
     Refresh_CommandBuffer *commandBuffer,
 	void *data,
 	uint32_t elementCount
 ) {
     if (device == NULL) { return 0; }
-    return device->PushFragmentShaderParams(
+    return device->PushFragmentShaderUniforms(
         device->driverData,
         commandBuffer,
         data,

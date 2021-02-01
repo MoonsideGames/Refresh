@@ -5907,7 +5907,7 @@ static void VULKAN_INTERNAL_MaybeExpandStagingBuffer(
 		Refresh_LogError("Failed to expand texture staging buffer!");
 		return;
 	}
-	
+
 }
 
 static void VULKAN_INTERNAL_MaybeBeginTransferCommandBuffer(
@@ -6476,7 +6476,7 @@ static void VULKAN_SetBufferData(
 	#undef SUBBUF
 }
 
-static uint32_t VULKAN_PushVertexShaderParams(
+static uint32_t VULKAN_PushVertexShaderUniforms(
 	Refresh_Renderer *driverData,
 	Refresh_CommandBuffer *commandBuffer,
 	void *data,
@@ -6512,7 +6512,7 @@ static uint32_t VULKAN_PushVertexShaderParams(
 	return renderer->vertexUBOOffset;
 }
 
-static uint32_t VULKAN_PushFragmentShaderParams(
+static uint32_t VULKAN_PushFragmentShaderUniforms(
 	Refresh_Renderer *driverData,
 	Refresh_CommandBuffer *commandBuffer,
 	void *data,

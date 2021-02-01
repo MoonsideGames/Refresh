@@ -310,14 +310,14 @@ struct Refresh_Device
         uint32_t dataLength
     );
 
-    uint32_t(*PushVertexShaderParams)(
+    uint32_t(*PushVertexShaderUniforms)(
         Refresh_Renderer *driverData,
         Refresh_CommandBuffer *commandBuffer,
         void *data,
         uint32_t elementCount
     );
 
-    uint32_t(*PushFragmentShaderParams)(
+    uint32_t(*PushFragmentShaderUniforms)(
         Refresh_Renderer *driverData,
         Refresh_CommandBuffer *commandBuffer,
         void *data,
@@ -516,8 +516,8 @@ struct Refresh_Device
     ASSIGN_DRIVER_FUNC(CopyTextureToTexture, name) \
     ASSIGN_DRIVER_FUNC(CopyTextureToBuffer, name) \
     ASSIGN_DRIVER_FUNC(SetBufferData, name) \
-    ASSIGN_DRIVER_FUNC(PushVertexShaderParams, name) \
-    ASSIGN_DRIVER_FUNC(PushFragmentShaderParams, name) \
+    ASSIGN_DRIVER_FUNC(PushVertexShaderUniforms, name) \
+    ASSIGN_DRIVER_FUNC(PushFragmentShaderUniforms, name) \
     ASSIGN_DRIVER_FUNC(PushComputeShaderParams, name) \
     ASSIGN_DRIVER_FUNC(BindVertexSamplers, name) \
     ASSIGN_DRIVER_FUNC(BindFragmentSamplers, name) \
