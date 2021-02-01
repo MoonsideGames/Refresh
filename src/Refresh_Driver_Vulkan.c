@@ -3400,9 +3400,7 @@ static uint8_t VULKAN_INTERNAL_CreateBuffer(
 
 	for (i = 0; i < subBufferCount; i += 1)
 	{
-		buffer->subBuffers[i] = SDL_malloc(
-			sizeof(VulkanSubBuffer) * buffer->subBufferCount
-		);
+		buffer->subBuffers[i] = SDL_malloc(sizeof(VulkanSubBuffer));
 
 		vulkanResult = renderer->vkCreateBuffer(
 			renderer->logicalDevice,
