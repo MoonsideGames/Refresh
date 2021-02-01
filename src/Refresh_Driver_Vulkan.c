@@ -1325,7 +1325,7 @@ typedef struct VulkanRenderer
 	VulkanBuffer *dummyComputeUniformBuffer;
 
 	VulkanBuffer *textureStagingBuffer;
-	uint32_t textureStagingBufferOffset;
+	VkDeviceSize textureStagingBufferOffset;
 
 	VulkanBuffer** buffersInUse;
 	uint32_t buffersInUseCount;
@@ -1533,6 +1533,71 @@ static inline uint8_t IsStencilFormat(VkFormat format)
 		default:
 			return 0;
 	}
+}
+
+static inline uint32_t VULKAN_INTERNAL_BytesPerPixel(VkFormat format)
+{
+	switch (format)
+	{
+		case VK_FORMAT_R32G32B32A32_SFLOAT:
+		case VK_FORMAT_BC2_UNORM_BLOCK:
+		case VK_FORMAT_BC3_UNORM_BLOCK:
+			return 16;
+
+		case VK_FORMAT_R8G8B8A8_UNORM:	
+		case VK_FORMAT_R8G8B8A8_SNORM:
+		case VK_FORMAT_A2R10G10B10_UNORM_PACK32:
+		case VK_FORMAT_R16G16_UNORM:
+		case VK_FORMAT_R16G16_SFLOAT:
+		case VK_FORMAT_R32_SFLOAT:
+		case VK_FORMAT_D32_SFLOAT:
+			return 4;
+
+		case VK_FORMAT_R5G6B5_UNORM_PACK16:
+		case VK_FORMAT_A1R5G5B5_UNORM_PACK16:
+		case VK_FORMAT_B4G4R4A4_UNORM_PACK16:
+		case VK_FORMAT_R8G8_SNORM:
+		case VK_FORMAT_R16_SFLOAT:
+		case VK_FORMAT_D16_UNORM:
+			return 2;
+
+		case VK_FORMAT_R16G16B16A16_UNORM:
+		case VK_FORMAT_R32G32_SFLOAT:
+		case VK_FORMAT_R16G16B16A16_SFLOAT:
+		case VK_FORMAT_BC1_RGBA_UNORM_BLOCK:
+			return 8;
+		
+		case VK_FORMAT_R8_UNORM:
+			return 1;
+
+		case VK_FORMAT_D16_UNORM_S8_UINT:
+			return 3;
+		
+		case VK_FORMAT_D32_SFLOAT_S8_UINT:
+			return 5;
+
+		default:
+			Refresh_LogError("Invalid texture format!");
+			return 0;
+	}
+}
+
+static inline VkDeviceSize VULKAN_INTERNAL_BytesPerImage(
+	uint32_t width,
+	uint32_t height,
+	VkFormat format
+) {
+	uint32_t blocksPerRow = width;
+	uint32_t blocksPerColumn = height;
+
+	if (format == VK_FORMAT_BC1_RGBA_UNORM_BLOCK ||
+		format == VK_FORMAT_BC3_UNORM_BLOCK ||
+		format == VK_FORMAT_BC5_UNORM_BLOCK)
+	{
+		blocksPerRow = (width + 3) / 4;
+	}
+
+	return blocksPerRow * blocksPerColumn * VULKAN_INTERNAL_BytesPerPixel(format);
 }
 
 /* Memory Management */
@@ -5874,7 +5939,7 @@ static Refresh_Buffer* VULKAN_CreateBuffer(
 
 static void VULKAN_INTERNAL_MaybeExpandStagingBuffer(
 	VulkanRenderer *renderer,
-	uint32_t textureSize
+	VkDeviceSize textureSize
 ) {
 	VkDeviceSize nextStagingSize = renderer->textureStagingBuffer->size;
 
@@ -6033,7 +6098,14 @@ static void VULKAN_SetTextureData(
 
 	SDL_LockMutex(renderer->stagingLock);
 
-	VULKAN_INTERNAL_MaybeExpandStagingBuffer(renderer, dataLengthInBytes);
+	VULKAN_INTERNAL_MaybeExpandStagingBuffer(
+		renderer,
+		VULKAN_INTERNAL_BytesPerImage(
+			textureSlice->rectangle.w,
+			textureSlice->rectangle.h,
+			vulkanTexture->format
+		)
+	);
 	VULKAN_INTERNAL_MaybeBeginTransferCommandBuffer(renderer);
 
 	stagingBufferPointer =
@@ -6130,7 +6202,10 @@ static void VULKAN_SetTextureDataYUV(
 
 	SDL_LockMutex(renderer->stagingLock);
 
-	VULKAN_INTERNAL_MaybeExpandStagingBuffer(renderer, dataLength);
+	VULKAN_INTERNAL_MaybeExpandStagingBuffer(
+		renderer, 
+		yDataLength + uvDataLength
+	);
 	VULKAN_INTERNAL_MaybeBeginTransferCommandBuffer(renderer);
 
 	stagingBufferPointer =
@@ -6548,7 +6623,7 @@ static uint32_t VULKAN_PushFragmentShaderUniforms(
 	return renderer->fragmentUBOOffset;
 }
 
-static uint32_t VULKAN_PushComputeShaderParams(
+static uint32_t VULKAN_PushComputeShaderUniforms(
 	Refresh_Renderer *driverData,
 	Refresh_CommandBuffer *commandBuffer,
 	void *data,

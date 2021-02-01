@@ -324,7 +324,7 @@ struct Refresh_Device
         uint32_t elementCount
     );
 
-    uint32_t (*PushComputeShaderParams)(
+    uint32_t (*PushComputeShaderUniforms)(
         Refresh_Renderer *driverData,
         Refresh_CommandBuffer *commandBuffer,
         void *data,
@@ -518,7 +518,7 @@ struct Refresh_Device
     ASSIGN_DRIVER_FUNC(SetBufferData, name) \
     ASSIGN_DRIVER_FUNC(PushVertexShaderUniforms, name) \
     ASSIGN_DRIVER_FUNC(PushFragmentShaderUniforms, name) \
-    ASSIGN_DRIVER_FUNC(PushComputeShaderParams, name) \
+    ASSIGN_DRIVER_FUNC(PushComputeShaderUniforms, name) \
     ASSIGN_DRIVER_FUNC(BindVertexSamplers, name) \
     ASSIGN_DRIVER_FUNC(BindFragmentSamplers, name) \
     ASSIGN_DRIVER_FUNC(GetBufferData, name) \

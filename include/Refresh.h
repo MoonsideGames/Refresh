@@ -993,7 +993,7 @@ REFRESHAPI void Refresh_SetBufferData(
  * data: 				The client data to write into the buffer.
  * paramBlockCount: 	The number of param-sized blocks from the client buffer to write.
  */
-REFRESHAPI uint32_t Refresh_PushVertexShaderParams(
+REFRESHAPI uint32_t Refresh_PushVertexShaderUniforms(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
 	void *data,
@@ -1010,7 +1010,7 @@ REFRESHAPI uint32_t Refresh_PushVertexShaderParams(
  * data: 				The client data to write into the buffer.
  * paramBlockCount: 	The number of param-sized blocks from the client buffer to write.
  */
-REFRESHAPI uint32_t Refresh_PushFragmentShaderParams(
+REFRESHAPI uint32_t Refresh_PushFragmentShaderUniforms(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
 	void *data,
@@ -1027,7 +1027,7 @@ REFRESHAPI uint32_t Refresh_PushFragmentShaderParams(
  * data:			The client data to write into the buffer.
  * paramBlockData:	The number of param-sized blocks from the client buffer to write.
  */
-REFRESHAPI uint32_t Refresh_PushComputeShaderParams(
+REFRESHAPI uint32_t Refresh_PushComputeShaderUniforms(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
 	void *data,

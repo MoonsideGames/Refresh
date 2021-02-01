@@ -494,14 +494,14 @@ uint32_t Refresh_PushFragmentShaderUniforms(
     );
 }
 
-uint32_t Refresh_PushComputeShaderParams(
+uint32_t Refresh_PushComputeShaderUniforms(
     Refresh_Device *device,
     Refresh_CommandBuffer *commandBuffer,
     void *data,
     uint32_t elementCount
 ) {
     if (device == NULL) { return 0; }
-    return device->PushComputeShaderParams(
+    return device->PushComputeShaderUniforms(
         device->driverData,
         commandBuffer,
         data,
