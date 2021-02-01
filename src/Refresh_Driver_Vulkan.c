@@ -72,7 +72,6 @@ static uint32_t deviceExtensionCount = SDL_arraysize(deviceExtensionNames);
 #define STARTING_ALLOCATION_SIZE 64000000 		/* 64MB */
 #define MAX_ALLOCATION_SIZE 256000000 			/* 256MB */
 #define TEXTURE_STAGING_SIZE 8000000 			/* 8MB */
-#define MAX_TEXTURE_STAGING_SIZE 128000000		/* 128MB */
 #define UBO_BUFFER_SIZE 8000000 				/* 8MB */
 #define UBO_ACTUAL_SIZE (UBO_BUFFER_SIZE * 2)
 #define DESCRIPTOR_POOL_STARTING_SIZE 128
@@ -5877,7 +5876,7 @@ static void VULKAN_INTERNAL_MaybeExpandStagingBuffer(
 	VulkanRenderer *renderer,
 	uint32_t textureSize
 ) {
-	VkDeviceSize currentStagingSize = renderer->textureStagingBuffer->size;
+	VkDeviceSize nextStagingSize = renderer->textureStagingBuffer->size;
 
 	if (renderer->textureStagingBufferOffset + textureSize <= renderer->textureStagingBuffer->size)
 	{
@@ -5887,25 +5886,28 @@ static void VULKAN_INTERNAL_MaybeExpandStagingBuffer(
 	/* not enough room in the staging buffer, time to flush */
 	VULKAN_INTERNAL_FlushTransfers(renderer);
 
-	/* double staging buffer size up to max */
-	if (currentStagingSize * 2 <= MAX_TEXTURE_STAGING_SIZE)
+	while (nextStagingSize < textureSize)
 	{
-		VULKAN_INTERNAL_DestroyTextureStagingBuffer(renderer);
-
-		renderer->textureStagingBuffer = (VulkanBuffer*) SDL_malloc(sizeof(VulkanBuffer));
-
-		if (!VULKAN_INTERNAL_CreateBuffer(
-			renderer,
-			currentStagingSize * 2,
-			RESOURCE_ACCESS_MEMORY_TRANSFER_READ_WRITE,
-			VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-			1,
-			renderer->textureStagingBuffer
-		)) {
-			Refresh_LogError("Failed to expand texture staging buffer!");
-			return;
-		}
+		nextStagingSize *= 2;
 	}
+
+	/* double staging buffer size up to max */
+	VULKAN_INTERNAL_DestroyTextureStagingBuffer(renderer);
+
+	renderer->textureStagingBuffer = (VulkanBuffer*) SDL_malloc(sizeof(VulkanBuffer));
+
+	if (!VULKAN_INTERNAL_CreateBuffer(
+		renderer,
+		nextStagingSize,
+		RESOURCE_ACCESS_MEMORY_TRANSFER_READ_WRITE,
+		VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+		1,
+		renderer->textureStagingBuffer
+	)) {
+		Refresh_LogError("Failed to expand texture staging buffer!");
+		return;
+	}
+	
 }
 
 static void VULKAN_INTERNAL_MaybeBeginTransferCommandBuffer(
