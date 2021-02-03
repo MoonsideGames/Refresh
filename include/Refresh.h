@@ -991,13 +991,13 @@ REFRESHAPI void Refresh_SetBufferData(
  * 		Will use the block size of the currently bound vertex shader.
  *
  * data: 				The client data to write into the buffer.
- * paramBlockCount: 	The number of param-sized blocks from the client buffer to write.
+ * dataLengthInBytes: 	The length of the data to write.
  */
 REFRESHAPI uint32_t Refresh_PushVertexShaderUniforms(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
 	void *data,
-	uint32_t paramBlockCount
+	uint32_t dataLengthInBytes
 );
 
 /* Pushes fragment shader params to the device.
@@ -1008,13 +1008,13 @@ REFRESHAPI uint32_t Refresh_PushVertexShaderUniforms(
  * 		Will use the block size of the currently bound fragment shader.
  *
  * data: 				The client data to write into the buffer.
- * paramBlockCount: 	The number of param-sized blocks from the client buffer to write.
+ * dataLengthInBytes: 	The length of the data to write.
  */
 REFRESHAPI uint32_t Refresh_PushFragmentShaderUniforms(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
 	void *data,
-	uint32_t paramBlockCount
+	uint32_t dataLengthInBytes
 );
 
 /* Pushes compute shader params to the device.
@@ -1024,14 +1024,14 @@ REFRESHAPI uint32_t Refresh_PushFragmentShaderUniforms(
  * 	A compute pipeline must be bound.
  * 	Will use the block size of the currently bound compute shader.
  *
- * data:			The client data to write into the buffer.
- * paramBlockData:	The number of param-sized blocks from the client buffer to write.
+ * data:				The client data to write into the buffer.
+ * dataLengthInBytes:	The length of the data to write.
  */
 REFRESHAPI uint32_t Refresh_PushComputeShaderUniforms(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
 	void *data,
-	uint32_t paramBlockCount
+	uint32_t dataLengthInBytes
 );
 
 /* Getters */

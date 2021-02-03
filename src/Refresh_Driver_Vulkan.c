@@ -1544,7 +1544,7 @@ static inline uint32_t VULKAN_INTERNAL_BytesPerPixel(VkFormat format)
 		case VK_FORMAT_BC3_UNORM_BLOCK:
 			return 16;
 
-		case VK_FORMAT_R8G8B8A8_UNORM:	
+		case VK_FORMAT_R8G8B8A8_UNORM:
 		case VK_FORMAT_R8G8B8A8_SNORM:
 		case VK_FORMAT_A2R10G10B10_UNORM_PACK32:
 		case VK_FORMAT_R16G16_UNORM:
@@ -1566,13 +1566,13 @@ static inline uint32_t VULKAN_INTERNAL_BytesPerPixel(VkFormat format)
 		case VK_FORMAT_R16G16B16A16_SFLOAT:
 		case VK_FORMAT_BC1_RGBA_UNORM_BLOCK:
 			return 8;
-		
+
 		case VK_FORMAT_R8_UNORM:
 			return 1;
 
 		case VK_FORMAT_D16_UNORM_S8_UINT:
 			return 3;
-		
+
 		case VK_FORMAT_D32_SFLOAT_S8_UINT:
 			return 5;
 
@@ -6203,7 +6203,7 @@ static void VULKAN_SetTextureDataYUV(
 	SDL_LockMutex(renderer->stagingLock);
 
 	VULKAN_INTERNAL_MaybeExpandStagingBuffer(
-		renderer, 
+		renderer,
 		yDataLength + uvDataLength
 	);
 	VULKAN_INTERNAL_MaybeBeginTransferCommandBuffer(renderer);
@@ -6555,7 +6555,7 @@ static uint32_t VULKAN_PushVertexShaderUniforms(
 	Refresh_Renderer *driverData,
 	Refresh_CommandBuffer *commandBuffer,
 	void *data,
-	uint32_t elementCount
+	uint32_t dataLengthInBytes
 ) {
 	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
 	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
@@ -6579,7 +6579,7 @@ static uint32_t VULKAN_PushVertexShaderUniforms(
 		(Refresh_Buffer*) renderer->vertexUBO,
 		renderer->vertexUBOOffset,
 		data,
-		elementCount * vulkanCommandBuffer->currentGraphicsPipeline->vertexUBOBlockSize
+		dataLengthInBytes
 	);
 
 	SDL_UnlockMutex(renderer->uniformBufferLock);
@@ -6591,7 +6591,7 @@ static uint32_t VULKAN_PushFragmentShaderUniforms(
 	Refresh_Renderer *driverData,
 	Refresh_CommandBuffer *commandBuffer,
 	void *data,
-	uint32_t elementCount
+	uint32_t dataLengthInBytes
 ) {
 	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
 	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
@@ -6615,7 +6615,7 @@ static uint32_t VULKAN_PushFragmentShaderUniforms(
 		(Refresh_Buffer*) renderer->fragmentUBO,
 		renderer->fragmentUBOOffset,
 		data,
-		elementCount * vulkanCommandBuffer->currentGraphicsPipeline->fragmentUBOBlockSize
+		dataLengthInBytes
 	);
 
 	SDL_UnlockMutex(renderer->uniformBufferLock);
@@ -6627,7 +6627,7 @@ static uint32_t VULKAN_PushComputeShaderUniforms(
 	Refresh_Renderer *driverData,
 	Refresh_CommandBuffer *commandBuffer,
 	void *data,
-	uint32_t elementCount
+	uint32_t dataLengthInBytes
 ) {
 	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
 	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
@@ -6651,7 +6651,7 @@ static uint32_t VULKAN_PushComputeShaderUniforms(
 		(Refresh_Buffer*) renderer->computeUBO,
 		renderer->computeUBOOffset,
 		data,
-		elementCount * vulkanCommandBuffer->currentComputePipeline->computeUBOBlockSize
+		dataLengthInBytes
 	);
 
 	SDL_UnlockMutex(renderer->uniformBufferLock);

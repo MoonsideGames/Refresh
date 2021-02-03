@@ -314,21 +314,21 @@ struct Refresh_Device
         Refresh_Renderer *driverData,
         Refresh_CommandBuffer *commandBuffer,
         void *data,
-        uint32_t elementCount
+        uint32_t dataLengthInBytes
     );
 
     uint32_t(*PushFragmentShaderUniforms)(
         Refresh_Renderer *driverData,
         Refresh_CommandBuffer *commandBuffer,
         void *data,
-        uint32_t elementCount
+        uint32_t dataLengthInBytes
     );
 
     uint32_t (*PushComputeShaderUniforms)(
         Refresh_Renderer *driverData,
         Refresh_CommandBuffer *commandBuffer,
         void *data,
-        uint32_t elementCount
+        uint32_t dataLengthInBytes
     );
 
     void(*BindVertexSamplers)(
