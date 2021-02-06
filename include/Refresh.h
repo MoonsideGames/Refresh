@@ -995,7 +995,7 @@ REFRESHAPI void Refresh_SetBufferData(
  */
 REFRESHAPI uint32_t Refresh_PushVertexShaderUniforms(
 	Refresh_Device *device,
-	Refresh_CommandBuffer *commandBuffer,
+	Refresh_GraphicsPipeline *pipeline,
 	void *data,
 	uint32_t dataLengthInBytes
 );
@@ -1012,7 +1012,7 @@ REFRESHAPI uint32_t Refresh_PushVertexShaderUniforms(
  */
 REFRESHAPI uint32_t Refresh_PushFragmentShaderUniforms(
 	Refresh_Device *device,
-	Refresh_CommandBuffer *commandBuffer,
+	Refresh_GraphicsPipeline *pipeline,
 	void *data,
 	uint32_t dataLengthInBytes
 );
@@ -1029,7 +1029,7 @@ REFRESHAPI uint32_t Refresh_PushFragmentShaderUniforms(
  */
 REFRESHAPI uint32_t Refresh_PushComputeShaderUniforms(
 	Refresh_Device *device,
-	Refresh_CommandBuffer *commandBuffer,
+	Refresh_ComputePipeline *pipeline,
 	void *data,
 	uint32_t dataLengthInBytes
 );

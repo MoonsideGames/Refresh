@@ -6553,21 +6553,21 @@ static void VULKAN_SetBufferData(
 
 static uint32_t VULKAN_PushVertexShaderUniforms(
 	Refresh_Renderer *driverData,
-	Refresh_CommandBuffer *commandBuffer,
+	Refresh_GraphicsPipeline *pipeline,
 	void *data,
 	uint32_t dataLengthInBytes
 ) {
 	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
-	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
+	VulkanGraphicsPipeline* graphicsPipeline = (VulkanGraphicsPipeline*) pipeline;
 
 	SDL_LockMutex(renderer->uniformBufferLock);
 
 	renderer->vertexUBOOffset += renderer->vertexUBOBlockIncrement;
-	renderer->vertexUBOBlockIncrement = vulkanCommandBuffer->currentGraphicsPipeline->vertexUBOBlockSize;
+	renderer->vertexUBOBlockIncrement = graphicsPipeline->vertexUBOBlockSize;
 
 	if (
 		renderer->vertexUBOOffset +
-		vulkanCommandBuffer->currentGraphicsPipeline->vertexUBOBlockSize >=
+		graphicsPipeline->vertexUBOBlockSize >=
 		UBO_BUFFER_SIZE * (renderer->frameIndex + 1)
 	) {
 		Refresh_LogError("Vertex UBO overflow!");
@@ -6589,21 +6589,21 @@ static uint32_t VULKAN_PushVertexShaderUniforms(
 
 static uint32_t VULKAN_PushFragmentShaderUniforms(
 	Refresh_Renderer *driverData,
-	Refresh_CommandBuffer *commandBuffer,
+	Refresh_GraphicsPipeline *pipeline,
 	void *data,
 	uint32_t dataLengthInBytes
 ) {
 	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
-	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
+	VulkanGraphicsPipeline* graphicsPipeline = (VulkanGraphicsPipeline*) pipeline;
 
 	SDL_LockMutex(renderer->uniformBufferLock);
 
 	renderer->fragmentUBOOffset += renderer->fragmentUBOBlockIncrement;
-	renderer->fragmentUBOBlockIncrement = vulkanCommandBuffer->currentGraphicsPipeline->fragmentUBOBlockSize;
+	renderer->fragmentUBOBlockIncrement = graphicsPipeline->fragmentUBOBlockSize;
 
 	if (
 		renderer->fragmentUBOOffset +
-		vulkanCommandBuffer->currentGraphicsPipeline->fragmentUBOBlockSize >=
+		graphicsPipeline->fragmentUBOBlockSize >=
 		UBO_BUFFER_SIZE * (renderer->frameIndex + 1)
 	) {
 		Refresh_LogError("Fragment UBO overflow!");
@@ -6625,21 +6625,21 @@ static uint32_t VULKAN_PushFragmentShaderUniforms(
 
 static uint32_t VULKAN_PushComputeShaderUniforms(
 	Refresh_Renderer *driverData,
-	Refresh_CommandBuffer *commandBuffer,
+	Refresh_ComputePipeline *pipeline,
 	void *data,
 	uint32_t dataLengthInBytes
 ) {
 	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
-	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
+	VulkanComputePipeline* computePipeline = (VulkanComputePipeline*) pipeline;
 
 	SDL_LockMutex(renderer->uniformBufferLock);
 
 	renderer->computeUBOOffset += renderer->computeUBOBlockIncrement;
-	renderer->computeUBOBlockIncrement = vulkanCommandBuffer->currentComputePipeline->computeUBOBlockSize;
+	renderer->computeUBOBlockIncrement = computePipeline->computeUBOBlockSize;
 
 	if (
 		renderer->computeUBOOffset +
-		vulkanCommandBuffer->currentComputePipeline->computeUBOBlockSize >=
+		computePipeline->computeUBOBlockSize >=
 		UBO_BUFFER_SIZE * (renderer->frameIndex + 1)
 	) {
 		Refresh_LogError("Compute UBO overflow!");
