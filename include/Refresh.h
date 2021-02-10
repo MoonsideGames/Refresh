@@ -354,14 +354,6 @@ typedef enum Refresh_BorderColor
 
 /* Structures */
 
-typedef struct Refresh_Color
-{
-	uint8_t r;
-	uint8_t g;
-	uint8_t b;
-	uint8_t a;
-} Refresh_Color;
-
 typedef struct Refresh_DepthStencilValue
 {
 	float depth;
@@ -751,7 +743,7 @@ REFRESHAPI void Refresh_Clear(
 	Refresh_CommandBuffer *commandBuffer,
 	Refresh_Rect *clearRect,
 	Refresh_ClearOptions options,
-	Refresh_Color *colors,
+	Refresh_Vec4 *colors,
 	uint32_t colorCount,
 	Refresh_DepthStencilValue depthStencil
 );
@@ -1183,7 +1175,7 @@ REFRESHAPI void Refresh_BeginRenderPass(
 	Refresh_RenderPass *renderPass,
 	Refresh_Framebuffer *framebuffer,
 	Refresh_Rect *renderArea,
-	Refresh_Color *pColorClearValues,
+	Refresh_Vec4 *pColorClearValues,
 	uint32_t colorClearCount,
 	Refresh_DepthStencilValue *depthStencilClearValue
 );

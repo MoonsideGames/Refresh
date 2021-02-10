@@ -172,7 +172,7 @@ void Refresh_Clear(
 	Refresh_CommandBuffer *commandBuffer,
 	Refresh_Rect *clearRect,
 	Refresh_ClearOptions options,
-	Refresh_Color *colors,
+	Refresh_Vec4 *colors,
 	uint32_t colorCount,
     Refresh_DepthStencilValue depthStencil
 ) {
@@ -659,7 +659,7 @@ void Refresh_BeginRenderPass(
 	Refresh_RenderPass *renderPass,
 	Refresh_Framebuffer *framebuffer,
 	Refresh_Rect *renderArea,
-	Refresh_Color *pColorClearValues,
+	Refresh_Vec4 *pColorClearValues,
 	uint32_t colorClearCount,
 	Refresh_DepthStencilValue *depthStencilClearValue
 ) {

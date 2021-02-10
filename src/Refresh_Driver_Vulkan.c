@@ -3832,7 +3832,7 @@ static void VULKAN_Clear(
 	Refresh_CommandBuffer *commandBuffer,
 	Refresh_Rect *clearRect,
 	Refresh_ClearOptions options,
-	Refresh_Color *colors,
+	Refresh_Vec4 *colors,
 	uint32_t colorCount,
 	Refresh_DepthStencilValue depthStencil
 ) {
@@ -3871,10 +3871,10 @@ static void VULKAN_Clear(
 	{
 		for (i = 0; i < colorCount; i += 1)
 		{
-			clearValues[i].color.float32[0] = colors[i].r / 255.0f;
-			clearValues[i].color.float32[1] = colors[i].g / 255.0f;
-			clearValues[i].color.float32[2] = colors[i].b / 255.0f;
-			clearValues[i].color.float32[3] = colors[i].a / 255.0f;
+			clearValues[i].color.float32[0] = colors[i].x;
+			clearValues[i].color.float32[1] = colors[i].y;
+			clearValues[i].color.float32[2] = colors[i].z;
+			clearValues[i].color.float32[3] = colors[i].w;
 		}
 
 		for (i = 0; i < colorCount; i += 1)
@@ -7340,7 +7340,7 @@ static void VULKAN_BeginRenderPass(
 	Refresh_RenderPass *renderPass,
 	Refresh_Framebuffer *framebuffer,
 	Refresh_Rect *renderArea,
-	Refresh_Color *pColorClearValues,
+	Refresh_Vec4 *pColorClearValues,
 	uint32_t colorClearCount,
 	Refresh_DepthStencilValue *depthStencilClearValue
 ) {
@@ -7405,10 +7405,10 @@ static void VULKAN_BeginRenderPass(
 
 	for (i = 0; i < colorClearCount; i += 1)
 	{
-		clearValues[i].color.float32[0] = pColorClearValues[i].r / 255.0f;
-		clearValues[i].color.float32[1] = pColorClearValues[i].g / 255.0f;
-		clearValues[i].color.float32[2] = pColorClearValues[i].b / 255.0f;
-		clearValues[i].color.float32[3] = pColorClearValues[i].a / 255.0f;
+		clearValues[i].color.float32[0] = pColorClearValues[i].x;
+		clearValues[i].color.float32[1] = pColorClearValues[i].y;
+		clearValues[i].color.float32[2] = pColorClearValues[i].z;
+		clearValues[i].color.float32[3] = pColorClearValues[i].w;
 	}
 
 	if (depthStencilClearValue != NULL)
