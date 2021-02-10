@@ -7362,19 +7362,20 @@ static void VULKAN_BeginRenderPass(
 			vulkanCommandBuffer->commandBuffer,
 			RESOURCE_ACCESS_COLOR_ATTACHMENT_READ_WRITE,
 			VK_IMAGE_ASPECT_COLOR_BIT,
-			vulkanFramebuffer->colorTargets[i]->layer,
-			1,
 			0,
-			1,
+			vulkanFramebuffer->colorTargets[i]->texture->layerCount,
+			0,
+			vulkanFramebuffer->colorTargets[i]->texture->levelCount,
 			0,
 			vulkanFramebuffer->colorTargets[i]->texture->image,
 			&vulkanFramebuffer->colorTargets[i]->texture->resourceAccessType
 		);
 	}
 
-	if (depthStencilClearValue != NULL)
+	if (vulkanFramebuffer->depthStencilTarget != NULL)
 	{
 		depthAspectFlags = VK_IMAGE_ASPECT_DEPTH_BIT;
+
 		if (IsStencilFormat(
 			vulkanFramebuffer->depthStencilTarget->texture->format
 		)) {
@@ -7387,9 +7388,9 @@ static void VULKAN_BeginRenderPass(
 			RESOURCE_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_WRITE,
 			depthAspectFlags,
 			0,
-			1,
+			vulkanFramebuffer->depthStencilTarget->texture->layerCount,
 			0,
-			1,
+			vulkanFramebuffer->depthStencilTarget->texture->levelCount,
 			0,
 			vulkanFramebuffer->depthStencilTarget->texture->image,
 			&vulkanFramebuffer->depthStencilTarget->texture->resourceAccessType
@@ -7448,6 +7449,7 @@ static void VULKAN_EndRenderPass(
 	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
 	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
 	VulkanTexture *currentTexture;
+	VkImageAspectFlags depthAspectFlags;
 	uint32_t i;
 
 	renderer->vkCmdEndRenderPass(
@@ -7465,6 +7467,36 @@ static void VULKAN_EndRenderPass(
 				vulkanCommandBuffer->commandBuffer,
 				RESOURCE_ACCESS_ANY_SHADER_READ_SAMPLED_IMAGE,
 				VK_IMAGE_ASPECT_COLOR_BIT,
+				0,
+				currentTexture->layerCount,
+				0,
+				currentTexture->levelCount,
+				0,
+				currentTexture->image,
+				&currentTexture->resourceAccessType
+			);
+		}
+	}
+
+	if (vulkanCommandBuffer->currentFramebuffer->depthStencilTarget != NULL)
+	{
+		currentTexture = vulkanCommandBuffer->currentFramebuffer->depthStencilTarget->texture;
+
+		if (currentTexture->usageFlags & VK_IMAGE_USAGE_SAMPLED_BIT)
+		{
+			depthAspectFlags = VK_IMAGE_ASPECT_DEPTH_BIT;
+
+			if (IsStencilFormat(
+				currentTexture->format
+			)) {
+				depthAspectFlags |= VK_IMAGE_ASPECT_STENCIL_BIT;
+			}
+
+			VULKAN_INTERNAL_ImageMemoryBarrier(
+				renderer,
+				vulkanCommandBuffer->commandBuffer,
+				RESOURCE_ACCESS_ANY_SHADER_READ_SAMPLED_IMAGE,
+				depthAspectFlags,
 				0,
 				currentTexture->layerCount,
 				0,
