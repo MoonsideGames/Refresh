@@ -20,5 +20,5 @@ steps:
     - git submodule update --recursive --init
     - cmake -E make_directory ./build
     - cd ./build
-    - cmake -DCMAKE_C_COMPILER=/usr/bin/clang -S .. -B .
+    - cmake -DCMAKE_C_COMPILER=/usr/bin/mingw64 -S .. -B .
     - make
