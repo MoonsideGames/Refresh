@@ -3,12 +3,22 @@ type: docker
 name: default
 
 steps:
-- name: build
+- name: build-linux
   image: thatcosmonaut/moonworks-build
   commands:
     - dnf install -y git cmake SDL2-devel
     - git submodule update --recursive --init
-    - cmake -E make_directory ./build
+    - cmake -DCMAKE_C_COMPILER=/usr/bin/clang -E make_directory ./build
+    - cd ./build
+    - cmake -S .. -B .
+    - make
+
+- name: build-windows
+  image: thatcosmonaut/moonworks-build
+  commands:
+    - dnf install -y git cmake SDL2-devel
+    - git submodule update --recursive --init
+    - cmake -DCMAKE_C_COMPILER=/usr/bin/mingw64 -E make_directory ./build
     - cd ./build
     - cmake -S .. -B .
     - make
