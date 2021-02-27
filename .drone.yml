@@ -4,9 +4,9 @@ name: default
 
 steps:
 - name: build
-  image: fedora
+  image: thatcosmonaut/moonworks-build
   commands:
-    - dnf install -y git cmake clang SDL2-devel
+    - dnf install -y git cmake
     - git submodule update --recursive --init
     - cmake -E make_directory ./build
     - cd ./build
