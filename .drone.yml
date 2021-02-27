@@ -29,6 +29,6 @@ steps:
       from_secret: gitea_token
     files:
       - ./build/libRefresh.so
-      - ./build/Refresh.dll
+      - ./windows-build/Refresh.dll
   when:
     event: tag
