@@ -4,7 +4,7 @@ name: default
 
 steps:
 - name: build-linux
-  image: thatcosmonaut/moonworks-build
+  image: thatcosmonaut/moonworks-build:latest
   commands:
     - git submodule update --recursive --init
     - cmake -E make_directory ./build
@@ -13,7 +13,7 @@ steps:
     - make
 
 - name: build-windows
-  image: thatcosmonaut/moonworks-build
+  image: thatcosmonaut/moonworks-build:latest
   commands:
     - git submodule update --recursive --init
     - cmake -E make_directory ./windows-build
