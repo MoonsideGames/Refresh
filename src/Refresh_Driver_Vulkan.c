@@ -3428,7 +3428,7 @@ static void VULKAN_INTERNAL_RecreateSwapchain(VulkanRenderer* renderer)
 
 /* Data Buffer */
 
-/* buffer should be an alloc'd but uninitialized VulkanTexture */
+/* buffer should be an alloc'd but uninitialized VulkanBuffer */
 static uint8_t VULKAN_INTERNAL_CreateBuffer(
 	VulkanRenderer *renderer,
 	VkDeviceSize size,
@@ -6308,7 +6308,7 @@ static void VULKAN_SetTextureDataYUV(
 
 	/* V */
 
-	imageCopy.bufferOffset = renderer->textureStagingBufferOffset + uvDataLength;
+	imageCopy.bufferOffset = renderer->textureStagingBufferOffset + yDataLength + uvDataLength;
 
 	tex = (VulkanTexture*) v;
 
@@ -6341,7 +6341,7 @@ static void VULKAN_SetTextureDataYUV(
 		&imageCopy
 	);
 
-	renderer->textureStagingBufferOffset += dataLength;
+	renderer->textureStagingBufferOffset += yDataLength + uvDataLength;
 
 	if (tex->usageFlags & VK_IMAGE_USAGE_SAMPLED_BIT)
 	{
