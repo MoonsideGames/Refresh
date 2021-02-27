@@ -20,3 +20,15 @@ steps:
     - cd ./windows-build
     - mingw64-cmake -S .. -B .
     - make
+
+- name: gitea_release
+  image: plugins/gitea-release
+  settings:
+    base_url: https://gitea.moonside.games
+    api_key:
+      from_secret: gitea_token
+    files:
+      - ./build/libRefresh.so
+      - ./build/Refresh.dll
+  when:
+    event: tag
