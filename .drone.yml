@@ -8,10 +8,9 @@ steps:
   commands:
     - dnf install -y git cmake SDL2-devel
     - git submodule update --recursive --init
-    - mkdir ./build
-    - cmake -DCMAKE_C_COMPILER=/usr/bin/clang ./build
+    - cmake -E make_directory ./build
     - cd ./build
-    - cmake -S .. -B .
+    - cmake -DCMAKE_C_COMPILER=/usr/bin/clang -S .. -B .
     - make
 
 - name: build-windows
@@ -19,8 +18,7 @@ steps:
   commands:
     - dnf install -y git cmake SDL2-devel
     - git submodule update --recursive --init
-    - mkdir ./build
-    - cmake -DCMAKE_C_COMPILER=/usr/bin/mingw64 ./build
+    - cmake -E make_directory ./build
     - cd ./build
-    - cmake -S .. -B .
+    - cmake -DCMAKE_C_COMPILER=/usr/bin/clang -S .. -B .
     - make
