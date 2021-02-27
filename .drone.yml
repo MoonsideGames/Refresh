@@ -6,7 +6,7 @@ steps:
 - name: build-linux
   image: thatcosmonaut/moonworks-build
   commands:
-    - dnf install -y git cmake SDL2-devel
+    - dnf install -y SDL2-devel
     - git submodule update --recursive --init
     - cmake -E make_directory ./build
     - cd ./build
@@ -16,7 +16,7 @@ steps:
 - name: build-windows
   image: thatcosmonaut/moonworks-build
   commands:
-    - dnf install -y git cmake SDL2-devel
+    - dnf install -y SDL2-devel
     - git submodule update --recursive --init
     - cmake -E make_directory ./windows-build
     - cd ./windows-build
