@@ -8,7 +8,8 @@ steps:
   commands:
     - dnf install -y git cmake SDL2-devel
     - git submodule update --recursive --init
-    - cmake -DCMAKE_C_COMPILER=/usr/bin/clang -E make_directory ./build
+    - mkdir ./build
+    - cmake -DCMAKE_C_COMPILER=/usr/bin/clang ./build
     - cd ./build
     - cmake -S .. -B .
     - make
@@ -18,7 +19,8 @@ steps:
   commands:
     - dnf install -y git cmake SDL2-devel
     - git submodule update --recursive --init
-    - cmake -DCMAKE_C_COMPILER=/usr/bin/mingw64 -E make_directory ./build
+    - mkdir ./build
+    - cmake -DCMAKE_C_COMPILER=/usr/bin/mingw64 ./build
     - cd ./build
     - cmake -S .. -B .
     - make
