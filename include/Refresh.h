@@ -46,12 +46,6 @@
 #endif /* __GNUC__ */
 #endif /* REFRESHNAMELESS */
 
-#define VK_DEFINE_HANDLE(object) typedef struct object##_T* object;
-
-VK_DEFINE_HANDLE(VkInstance)
-VK_DEFINE_HANDLE(VkDevice)
-VK_DEFINE_HANDLE(VkPhysicalDevice)
-
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -626,9 +620,9 @@ typedef struct Refresh_SysRenderer
 #if REFRESH_DRIVER_VULKAN
 		struct
 		{
-			VkInstance instance;
-			VkPhysicalDevice physicalDevice;
-			VkDevice logicalDevice;
+			void* instance;
+			void* physicalDevice;
+			void* logicalDevice;
 			uint32_t queueFamilyIndex;
 		} vulkan;
 #endif /* REFRESH_DRIVER_VULKAN */
