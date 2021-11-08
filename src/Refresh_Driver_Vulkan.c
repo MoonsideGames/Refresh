@@ -9761,6 +9761,10 @@ static Refresh_Device* VULKAN_CreateDevice(
 
 	VULKAN_INTERNAL_LoadEntryPoints(renderer);
 
+	renderer->presentMode = presentationParameters->presentMode;
+	renderer->debugMode = debugMode;
+	renderer->usesExternalDevice = 0;
+
 	/* Create the VkInstance */
 	if (!VULKAN_INTERNAL_CreateInstance(renderer, presentationParameters->deviceWindowHandle))
 	{
@@ -9769,10 +9773,7 @@ static Refresh_Device* VULKAN_CreateDevice(
 	}
 
 	renderer->deviceWindowHandle = presentationParameters->deviceWindowHandle;
-	renderer->presentMode = presentationParameters->presentMode;
-	renderer->debugMode = debugMode;
 	renderer->headless = presentationParameters->deviceWindowHandle == NULL;
-	renderer->usesExternalDevice = 0;
 
 	/*
 	 * Create the WSI vkSurface
