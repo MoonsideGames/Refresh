@@ -269,6 +269,7 @@ struct Refresh_Device
 
     void(*SetTextureData)(
         Refresh_Renderer *driverData,
+        Refresh_CommandBuffer *commandBuffer,
         Refresh_TextureSlice *textureSlice,
         void *data,
         uint32_t dataLengthInBytes
@@ -276,6 +277,7 @@ struct Refresh_Device
 
     void(*SetTextureDataYUV)(
         Refresh_Renderer *driverData,
+        Refresh_CommandBuffer* commandBuffer,
         Refresh_Texture *y,
         Refresh_Texture *u,
         Refresh_Texture *v,

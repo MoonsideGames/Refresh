@@ -890,6 +890,7 @@ REFRESHAPI Refresh_Buffer* Refresh_CreateBuffer(
  */
 REFRESHAPI void Refresh_SetTextureData(
 	Refresh_Device *driverData,
+	Refresh_CommandBuffer *commandBuffer,
 	Refresh_TextureSlice *textureSlice,
 	void *data,
 	uint32_t dataLengthInBytes
@@ -909,6 +910,7 @@ REFRESHAPI void Refresh_SetTextureData(
  */
 REFRESHAPI void Refresh_SetTextureDataYUV(
 	Refresh_Device *driverData,
+	Refresh_CommandBuffer* commandBuffer,
 	Refresh_Texture *y,
 	Refresh_Texture *u,
 	Refresh_Texture *v,

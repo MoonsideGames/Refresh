@@ -1291,10 +1291,6 @@ typedef struct VulkanRenderer
 	VkSemaphore imageAvailableSemaphore;
 	VkSemaphore renderFinishedSemaphore;
 
-	VkCommandPool transferCommandPool;
-	VkCommandBuffer transferCommandBuffers[2]; /* frame count */
-	uint8_t pendingTransfer;
-
 	VulkanCommandBuffer **submittedCommandBuffers;
 	uint32_t submittedCommandBufferCount;
 	uint32_t submittedCommandBufferCapacity;
@@ -1447,7 +1443,6 @@ typedef struct VulkanRenderer
 
 static void VULKAN_INTERNAL_BeginCommandBuffer(VulkanRenderer *renderer, VulkanCommandBuffer *commandBuffer);
 static void VULKAN_Submit(Refresh_Renderer *driverData, uint32_t commandBufferCount, Refresh_CommandBuffer **pCommandBuffers);
-static void VULKAN_INTERNAL_FlushTransfers(VulkanRenderer *renderer);
 
 /* Error Handling */
 
@@ -3646,12 +3641,6 @@ static void VULKAN_DestroyDevice(
 			SDL_free(commandPoolHashArray.elements);
 		}
 	}
-
-	renderer->vkDestroyCommandPool(
-		renderer->logicalDevice,
-		renderer->transferCommandPool,
-		NULL
-	);
 
 	for (i = 0; i < NUM_PIPELINE_LAYOUT_BUCKETS; i += 1)
 	{
@@ -5948,9 +5937,6 @@ static void VULKAN_INTERNAL_MaybeExpandStagingBuffer(
 		return;
 	}
 
-	/* not enough room in the staging buffer, time to flush */
-	VULKAN_INTERNAL_FlushTransfers(renderer);
-
 	while (nextStagingSize < textureSize)
 	{
 		nextStagingSize *= 2;
@@ -5972,127 +5958,18 @@ static void VULKAN_INTERNAL_MaybeExpandStagingBuffer(
 		Refresh_LogError("Failed to expand texture staging buffer!");
 		return;
 	}
-
-}
-
-static void VULKAN_INTERNAL_MaybeBeginTransferCommandBuffer(
-	VulkanRenderer *renderer
-) {
-	VkCommandBufferBeginInfo transferCommandBufferBeginInfo;
-
-	if (!renderer->pendingTransfer)
-	{
-		transferCommandBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-		transferCommandBufferBeginInfo.pNext = NULL;
-		transferCommandBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-		transferCommandBufferBeginInfo.pInheritanceInfo = NULL;
-
-		renderer->vkBeginCommandBuffer(
-			renderer->transferCommandBuffers[renderer->frameIndex],
-			&transferCommandBufferBeginInfo
-		);
-
-		renderer->pendingTransfer = 1;
-	}
-}
-
-static void VULKAN_INTERNAL_EndTransferCommandBuffer(
-	VulkanRenderer *renderer
-) {
-	if (renderer->pendingTransfer)
-	{
-		renderer->vkEndCommandBuffer(
-			renderer->transferCommandBuffers[renderer->frameIndex]
-		);
-	}
-}
-
-/* Hard sync point! */
-static void VULKAN_INTERNAL_FlushTransfers(
-	VulkanRenderer *renderer
-) {
-	VkSubmitInfo transferSubmitInfo;
-	VkResult vulkanResult;
-
-	if (renderer->pendingTransfer)
-	{
-		VULKAN_INTERNAL_EndTransferCommandBuffer(renderer);
-
-		transferSubmitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-		transferSubmitInfo.pNext = NULL;
-		transferSubmitInfo.commandBufferCount = 1;
-		transferSubmitInfo.pCommandBuffers = &renderer->transferCommandBuffers[renderer->frameIndex];
-		transferSubmitInfo.pWaitDstStageMask = NULL;
-		transferSubmitInfo.pWaitSemaphores = NULL;
-		transferSubmitInfo.waitSemaphoreCount = 0;
-		transferSubmitInfo.pSignalSemaphores = NULL;
-		transferSubmitInfo.signalSemaphoreCount = 0;
-
-		/* Wait for the previous submission to complete */
-		vulkanResult = renderer->vkWaitForFences(
-			renderer->logicalDevice,
-			1,
-			&renderer->inFlightFence,
-			VK_TRUE,
-			UINT64_MAX
-		);
-
-		if (vulkanResult != VK_SUCCESS)
-		{
-			LogVulkanResultAsError("vkWaitForFences", vulkanResult);
-			return;
-		}
-
-		renderer->vkResetFences(
-			renderer->logicalDevice,
-			1,
-			&renderer->inFlightFence
-		);
-
-		/* Submit transfers */
-		vulkanResult = renderer->vkQueueSubmit(
-			renderer->transferQueue,
-			1,
-			&transferSubmitInfo,
-			renderer->inFlightFence
-		);
-
-		if (vulkanResult != VK_SUCCESS)
-		{
-			LogVulkanResultAsError("vkQueueSubmit", vulkanResult);
-			return;
-		}
-
-		/* Wait again */
-		vulkanResult = renderer->vkWaitForFences(
-			renderer->logicalDevice,
-			1,
-			&renderer->inFlightFence,
-			VK_TRUE,
-			UINT64_MAX
-		);
-
-		if (vulkanResult != VK_SUCCESS)
-		{
-			LogVulkanResultAsError("vkWaitForFences", vulkanResult);
-			return;
-		}
-
-		renderer->pendingTransfer = 0;
-		renderer->textureStagingBufferOffset = 0;
-	}
 }
 
 static void VULKAN_SetTextureData(
 	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer,
 	Refresh_TextureSlice *textureSlice,
 	void *data,
 	uint32_t dataLengthInBytes
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VulkanTexture *vulkanTexture = (VulkanTexture*) textureSlice->texture;
-
-	VkCommandBuffer commandBuffer = renderer->transferCommandBuffers[renderer->frameIndex];
+	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
 	VkBufferImageCopy imageCopy;
 	uint8_t *stagingBufferPointer;
 
@@ -6106,7 +5983,6 @@ static void VULKAN_SetTextureData(
 			vulkanTexture->format
 		)
 	);
-	VULKAN_INTERNAL_MaybeBeginTransferCommandBuffer(renderer);
 
 	stagingBufferPointer =
 		renderer->textureStagingBuffer->subBuffers[0]->allocation->mapPointer +
@@ -6121,7 +5997,7 @@ static void VULKAN_SetTextureData(
 
 	VULKAN_INTERNAL_ImageMemoryBarrier(
 		renderer,
-		commandBuffer,
+		vulkanCommandBuffer->commandBuffer,
 		RESOURCE_ACCESS_TRANSFER_WRITE,
 		VK_IMAGE_ASPECT_COLOR_BIT,
 		textureSlice->layer,
@@ -6148,7 +6024,7 @@ static void VULKAN_SetTextureData(
 	imageCopy.bufferImageHeight = 0;
 
 	renderer->vkCmdCopyBufferToImage(
-		commandBuffer,
+		vulkanCommandBuffer->commandBuffer,
 		renderer->textureStagingBuffer->subBuffers[0]->buffer,
 		vulkanTexture->image,
 		AccessMap[vulkanTexture->resourceAccessType].imageLayout,
@@ -6162,7 +6038,7 @@ static void VULKAN_SetTextureData(
 	{
 		VULKAN_INTERNAL_ImageMemoryBarrier(
 			renderer,
-			commandBuffer,
+			vulkanCommandBuffer->commandBuffer,
 			RESOURCE_ACCESS_ANY_SHADER_READ_SAMPLED_IMAGE,
 			VK_IMAGE_ASPECT_COLOR_BIT,
 			textureSlice->layer,
@@ -6180,6 +6056,7 @@ static void VULKAN_SetTextureData(
 
 static void VULKAN_SetTextureDataYUV(
 	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer* commandBuffer,
 	Refresh_Texture *y,
 	Refresh_Texture *u,
 	Refresh_Texture *v,
@@ -6193,7 +6070,7 @@ static void VULKAN_SetTextureDataYUV(
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VulkanTexture *tex;
 
-	VkCommandBuffer commandBuffer = renderer->transferCommandBuffers[renderer->frameIndex];
+	VulkanCommandBuffer* vulkanCommandBuffer = (VulkanCommandBuffer*)commandBuffer;
 	uint8_t *dataPtr = (uint8_t*) data;
 	int32_t yDataLength = BytesPerImage(yWidth, yHeight, REFRESH_TEXTUREFORMAT_R8);
 	int32_t uvDataLength = BytesPerImage(uvWidth, uvHeight, REFRESH_TEXTUREFORMAT_R8);
@@ -6206,7 +6083,6 @@ static void VULKAN_SetTextureDataYUV(
 		renderer,
 		yDataLength + uvDataLength
 	);
-	VULKAN_INTERNAL_MaybeBeginTransferCommandBuffer(renderer);
 
 	stagingBufferPointer =
 		renderer->textureStagingBuffer->subBuffers[0]->allocation->mapPointer +
@@ -6236,7 +6112,7 @@ static void VULKAN_SetTextureDataYUV(
 
 	VULKAN_INTERNAL_ImageMemoryBarrier(
 		renderer,
-		commandBuffer,
+		vulkanCommandBuffer->commandBuffer,
 		RESOURCE_ACCESS_TRANSFER_WRITE,
 		VK_IMAGE_ASPECT_COLOR_BIT,
 		0,
@@ -6256,7 +6132,7 @@ static void VULKAN_SetTextureDataYUV(
 	imageCopy.bufferImageHeight = yHeight;
 
 	renderer->vkCmdCopyBufferToImage(
-		commandBuffer,
+		vulkanCommandBuffer->commandBuffer,
 		renderer->textureStagingBuffer->subBuffers[0]->buffer,
 		tex->image,
 		AccessMap[tex->resourceAccessType].imageLayout,
@@ -6285,7 +6161,7 @@ static void VULKAN_SetTextureDataYUV(
 
 	VULKAN_INTERNAL_ImageMemoryBarrier(
 		renderer,
-		commandBuffer,
+		vulkanCommandBuffer->commandBuffer,
 		RESOURCE_ACCESS_TRANSFER_WRITE,
 		VK_IMAGE_ASPECT_COLOR_BIT,
 		0,
@@ -6298,7 +6174,7 @@ static void VULKAN_SetTextureDataYUV(
 	);
 
 	renderer->vkCmdCopyBufferToImage(
-		commandBuffer,
+		vulkanCommandBuffer->commandBuffer,
 		renderer->textureStagingBuffer->subBuffers[0]->buffer,
 		tex->image,
 		AccessMap[tex->resourceAccessType].imageLayout,
@@ -6320,7 +6196,7 @@ static void VULKAN_SetTextureDataYUV(
 
 	VULKAN_INTERNAL_ImageMemoryBarrier(
 		renderer,
-		commandBuffer,
+		vulkanCommandBuffer->commandBuffer,
 		RESOURCE_ACCESS_TRANSFER_WRITE,
 		VK_IMAGE_ASPECT_COLOR_BIT,
 		0,
@@ -6333,7 +6209,7 @@ static void VULKAN_SetTextureDataYUV(
 	);
 
 	renderer->vkCmdCopyBufferToImage(
-		commandBuffer,
+		vulkanCommandBuffer->commandBuffer,
 		renderer->textureStagingBuffer->subBuffers[0]->buffer,
 		tex->image,
 		AccessMap[tex->resourceAccessType].imageLayout,
@@ -6347,7 +6223,7 @@ static void VULKAN_SetTextureDataYUV(
 	{
 		VULKAN_INTERNAL_ImageMemoryBarrier(
 			renderer,
-			commandBuffer,
+			vulkanCommandBuffer->commandBuffer,
 			RESOURCE_ACCESS_ANY_SHADER_READ_SAMPLED_IMAGE,
 			VK_IMAGE_ASPECT_COLOR_BIT,
 			0,
@@ -8169,7 +8045,7 @@ static void VULKAN_Submit(
 	Refresh_CommandBuffer **pCommandBuffers
 ) {
 	VulkanRenderer* renderer = (VulkanRenderer*)driverData;
-	VkSubmitInfo transferSubmitInfo, submitInfo;
+	VkSubmitInfo submitInfo;
 	VkResult vulkanResult, presentResult = VK_SUCCESS;
 	VulkanCommandBuffer *currentCommandBuffer;
 	VkCommandBuffer *commandBuffers;
@@ -8180,25 +8056,6 @@ static void VULKAN_Submit(
 	VkSemaphore waitSemaphores[2];
 	uint32_t waitSemaphoreCount = 0;
 	VkPresentInfoKHR presentInfo;
-
-	if (renderer->pendingTransfer)
-	{
-		VULKAN_INTERNAL_EndTransferCommandBuffer(renderer);
-
-		transferSubmitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-		transferSubmitInfo.pNext = NULL;
-		transferSubmitInfo.commandBufferCount = 1;
-		transferSubmitInfo.pCommandBuffers = &renderer->transferCommandBuffers[renderer->frameIndex];
-		transferSubmitInfo.pWaitDstStageMask = NULL;
-		transferSubmitInfo.pWaitSemaphores = NULL;
-		transferSubmitInfo.waitSemaphoreCount = 0;
-		transferSubmitInfo.pSignalSemaphores = &renderer->transferFinishedSemaphore;
-		transferSubmitInfo.signalSemaphoreCount = 1;
-
-		waitSemaphores[waitSemaphoreCount] = renderer->transferFinishedSemaphore;
-		waitStages[waitSemaphoreCount] = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-		waitSemaphoreCount += 1;
-	}
 
 	present = !renderer->headless && renderer->shouldPresent;
 
@@ -8273,23 +8130,6 @@ static void VULKAN_Submit(
 		&renderer->inFlightFence
 	);
 
-	if (renderer->pendingTransfer)
-	{
-		/* Submit any pending transfers */
-		vulkanResult = renderer->vkQueueSubmit(
-			renderer->transferQueue,
-			1,
-			&transferSubmitInfo,
-			NULL
-		);
-
-		if (vulkanResult != VK_SUCCESS)
-		{
-			LogVulkanResultAsError("vkQueueSubmit", vulkanResult);
-			return;
-		}
-	}
-
 	/* Submit the commands, finally. */
 	vulkanResult = renderer->vkQueueSubmit(
 		renderer->graphicsQueue,
@@ -8362,7 +8202,6 @@ static void VULKAN_Submit(
 
 	renderer->swapChainImageAcquired = 0;
 	renderer->shouldPresent = 0;
-	renderer->pendingTransfer = 0;
 	renderer->textureStagingBufferOffset = 0;
 
 	SDL_stack_free(commandBuffers);
@@ -9071,10 +8910,6 @@ static Refresh_Device* VULKAN_INTERNAL_CreateDevice(
 	VkFenceCreateInfo fenceInfo;
 	VkSemaphoreCreateInfo semaphoreInfo;
 
-	/* Variables: Transfer command buffer */
-	VkCommandPoolCreateInfo transferCommandPoolCreateInfo;
-	VkCommandBufferAllocateInfo transferCommandBufferAllocateInfo;
-
 	/* Variables: Descriptor set layouts */
 	VkDescriptorSetLayoutCreateInfo setLayoutCreateInfo;
 	VkDescriptorSetLayoutBinding vertexParamLayoutBinding;
@@ -9185,46 +9020,6 @@ static Refresh_Device* VULKAN_INTERNAL_CreateDevice(
 	renderer->descriptorSetLock = SDL_CreateMutex();
 	renderer->boundBufferLock = SDL_CreateMutex();
 	renderer->stagingLock = SDL_CreateMutex();
-
-	/* Transfer buffer */
-
-	transferCommandPoolCreateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-	transferCommandPoolCreateInfo.pNext = NULL;
-	transferCommandPoolCreateInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-	transferCommandPoolCreateInfo.queueFamilyIndex = renderer->queueFamilyIndices.transferFamily;
-
-	vulkanResult = renderer->vkCreateCommandPool(
-		renderer->logicalDevice,
-		&transferCommandPoolCreateInfo,
-		NULL,
-		&renderer->transferCommandPool
-	);
-
-	if (vulkanResult != VK_SUCCESS)
-	{
-		LogVulkanResultAsError("vkCreateCommandPool", vulkanResult);
-		return NULL;
-	}
-
-	transferCommandBufferAllocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-	transferCommandBufferAllocateInfo.pNext = NULL;
-	transferCommandBufferAllocateInfo.commandBufferCount = 2;
-	transferCommandBufferAllocateInfo.commandPool = renderer->transferCommandPool;
-	transferCommandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-
-	vulkanResult = renderer->vkAllocateCommandBuffers(
-		renderer->logicalDevice,
-		&transferCommandBufferAllocateInfo,
-		renderer->transferCommandBuffers
-	);
-
-	if (vulkanResult != VK_SUCCESS)
-	{
-		LogVulkanResultAsError("vkAllocateCommandBuffers", vulkanResult);
-		return NULL;
-	}
-
-	renderer->pendingTransfer = 0;
 
 	/*
 	 * Create submitted command buffer list

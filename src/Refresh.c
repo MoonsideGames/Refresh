@@ -375,6 +375,7 @@ Refresh_Buffer* Refresh_CreateBuffer(
 
 void Refresh_SetTextureData(
 	Refresh_Device *device,
+    Refresh_CommandBuffer *commandBuffer,
 	Refresh_TextureSlice *textureSlice,
 	void *data,
 	uint32_t dataLengthInBytes
@@ -382,6 +383,7 @@ void Refresh_SetTextureData(
     NULL_RETURN(device);
     device->SetTextureData(
         device->driverData,
+        commandBuffer,
         textureSlice,
         data,
         dataLengthInBytes
@@ -390,6 +392,7 @@ void Refresh_SetTextureData(
 
 void Refresh_SetTextureDataYUV(
 	Refresh_Device *device,
+    Refresh_CommandBuffer* commandBuffer,
 	Refresh_Texture *y,
 	Refresh_Texture *u,
 	Refresh_Texture *v,
@@ -403,6 +406,7 @@ void Refresh_SetTextureDataYUV(
     NULL_RETURN(device);
     device->SetTextureDataYUV(
         device->driverData,
+        commandBuffer,
         y,
         u,
         v,
