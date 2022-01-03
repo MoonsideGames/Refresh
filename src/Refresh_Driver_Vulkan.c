@@ -8160,7 +8160,6 @@ static void VULKAN_Submit(
 			);
 		}
 	}
-	renderer->submittedCommandBufferCount = 0;
 
 	/* Prepare the command buffer fence for submission */
 	renderer->vkResetFences(
@@ -8197,7 +8196,7 @@ static void VULKAN_Submit(
 	for (i = 0; i < commandBufferCount; i += 1)
 	{
 		((VulkanCommandBuffer*)pCommandBuffers[i])->submitted = 1;
-		renderer->submittedCommandBuffers[renderer->submittedCommandBufferCount] = (VulkanCommandBuffer*) pCommandBuffers[i];
+		renderer->submittedCommandBuffers[i] = (VulkanCommandBuffer*) pCommandBuffers[i];
 	}
 	renderer->submittedCommandBufferCount = commandBufferCount;
 
