@@ -5945,7 +5945,7 @@ static void VULKAN_INTERNAL_MaybeExpandTransferBuffer(
 			RESOURCE_ACCESS_MEMORY_TRANSFER_READ_WRITE,
 			VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
 			1);
-		
+
 		if (commandBuffer->transferBuffers[0]->buffer == NULL)
 		{
 			Refresh_LogError("Failed to allocate transfer buffer!");
@@ -8067,6 +8067,7 @@ static void VULKAN_INTERNAL_ResetCommandBuffer(
 	}
 
 	SDL_free(commandBuffer->transferBuffers);
+	commandBuffer->transferBuffers = NULL;
 	commandBuffer->transferBufferCount = 0;
 
 	commandBuffer->submitted = 0;
@@ -9093,7 +9094,7 @@ static Refresh_Device* VULKAN_INTERNAL_CreateDevice(
 		1
 	);
 
-	if (renderer->vertexUBO == NULL) 
+	if (renderer->vertexUBO == NULL)
 	{
 		Refresh_LogError("Failed to create vertex UBO!");
 		return NULL;
@@ -9107,7 +9108,7 @@ static Refresh_Device* VULKAN_INTERNAL_CreateDevice(
 		1
 	);
 
-	if (renderer->fragmentUBO == NULL) 
+	if (renderer->fragmentUBO == NULL)
 	{
 		Refresh_LogError("Failed to create fragment UBO!");
 		return NULL;
@@ -9380,7 +9381,7 @@ static Refresh_Device* VULKAN_INTERNAL_CreateDevice(
 		1
 	);
 
-	if (renderer->dummyComputeUniformBuffer == NULL) 
+	if (renderer->dummyComputeUniformBuffer == NULL)
 	{
 		Refresh_LogError("Failed to create dummy compute uniform buffer!");
 		return NULL;
