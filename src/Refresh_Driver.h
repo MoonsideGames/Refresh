@@ -314,21 +314,21 @@ struct Refresh_Device
 
     uint32_t(*PushVertexShaderUniforms)(
         Refresh_Renderer *driverData,
-        Refresh_GraphicsPipeline* pipeline,
+        Refresh_CommandBuffer *commandBuffer,
         void *data,
         uint32_t dataLengthInBytes
     );
 
     uint32_t(*PushFragmentShaderUniforms)(
         Refresh_Renderer *driverData,
-        Refresh_GraphicsPipeline *pipeline,
+        Refresh_CommandBuffer *commandBuffer,
         void *data,
         uint32_t dataLengthInBytes
     );
 
     uint32_t (*PushComputeShaderUniforms)(
         Refresh_Renderer *driverData,
-        Refresh_ComputePipeline *pipeline,
+        Refresh_CommandBuffer *commandBuffer,
         void *data,
         uint32_t dataLengthInBytes
     );

@@ -470,14 +470,14 @@ void Refresh_SetBufferData(
 
 uint32_t Refresh_PushVertexShaderUniforms(
 	Refresh_Device *device,
-    Refresh_GraphicsPipeline *pipeline,
+    Refresh_CommandBuffer *commandBuffer,
 	void *data,
 	uint32_t dataLengthInBytes
 ) {
     if (device == NULL) { return 0; }
     return device->PushVertexShaderUniforms(
         device->driverData,
-        pipeline,
+        commandBuffer,
         data,
         dataLengthInBytes
     );
@@ -485,14 +485,14 @@ uint32_t Refresh_PushVertexShaderUniforms(
 
 uint32_t Refresh_PushFragmentShaderUniforms(
 	Refresh_Device *device,
-    Refresh_GraphicsPipeline * pipeline,
+    Refresh_CommandBuffer *commandBuffer,
 	void *data,
 	uint32_t dataLengthInBytes
 ) {
     if (device == NULL) { return 0; }
     return device->PushFragmentShaderUniforms(
         device->driverData,
-        pipeline,
+        commandBuffer,
         data,
         dataLengthInBytes
     );
@@ -500,14 +500,14 @@ uint32_t Refresh_PushFragmentShaderUniforms(
 
 uint32_t Refresh_PushComputeShaderUniforms(
     Refresh_Device *device,
-    Refresh_ComputePipeline *pipeline,
+    Refresh_CommandBuffer *commandBuffer,
     void *data,
     uint32_t dataLengthInBytes
 ) {
     if (device == NULL) { return 0; }
     return device->PushComputeShaderUniforms(
         device->driverData,
-        pipeline,
+        commandBuffer,
         data,
         dataLengthInBytes
     );
