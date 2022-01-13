@@ -3314,8 +3314,6 @@ static uint8_t VULKAN_INTERNAL_CreateUniformBuffer(
 ) {
 	VulkanResourceAccessType resourceAccessType;
 	VkDescriptorSetLayout descriptorSetLayout;
-	VkWriteDescriptorSet writeDescriptorSet;
-	VkDescriptorBufferInfo descriptorBufferInfo;
 
 	if (bufferPool->type == UNIFORM_BUFFER_VERTEX)
 	{
@@ -3381,31 +3379,6 @@ static uint8_t VULKAN_INTERNAL_CreateUniformBuffer(
 	}
 
 	bufferPool->descriptorPool.availableDescriptorSetCount -= 1;
-
-	/* Update the descriptor set we just allocated */
-
-	descriptorBufferInfo.buffer = buffer->vulkanBuffer->buffer;
-	descriptorBufferInfo.offset = 0;
-	descriptorBufferInfo.range = blockSize;
-
-	writeDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-	writeDescriptorSet.pNext = NULL;
-	writeDescriptorSet.descriptorCount = 1;
-	writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
-	writeDescriptorSet.dstArrayElement = 0;
-	writeDescriptorSet.dstBinding = 0;
-	writeDescriptorSet.dstSet = buffer->descriptorSet;
-	writeDescriptorSet.pBufferInfo = &descriptorBufferInfo;
-	writeDescriptorSet.pImageInfo = NULL;
-	writeDescriptorSet.pTexelBufferView = NULL;
-
-	renderer->vkUpdateDescriptorSets(
-		renderer->logicalDevice,
-		1,
-		&writeDescriptorSet,
-		0,
-		NULL
-	);
 
 	if (bufferPool->availableBufferCount >= bufferPool->availableBufferCapacity)
 	{
@@ -3537,6 +3510,9 @@ static VulkanUniformBuffer* VULKAN_INTERNAL_AcquireUniformBufferFromPool(
 	VulkanUniformBufferPool *bufferPool,
 	VkDeviceSize blockSize
 ) {
+	VkWriteDescriptorSet writeDescriptorSet;
+	VkDescriptorBufferInfo descriptorBufferInfo;
+
 	SDL_LockMutex(bufferPool->lock);
 
 	if (bufferPool->availableBufferCount == 0)
@@ -3552,9 +3528,35 @@ static VulkanUniformBuffer* VULKAN_INTERNAL_AcquireUniformBufferFromPool(
 	VulkanUniformBuffer *uniformBuffer = bufferPool->availableBuffers[bufferPool->availableBufferCount - 1];
 	bufferPool->availableBufferCount -= 1;
 
+	SDL_UnlockMutex(bufferPool->lock);
+
 	uniformBuffer->offset = 0;
 
-	SDL_UnlockMutex(bufferPool->lock);
+	/* Update the descriptor set with the correct range */
+
+	descriptorBufferInfo.buffer = uniformBuffer->vulkanBuffer->buffer;
+	descriptorBufferInfo.offset = 0;
+	descriptorBufferInfo.range = blockSize;
+
+	writeDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	writeDescriptorSet.pNext = NULL;
+	writeDescriptorSet.descriptorCount = 1;
+	writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+	writeDescriptorSet.dstArrayElement = 0;
+	writeDescriptorSet.dstBinding = 0;
+	writeDescriptorSet.dstSet = uniformBuffer->descriptorSet;
+	writeDescriptorSet.pBufferInfo = &descriptorBufferInfo;
+	writeDescriptorSet.pImageInfo = NULL;
+	writeDescriptorSet.pTexelBufferView = NULL;
+
+	renderer->vkUpdateDescriptorSets(
+		renderer->logicalDevice,
+		1,
+		&writeDescriptorSet,
+		0,
+		NULL
+	);
+
 	return uniformBuffer;
 }
 
@@ -4533,10 +4535,6 @@ static void VULKAN_DestroyDevice(
 	VULKAN_INTERNAL_DestroyBuffer(renderer, renderer->dummyVertexUniformBuffer->vulkanBuffer);
 	VULKAN_INTERNAL_DestroyBuffer(renderer, renderer->dummyFragmentUniformBuffer->vulkanBuffer);
 	VULKAN_INTERNAL_DestroyBuffer(renderer, renderer->dummyComputeUniformBuffer->vulkanBuffer);
-
-	/* We have to do this twice so the rotation happens correctly */
-	VULKAN_INTERNAL_PostWorkCleanup(renderer);
-	VULKAN_INTERNAL_PostWorkCleanup(renderer);
 
 	renderer->vkDestroySemaphore(
 		renderer->logicalDevice,
