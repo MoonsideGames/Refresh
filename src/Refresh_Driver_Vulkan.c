@@ -71,7 +71,7 @@ static uint32_t deviceExtensionCount = SDL_arraysize(deviceExtensionNames);
 
 #define STARTING_ALLOCATION_SIZE 64000000 		/* 64MB */
 #define MAX_ALLOCATION_SIZE 256000000 			/* 256MB */
-#define TEXTURE_STAGING_SIZE 8000000 			/* 8MB */
+#define TRANSFER_BUFFER_STARTING_SIZE 8000000 	/* 8MB */
 #define UBO_BUFFER_SIZE 16000 					/* 16KB */
 #define DESCRIPTOR_POOL_STARTING_SIZE 128
 #define DESCRIPTOR_SET_DEACTIVATE_FRAMES 10
@@ -652,12 +652,7 @@ static const VulkanResourceAccessInfo AccessMap[RESOURCE_ACCESS_TYPES_COUNT] =
 
 /* Memory structures */
 
-/*
- * Our VulkanBuffer is actually a series of sub-buffers
- * so we can properly support updates while a frame is in flight
- * without needing a sync point
- */
-typedef struct VulkanBuffer /* cast from FNA3D_Buffer */
+typedef struct VulkanBuffer /* cast from Refresh_Buffer */
 {
 	VkBuffer buffer;
 	VkDeviceSize size;
@@ -665,28 +660,7 @@ typedef struct VulkanBuffer /* cast from FNA3D_Buffer */
 	VulkanMemoryAllocation *allocation; /* see above */
 	VulkanResourceAccessType resourceAccessType;
 	VkBufferUsageFlags usage;
-	uint8_t bound;
 } VulkanBuffer;
-
-/* To properly support updating after drawing the "buffer handle"
- * we return is actually a container pointing to a buffer.
- * This lets us change out the internal buffer without affecting
- * the client or requiring a stall.
- * The "discarded" buffers are kept around to avoid memory fragmentation
- * being created by buffers that frequently discard.
- */
-typedef struct VulkanBufferContainer /* cast from Refresh_Buffer */
-{
-	VulkanBuffer *vulkanBuffer;
-
-	/* These are all the buffers that have been used by this container.
-	 * If a buffer is bound and then updated, a new buffer will be added to this list.
-	 * These can be reused after they are submitted and command processing is complete.
-	 */
-	VulkanBuffer **buffers;
-	uint32_t bufferCount;
-	uint32_t bufferCapacity;
-} VulkanBufferContainer;
 
 typedef struct VulkanUniformBufferPool VulkanUniformBufferPool;
 
@@ -1207,6 +1181,7 @@ typedef struct VulkanCommandBuffer
 	uint8_t fixed;
 	uint8_t submitted;
 	uint8_t present;
+	uint8_t renderPassInProgress;
 
 	VulkanCommandPool *commandPool;
 
@@ -1396,20 +1371,10 @@ typedef struct VulkanRenderer
 	VulkanUniformBuffer *dummyFragmentUniformBuffer;
 	VulkanUniformBuffer *dummyComputeUniformBuffer;
 
-	/* FIXME: rename these */
-	VulkanBuffer** buffersInUse;
-	uint32_t buffersInUseCount;
-	uint32_t buffersInUseCapacity;
-
-	VulkanBuffer** submittedBuffers;
-	uint32_t submittedBufferCount;
-	uint32_t submittedBufferCapacity;
-
 	VkDeviceSize minUBOAlignment;
 
 	SDL_mutex *allocatorLock;
 	SDL_mutex *disposeLock;
-	SDL_mutex *boundBufferLock;
 	SDL_mutex *submitLock;
 
 	/* Deferred destroy storage */
@@ -2480,12 +2445,6 @@ static void VULKAN_INTERNAL_DestroyBuffer(
 	VulkanRenderer* renderer,
 	VulkanBuffer* buffer
 ) {
-	if (buffer->bound)
-	{
-		Refresh_LogError("Tried to destroy a bound buffer!");
-		return;
-	}
-
 	if (buffer->allocation->dedicated)
 	{
 		renderer->vkFreeMemory(
@@ -3118,7 +3077,6 @@ static VulkanBuffer* VULKAN_INTERNAL_CreateBuffer(
 	buffer = SDL_malloc(sizeof(VulkanBuffer));
 
 	buffer->size = size;
-	buffer->bound = 0;
 	buffer->resourceAccessType = resourceAccessType;
 	buffer->usage = usage;
 
@@ -3184,8 +3142,6 @@ static VulkanBuffer* VULKAN_INTERNAL_CreateBuffer(
 	}
 
 	buffer->resourceAccessType = resourceAccessType;
-	buffer->bound = 0;
-
 
 	return buffer;
 }
@@ -3266,7 +3222,6 @@ static void VULKAN_INTERNAL_RotateBoundUniformBuffers(
 
 	for (i = 0; i < uniformBufferPool->submittedBufferCount; i += 1)
 	{
-		uniformBufferPool->submittedBuffers[i]->vulkanBuffer->bound = 0;
 		uniformBufferPool->availableBuffers[uniformBufferPool->availableBufferCount] = uniformBufferPool->submittedBuffers[i];
 		uniformBufferPool->availableBufferCount += 1;
 	}
@@ -3304,8 +3259,6 @@ static void VULKAN_INTERNAL_BindUniformBuffer(VulkanUniformBuffer *uniformBuffer
 
 	pool->boundBuffers[pool->boundBufferCount] = uniformBuffer;
 	pool->boundBufferCount += 1;
-
-	uniformBuffer->vulkanBuffer->bound = 1;
 }
 
 static uint8_t VULKAN_INTERNAL_CreateUniformBuffer(
@@ -3961,41 +3914,6 @@ static void VULKAN_INTERNAL_PostWorkCleanup(VulkanRenderer* renderer)
 	)
 
 	SDL_UnlockMutex(renderer->disposeLock);
-
-	/* Mark sub buffers of previously submitted buffers as unbound */
-	for (i = 0; i < renderer->submittedBufferCount; i += 1)
-	{
-		if (renderer->submittedBuffers[i] != NULL)
-		{
-			renderer->submittedBuffers[i]->bound = 0;
-			renderer->submittedBuffers[i] = NULL;
-		}
-	}
-
-	renderer->submittedBufferCount = 0;
-
-	/* Mark currently bound buffers as submitted buffers */
-	if (renderer->buffersInUseCount > renderer->submittedBufferCapacity)
-	{
-		renderer->submittedBuffers = SDL_realloc(
-			renderer->submittedBuffers,
-			sizeof(VulkanBuffer*) * renderer->buffersInUseCount
-		);
-
-		renderer->submittedBufferCapacity = renderer->buffersInUseCount;
-	}
-
-	for (i = 0; i < renderer->buffersInUseCount; i += 1)
-	{
-		if (renderer->buffersInUse[i] != NULL)
-		{
-			renderer->submittedBuffers[i] = renderer->buffersInUse[i];
-			renderer->buffersInUse[i] = NULL;
-		}
-	}
-
-	renderer->submittedBufferCount = renderer->buffersInUseCount;
-	renderer->buffersInUseCount = 0;
 
 	VULKAN_INTERNAL_RotateBoundUniformBuffers(renderer->vertexUniformBufferPool);
 	VULKAN_INTERNAL_RotateBoundUniformBuffers(renderer->fragmentUniformBufferPool);
@@ -4755,10 +4673,7 @@ static void VULKAN_DestroyDevice(
 
 	SDL_DestroyMutex(renderer->allocatorLock);
 	SDL_DestroyMutex(renderer->disposeLock);
-	SDL_DestroyMutex(renderer->boundBufferLock);
 	SDL_DestroyMutex(renderer->submitLock);
-
-	SDL_free(renderer->buffersInUse);
 
 	if (!renderer->usesExternalDevice)
 	{
@@ -6298,8 +6213,7 @@ static Refresh_Buffer* VULKAN_CreateBuffer(
 	Refresh_BufferUsageFlags usageFlags,
 	uint32_t sizeInBytes
 ) {
-	VulkanBufferContainer* bufferContainer = SDL_malloc(sizeof(VulkanBufferContainer));
-	VulkanBuffer* buffer;
+	VulkanBuffer* buffer = SDL_malloc(sizeof(VulkanBuffer));
 
 	VkBufferUsageFlags vulkanUsageFlags =
 		VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
@@ -6332,14 +6246,7 @@ static Refresh_Buffer* VULKAN_CreateBuffer(
 		return NULL;
 	}
 
-	bufferContainer->vulkanBuffer = buffer;
-
-	bufferContainer->bufferCapacity = 1;
-	bufferContainer->bufferCount = 1;
-	bufferContainer->buffers = SDL_malloc(sizeof(VulkanBuffer*));
-	bufferContainer->buffers[0] = buffer;
-
-	return (Refresh_Buffer*) bufferContainer;
+	return (Refresh_Buffer*) buffer;
 }
 
 /* Setters */
@@ -6347,13 +6254,15 @@ static Refresh_Buffer* VULKAN_CreateBuffer(
 static void VULKAN_INTERNAL_MaybeExpandTransferBuffer(
 	VulkanRenderer *renderer,
 	VulkanCommandBuffer *commandBuffer,
-	VkDeviceSize textureSize
+	VkDeviceSize requiredSize
 ) {
-	VkDeviceSize size = TEXTURE_STAGING_SIZE;
+	VkDeviceSize size;
 
 	if (commandBuffer->transferBufferCount == 0)
 	{
-		while (size < textureSize)
+		size = TRANSFER_BUFFER_STARTING_SIZE;
+
+		while (size < requiredSize)
 		{
 			size *= 2;
 		}
@@ -6381,12 +6290,12 @@ static void VULKAN_INTERNAL_MaybeExpandTransferBuffer(
 		VkDeviceSize currentSize = commandBuffer->transferBuffers[commandBuffer->transferBufferCount - 1]->buffer->size;
 		VkDeviceSize nextStagingSize = currentSize * 2;
 
-		if (commandBuffer->transferBuffers[commandBuffer->transferBufferCount - 1]->offset + textureSize <= currentSize)
+		if (commandBuffer->transferBuffers[commandBuffer->transferBufferCount - 1]->offset + requiredSize <= currentSize)
 		{
 			return;
 		}
 
-		while (nextStagingSize < textureSize)
+		while (nextStagingSize < requiredSize)
 		{
 			nextStagingSize *= 2;
 		}
@@ -6422,6 +6331,12 @@ static void VULKAN_SetTextureData(
 	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
 	VkBufferImageCopy imageCopy;
 	uint8_t *stagingBufferPointer;
+
+	if (vulkanCommandBuffer->renderPassInProgress)
+	{
+		Refresh_LogError("Cannot perform buffer updates mid-render pass!");
+		return;
+	}
 
 	VULKAN_INTERNAL_MaybeExpandTransferBuffer(
 		renderer,
@@ -6842,61 +6757,70 @@ static void VULKAN_INTERNAL_SetBufferData(
 	);
 }
 
-/* FIXME: this should probably have a DataOptions enum */
 static void VULKAN_SetBufferData(
 	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer,
 	Refresh_Buffer *buffer,
 	uint32_t offsetInBytes,
 	void* data,
 	uint32_t dataLength
 ) {
-	VulkanRenderer* renderer = (VulkanRenderer*)driverData;
-	VulkanBufferContainer* vulkanBufferContainer = (VulkanBufferContainer*) buffer;
-	VulkanBuffer* vulkanBuffer = vulkanBufferContainer->vulkanBuffer;
-	uint32_t i;
+	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
+	VulkanCommandBuffer* vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
+	VulkanBuffer* vulkanBuffer = (VulkanBuffer*) buffer;
+	VulkanTransferBuffer* transferBuffer;
+	uint8_t* transferBufferPointer;
+	VkBufferCopy bufferCopy;
 
-	if (vulkanBuffer->bound)
+	if (vulkanCommandBuffer->renderPassInProgress)
 	{
-		for (i = 0; i < vulkanBufferContainer->bufferCount; i += 1)
-		{
-			if (!vulkanBufferContainer->buffers[i]->bound)
-			{
-				vulkanBufferContainer->vulkanBuffer = vulkanBufferContainer->buffers[i];
-				break;
-			}
-		}
-
-		if (i == vulkanBufferContainer->bufferCount)
-		{
-			vulkanBufferContainer->vulkanBuffer = VULKAN_INTERNAL_CreateBuffer(
-				renderer,
-				vulkanBufferContainer->vulkanBuffer->size,
-				vulkanBufferContainer->vulkanBuffer->resourceAccessType,
-				vulkanBufferContainer->vulkanBuffer->usage
-			);
-
-			if (vulkanBufferContainer->bufferCount >= vulkanBufferContainer->bufferCapacity)
-			{
-				vulkanBufferContainer->bufferCapacity += 1;
-				vulkanBufferContainer->buffers = SDL_realloc(
-					vulkanBufferContainer->buffers,
-					vulkanBufferContainer->bufferCapacity * sizeof(VulkanBuffer*)
-				);
-			}
-
-			vulkanBufferContainer->buffers[vulkanBufferContainer->bufferCount] = vulkanBufferContainer->vulkanBuffer;
-			vulkanBufferContainer->bufferCount += 1;
-		}
-
-		vulkanBuffer = vulkanBufferContainer->vulkanBuffer;
-
+		Refresh_LogError("Cannot perform buffer updates mid-render pass!");
+		return;
 	}
 
-	VULKAN_INTERNAL_SetBufferData(
-		vulkanBuffer,
-		offsetInBytes,
+	VULKAN_INTERNAL_MaybeExpandTransferBuffer(
+		renderer,
+		vulkanCommandBuffer,
+		dataLength
+	);
+
+	transferBuffer = vulkanCommandBuffer->transferBuffers[vulkanCommandBuffer->transferBufferCount - 1];
+
+	transferBufferPointer =
+		transferBuffer->buffer->allocation->mapPointer +
+		transferBuffer->buffer->offset +
+		transferBuffer->offset;
+
+	SDL_memcpy(
+		transferBufferPointer,
 		data,
 		dataLength
+	);
+
+	VULKAN_INTERNAL_BufferMemoryBarrier(
+		renderer,
+		vulkanCommandBuffer->commandBuffer,
+		RESOURCE_ACCESS_TRANSFER_READ,
+		transferBuffer->buffer
+	);
+
+	VULKAN_INTERNAL_BufferMemoryBarrier(
+		renderer,
+		vulkanCommandBuffer->commandBuffer,
+		RESOURCE_ACCESS_TRANSFER_WRITE,
+		vulkanBuffer
+	);
+
+	bufferCopy.srcOffset = transferBuffer->offset;
+	bufferCopy.dstOffset = offsetInBytes;
+	bufferCopy.size = (VkDeviceSize) dataLength;
+
+	renderer->vkCmdCopyBuffer(
+		vulkanCommandBuffer->commandBuffer,
+		transferBuffer->buffer->buffer,
+		vulkanBuffer->buffer,
+		1,
+		&bufferCopy
 	);
 }
 
@@ -7455,8 +7379,7 @@ static void VULKAN_GetBufferData(
 	uint32_t dataLengthInBytes
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
-	VulkanBufferContainer* vulkanBufferContainer = (VulkanBufferContainer*) buffer;
-	VulkanBuffer* vulkanBuffer = vulkanBufferContainer->vulkanBuffer;
+	VulkanBuffer* vulkanBuffer = (VulkanBuffer*) buffer;
 	uint8_t *dataPtr = (uint8_t*) data;
 	uint8_t *mapPointer;
 
@@ -7480,8 +7403,7 @@ static void VULKAN_CopyTextureToBuffer(
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
 	VulkanTexture *vulkanTexture = (VulkanTexture*) textureSlice->texture;
-	VulkanBufferContainer *vulkanBufferContainer = (VulkanBufferContainer*) buffer;
-	VulkanBuffer* vulkanBuffer = vulkanBufferContainer->vulkanBuffer;
+	VulkanBuffer* vulkanBuffer = (VulkanBuffer*) buffer;
 
 	VulkanResourceAccessType prevResourceAccess;
 	VkBufferImageCopy imageCopy;
@@ -7596,29 +7518,24 @@ static void VULKAN_QueueDestroyBuffer(
 	Refresh_Buffer *buffer
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
-	VulkanBufferContainer *vulkanBufferContainer = (VulkanBufferContainer*) buffer;
-	uint32_t i;
+	VulkanBuffer *vulkanBuffer = (VulkanBuffer*) buffer;
 
 	SDL_LockMutex(renderer->disposeLock);
 
-	for (i = 0; i < vulkanBufferContainer->bufferCount; i += 1)
-	{
-		EXPAND_ARRAY_IF_NEEDED(
-			renderer->buffersToDestroy,
-			VulkanBuffer*,
-			renderer->buffersToDestroyCount + 1,
-			renderer->buffersToDestroyCapacity,
-			renderer->buffersToDestroyCapacity * 2
-		)
+	EXPAND_ARRAY_IF_NEEDED(
+		renderer->buffersToDestroy,
+		VulkanBuffer*,
+		renderer->buffersToDestroyCount + 1,
+		renderer->buffersToDestroyCapacity,
+		renderer->buffersToDestroyCapacity * 2
+	)
 
-			renderer->buffersToDestroy[
-				renderer->buffersToDestroyCount
-			] = vulkanBufferContainer->buffers[i];
-		renderer->buffersToDestroyCount += 1;
-	}
-
-	SDL_free(vulkanBufferContainer->buffers);
-	SDL_free(vulkanBufferContainer);
+	renderer->buffersToDestroy[
+		renderer->buffersToDestroyCount
+	] = vulkanBuffer;
+	renderer->buffersToDestroyCount += 1;
+	
+	SDL_free(vulkanBuffer);
 
 	SDL_UnlockMutex(renderer->disposeLock);
 }
@@ -7867,6 +7784,7 @@ static void VULKAN_BeginRenderPass(
 	);
 
 	vulkanCommandBuffer->currentFramebuffer = vulkanFramebuffer;
+	vulkanCommandBuffer->renderPassInProgress = 1;
 
 	SDL_stack_free(clearValues);
 }
@@ -7953,6 +7871,7 @@ static void VULKAN_EndRenderPass(
 
 	vulkanCommandBuffer->currentGraphicsPipeline = NULL;
 	vulkanCommandBuffer->currentFramebuffer = NULL;
+	vulkanCommandBuffer->renderPassInProgress = 0;
 }
 
 static void VULKAN_BindGraphicsPipeline(
@@ -8022,32 +7941,6 @@ static void VULKAN_BindGraphicsPipeline(
 	vulkanCommandBuffer->currentGraphicsPipeline = pipeline;
 }
 
-static void VULKAN_INTERNAL_MarkAsBound(
-	VulkanRenderer* renderer,
-	VulkanBuffer* buffer
-) {
-	/* Don't rebind a bound buffer */
-	if (buffer->bound) return;
-
-	buffer->bound = 1;
-
-	SDL_LockMutex(renderer->boundBufferLock);
-
-	if (renderer->buffersInUseCount == renderer->buffersInUseCapacity)
-	{
-		renderer->buffersInUseCapacity *= 2;
-		renderer->buffersInUse = SDL_realloc(
-			renderer->buffersInUse,
-			sizeof(VulkanBuffer*) * renderer->buffersInUseCapacity
-		);
-	}
-
-	renderer->buffersInUse[renderer->buffersInUseCount] = buffer;
-	renderer->buffersInUseCount += 1;
-
-	SDL_UnlockMutex(renderer->boundBufferLock);
-}
-
 static void VULKAN_BindVertexBuffers(
 	Refresh_Renderer *driverData,
 	Refresh_CommandBuffer *commandBuffer,
@@ -8058,16 +7951,14 @@ static void VULKAN_BindVertexBuffers(
 ) {
 	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
 	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
-
+	VulkanBuffer *currentVulkanBuffer;
 	VkBuffer *buffers = SDL_stack_alloc(VkBuffer, bindingCount);
-	VulkanBufferContainer* currentBufferContainer;
 	uint32_t i;
 
 	for (i = 0; i < bindingCount; i += 1)
 	{
-		currentBufferContainer = (VulkanBufferContainer*) pBuffers[i];
-		buffers[i] = currentBufferContainer->vulkanBuffer->buffer;
-		VULKAN_INTERNAL_MarkAsBound(renderer, currentBufferContainer->vulkanBuffer);
+		currentVulkanBuffer = (VulkanBuffer*) pBuffers[i];
+		buffers[i] = currentVulkanBuffer->buffer;
 	}
 
 	renderer->vkCmdBindVertexBuffers(
@@ -8090,13 +7981,11 @@ static void VULKAN_BindIndexBuffer(
 ) {
 	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
 	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
-	VulkanBufferContainer* vulkanBufferContainer = (VulkanBufferContainer*) buffer;
-
-	VULKAN_INTERNAL_MarkAsBound(renderer, vulkanBufferContainer->vulkanBuffer);
+	VulkanBuffer* vulkanBuffer = (VulkanBuffer*) buffer;
 
 	renderer->vkCmdBindIndexBuffer(
 		vulkanCommandBuffer->commandBuffer,
-		vulkanBufferContainer->vulkanBuffer->buffer,
+		vulkanBuffer->buffer,
 		offset,
 		RefreshToVK_IndexType[indexElementSize]
 	);
@@ -8156,7 +8045,7 @@ static void VULKAN_BindComputeBuffers(
 	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
 	VulkanComputePipeline *computePipeline = vulkanCommandBuffer->currentComputePipeline;
 
-	VulkanBufferContainer *currentBufferContainer;
+	VulkanBuffer *currentVulkanBuffer;
 	BufferDescriptorSetData bufferDescriptorSetData;
 	uint32_t i;
 
@@ -8167,14 +8056,13 @@ static void VULKAN_BindComputeBuffers(
 
 	for (i = 0; i < computePipeline->pipelineLayout->bufferDescriptorSetCache->bindingCount; i += 1)
 	{
-		currentBufferContainer = (VulkanBufferContainer*) pBuffers[i];
+		currentVulkanBuffer = (VulkanBuffer*) pBuffers[i];
 
-		bufferDescriptorSetData.descriptorBufferInfo[i].buffer = currentBufferContainer->vulkanBuffer->buffer;
+		bufferDescriptorSetData.descriptorBufferInfo[i].buffer = currentVulkanBuffer->buffer;
 		bufferDescriptorSetData.descriptorBufferInfo[i].offset = 0;
-		bufferDescriptorSetData.descriptorBufferInfo[i].range = currentBufferContainer->vulkanBuffer->size;
+		bufferDescriptorSetData.descriptorBufferInfo[i].range = currentVulkanBuffer->size;
 
-		VULKAN_INTERNAL_MarkAsBound(renderer, currentBufferContainer->vulkanBuffer);
-		vulkanCommandBuffer->boundComputeBuffers[i] = currentBufferContainer->vulkanBuffer;
+		vulkanCommandBuffer->boundComputeBuffers[i] = currentVulkanBuffer;
 	}
 
 	vulkanCommandBuffer->boundComputeBufferCount = computePipeline->pipelineLayout->bufferDescriptorSetCache->bindingCount;
@@ -8395,6 +8283,7 @@ static Refresh_CommandBuffer* VULKAN_AcquireCommandBuffer(
 	commandBuffer->fixed = fixed;
 	commandBuffer->submitted = 0;
 	commandBuffer->present = 0;
+	commandBuffer->renderPassInProgress = 0;
 
 	VULKAN_INTERNAL_BeginCommandBuffer(renderer, commandBuffer);
 
@@ -9557,7 +9446,6 @@ static Refresh_Device* VULKAN_INTERNAL_CreateDevice(
 
 	renderer->allocatorLock = SDL_CreateMutex();
 	renderer->disposeLock = SDL_CreateMutex();
-	renderer->boundBufferLock = SDL_CreateMutex();
 	renderer->submitLock = SDL_CreateMutex();
 
 	/* Create fence lists */
@@ -9838,20 +9726,6 @@ static Refresh_Device* VULKAN_INTERNAL_CreateDevice(
 	renderer->computeUniformBufferPool = VULKAN_INTERNAL_CreateUniformBufferPool(
 		renderer,
 		UNIFORM_BUFFER_COMPUTE
-	);
-
-	/* Initialize buffer space */
-
-	renderer->buffersInUseCapacity = 32;
-	renderer->buffersInUseCount = 0;
-	renderer->buffersInUse = (VulkanBuffer**)SDL_malloc(
-		sizeof(VulkanBuffer*) * renderer->buffersInUseCapacity
-	);
-
-	renderer->submittedBufferCapacity = 32;
-	renderer->submittedBufferCount = 0;
-	renderer->submittedBuffers = (VulkanBuffer**)SDL_malloc(
-		sizeof(VulkanBuffer*) * renderer->submittedBufferCapacity
 	);
 
 	/* Initialize caches */

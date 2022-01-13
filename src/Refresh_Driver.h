@@ -306,6 +306,7 @@ struct Refresh_Device
 
     void(*SetBufferData)(
         Refresh_Renderer *driverData,
+        Refresh_CommandBuffer *commandBuffer,
         Refresh_Buffer *buffer,
         uint32_t offsetInBytes,
         void* data,

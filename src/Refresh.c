@@ -453,6 +453,7 @@ void Refresh_CopyTextureToBuffer(
 
 void Refresh_SetBufferData(
 	Refresh_Device *device,
+    Refresh_CommandBuffer *commandBuffer,
 	Refresh_Buffer *buffer,
 	uint32_t offsetInBytes,
 	void* data,
@@ -461,6 +462,7 @@ void Refresh_SetBufferData(
     NULL_RETURN(device);
     device->SetBufferData(
         device->driverData,
+        commandBuffer,
         buffer,
         offsetInBytes,
         data,

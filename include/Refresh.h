@@ -965,6 +965,7 @@ REFRESHAPI void Refresh_CopyTextureToBuffer(
  */
 REFRESHAPI void Refresh_SetBufferData(
 	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer,
 	Refresh_Buffer *buffer,
 	uint32_t offsetInBytes,
 	void* data,
