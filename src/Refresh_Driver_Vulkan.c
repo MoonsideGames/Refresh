@@ -3527,6 +3527,8 @@ static VulkanUniformBuffer* VULKAN_INTERNAL_AcquireUniformBufferFromPool(
 	VulkanUniformBuffer *uniformBuffer = bufferPool->availableBuffers[bufferPool->availableBufferCount - 1];
 	bufferPool->availableBufferCount -= 1;
 
+	uniformBuffer->offset = 0;
+
 	SDL_UnlockMutex(bufferPool->lock);
 	return uniformBuffer;
 }
