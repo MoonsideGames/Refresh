@@ -8692,10 +8692,10 @@ static void VULKAN_Submit(
 	}
 
 	/* Mark command buffers as submitted */
-	for (i = renderer->submittedCommandBufferCount; i < commandBufferCount; i += 1)
+	for (i = 0; i < commandBufferCount; i += 1)
 	{
 		((VulkanCommandBuffer*)pCommandBuffers[i])->submitted = 1;
-		renderer->submittedCommandBuffers[i] = (VulkanCommandBuffer*) pCommandBuffers[i];
+		renderer->submittedCommandBuffers[renderer->submittedCommandBufferCount] = (VulkanCommandBuffer*) pCommandBuffers[i];
 	}
 	renderer->submittedCommandBufferCount += commandBufferCount;
 
