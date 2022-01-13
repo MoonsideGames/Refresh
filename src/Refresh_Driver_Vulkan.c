@@ -3192,7 +3192,7 @@ static VulkanBuffer* VULKAN_INTERNAL_CreateBuffer(
 
 /* Uniform buffer functions */
 
-static void VULKAN_INTERNAL_AddUniformDescriptorPool(
+static uint8_t VULKAN_INTERNAL_AddUniformDescriptorPool(
 	VulkanRenderer *renderer,
 	VulkanUniformDescriptorPool *vulkanUniformDescriptorPool
 ) {
@@ -3201,16 +3201,21 @@ static void VULKAN_INTERNAL_AddUniformDescriptorPool(
 		sizeof(VkDescriptorPool) * (vulkanUniformDescriptorPool->descriptorPoolCount + 1)
 	);
 
-	VULKAN_INTERNAL_CreateDescriptorPool(
+	if (!VULKAN_INTERNAL_CreateDescriptorPool(
 		renderer,
 		VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
 		DESCRIPTOR_POOL_STARTING_SIZE,
 		DESCRIPTOR_POOL_STARTING_SIZE,
 		&vulkanUniformDescriptorPool->descriptorPools[vulkanUniformDescriptorPool->descriptorPoolCount]
-	);
+	)) {
+		Refresh_LogError("Failed to create descriptor pool!");
+		return 0;
+	}
 
 	vulkanUniformDescriptorPool->descriptorPoolCount += 1;
 	vulkanUniformDescriptorPool->availableDescriptorSetCount += DESCRIPTOR_POOL_STARTING_SIZE;
+
+	return 1;
 }
 
 static VulkanUniformBufferPool* VULKAN_INTERNAL_CreateUniformBufferPool(
@@ -3302,7 +3307,7 @@ static void VULKAN_INTERNAL_BindUniformBuffer(VulkanUniformBuffer *uniformBuffer
 	uniformBuffer->vulkanBuffer->bound = 1;
 }
 
-static void VULKAN_INTERNAL_CreateUniformBuffer(
+static uint8_t VULKAN_INTERNAL_CreateUniformBuffer(
 	VulkanRenderer *renderer,
 	VulkanUniformBufferPool *bufferPool,
 	VkDeviceSize blockSize
@@ -3330,7 +3335,7 @@ static void VULKAN_INTERNAL_CreateUniformBuffer(
 	else
 	{
 		Refresh_LogError("Unrecognized uniform buffer type!");
-		return;
+		return 0;
 	}
 
 	VulkanUniformBuffer *buffer = SDL_malloc(sizeof(VulkanUniformBuffer));
@@ -3342,25 +3347,38 @@ static void VULKAN_INTERNAL_CreateUniformBuffer(
 		resourceAccessType,
 		VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT
 	);
+
+	if (buffer->vulkanBuffer == NULL)
+	{
+		Refresh_LogError("Failed to create buffer for uniform buffer!");
+		return 0;
+	}
+
 	buffer->offset = 0;
 
 	/* Allocate a descriptor set for the uniform buffer */
 
 	if (bufferPool->descriptorPool.availableDescriptorSetCount == 0)
 	{
-		VULKAN_INTERNAL_AddUniformDescriptorPool(
+		if (!VULKAN_INTERNAL_AddUniformDescriptorPool(
 			renderer,
 			&bufferPool->descriptorPool
-		);
+		)) {
+			Refresh_LogError("Failed to add uniform descriptor pool!");
+			return 0;
+		}
 	}
 
-	VULKAN_INTERNAL_AllocateDescriptorSets(
+	if (!VULKAN_INTERNAL_AllocateDescriptorSets(
 		renderer,
 		bufferPool->descriptorPool.descriptorPools[bufferPool->descriptorPool.descriptorPoolCount - 1],
 		descriptorSetLayout,
 		1,
 		&buffer->descriptorSet
-	);
+	)) {
+		Refresh_LogError("Failed to allocate uniform descriptor set!");
+		return 0;
+	}
 
 	bufferPool->descriptorPool.availableDescriptorSetCount -= 1;
 
@@ -3401,6 +3419,8 @@ static void VULKAN_INTERNAL_CreateUniformBuffer(
 
 	bufferPool->availableBuffers[bufferPool->availableBufferCount] = buffer;
 	bufferPool->availableBufferCount += 1;
+
+	return 1;
 }
 
 static VulkanUniformBuffer* VULKAN_INTERNAL_CreateDummyUniformBuffer(
@@ -3521,7 +3541,12 @@ static VulkanUniformBuffer* VULKAN_INTERNAL_AcquireUniformBufferFromPool(
 
 	if (bufferPool->availableBufferCount == 0)
 	{
-		VULKAN_INTERNAL_CreateUniformBuffer(renderer, bufferPool, blockSize);
+		if (!VULKAN_INTERNAL_CreateUniformBuffer(renderer, bufferPool, blockSize))
+		{
+			SDL_UnlockMutex(bufferPool->lock);
+			Refresh_LogError("Failed to create uniform buffer!");
+			return NULL;
+		}
 	}
 
 	VulkanUniformBuffer *uniformBuffer = bufferPool->availableBuffers[bufferPool->availableBufferCount - 1];
@@ -7076,6 +7101,7 @@ static VkDescriptorSet VULKAN_INTERNAL_FetchBufferDescriptorSet(
 			bufferDescriptorSetCache->bindingCount
 		)) {
 			e->inactiveFrameCount = 0;
+			SDL_UnlockMutex(bufferDescriptorSetCache->lock);
 			return e->descriptorSet;
 		}
 	}
@@ -7091,13 +7117,17 @@ static VkDescriptorSet VULKAN_INTERNAL_FetchBufferDescriptorSet(
 			sizeof(VkDescriptorPool) * bufferDescriptorSetCache->bufferDescriptorPoolCount
 		);
 
-		VULKAN_INTERNAL_CreateDescriptorPool(
+		if (!VULKAN_INTERNAL_CreateDescriptorPool(
 			renderer,
 			VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
 			bufferDescriptorSetCache->nextPoolSize,
 			bufferDescriptorSetCache->nextPoolSize * bufferDescriptorSetCache->bindingCount,
 			&bufferDescriptorSetCache->bufferDescriptorPools[bufferDescriptorSetCache->bufferDescriptorPoolCount - 1]
-		);
+		)) {
+			SDL_UnlockMutex(bufferDescriptorSetCache->lock);
+			Refresh_LogError("Failed to create descriptor pool!");
+			return VK_NULL_HANDLE;
+		}
 
 		bufferDescriptorSetCache->inactiveDescriptorSetCapacity += bufferDescriptorSetCache->nextPoolSize;
 
@@ -7106,13 +7136,17 @@ static VkDescriptorSet VULKAN_INTERNAL_FetchBufferDescriptorSet(
 			sizeof(VkDescriptorSet) * bufferDescriptorSetCache->inactiveDescriptorSetCapacity
 		);
 
-		VULKAN_INTERNAL_AllocateDescriptorSets(
+		if (!VULKAN_INTERNAL_AllocateDescriptorSets(
 			renderer,
 			bufferDescriptorSetCache->bufferDescriptorPools[bufferDescriptorSetCache->bufferDescriptorPoolCount - 1],
 			bufferDescriptorSetCache->descriptorSetLayout,
 			bufferDescriptorSetCache->nextPoolSize,
 			bufferDescriptorSetCache->inactiveDescriptorSets
-		);
+		)) {
+			SDL_UnlockMutex(bufferDescriptorSetCache->lock);
+			Refresh_LogError("Failed to allocate descriptor sets!");
+			return VK_NULL_HANDLE;
+		}
 
 		bufferDescriptorSetCache->inactiveDescriptorSetCount = bufferDescriptorSetCache->nextPoolSize;
 
@@ -7227,6 +7261,7 @@ static VkDescriptorSet VULKAN_INTERNAL_FetchImageDescriptorSet(
 			imageDescriptorSetCache->bindingCount
 		)) {
 			e->inactiveFrameCount = 0;
+			SDL_UnlockMutex(imageDescriptorSetCache->lock);
 			return e->descriptorSet;
 		}
 	}
@@ -7242,13 +7277,17 @@ static VkDescriptorSet VULKAN_INTERNAL_FetchImageDescriptorSet(
 			sizeof(VkDescriptorPool) * imageDescriptorSetCache->imageDescriptorPoolCount
 		);
 
-		VULKAN_INTERNAL_CreateDescriptorPool(
+		if (!VULKAN_INTERNAL_CreateDescriptorPool(
 			renderer,
 			imageDescriptorSetCache->descriptorType,
 			imageDescriptorSetCache->nextPoolSize,
 			imageDescriptorSetCache->nextPoolSize * imageDescriptorSetCache->bindingCount,
 			&imageDescriptorSetCache->imageDescriptorPools[imageDescriptorSetCache->imageDescriptorPoolCount - 1]
-		);
+		)) {
+			SDL_UnlockMutex(imageDescriptorSetCache->lock);
+			Refresh_LogError("Failed to create descriptor pool!");
+			return VK_NULL_HANDLE;
+		}
 
 		imageDescriptorSetCache->inactiveDescriptorSetCapacity += imageDescriptorSetCache->nextPoolSize;
 
@@ -7257,13 +7296,17 @@ static VkDescriptorSet VULKAN_INTERNAL_FetchImageDescriptorSet(
 			sizeof(VkDescriptorSet) * imageDescriptorSetCache->inactiveDescriptorSetCapacity
 		);
 
-		VULKAN_INTERNAL_AllocateDescriptorSets(
+		if (!VULKAN_INTERNAL_AllocateDescriptorSets(
 			renderer,
 			imageDescriptorSetCache->imageDescriptorPools[imageDescriptorSetCache->imageDescriptorPoolCount - 1],
 			imageDescriptorSetCache->descriptorSetLayout,
 			imageDescriptorSetCache->nextPoolSize,
 			imageDescriptorSetCache->inactiveDescriptorSets
-		);
+		)) {
+			SDL_UnlockMutex(imageDescriptorSetCache->lock);
+			Refresh_LogError("Failed to allocate descriptor sets!");
+			return VK_NULL_HANDLE;
+		}
 
 		imageDescriptorSetCache->inactiveDescriptorSetCount = imageDescriptorSetCache->nextPoolSize;
 
@@ -8638,6 +8681,7 @@ static void VULKAN_Submit(
 
 		if (vulkanResult != VK_SUCCESS)
 		{
+			SDL_UnlockMutex(renderer->submitLock);
 			LogVulkanResultAsError("vkWaitForFences", vulkanResult);
 			return;
 		}
@@ -8665,6 +8709,7 @@ static void VULKAN_Submit(
 
 	if (fence == VK_NULL_HANDLE)
 	{
+		SDL_UnlockMutex(renderer->submitLock);
 		Refresh_LogError("Failed to acquire fence!");
 		return;
 	}
@@ -8679,6 +8724,7 @@ static void VULKAN_Submit(
 
 	if (vulkanResult != VK_SUCCESS)
 	{
+		SDL_UnlockMutex(renderer->submitLock);
 		LogVulkanResultAsError("vkQueueSubmit", vulkanResult);
 		return;
 	}
