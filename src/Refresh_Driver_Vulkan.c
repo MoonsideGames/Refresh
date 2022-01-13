@@ -3266,6 +3266,7 @@ static void VULKAN_INTERNAL_RotateBoundUniformBuffers(
 
 	for (i = 0; i < uniformBufferPool->submittedBufferCount; i += 1)
 	{
+		uniformBufferPool->submittedBuffers[i]->vulkanBuffer->bound = 0;
 		uniformBufferPool->availableBuffers[uniformBufferPool->availableBufferCount] = uniformBufferPool->submittedBuffers[i];
 		uniformBufferPool->availableBufferCount += 1;
 	}
@@ -4531,6 +4532,10 @@ static void VULKAN_DestroyDevice(
 	{
 		LogVulkanResultAsError("vkDeviceWaitIdle", waitResult);
 	}
+
+	/* We have to do this twice so the rotation happens correctly */
+	VULKAN_INTERNAL_PostWorkCleanup(renderer);
+	VULKAN_INTERNAL_PostWorkCleanup(renderer);
 
 	VULKAN_INTERNAL_DestroyBuffer(renderer, renderer->dummyVertexUniformBuffer->vulkanBuffer);
 	VULKAN_INTERNAL_DestroyBuffer(renderer, renderer->dummyFragmentUniformBuffer->vulkanBuffer);
