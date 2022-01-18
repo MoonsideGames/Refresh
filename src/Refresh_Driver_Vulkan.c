@@ -6300,7 +6300,9 @@ static void VULKAN_INTERNAL_MaybeExpandTransferBuffer(
 			nextStagingSize *= 2;
 		}
 
-		commandBuffer->transferBuffers = SDL_realloc(commandBuffer->transferBuffers, sizeof(VulkanTransferBuffer*) * commandBuffer->transferBufferCount);
+		commandBuffer->transferBuffers = SDL_realloc(commandBuffer->transferBuffers, sizeof(VulkanTransferBuffer*) * (commandBuffer->transferBufferCount + 1));
+		commandBuffer->transferBuffers[commandBuffer->transferBufferCount] = SDL_malloc(sizeof(VulkanTransferBuffer));
+
 		commandBuffer->transferBuffers[commandBuffer->transferBufferCount]->offset = 0;
 
 		commandBuffer->transferBuffers[commandBuffer->transferBufferCount]->buffer = VULKAN_INTERNAL_CreateBuffer(
@@ -7544,7 +7546,7 @@ static void VULKAN_QueueDestroyBuffer(
 		renderer->buffersToDestroyCount
 	] = vulkanBuffer;
 	renderer->buffersToDestroyCount += 1;
-	
+
 	SDL_free(vulkanBuffer);
 
 	SDL_UnlockMutex(renderer->disposeLock);
@@ -8579,7 +8581,7 @@ static void VULKAN_Submit(
 	if (present)
 	{
 		/* Wait for the previous submission to complete */
-		if (renderer->usedFenceCount)
+		if (renderer->usedFenceCount > 0)
 		{
 			vulkanResult = renderer->vkWaitForFences(
 				renderer->logicalDevice,
