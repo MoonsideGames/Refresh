@@ -8469,29 +8469,32 @@ static void VULKAN_INTERNAL_ResetUsedFences(
 ) {
 	uint32_t i;
 
-	/* Prepare the command buffer fence for submission */
-	renderer->vkResetFences(
-		renderer->logicalDevice,
-		renderer->usedFenceCount,
-		renderer->usedFences
-	);
-
-	/* Used fences are now available */
-	if (renderer->usedFenceCount + renderer->availableFenceCount >= renderer->availableFenceCapacity)
+	if (renderer->usedFenceCount > 0)
 	{
-		renderer->availableFenceCapacity = renderer->usedFenceCount + renderer->availableFenceCount;
-		renderer->availableFences = SDL_realloc(
-			renderer->availableFences,
-			renderer->availableFenceCapacity * sizeof(VkFence)
+		/* Prepare the command buffer fence for submission */
+		renderer->vkResetFences(
+			renderer->logicalDevice,
+			renderer->usedFenceCount,
+			renderer->usedFences
 		);
-	}
 
-	for (i = 0; i < renderer->usedFenceCount; i += 1)
-	{
-		renderer->availableFences[renderer->availableFenceCount] = renderer->usedFences[i];
-		renderer->availableFenceCount += 1;
+		/* Used fences are now available */
+		if (renderer->usedFenceCount + renderer->availableFenceCount >= renderer->availableFenceCapacity)
+		{
+			renderer->availableFenceCapacity = renderer->usedFenceCount + renderer->availableFenceCount;
+			renderer->availableFences = SDL_realloc(
+				renderer->availableFences,
+				renderer->availableFenceCapacity * sizeof(VkFence)
+			);
+		}
+
+		for (i = 0; i < renderer->usedFenceCount; i += 1)
+		{
+			renderer->availableFences[renderer->availableFenceCount] = renderer->usedFences[i];
+			renderer->availableFenceCount += 1;
+		}
+		renderer->usedFenceCount = 0;
 	}
-	renderer->usedFenceCount = 0;
 }
 
 /* Submission structure */
@@ -8501,15 +8504,18 @@ static void VULKAN_Wait(
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 
-	renderer->vkWaitForFences(
-		renderer->logicalDevice,
-		renderer->usedFenceCount,
-		renderer->usedFences,
-		VK_TRUE,
-		UINT64_MAX
-	);
+	if (renderer->usedFenceCount > 0)
+	{
+		renderer->vkWaitForFences(
+			renderer->logicalDevice,
+			renderer->usedFenceCount,
+			renderer->usedFences,
+			VK_TRUE,
+			UINT64_MAX
+		);
 
-	VULKAN_INTERNAL_ResetUsedFences(renderer);
+		VULKAN_INTERNAL_ResetUsedFences(renderer);
+	}
 }
 
 static void VULKAN_Submit(
@@ -8573,19 +8579,22 @@ static void VULKAN_Submit(
 	if (present)
 	{
 		/* Wait for the previous submission to complete */
-		vulkanResult = renderer->vkWaitForFences(
-			renderer->logicalDevice,
-			renderer->usedFenceCount,
-			renderer->usedFences,
-			VK_TRUE,
-			UINT64_MAX
-		);
-
-		if (vulkanResult != VK_SUCCESS)
+		if (renderer->usedFenceCount)
 		{
-			SDL_UnlockMutex(renderer->submitLock);
-			LogVulkanResultAsError("vkWaitForFences", vulkanResult);
-			return;
+			vulkanResult = renderer->vkWaitForFences(
+				renderer->logicalDevice,
+				renderer->usedFenceCount,
+				renderer->usedFences,
+				VK_TRUE,
+				UINT64_MAX
+			);
+
+			if (vulkanResult != VK_SUCCESS)
+			{
+				SDL_UnlockMutex(renderer->submitLock);
+				LogVulkanResultAsError("vkWaitForFences", vulkanResult);
+				return;
+			}
 		}
 
 		VULKAN_INTERNAL_PostWorkCleanup(renderer);
