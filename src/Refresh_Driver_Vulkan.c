@@ -6822,6 +6822,8 @@ static void VULKAN_SetBufferData(
 		1,
 		&bufferCopy
 	);
+
+	transferBuffer->offset += dataLength;
 }
 
 /* FIXME: this should return uint64_t */
