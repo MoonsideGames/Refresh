@@ -6771,6 +6771,7 @@ static void VULKAN_SetBufferData(
 	VulkanTransferBuffer* transferBuffer;
 	uint8_t* transferBufferPointer;
 	VkBufferCopy bufferCopy;
+	VulkanResourceAccessType accessType = vulkanBuffer->resourceAccessType;
 
 	if (vulkanCommandBuffer->renderPassInProgress)
 	{
@@ -6821,6 +6822,13 @@ static void VULKAN_SetBufferData(
 		vulkanBuffer->buffer,
 		1,
 		&bufferCopy
+	);
+
+	VULKAN_INTERNAL_BufferMemoryBarrier(
+		renderer,
+		vulkanCommandBuffer->commandBuffer,
+		accessType,
+		vulkanBuffer
 	);
 
 	transferBuffer->offset += dataLength;
