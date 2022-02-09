@@ -701,18 +701,6 @@ REFRESHAPI Refresh_Device* Refresh_CreateDevice(
 	uint8_t debugMode
 );
 
-/* Create a rendering context by taking an externally-initialized VkDevice.
- * Only valid with Vulkan backend.
- * Useful for piggybacking on a separate graphics library like FNA3D.
- *
- * sysRenderer: Externally-initialized device info.
- * debugMode: Enable debug mode properties.
- */
-REFRESHAPI Refresh_Device* Refresh_CreateDeviceUsingExternal(
-	Refresh_SysRenderer *sysRenderer,
-	uint8_t debugMode
-);
-
 /* Destroys a rendering context previously returned by Refresh_CreateDevice. */
 REFRESHAPI void Refresh_DestroyDevice(Refresh_Device *device);
 
@@ -1293,7 +1281,7 @@ REFRESHAPI Refresh_CommandBuffer* Refresh_AcquireCommandBuffer(
 	uint8_t fixed
 );
 
-/* Queues an image to be presented to the screen.
+/* Queues an image to be presented to a window.
  * The image will be presented upon the next Refresh_Submit call.
  *
  * NOTE:
@@ -1302,13 +1290,15 @@ REFRESHAPI Refresh_CommandBuffer* Refresh_AcquireCommandBuffer(
  * textureSlice:			The texture slice to present.
  * destinationRectangle:	The region of the window to update. Can be NULL.
  * filter:					The filter to use if scaling is required.
+ * windowHandle:			The window to present to.
  */
 REFRESHAPI void Refresh_QueuePresent(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
 	Refresh_TextureSlice *textureSlice,
 	Refresh_Rect *destinationRectangle,
-	Refresh_Filter filter
+	Refresh_Filter filter,
+	void *windowHandle
 );
 
 /* Submits all of the enqueued commands. */
@@ -1321,13 +1311,6 @@ REFRESHAPI void Refresh_Submit(
 /* Waits for the previous submission to complete. */
 REFRESHAPI void Refresh_Wait(
 	Refresh_Device *device
-);
-
-/* Export handles to be consumed by another API */
-REFRESHAPI void Refresh_GetTextureHandles(
-	Refresh_Device* device,
-	Refresh_Texture* texture,
-	Refresh_TextureHandles* handles
 );
 
 #ifdef __cplusplus

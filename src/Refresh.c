@@ -141,26 +141,6 @@ Refresh_Device* Refresh_CreateDevice(
     );
 }
 
-Refresh_Device* Refresh_CreateDeviceUsingExternal(
-    Refresh_SysRenderer *sysRenderer,
-    uint8_t debugMode
-) {
-    if (selectedDriver < 0)
-    {
-        return NULL;
-    }
-
-    if (sysRenderer == NULL)
-    {
-        return NULL;
-    }
-
-    return drivers[selectedDriver]->CreateDeviceUsingExternal(
-        sysRenderer,
-        debugMode
-    );
-}
-
 void Refresh_DestroyDevice(Refresh_Device *device)
 {
     NULL_RETURN(device);
@@ -797,7 +777,8 @@ void Refresh_QueuePresent(
     Refresh_CommandBuffer *commandBuffer,
     Refresh_TextureSlice* textureSlice,
     Refresh_Rect *destinationRectangle,
-    Refresh_Filter filter
+    Refresh_Filter filter,
+	void *windowHandle
 ) {
     NULL_RETURN(device);
     device->QueuePresent(
@@ -805,7 +786,8 @@ void Refresh_QueuePresent(
         commandBuffer,
         textureSlice,
         destinationRectangle,
-        filter
+        filter,
+		windowHandle
     );
 }
 
@@ -828,19 +810,6 @@ void Refresh_Wait(
     NULL_RETURN(device);
     device->Wait(
         device->driverData
-    );
-}
-
-void Refresh_GetTextureHandles(
-    Refresh_Device* device,
-    Refresh_Texture* texture,
-    Refresh_TextureHandles *handles
-) {
-    NULL_RETURN(device);
-    device->GetTextureHandles(
-        device->driverData,
-        texture,
-        handles
     );
 }
 

@@ -35,6 +35,8 @@
 #include <SDL_syswm.h>
 #include <SDL_vulkan.h>
 
+#define VULKAN_INTERNAL_clamp(val, min, max) SDL_max(min, SDL_min(val, max))
+
 /* Global Vulkan Loader Entry Points */
 
 static PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr = NULL;
@@ -75,6 +77,7 @@ static uint32_t deviceExtensionCount = SDL_arraysize(deviceExtensionNames);
 #define UBO_BUFFER_SIZE 16000 					/* 16KB */
 #define DESCRIPTOR_POOL_STARTING_SIZE 128
 #define DESCRIPTOR_SET_DEACTIVATE_FRAMES 10
+#define WINDOW_SWAPCHAIN_DATA "Refresh_VulkanSwapchain"
 
 #define IDENTITY_SWIZZLE \
 { \
@@ -723,6 +726,27 @@ typedef struct QueueFamilyIndices
 	uint32_t transferFamily;
 } QueueFamilyIndices;
 
+typedef struct VulkanSwapchainData
+{
+	/* Window surface */
+	VkSurfaceKHR surface;
+	VkSurfaceFormatKHR surfaceFormat;
+	void *windowHandle;
+
+	/* Swapchain for window surface */
+	VkSwapchainKHR swapchain;
+	VkFormat swapchainFormat;
+	VkComponentMapping swapchainSwizzle;
+	VkPresentModeKHR presentMode;
+
+	/* Swapchain images */
+	VkExtent2D extent;
+	VkImage *images;
+	VkImageView *views;
+	VulkanResourceAccessType *resourceAccessTypes;
+	uint32_t imageCount;
+} VulkanSwapchainData;
+
 typedef struct SwapChainSupportDetails
 {
 	VkSurfaceCapabilitiesKHR capabilities;
@@ -1191,8 +1215,12 @@ typedef struct VulkanCommandBuffer
 	VkCommandBuffer commandBuffer;
 	uint8_t fixed;
 	uint8_t submitted;
-	uint8_t present;
 	uint8_t renderPassInProgress;
+
+	uint8_t present;
+	void *presentWindowHandle;
+	uint32_t presentSwapchainImageIndex;
+	uint8_t needNewSwapchain;
 
 	VulkanCommandPool *commandPool;
 
@@ -1307,36 +1335,23 @@ typedef struct VulkanRenderer
     VkPhysicalDeviceDriverPropertiesKHR physicalDeviceDriverProperties;
     VkDevice logicalDevice;
 
-    void* deviceWindowHandle;
-
     uint8_t supportsDebugUtils;
     uint8_t debugMode;
-    uint8_t headless;
 
 	VulkanMemoryAllocator *memoryAllocator;
 	VkPhysicalDeviceMemoryProperties memoryProperties;
 
-    Refresh_PresentMode presentMode;
-    VkSurfaceKHR surface;
-    VkSwapchainKHR swapChain;
-    VkFormat swapChainFormat;
-    VkComponentMapping swapChainSwizzle;
-    VkImage *swapChainImages;
-    VkImageView *swapChainImageViews;
-	uint32_t *swapChainQueueFamilyIndices;
-    VulkanResourceAccessType *swapChainResourceAccessTypes;
-    uint32_t swapChainImageCount;
-    VkExtent2D swapChainExtent;
-
-	uint8_t needNewSwapChain;
-	uint8_t swapChainImageAcquired;
-	uint32_t currentSwapChainIndex;
+	VulkanSwapchainData **swapchainDatas;
+	uint32_t swapchainDataCount;
+	uint32_t swapchainDataCapacity;
 
     QueueFamilyIndices queueFamilyIndices;
 	VkQueue graphicsQueue;
 	VkQueue presentQueue;
 	VkQueue computeQueue;
 	VkQueue transferQueue;
+
+	Refresh_PresentMode presentMode;
 
 	VkSemaphore transferFinishedSemaphore;
 	VkSemaphore imageAvailableSemaphore;
@@ -1463,10 +1478,6 @@ typedef struct VulkanRenderer
 	VkRenderPass *submittedRenderPassesToDestroy;
 	uint32_t submittedRenderPassesToDestroyCount;
 	uint32_t submittedRenderPassesToDestroyCapacity;
-
-	/* External Interop */
-
-	uint8_t usesExternalDevice;
 
     #define VULKAN_INSTANCE_FUNCTION(ext, ret, func, params) \
 		vkfntype_##func func;
@@ -2577,33 +2588,57 @@ static void VULKAN_INTERNAL_DestroyRenderPass(
 	);
 }
 
-static void VULKAN_INTERNAL_DestroySwapchain(VulkanRenderer* renderer)
-{
+static void VULKAN_INTERNAL_DestroySwapchain(
+	VulkanRenderer* renderer,
+	void *windowHandle
+) {
 	uint32_t i;
+	VulkanSwapchainData *swapchainData;
 
-	for (i = 0; i < renderer->swapChainImageCount; i += 1)
+	swapchainData = (VulkanSwapchainData*) SDL_GetWindowData(windowHandle, WINDOW_SWAPCHAIN_DATA);
+
+	if (swapchainData == NULL)
+	{
+		return;
+	}
+
+	for (i = 0; i < swapchainData->imageCount; i += 1)
 	{
 		renderer->vkDestroyImageView(
 			renderer->logicalDevice,
-			renderer->swapChainImageViews[i],
+			swapchainData->views[i],
 			NULL
 		);
 	}
 
-	SDL_free(renderer->swapChainImages);
-	renderer->swapChainImages = NULL;
-	SDL_free(renderer->swapChainImageViews);
-	renderer->swapChainImageViews = NULL;
-	SDL_free(renderer->swapChainResourceAccessTypes);
-	renderer->swapChainResourceAccessTypes = NULL;
-	SDL_free(renderer->swapChainQueueFamilyIndices);
-	renderer->swapChainQueueFamilyIndices = NULL;
+	SDL_free(swapchainData->images);
+	SDL_free(swapchainData->views);
+	SDL_free(swapchainData->resourceAccessTypes);
 
 	renderer->vkDestroySwapchainKHR(
 		renderer->logicalDevice,
-		renderer->swapChain,
+		swapchainData->swapchain,
 		NULL
 	);
+
+	renderer->vkDestroySurfaceKHR(
+		renderer->instance,
+		swapchainData->surface,
+		NULL
+	);
+
+	for (i = 0; i < renderer->swapchainDataCount; i += 1)
+	{
+		if (windowHandle == renderer->swapchainDatas[i]->windowHandle)
+		{
+			renderer->swapchainDatas[i] = renderer->swapchainDatas[renderer->swapchainDataCount - 1];
+			renderer->swapchainDataCount -= 1;
+			break;
+		}
+	}
+
+	SDL_SetWindowData(windowHandle, WINDOW_SWAPCHAIN_DATA, NULL);
+	SDL_free(swapchainData);
 }
 
 static void VULKAN_INTERNAL_DestroyBufferDescriptorSetCache(
@@ -3955,32 +3990,6 @@ static void VULKAN_INTERNAL_PostWorkCleanup(VulkanRenderer* renderer)
 
 /* Swapchain */
 
-static inline VkExtent2D VULKAN_INTERNAL_ChooseSwapExtent(
-	void* windowHandle,
-	const VkSurfaceCapabilitiesKHR capabilities
-) {
-	VkExtent2D actualExtent;
-	int32_t drawableWidth, drawableHeight;
-
-	if (capabilities.currentExtent.width != UINT32_MAX)
-	{
-		return capabilities.currentExtent;
-	}
-	else
-	{
-		SDL_Vulkan_GetDrawableSize(
-			(SDL_Window*) windowHandle,
-			&drawableWidth,
-			&drawableHeight
-		);
-
-		actualExtent.width = drawableWidth;
-		actualExtent.height = drawableHeight;
-
-		return actualExtent;
-	}
-}
-
 static uint8_t VULKAN_INTERNAL_QuerySwapChainSupport(
 	VulkanRenderer *renderer,
 	VkPhysicalDevice physicalDevice,
@@ -3990,6 +3999,20 @@ static uint8_t VULKAN_INTERNAL_QuerySwapChainSupport(
 	VkResult result;
 	uint32_t formatCount;
 	uint32_t presentModeCount;
+	VkBool32 supportsPresent;
+
+	renderer->vkGetPhysicalDeviceSurfaceSupportKHR(
+		physicalDevice,
+		renderer->queueFamilyIndices.graphicsFamily,
+		surface,
+		&supportsPresent
+	);
+
+	if (!supportsPresent)
+	{
+		Refresh_LogWarn("This surface does not support presenting!");
+		return 0;
+	}
 
 	result = renderer->vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
 		physicalDevice,
@@ -4159,77 +4182,193 @@ static uint8_t VULKAN_INTERNAL_ChooseSwapPresentMode(
 }
 
 static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
-	VulkanRenderer *renderer
+	VulkanRenderer *renderer,
+	void *windowHandle
 ) {
 	VkResult vulkanResult;
-	SwapChainSupportDetails swapChainSupportDetails;
-	VkSurfaceFormatKHR surfaceFormat;
-	VkPresentModeKHR presentMode;
-	VkExtent2D extent;
-	uint32_t imageCount, swapChainImageCount, i;
-	VkSwapchainCreateInfoKHR swapChainCreateInfo;
-	VkImage *swapChainImages;
+	VulkanSwapchainData *swapchainData;
+	VkSwapchainCreateInfoKHR swapchainCreateInfo;
 	VkImageViewCreateInfo createInfo;
-	VkImageView swapChainImageView;
+	SwapChainSupportDetails swapchainSupportDetails;
+	int32_t drawableWidth, drawableHeight;
+	uint32_t i;
+
+	swapchainData = SDL_malloc(sizeof(VulkanSwapchainData));
+	swapchainData->windowHandle = windowHandle;
+
+	/* Each swapchain must have its own surface. */
+
+	if (!SDL_Vulkan_CreateSurface(
+		(SDL_Window*) windowHandle,
+		renderer->instance,
+		&swapchainData->surface
+	)) {
+		SDL_free(swapchainData);
+		Refresh_LogError(
+			"SDL_Vulkan_CreateSurface failed: %s",
+			SDL_GetError()
+		);
+		return CREATE_SWAPCHAIN_FAIL;
+	}
 
 	if (!VULKAN_INTERNAL_QuerySwapChainSupport(
 		renderer,
 		renderer->physicalDevice,
-		renderer->surface,
-		&swapChainSupportDetails
+		swapchainData->surface,
+		&swapchainSupportDetails
 	)) {
+		renderer->vkDestroySurfaceKHR(
+			renderer->instance,
+			swapchainData->surface,
+			NULL
+		);
+		if (swapchainSupportDetails.formatsLength > 0)
+		{
+			SDL_free(swapchainSupportDetails.formats);
+		}
+		if (swapchainSupportDetails.presentModesLength > 0)
+		{
+			SDL_free(swapchainSupportDetails.presentModes);
+		}
+		SDL_free(swapchainData);
 		Refresh_LogError("Device does not support swap chain creation");
 		return CREATE_SWAPCHAIN_FAIL;
 	}
 
-	renderer->swapChainFormat = VK_FORMAT_B8G8R8A8_UNORM;
-	renderer->swapChainSwizzle.r = VK_COMPONENT_SWIZZLE_IDENTITY;
-	renderer->swapChainSwizzle.g = VK_COMPONENT_SWIZZLE_IDENTITY;
-	renderer->swapChainSwizzle.b = VK_COMPONENT_SWIZZLE_IDENTITY;
-	renderer->swapChainSwizzle.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+	swapchainData->swapchainFormat = VK_FORMAT_B8G8R8A8_UNORM;
+	swapchainData->swapchainSwizzle.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+	swapchainData->swapchainSwizzle.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+	swapchainData->swapchainSwizzle.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+	swapchainData->swapchainSwizzle.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+
 	if (!VULKAN_INTERNAL_ChooseSwapSurfaceFormat(
-		renderer->swapChainFormat,
-		swapChainSupportDetails.formats,
-		swapChainSupportDetails.formatsLength,
-		&surfaceFormat
+		swapchainData->swapchainFormat,
+		swapchainSupportDetails.formats,
+		swapchainSupportDetails.formatsLength,
+		&swapchainData->surfaceFormat
 	)) {
-		SDL_free(swapChainSupportDetails.formats);
-		SDL_free(swapChainSupportDetails.presentModes);
+		renderer->vkDestroySurfaceKHR(
+			renderer->instance,
+			swapchainData->surface,
+			NULL
+		);
+		if (swapchainSupportDetails.formatsLength > 0)
+		{
+			SDL_free(swapchainSupportDetails.formats);
+		}
+		if (swapchainSupportDetails.presentModesLength > 0)
+		{
+			SDL_free(swapchainSupportDetails.presentModes);
+		}
+		SDL_free(swapchainData);
 		Refresh_LogError("Device does not support swap chain format");
 		return CREATE_SWAPCHAIN_FAIL;
 	}
 
 	if (!VULKAN_INTERNAL_ChooseSwapPresentMode(
 		renderer->presentMode,
-		swapChainSupportDetails.presentModes,
-		swapChainSupportDetails.presentModesLength,
-		&presentMode
+		swapchainSupportDetails.presentModes,
+		swapchainSupportDetails.presentModesLength,
+		&swapchainData->presentMode
 	)) {
-		SDL_free(swapChainSupportDetails.formats);
-		SDL_free(swapChainSupportDetails.presentModes);
+		renderer->vkDestroySurfaceKHR(
+			renderer->instance,
+			swapchainData->surface,
+			NULL
+		);
+		if (swapchainSupportDetails.formatsLength > 0)
+		{
+			SDL_free(swapchainSupportDetails.formats);
+		}
+		if (swapchainSupportDetails.presentModesLength > 0)
+		{
+			SDL_free(swapchainSupportDetails.presentModes);
+		}
+		SDL_free(swapchainData);
 		Refresh_LogError("Device does not support swap chain present mode");
 		return CREATE_SWAPCHAIN_FAIL;
 	}
 
-	extent = VULKAN_INTERNAL_ChooseSwapExtent(
-		renderer->deviceWindowHandle,
-		swapChainSupportDetails.capabilities
+	SDL_Vulkan_GetDrawableSize(
+		(SDL_Window*) windowHandle,
+		&drawableWidth,
+		&drawableHeight
 	);
 
-	if (extent.width == 0 || extent.height == 0)
+	if (	drawableWidth < swapchainSupportDetails.capabilities.minImageExtent.width ||
+		drawableWidth > swapchainSupportDetails.capabilities.maxImageExtent.width ||
+		drawableHeight < swapchainSupportDetails.capabilities.minImageExtent.height ||
+		drawableHeight > swapchainSupportDetails.capabilities.maxImageExtent.height	)
 	{
-		return CREATE_SWAPCHAIN_SURFACE_ZERO;
+		Refresh_LogWarn("Drawable size not possible for this VkSurface!");
+
+		if (	swapchainSupportDetails.capabilities.currentExtent.width == 0 ||
+			swapchainSupportDetails.capabilities.currentExtent.height == 0)
+		{
+			renderer->vkDestroySurfaceKHR(
+				renderer->instance,
+				swapchainData->surface,
+				NULL
+			);
+			if (swapchainSupportDetails.formatsLength > 0)
+			{
+				SDL_free(swapchainSupportDetails.formats);
+			}
+			if (swapchainSupportDetails.presentModesLength > 0)
+			{
+				SDL_free(swapchainSupportDetails.presentModes);
+			}
+			SDL_free(swapchainData);
+			return CREATE_SWAPCHAIN_SURFACE_ZERO;
+		}
+
+		if (swapchainSupportDetails.capabilities.currentExtent.width != UINT32_MAX)
+		{
+			Refresh_LogWarn("Falling back to an acceptable swapchain extent.");
+			drawableWidth = VULKAN_INTERNAL_clamp(
+				drawableWidth,
+				swapchainSupportDetails.capabilities.minImageExtent.width,
+				swapchainSupportDetails.capabilities.maxImageExtent.width
+			);
+			drawableHeight = VULKAN_INTERNAL_clamp(
+				drawableHeight,
+				swapchainSupportDetails.capabilities.minImageExtent.height,
+				swapchainSupportDetails.capabilities.maxImageExtent.height
+			);
+		}
+		else
+		{
+			renderer->vkDestroySurfaceKHR(
+				renderer->instance,
+				swapchainData->surface,
+				NULL
+			);
+			if (swapchainSupportDetails.formatsLength > 0)
+			{
+				SDL_free(swapchainSupportDetails.formats);
+			}
+			if (swapchainSupportDetails.presentModesLength > 0)
+			{
+				SDL_free(swapchainSupportDetails.presentModes);
+			}
+			SDL_free(swapchainData);
+			Refresh_LogError("No fallback swapchain size available!");
+			return CREATE_SWAPCHAIN_FAIL;
+		}
 	}
 
-	imageCount = swapChainSupportDetails.capabilities.minImageCount + 1;
+	swapchainData->extent.width = drawableWidth;
+	swapchainData->extent.height = drawableHeight;
 
-	if (	swapChainSupportDetails.capabilities.maxImageCount > 0 &&
-		imageCount > swapChainSupportDetails.capabilities.maxImageCount	)
+	swapchainData->imageCount = swapchainSupportDetails.capabilities.minImageCount + 1;
+
+	if (	swapchainSupportDetails.capabilities.maxImageCount > 0 &&
+		swapchainData->imageCount > swapchainSupportDetails.capabilities.maxImageCount	)
 	{
-		imageCount = swapChainSupportDetails.capabilities.maxImageCount;
+		swapchainData->imageCount = swapchainSupportDetails.capabilities.maxImageCount;
 	}
 
-	if (presentMode == VK_PRESENT_MODE_MAILBOX_KHR)
+	if (swapchainData->presentMode == VK_PRESENT_MODE_MAILBOX_KHR)
 	{
 		/* Required for proper triple-buffering.
 		 * Note that this is below the above maxImageCount check!
@@ -4237,168 +4376,190 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 		 * images, it's not real mailbox support, so let it fail hard.
 		 * -flibit
 		 */
-		imageCount = SDL_max(imageCount, 3);
+		swapchainData->imageCount = SDL_max(swapchainData->imageCount, 3);
 	}
 
-	swapChainCreateInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
-	swapChainCreateInfo.pNext = NULL;
-	swapChainCreateInfo.flags = 0;
-	swapChainCreateInfo.surface = renderer->surface;
-	swapChainCreateInfo.minImageCount = imageCount;
-	swapChainCreateInfo.imageFormat = surfaceFormat.format;
-	swapChainCreateInfo.imageColorSpace = surfaceFormat.colorSpace;
-	swapChainCreateInfo.imageExtent = extent;
-	swapChainCreateInfo.imageArrayLayers = 1;
-	swapChainCreateInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-	swapChainCreateInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
-	swapChainCreateInfo.queueFamilyIndexCount = 0;
-	swapChainCreateInfo.pQueueFamilyIndices = NULL;
-	swapChainCreateInfo.preTransform = swapChainSupportDetails.capabilities.currentTransform;
-	swapChainCreateInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
-	swapChainCreateInfo.presentMode = presentMode;
-	swapChainCreateInfo.clipped = VK_TRUE;
-	swapChainCreateInfo.oldSwapchain = VK_NULL_HANDLE;
+	swapchainCreateInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+	swapchainCreateInfo.pNext = NULL;
+	swapchainCreateInfo.flags = 0;
+	swapchainCreateInfo.surface = swapchainData->surface;
+	swapchainCreateInfo.minImageCount = swapchainData->imageCount;
+	swapchainCreateInfo.imageFormat = swapchainData->surfaceFormat.format;
+	swapchainCreateInfo.imageColorSpace = swapchainData->surfaceFormat.colorSpace;
+	swapchainCreateInfo.imageExtent = swapchainData->extent;
+	swapchainCreateInfo.imageArrayLayers = 1;
+	swapchainCreateInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+	swapchainCreateInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+	swapchainCreateInfo.queueFamilyIndexCount = 0;
+	swapchainCreateInfo.pQueueFamilyIndices = NULL;
+	swapchainCreateInfo.preTransform = swapchainSupportDetails.capabilities.currentTransform;
+	swapchainCreateInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+	swapchainCreateInfo.presentMode = swapchainData->presentMode;
+	swapchainCreateInfo.clipped = VK_TRUE;
+	swapchainCreateInfo.oldSwapchain = VK_NULL_HANDLE;
 
 	vulkanResult = renderer->vkCreateSwapchainKHR(
 		renderer->logicalDevice,
-		&swapChainCreateInfo,
+		&swapchainCreateInfo,
 		NULL,
-		&renderer->swapChain
+		&swapchainData->swapchain
 	);
 
-	SDL_free(swapChainSupportDetails.formats);
-	SDL_free(swapChainSupportDetails.presentModes);
+	if (swapchainSupportDetails.formatsLength > 0)
+	{
+		SDL_free(swapchainSupportDetails.formats);
+	}
+	if (swapchainSupportDetails.presentModesLength > 0)
+	{
+		SDL_free(swapchainSupportDetails.presentModes);
+	}
 
 	if (vulkanResult != VK_SUCCESS)
 	{
+		renderer->vkDestroySurfaceKHR(
+			renderer->instance,
+			swapchainData->surface,
+			NULL
+		);
+		SDL_free(swapchainData);
 		LogVulkanResultAsError("vkCreateSwapchainKHR", vulkanResult);
-
 		return CREATE_SWAPCHAIN_FAIL;
 	}
 
 	renderer->vkGetSwapchainImagesKHR(
 		renderer->logicalDevice,
-		renderer->swapChain,
-		&swapChainImageCount,
+		swapchainData->swapchain,
+		&swapchainData->imageCount,
 		NULL
 	);
 
-	renderer->swapChainImages = (VkImage*) SDL_malloc(
-		sizeof(VkImage) * swapChainImageCount
+	swapchainData->images = (VkImage*) SDL_malloc(
+		sizeof(VkImage) * swapchainData->imageCount
 	);
-	if (!renderer->swapChainImages)
+	if (!swapchainData->images)
 	{
 		SDL_OutOfMemory();
+		renderer->vkDestroySurfaceKHR(
+			renderer->instance,
+			swapchainData->surface,
+			NULL
+		);
+		SDL_free(swapchainData);
 		return CREATE_SWAPCHAIN_FAIL;
 	}
 
-	renderer->swapChainImageViews = (VkImageView*) SDL_malloc(
-		sizeof(VkImageView) * swapChainImageCount
+	swapchainData->views = (VkImageView*) SDL_malloc(
+		sizeof(VkImageView) * swapchainData->imageCount
 	);
-	if (!renderer->swapChainImageViews)
+	if (!swapchainData->views)
 	{
 		SDL_OutOfMemory();
+		renderer->vkDestroySurfaceKHR(
+			renderer->instance,
+			swapchainData->surface,
+			NULL
+		);
+		SDL_free(swapchainData->images);
+		SDL_free(swapchainData);
 		return CREATE_SWAPCHAIN_FAIL;
 	}
 
-	renderer->swapChainResourceAccessTypes = (VulkanResourceAccessType*) SDL_malloc(
-		sizeof(VulkanResourceAccessType) * swapChainImageCount
+	swapchainData->resourceAccessTypes = (VulkanResourceAccessType*) SDL_malloc(
+		sizeof(VulkanResourceAccessType) * swapchainData->imageCount
 	);
-	if (!renderer->swapChainResourceAccessTypes)
+	if (!swapchainData->resourceAccessTypes)
 	{
 		SDL_OutOfMemory();
+		renderer->vkDestroySurfaceKHR(
+			renderer->instance,
+			swapchainData->surface,
+			NULL
+		);
+		SDL_free(swapchainData->images);
+		SDL_free(swapchainData->views);
+		SDL_free(swapchainData);
 		return CREATE_SWAPCHAIN_FAIL;
 	}
 
-	renderer->swapChainQueueFamilyIndices = (uint32_t*) SDL_malloc(
-		sizeof(uint32_t) * swapChainImageCount
-	);
-	if (!renderer->swapChainQueueFamilyIndices)
-	{
-		SDL_OutOfMemory();
-		return CREATE_SWAPCHAIN_FAIL;
-	}
-
-	swapChainImages = SDL_stack_alloc(VkImage, swapChainImageCount);
 	renderer->vkGetSwapchainImagesKHR(
 		renderer->logicalDevice,
-		renderer->swapChain,
-		&swapChainImageCount,
-		swapChainImages
+		swapchainData->swapchain,
+		&swapchainData->imageCount,
+		swapchainData->images
 	);
-	renderer->swapChainImageCount = swapChainImageCount;
-	renderer->swapChainExtent = extent;
 
 	createInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
 	createInfo.pNext = NULL;
 	createInfo.flags = 0;
 	createInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-	createInfo.format = surfaceFormat.format;
-	createInfo.components = renderer->swapChainSwizzle;
+	createInfo.format = swapchainData->surfaceFormat.format;
+	createInfo.components = swapchainData->swapchainSwizzle;
 	createInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 	createInfo.subresourceRange.baseMipLevel = 0;
 	createInfo.subresourceRange.levelCount = 1;
 	createInfo.subresourceRange.baseArrayLayer = 0;
 	createInfo.subresourceRange.layerCount = 1;
-	for (i = 0; i < swapChainImageCount; i += 1)
+
+	for (i = 0; i < swapchainData->imageCount; i += 1)
 	{
-		createInfo.image = swapChainImages[i];
+		createInfo.image = swapchainData->images[i];
 
 		vulkanResult = renderer->vkCreateImageView(
 			renderer->logicalDevice,
 			&createInfo,
 			NULL,
-			&swapChainImageView
+			&swapchainData->views[i]
 		);
 
 		if (vulkanResult != VK_SUCCESS)
 		{
+			renderer->vkDestroySurfaceKHR(
+				renderer->instance,
+				swapchainData->surface,
+				NULL
+			);
+			SDL_free(swapchainData->images);
+			SDL_free(swapchainData->views);
+			SDL_free(swapchainData->resourceAccessTypes);
+			SDL_free(swapchainData);
 			LogVulkanResultAsError("vkCreateImageView", vulkanResult);
-			SDL_stack_free(swapChainImages);
 			return CREATE_SWAPCHAIN_FAIL;
 		}
 
-		renderer->swapChainImages[i] = swapChainImages[i];
-		renderer->swapChainImageViews[i] = swapChainImageView;
-		renderer->swapChainResourceAccessTypes[i] = RESOURCE_ACCESS_NONE;
-		renderer->swapChainQueueFamilyIndices[i] = renderer->queueFamilyIndices.graphicsFamily;
+		swapchainData->resourceAccessTypes[i] = RESOURCE_ACCESS_NONE;
 	}
 
-	SDL_stack_free(swapChainImages);
+	SDL_SetWindowData(windowHandle, WINDOW_SWAPCHAIN_DATA, swapchainData);
+
+	if (renderer->swapchainDataCount >= renderer->swapchainDataCapacity)
+	{
+		renderer->swapchainDataCapacity *= 2;
+		renderer->swapchainDatas = SDL_realloc(
+			renderer->swapchainDatas,
+			renderer->swapchainDataCapacity * sizeof(VulkanSwapchainData*)
+		);
+	}
+
+	renderer->swapchainDatas[renderer->swapchainDataCount] = swapchainData;
+	renderer->swapchainDataCount += 1;
+
 	return CREATE_SWAPCHAIN_SUCCESS;
 }
 
-static void VULKAN_INTERNAL_RecreateSwapchain(VulkanRenderer* renderer)
-{
+static void VULKAN_INTERNAL_RecreateSwapchain(
+	VulkanRenderer* renderer,
+	void *windowHandle
+) {
 	CreateSwapchainResult createSwapchainResult;
-	SwapChainSupportDetails swapChainSupportDetails;
-	VkExtent2D extent;
 
 	renderer->vkDeviceWaitIdle(renderer->logicalDevice);
 
-	VULKAN_INTERNAL_QuerySwapChainSupport(
-		renderer,
-		renderer->physicalDevice,
-		renderer->surface,
-		&swapChainSupportDetails
-	);
-
-	extent = VULKAN_INTERNAL_ChooseSwapExtent(
-		renderer->deviceWindowHandle,
-		swapChainSupportDetails.capabilities
-	);
-
-	if (extent.width == 0 || extent.height == 0)
-	{
-		return;
-	}
-
-	VULKAN_INTERNAL_DestroySwapchain(renderer);
-	createSwapchainResult = VULKAN_INTERNAL_CreateSwapchain(renderer);
+	VULKAN_INTERNAL_DestroySwapchain(renderer, windowHandle);
+	createSwapchainResult = VULKAN_INTERNAL_CreateSwapchain(renderer, windowHandle);
 
 	if (createSwapchainResult == CREATE_SWAPCHAIN_FAIL)
 	{
-		Refresh_LogError("Failed to recreate swapchain");
+		Refresh_LogError("Failed to recreate swapchain!");
 		return;
 	}
 
@@ -4661,15 +4822,9 @@ static void VULKAN_DestroyDevice(
 	VULKAN_INTERNAL_DestroyUniformBufferPool(renderer, renderer->fragmentUniformBufferPool);
 	VULKAN_INTERNAL_DestroyUniformBufferPool(renderer, renderer->computeUniformBufferPool);
 
-	VULKAN_INTERNAL_DestroySwapchain(renderer);
-
-	if (!renderer->headless)
+	for (i = renderer->swapchainDataCount - 1; i >= 0; i -= 1)
 	{
-		renderer->vkDestroySurfaceKHR(
-			renderer->instance,
-			renderer->surface,
-			NULL
-		);
+		VULKAN_INTERNAL_DestroySwapchain(renderer, renderer->swapchainDatas[i]->windowHandle);
 	}
 
 	for (i = 0; i < VK_MAX_MEMORY_TYPES; i += 1)
@@ -4705,11 +4860,8 @@ static void VULKAN_DestroyDevice(
 	SDL_DestroyMutex(renderer->disposeLock);
 	SDL_DestroyMutex(renderer->submitLock);
 
-	if (!renderer->usesExternalDevice)
-	{
-		renderer->vkDestroyDevice(renderer->logicalDevice, NULL);
-		renderer->vkDestroyInstance(renderer->instance, NULL);
-	}
+	renderer->vkDestroyDevice(renderer->logicalDevice, NULL);
+	renderer->vkDestroyInstance(renderer->instance, NULL);
 
 	SDL_free(renderer);
 	SDL_free(device);
@@ -7442,7 +7594,6 @@ static void VULKAN_GetBufferData(
 	void *data,
 	uint32_t dataLengthInBytes
 ) {
-	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VulkanBuffer* vulkanBuffer = (VulkanBuffer*) buffer;
 	uint8_t *dataPtr = (uint8_t*) data;
 	uint8_t *mapPointer;
@@ -8219,6 +8370,10 @@ static void VULKAN_INTERNAL_AllocateCommandBuffers(
 		currentVulkanCommandBuffer->boundComputeBufferCount = 0;
 		currentVulkanCommandBuffer->transferBuffers = NULL;
 		currentVulkanCommandBuffer->transferBufferCount = 0;
+		currentVulkanCommandBuffer->present = 0;
+		currentVulkanCommandBuffer->presentWindowHandle = NULL;
+		currentVulkanCommandBuffer->presentSwapchainImageIndex = 0;
+		currentVulkanCommandBuffer->needNewSwapchain = 0;
 
 		vulkanCommandPool->inactiveCommandBuffers[
 			vulkanCommandPool->inactiveCommandBufferCount
@@ -8359,76 +8514,112 @@ static void VULKAN_QueuePresent(
 	Refresh_CommandBuffer *commandBuffer,
 	Refresh_TextureSlice *textureSlice,
 	Refresh_Rect *destinationRectangle,
-	Refresh_Filter filter
+	Refresh_Filter filter,
+	void *windowHandle
 ) {
 	VkResult acquireResult;
-	uint32_t swapChainImageIndex;
-
 	Refresh_Rect dstRect;
 
 	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
 	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
 	VulkanTexture* vulkanTexture = (VulkanTexture*) textureSlice->texture;
+	VulkanSwapchainData *swapchainData = NULL;
+	CreateSwapchainResult createSwapchainResult = 0;
+	uint8_t validSwapchainExists = 1;
+	uint8_t acquireSuccess = 0;
+	uint32_t swapchainImageIndex;
 
-	if (renderer->headless)
+	if (vulkanCommandBuffer->present)
 	{
-		Refresh_LogError("Cannot call QueuePresent in headless mode!");
+		Refresh_LogError("This command buffer already has a present queued!");
 		return;
 	}
 
-	acquireResult = renderer->vkAcquireNextImageKHR(
-		renderer->logicalDevice,
-		renderer->swapChain,
-		UINT64_MAX,
-		renderer->imageAvailableSemaphore,
-		VK_NULL_HANDLE,
-		&swapChainImageIndex
-	);
+	vulkanCommandBuffer->presentWindowHandle = windowHandle;
 
-	if (acquireResult != VK_SUCCESS && acquireResult != VK_SUBOPTIMAL_KHR)
+	swapchainData = (VulkanSwapchainData*) SDL_GetWindowData(windowHandle, WINDOW_SWAPCHAIN_DATA);
+
+	if (swapchainData == NULL)
 	{
-		/* Failed to acquire swapchain image, mark that we need a new one */
-		renderer->needNewSwapChain = 1;
-		return;
+		createSwapchainResult = VULKAN_INTERNAL_CreateSwapchain(renderer, windowHandle);
+
+		if (createSwapchainResult == CREATE_SWAPCHAIN_FAIL)
+		{
+			Refresh_LogError("Failed to create swapchain for window handle: %p", windowHandle);
+			validSwapchainExists = 0;
+		}
+		else if (createSwapchainResult == CREATE_SWAPCHAIN_SURFACE_ZERO)
+		{
+			Refresh_LogInfo("Surface for window handle: %p is size zero, cancelling present", windowHandle);
+			validSwapchainExists = 0;
+		}
+		else
+		{
+			swapchainData = (VulkanSwapchainData*) SDL_GetWindowData(windowHandle, WINDOW_SWAPCHAIN_DATA);
+		}
 	}
 
-	vulkanCommandBuffer->present = 1;
-	renderer->swapChainImageAcquired = 1;
-	renderer->currentSwapChainIndex = swapChainImageIndex;
-
-	if (destinationRectangle != NULL)
+	if (validSwapchainExists)
 	{
-		dstRect = *destinationRectangle;
+		acquireResult = renderer->vkAcquireNextImageKHR(
+			renderer->logicalDevice,
+			swapchainData->swapchain,
+			UINT64_MAX,
+			renderer->imageAvailableSemaphore,
+			VK_NULL_HANDLE,
+			&swapchainImageIndex
+		);
+
+		if (acquireResult == VK_SUCCESS || acquireResult == VK_SUBOPTIMAL_KHR)
+		{
+			if (destinationRectangle != NULL)
+			{
+				dstRect = *destinationRectangle;
+			}
+			else
+			{
+				dstRect.x = 0;
+				dstRect.y = 0;
+				dstRect.w = swapchainData->extent.width;
+				dstRect.h = swapchainData->extent.height;
+			}
+
+			/* Blit! */
+
+			VULKAN_INTERNAL_BlitImage(
+				renderer,
+				vulkanCommandBuffer->commandBuffer,
+				&textureSlice->rectangle,
+				textureSlice->depth,
+				textureSlice->layer,
+				textureSlice->level,
+				vulkanTexture->image,
+				&vulkanTexture->resourceAccessType,
+				vulkanTexture->resourceAccessType,
+				&dstRect,
+				0,
+				0,
+				0,
+				swapchainData->images[swapchainImageIndex],
+				&swapchainData->resourceAccessTypes[swapchainImageIndex],
+				RESOURCE_ACCESS_PRESENT,
+				RefreshToVK_Filter[filter]
+			);
+
+			acquireSuccess = 1;
+		}
 	}
-	else
+
+	if (acquireSuccess)
 	{
-		dstRect.x = 0;
-		dstRect.y = 0;
-		dstRect.w = renderer->swapChainExtent.width;
-		dstRect.h = renderer->swapChainExtent.height;
+		vulkanCommandBuffer->present = 1;
+		vulkanCommandBuffer->presentSwapchainImageIndex = swapchainImageIndex;
 	}
 
-	/* Blit! */
-
-	VULKAN_INTERNAL_BlitImage(
-		renderer,
-		vulkanCommandBuffer->commandBuffer,
-		&textureSlice->rectangle,
-		textureSlice->depth,
-		textureSlice->layer,
-		textureSlice->level,
-		vulkanTexture->image,
-		&vulkanTexture->resourceAccessType,
-		vulkanTexture->resourceAccessType,
-		&dstRect,
-		0,
-		0,
-		0,
-		renderer->swapChainImages[swapChainImageIndex],
-		&renderer->swapChainResourceAccessTypes[swapChainImageIndex],
-		RESOURCE_ACCESS_PRESENT,
-		RefreshToVK_Filter[filter]
-	);
+	if (!validSwapchainExists || acquireResult == VK_SUBOPTIMAL_KHR)
+	{
+		vulkanCommandBuffer->needNewSwapchain = 1;
+	}
 }
 
 static void VULKAN_INTERNAL_ResetCommandBuffer(
@@ -8591,7 +8782,8 @@ static void VULKAN_Submit(
 	VulkanCommandBuffer *currentCommandBuffer;
 	VkCommandBuffer *commandBuffers;
 	uint32_t i;
-	uint8_t present = 0;
+	uint8_t presentCount = 0;
+	VulkanSwapchainData *swapchainData;
 	VkFence fence;
 
 	VkPipelineStageFlags waitStages[2];
@@ -8606,19 +8798,17 @@ static void VULKAN_Submit(
 	for (i = 0; i < commandBufferCount; i += 1)
 	{
 		currentCommandBuffer = (VulkanCommandBuffer*)pCommandBuffers[i];
-		present = present || currentCommandBuffer->present;
+		presentCount += currentCommandBuffer->present;
 		VULKAN_INTERNAL_EndCommandBuffer(renderer, currentCommandBuffer);
 		commandBuffers[i] = currentCommandBuffer->commandBuffer;
 	}
-
-	present = present && !renderer->headless;
 
 	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 	submitInfo.pNext = NULL;
 	submitInfo.commandBufferCount = commandBufferCount;
 	submitInfo.pCommandBuffers = commandBuffers;
 
-	if (present)
+	if (presentCount > 0)
 	{
 		waitSemaphores[waitSemaphoreCount] = renderer->imageAvailableSemaphore;
 		waitStages[waitSemaphoreCount] = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
@@ -8638,7 +8828,7 @@ static void VULKAN_Submit(
 	submitInfo.waitSemaphoreCount = waitSemaphoreCount;
 	submitInfo.pWaitSemaphores = waitSemaphores;
 
-	if (present)
+	if (presentCount > 0)
 	{
 		/* Wait for the previous submission to complete */
 		if (renderer->usedFenceCount > 0)
@@ -8722,48 +8912,38 @@ static void VULKAN_Submit(
 
 	/* Present, if applicable */
 
-	if (present)
+	for (i = 0; i < commandBufferCount; i += 1)
 	{
-		presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-		presentInfo.pNext = NULL;
-		presentInfo.waitSemaphoreCount = 1;
-		presentInfo.pWaitSemaphores = &renderer->renderFinishedSemaphore;
-		presentInfo.swapchainCount = 1;
-		presentInfo.pSwapchains = &renderer->swapChain;
-		presentInfo.pImageIndices = &renderer->currentSwapChainIndex;
-		presentInfo.pResults = NULL;
+		currentCommandBuffer = (VulkanCommandBuffer*) pCommandBuffers[i];
+		swapchainData = (VulkanSwapchainData*) SDL_GetWindowData(currentCommandBuffer->presentWindowHandle, WINDOW_SWAPCHAIN_DATA);
+		presentResult = VK_SUCCESS;
 
-		presentResult = renderer->vkQueuePresentKHR(
-			renderer->presentQueue,
-			&presentInfo
-		);
-
-		if (presentResult != VK_SUCCESS || renderer->needNewSwapChain)
+		if (currentCommandBuffer->present)
 		{
-			VULKAN_INTERNAL_RecreateSwapchain(renderer);
+			presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+			presentInfo.pNext = NULL;
+			presentInfo.waitSemaphoreCount = 1;
+			presentInfo.pWaitSemaphores = &renderer->renderFinishedSemaphore;
+
+			presentInfo.swapchainCount = 1;
+			presentInfo.pSwapchains = &swapchainData->swapchain;
+			presentInfo.pImageIndices = &currentCommandBuffer->presentSwapchainImageIndex;
+
+			presentResult = renderer->vkQueuePresentKHR(
+				renderer->presentQueue,
+				&presentInfo
+			);
+		}
+
+		if (presentResult != VK_SUCCESS || currentCommandBuffer->needNewSwapchain)
+		{
+			VULKAN_INTERNAL_RecreateSwapchain(renderer, currentCommandBuffer->presentWindowHandle);
 		}
 	}
-
-	renderer->swapChainImageAcquired = 0;
 
 	SDL_stack_free(commandBuffers);
 
 	SDL_UnlockMutex(renderer->submitLock);
-}
-
-/* External interop */
-
-static void VULKAN_GetTextureHandles(
-	Refresh_Renderer* driverData,
-	Refresh_Texture* texture,
-	Refresh_TextureHandles *handles
-) {
-	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
-	VulkanTexture *vulkanTexture = (VulkanTexture*) texture;
-
-	handles->rendererType = REFRESH_RENDERER_TYPE_VULKAN;
-	handles->texture.vulkan.image = vulkanTexture->image;
-	handles->texture.vulkan.view = vulkanTexture->view;
 }
 
 /* Device instantiation */
@@ -9084,8 +9264,10 @@ static uint8_t VULKAN_INTERNAL_IsDeviceSuitable(
 		surface,
 		&swapChainSupportDetails
 	);
+
 	SDL_free(swapChainSupportDetails.formats);
 	SDL_free(swapChainSupportDetails.presentModes);
+
 	if (	querySuccess == 0 ||
 		swapChainSupportDetails.formatsLength == 0 ||
 		swapChainSupportDetails.presentModesLength == 0	)
@@ -9168,6 +9350,7 @@ static void VULKAN_INTERNAL_GetPhysicalDeviceProperties(
 
 static uint8_t VULKAN_INTERNAL_DeterminePhysicalDevice(
 	VulkanRenderer *renderer,
+	VkSurfaceKHR surface,
 	const char **deviceExtensionNames,
 	uint32_t deviceExtensionCount
 ) {
@@ -9227,7 +9410,7 @@ static uint8_t VULKAN_INTERNAL_DeterminePhysicalDevice(
 			physicalDevices[i],
 			deviceExtensionNames,
 			deviceExtensionCount,
-			renderer->surface,
+			surface,
 			&queueFamilyIndices,
 			&deviceRank
 		);
@@ -9427,12 +9610,14 @@ static void VULKAN_INTERNAL_LoadEntryPoints(
 	#include "Refresh_Driver_Vulkan_vkfuncs.h"
 }
 
-/* Expects a partially initialized VulkanRenderer */
-static Refresh_Device* VULKAN_INTERNAL_CreateDevice(
-	VulkanRenderer *renderer
+static Refresh_Device* VULKAN_CreateDevice(
+	Refresh_PresentationParameters *presentationParameters,
+	uint8_t debugMode
 ) {
-    Refresh_Device *result;
+	VulkanRenderer *renderer = (VulkanRenderer*) SDL_malloc(sizeof(VulkanRenderer));
+	VkSurfaceKHR surface;
 
+    Refresh_Device *result;
     VkResult vulkanResult;
 	uint32_t i;
 
@@ -9455,7 +9640,101 @@ static Refresh_Device* VULKAN_INTERNAL_CreateDevice(
 	VkDescriptorPoolSize poolSizes[4];
 	VkDescriptorSetAllocateInfo descriptorAllocateInfo;
 
-    result = (Refresh_Device*) SDL_malloc(sizeof(Refresh_Device));
+	VULKAN_INTERNAL_LoadEntryPoints(renderer);
+
+	renderer->presentMode = presentationParameters->presentMode;
+	renderer->debugMode = debugMode;
+
+	/* Create the VkInstance */
+	if (!VULKAN_INTERNAL_CreateInstance(renderer, presentationParameters->deviceWindowHandle))
+	{
+		Refresh_LogError("Error creating vulkan instance");
+		return NULL;
+	}
+
+	/*
+	 * Create the WSI vkSurface
+	 */
+
+	if (!SDL_Vulkan_CreateSurface(
+		(SDL_Window*)presentationParameters->deviceWindowHandle,
+		renderer->instance,
+		&surface
+	)) {
+		Refresh_LogError(
+			"SDL_Vulkan_CreateSurface failed: %s",
+			SDL_GetError()
+		);
+		return NULL;
+	}
+
+	/*
+	 * Get vkInstance entry points
+	 */
+
+	#define VULKAN_INSTANCE_FUNCTION(ext, ret, func, params) \
+			renderer->func = (vkfntype_##func) vkGetInstanceProcAddr(renderer->instance, #func);
+	#include "Refresh_Driver_Vulkan_vkfuncs.h"
+
+	/*
+	* Choose/Create vkDevice
+	*/
+
+	if (SDL_strcmp(SDL_GetPlatform(), "Stadia") != 0)
+	{
+		deviceExtensionCount -= 1;
+	}
+	if (!VULKAN_INTERNAL_DeterminePhysicalDevice(
+		renderer,
+		surface,
+		deviceExtensionNames,
+		deviceExtensionCount
+	)) {
+		Refresh_LogError("Failed to determine a suitable physical device");
+		return NULL;
+	}
+
+	renderer->vkDestroySurfaceKHR(
+		renderer->instance,
+		surface,
+		NULL
+	);
+
+	Refresh_LogInfo("Refresh Driver: Vulkan");
+	Refresh_LogInfo(
+		"Vulkan Device: %s",
+		renderer->physicalDeviceProperties.properties.deviceName
+	);
+	Refresh_LogInfo(
+		"Vulkan Driver: %s %s",
+		renderer->physicalDeviceDriverProperties.driverName,
+		renderer->physicalDeviceDriverProperties.driverInfo
+	);
+	Refresh_LogInfo(
+		"Vulkan Conformance: %u.%u.%u",
+		renderer->physicalDeviceDriverProperties.conformanceVersion.major,
+		renderer->physicalDeviceDriverProperties.conformanceVersion.minor,
+		renderer->physicalDeviceDriverProperties.conformanceVersion.patch
+	);
+	Refresh_LogWarn(
+		"\n!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n"
+		"! Refresh Vulkan is still in development!    !\n"
+		"! The API is unstable and subject to change! !\n"
+		"! You have been warned!                      !\n"
+		"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+	);
+
+	if (!VULKAN_INTERNAL_CreateLogicalDevice(
+		renderer,
+		deviceExtensionNames,
+		deviceExtensionCount
+	)) {
+		Refresh_LogError("Failed to create logical device");
+		return NULL;
+	}
+
+	/* FIXME: just move this into this function */
+	result = (Refresh_Device*) SDL_malloc(sizeof(Refresh_Device));
     ASSIGN_DRIVER(VULKAN)
 
     result->driverData = (Refresh_Renderer*) renderer;
@@ -9464,17 +9743,17 @@ static Refresh_Device* VULKAN_INTERNAL_CreateDevice(
 	 * Create initial swapchain
 	 */
 
-    if (!renderer->headless)
-    {
-        if (VULKAN_INTERNAL_CreateSwapchain(renderer) != CREATE_SWAPCHAIN_SUCCESS)
-        {
-            Refresh_LogError("Failed to create swap chain");
-            return NULL;
-        }
-    }
+	renderer->swapchainDataCapacity = 1;
+	renderer->swapchainDataCount = 0;
+	renderer->swapchainDatas = SDL_malloc(
+		renderer->swapchainDataCapacity * sizeof(VulkanSwapchainData*)
+	);
 
-	renderer->needNewSwapChain = 0;
-	renderer->swapChainImageAcquired = 0;
+	if (VULKAN_INTERNAL_CreateSwapchain(renderer, presentationParameters->deviceWindowHandle) != CREATE_SWAPCHAIN_SUCCESS)
+	{
+		Refresh_LogError("Failed to create swap chain");
+		return NULL;
+	}
 
 	/*
 	 * Create semaphores
@@ -9998,182 +10277,9 @@ static Refresh_Device* VULKAN_INTERNAL_CreateDevice(
     return result;
 }
 
-static Refresh_Device* VULKAN_CreateDevice(
-	Refresh_PresentationParameters *presentationParameters,
-	uint8_t debugMode
-) {
-	VulkanRenderer *renderer = (VulkanRenderer*) SDL_malloc(sizeof(VulkanRenderer));
-
-	VULKAN_INTERNAL_LoadEntryPoints(renderer);
-
-	renderer->presentMode = presentationParameters->presentMode;
-	renderer->debugMode = debugMode;
-	renderer->usesExternalDevice = 0;
-
-	/* Create the VkInstance */
-	if (!VULKAN_INTERNAL_CreateInstance(renderer, presentationParameters->deviceWindowHandle))
-	{
-		Refresh_LogError("Error creating vulkan instance");
-		return NULL;
-	}
-
-	renderer->deviceWindowHandle = presentationParameters->deviceWindowHandle;
-	renderer->headless = presentationParameters->deviceWindowHandle == NULL;
-
-	/*
-	 * Create the WSI vkSurface
-	 */
-
-	if (!SDL_Vulkan_CreateSurface(
-		(SDL_Window*)renderer->deviceWindowHandle,
-		renderer->instance,
-		&renderer->surface
-	)) {
-		Refresh_LogError(
-			"SDL_Vulkan_CreateSurface failed: %s",
-			SDL_GetError()
-		);
-		return NULL;
-	}
-
-	/*
-	 * Get vkInstance entry points
-	 */
-
-	#define VULKAN_INSTANCE_FUNCTION(ext, ret, func, params) \
-			renderer->func = (vkfntype_##func) vkGetInstanceProcAddr(renderer->instance, #func);
-	#include "Refresh_Driver_Vulkan_vkfuncs.h"
-
-	/*
-	* Choose/Create vkDevice
-	*/
-
-	if (SDL_strcmp(SDL_GetPlatform(), "Stadia") != 0)
-	{
-		deviceExtensionCount -= 1;
-	}
-	if (!VULKAN_INTERNAL_DeterminePhysicalDevice(
-		renderer,
-		deviceExtensionNames,
-		deviceExtensionCount
-	)) {
-		Refresh_LogError("Failed to determine a suitable physical device");
-		return NULL;
-	}
-
-	Refresh_LogInfo("Refresh Driver: Vulkan");
-	Refresh_LogInfo(
-		"Vulkan Device: %s",
-		renderer->physicalDeviceProperties.properties.deviceName
-	);
-	Refresh_LogInfo(
-		"Vulkan Driver: %s %s",
-		renderer->physicalDeviceDriverProperties.driverName,
-		renderer->physicalDeviceDriverProperties.driverInfo
-	);
-	Refresh_LogInfo(
-		"Vulkan Conformance: %u.%u.%u",
-		renderer->physicalDeviceDriverProperties.conformanceVersion.major,
-		renderer->physicalDeviceDriverProperties.conformanceVersion.minor,
-		renderer->physicalDeviceDriverProperties.conformanceVersion.patch
-	);
-	Refresh_LogWarn(
-		"\n!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n"
-		"! Refresh Vulkan is still in development!    !\n"
-		"! The API is unstable and subject to change! !\n"
-		"! You have been warned!                      !\n"
-		"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-	);
-
-	if (!VULKAN_INTERNAL_CreateLogicalDevice(
-		renderer,
-		deviceExtensionNames,
-		deviceExtensionCount
-	)) {
-		Refresh_LogError("Failed to create logical device");
-		return NULL;
-	}
-
-	return VULKAN_INTERNAL_CreateDevice(renderer);
-}
-
-static Refresh_Device* VULKAN_CreateDeviceUsingExternal(
-	Refresh_SysRenderer *sysRenderer,
-	uint8_t debugMode
-) {
-	VulkanRenderer* renderer = (VulkanRenderer*)SDL_malloc(sizeof(VulkanRenderer));
-
-	renderer->instance = sysRenderer->renderer.vulkan.instance;
-	renderer->physicalDevice = sysRenderer->renderer.vulkan.physicalDevice;
-	renderer->logicalDevice = sysRenderer->renderer.vulkan.logicalDevice;
-	renderer->queueFamilyIndices.computeFamily = sysRenderer->renderer.vulkan.queueFamilyIndex;
-	renderer->queueFamilyIndices.graphicsFamily = sysRenderer->renderer.vulkan.queueFamilyIndex;
-	renderer->queueFamilyIndices.presentFamily = sysRenderer->renderer.vulkan.queueFamilyIndex;
-	renderer->queueFamilyIndices.transferFamily = sysRenderer->renderer.vulkan.queueFamilyIndex;
-	renderer->deviceWindowHandle = NULL;
-	renderer->presentMode = 0;
-	renderer->debugMode = debugMode;
-	renderer->headless = 1;
-	renderer->usesExternalDevice = 1;
-
-	VULKAN_INTERNAL_LoadEntryPoints(renderer);
-
-	/*
-	 * Get vkInstance entry points
-	 */
-
-	#define VULKAN_INSTANCE_FUNCTION(ext, ret, func, params) \
-			renderer->func = (vkfntype_##func) vkGetInstanceProcAddr(renderer->instance, #func);
-	#include "Refresh_Driver_Vulkan_vkfuncs.h"
-
-	 /* Load vkDevice entry points */
-
-	#define VULKAN_DEVICE_FUNCTION(ext, ret, func, params) \
-			renderer->func = (vkfntype_##func) \
-				renderer->vkGetDeviceProcAddr( \
-					renderer->logicalDevice, \
-					#func \
-				);
-	#include "Refresh_Driver_Vulkan_vkfuncs.h"
-
-	renderer->vkGetDeviceQueue(
-		renderer->logicalDevice,
-		renderer->queueFamilyIndices.graphicsFamily,
-		0,
-		&renderer->graphicsQueue
-	);
-
-	renderer->vkGetDeviceQueue(
-		renderer->logicalDevice,
-		renderer->queueFamilyIndices.presentFamily,
-		0,
-		&renderer->presentQueue
-	);
-
-	renderer->vkGetDeviceQueue(
-		renderer->logicalDevice,
-		renderer->queueFamilyIndices.computeFamily,
-		0,
-		&renderer->computeQueue
-	);
-
-	renderer->vkGetDeviceQueue(
-		renderer->logicalDevice,
-		renderer->queueFamilyIndices.transferFamily,
-		0,
-		&renderer->transferQueue
-	);
-
-	VULKAN_INTERNAL_GetPhysicalDeviceProperties(renderer);
-
-	return VULKAN_INTERNAL_CreateDevice(renderer);
-}
-
-
 Refresh_Driver VulkanDriver = {
     "Vulkan",
-    VULKAN_CreateDevice,
-	VULKAN_CreateDeviceUsingExternal
+    VULKAN_CreateDevice
 };
 
 #endif //REFRESH_DRIVER_VULKAN
