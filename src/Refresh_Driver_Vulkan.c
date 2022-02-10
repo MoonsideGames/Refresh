@@ -745,6 +745,10 @@ typedef struct VulkanSwapchainData
 	VkImageView *views;
 	VulkanResourceAccessType *resourceAccessTypes;
 	uint32_t imageCount;
+
+	/* Synchronization primitives */
+	VkSemaphore imageAvailableSemaphore;
+	VkSemaphore renderFinishedSemaphore;
 } VulkanSwapchainData;
 
 typedef struct SwapChainSupportDetails
@@ -1352,10 +1356,6 @@ typedef struct VulkanRenderer
 	VkQueue transferQueue;
 
 	Refresh_PresentMode presentMode;
-
-	VkSemaphore transferFinishedSemaphore;
-	VkSemaphore imageAvailableSemaphore;
-	VkSemaphore renderFinishedSemaphore;
 
 	VkFence *availableFences;
 	uint32_t availableFenceCount;
@@ -2624,6 +2624,18 @@ static void VULKAN_INTERNAL_DestroySwapchain(
 	renderer->vkDestroySurfaceKHR(
 		renderer->instance,
 		swapchainData->surface,
+		NULL
+	);
+
+	renderer->vkDestroySemaphore(
+		renderer->logicalDevice,
+		swapchainData->imageAvailableSemaphore,
+		NULL
+	);
+
+	renderer->vkDestroySemaphore(
+		renderer->logicalDevice,
+		swapchainData->renderFinishedSemaphore,
 		NULL
 	);
 
@@ -4188,7 +4200,8 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 	VkResult vulkanResult;
 	VulkanSwapchainData *swapchainData;
 	VkSwapchainCreateInfoKHR swapchainCreateInfo;
-	VkImageViewCreateInfo createInfo;
+	VkImageViewCreateInfo imageViewCreateInfo;
+	VkSemaphoreCreateInfo semaphoreCreateInfo;
 	SwapChainSupportDetails swapchainSupportDetails;
 	int32_t drawableWidth, drawableHeight;
 	uint32_t i;
@@ -4488,25 +4501,25 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 		swapchainData->images
 	);
 
-	createInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-	createInfo.pNext = NULL;
-	createInfo.flags = 0;
-	createInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-	createInfo.format = swapchainData->surfaceFormat.format;
-	createInfo.components = swapchainData->swapchainSwizzle;
-	createInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-	createInfo.subresourceRange.baseMipLevel = 0;
-	createInfo.subresourceRange.levelCount = 1;
-	createInfo.subresourceRange.baseArrayLayer = 0;
-	createInfo.subresourceRange.layerCount = 1;
+	imageViewCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+	imageViewCreateInfo.pNext = NULL;
+	imageViewCreateInfo.flags = 0;
+	imageViewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+	imageViewCreateInfo.format = swapchainData->surfaceFormat.format;
+	imageViewCreateInfo.components = swapchainData->swapchainSwizzle;
+	imageViewCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	imageViewCreateInfo.subresourceRange.baseMipLevel = 0;
+	imageViewCreateInfo.subresourceRange.levelCount = 1;
+	imageViewCreateInfo.subresourceRange.baseArrayLayer = 0;
+	imageViewCreateInfo.subresourceRange.layerCount = 1;
 
 	for (i = 0; i < swapchainData->imageCount; i += 1)
 	{
-		createInfo.image = swapchainData->images[i];
+		imageViewCreateInfo.image = swapchainData->images[i];
 
 		vulkanResult = renderer->vkCreateImageView(
 			renderer->logicalDevice,
-			&createInfo,
+			&imageViewCreateInfo,
 			NULL,
 			&swapchainData->views[i]
 		);
@@ -4528,6 +4541,24 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 
 		swapchainData->resourceAccessTypes[i] = RESOURCE_ACCESS_NONE;
 	}
+
+	semaphoreCreateInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+	semaphoreCreateInfo.pNext = NULL;
+	semaphoreCreateInfo.flags = 0;
+
+	renderer->vkCreateSemaphore(
+		renderer->logicalDevice,
+		&semaphoreCreateInfo,
+		NULL,
+		&swapchainData->imageAvailableSemaphore
+	);
+
+	renderer->vkCreateSemaphore(
+		renderer->logicalDevice,
+		&semaphoreCreateInfo,
+		NULL,
+		&swapchainData->renderFinishedSemaphore
+	);
 
 	SDL_SetWindowData(windowHandle, WINDOW_SWAPCHAIN_DATA, swapchainData);
 
@@ -4649,24 +4680,6 @@ static void VULKAN_DestroyDevice(
 	VULKAN_INTERNAL_DestroyBuffer(renderer, renderer->dummyVertexUniformBuffer->vulkanBuffer);
 	VULKAN_INTERNAL_DestroyBuffer(renderer, renderer->dummyFragmentUniformBuffer->vulkanBuffer);
 	VULKAN_INTERNAL_DestroyBuffer(renderer, renderer->dummyComputeUniformBuffer->vulkanBuffer);
-
-	renderer->vkDestroySemaphore(
-		renderer->logicalDevice,
-		renderer->transferFinishedSemaphore,
-		NULL
-	);
-
-	renderer->vkDestroySemaphore(
-		renderer->logicalDevice,
-		renderer->imageAvailableSemaphore,
-		NULL
-	);
-
-	renderer->vkDestroySemaphore(
-		renderer->logicalDevice,
-		renderer->renderFinishedSemaphore,
-		NULL
-	);
 
 	for (i = 0; i < renderer->availableFenceCount; i += 1)
 	{
@@ -8565,7 +8578,7 @@ static void VULKAN_QueuePresent(
 			renderer->logicalDevice,
 			swapchainData->swapchain,
 			UINT64_MAX,
-			renderer->imageAvailableSemaphore,
+			swapchainData->imageAvailableSemaphore,
 			VK_NULL_HANDLE,
 			&swapchainImageIndex
 		);
@@ -8668,7 +8681,7 @@ static void VULKAN_INTERNAL_ResetCommandBuffer(
 	commandPool->inactiveCommandBufferCount += 1;
 }
 
-/* Fence management */
+/* Synchronization management */
 
 static VkFence VULKAN_INTERNAL_AcquireFence(
 	VulkanRenderer *renderer
@@ -8777,56 +8790,74 @@ static void VULKAN_Submit(
 	Refresh_CommandBuffer **pCommandBuffers
 ) {
 	VulkanRenderer* renderer = (VulkanRenderer*)driverData;
-	VkSubmitInfo submitInfo;
+	VkSubmitInfo *submitInfos;
+	VkPresentInfoKHR *presentInfos;
+	void **presentWindowHandles;
+	uint8_t *needsNewSwapchain;
+	uint32_t presentCount = 0;
 	VkResult vulkanResult, presentResult = VK_SUCCESS;
 	VulkanCommandBuffer *currentCommandBuffer;
 	VkCommandBuffer *commandBuffers;
-	uint32_t i;
-	uint8_t presentCount = 0;
+	VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 	VulkanSwapchainData *swapchainData;
 	VkFence fence;
-
-	VkPipelineStageFlags waitStages[2];
-	VkSemaphore waitSemaphores[2];
-	uint32_t waitSemaphoreCount = 0;
-	VkPresentInfoKHR presentInfo;
+	uint32_t i;
 
 	SDL_LockMutex(renderer->submitLock);
 
 	commandBuffers = SDL_stack_alloc(VkCommandBuffer, commandBufferCount);
+	submitInfos = SDL_stack_alloc(VkSubmitInfo, commandBufferCount);
+
+	/* In the worst case we will need 1 semaphore per CB so let's allocate appropriately. */
+	presentInfos = SDL_stack_alloc(VkPresentInfoKHR, commandBufferCount);
+	presentWindowHandles = SDL_stack_alloc(void*, commandBufferCount);
+	needsNewSwapchain = SDL_stack_alloc(uint8_t, commandBufferCount);
 
 	for (i = 0; i < commandBufferCount; i += 1)
 	{
 		currentCommandBuffer = (VulkanCommandBuffer*)pCommandBuffers[i];
-		presentCount += currentCommandBuffer->present;
 		VULKAN_INTERNAL_EndCommandBuffer(renderer, currentCommandBuffer);
 		commandBuffers[i] = currentCommandBuffer->commandBuffer;
+
+		submitInfos[i].sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+		submitInfos[i].pNext = NULL;
+		submitInfos[i].commandBufferCount = 1;
+		submitInfos[i].pCommandBuffers = &commandBuffers[i];
+
+		if (currentCommandBuffer->present)
+		{
+			swapchainData = (VulkanSwapchainData*) SDL_GetWindowData(currentCommandBuffer->presentWindowHandle, WINDOW_SWAPCHAIN_DATA);
+
+			submitInfos[i].pWaitDstStageMask = &waitStage;
+			submitInfos[i].pWaitSemaphores = &swapchainData->imageAvailableSemaphore;
+			submitInfos[i].waitSemaphoreCount = 1;
+			submitInfos[i].pSignalSemaphores = &swapchainData->renderFinishedSemaphore;
+			submitInfos[i].signalSemaphoreCount = 1;
+
+			presentInfos[presentCount].sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+			presentInfos[presentCount].pNext = NULL;
+			presentInfos[presentCount].waitSemaphoreCount = 1;
+			presentInfos[presentCount].pWaitSemaphores = &swapchainData->renderFinishedSemaphore;
+
+			presentInfos[presentCount].swapchainCount = 1;
+			presentInfos[presentCount].pSwapchains = &swapchainData->swapchain;
+			presentInfos[presentCount].pImageIndices = &currentCommandBuffer->presentSwapchainImageIndex;
+			presentInfos[presentCount].pResults = NULL;
+
+			presentWindowHandles[presentCount] = currentCommandBuffer->presentWindowHandle;
+			needsNewSwapchain[presentCount] = currentCommandBuffer->needNewSwapchain;
+
+			presentCount += 1;
+		}
+		else
+		{
+			submitInfos[i].pWaitDstStageMask = NULL;
+			submitInfos[i].pWaitSemaphores = NULL;
+			submitInfos[i].waitSemaphoreCount = 0;
+			submitInfos[i].pSignalSemaphores = NULL;
+			submitInfos[i].signalSemaphoreCount = 0;
+		}
 	}
-
-	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-	submitInfo.pNext = NULL;
-	submitInfo.commandBufferCount = commandBufferCount;
-	submitInfo.pCommandBuffers = commandBuffers;
-
-	if (presentCount > 0)
-	{
-		waitSemaphores[waitSemaphoreCount] = renderer->imageAvailableSemaphore;
-		waitStages[waitSemaphoreCount] = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-		waitSemaphoreCount += 1;
-
-		submitInfo.pWaitDstStageMask = waitStages;
-		submitInfo.signalSemaphoreCount = 1;
-		submitInfo.pSignalSemaphores = &renderer->renderFinishedSemaphore;
-	}
-	else
-	{
-		submitInfo.pWaitDstStageMask = waitStages;
-		submitInfo.signalSemaphoreCount = 0;
-		submitInfo.pSignalSemaphores = NULL;
-	}
-
-	submitInfo.waitSemaphoreCount = waitSemaphoreCount;
-	submitInfo.pWaitSemaphores = waitSemaphores;
 
 	if (presentCount > 0)
 	{
@@ -8880,8 +8911,8 @@ static void VULKAN_Submit(
 	/* Submit the commands, finally. */
 	vulkanResult = renderer->vkQueueSubmit(
 		renderer->graphicsQueue,
-		1,
-		&submitInfo,
+		commandBufferCount,
+		submitInfos,
 		fence
 	);
 
@@ -8912,36 +8943,24 @@ static void VULKAN_Submit(
 
 	/* Present, if applicable */
 
-	for (i = 0; i < commandBufferCount; i += 1)
+	for (i = 0; i < presentCount; i += 1)
 	{
-		currentCommandBuffer = (VulkanCommandBuffer*) pCommandBuffers[i];
-		swapchainData = (VulkanSwapchainData*) SDL_GetWindowData(currentCommandBuffer->presentWindowHandle, WINDOW_SWAPCHAIN_DATA);
-		presentResult = VK_SUCCESS;
+		presentResult = renderer->vkQueuePresentKHR(
+			renderer->presentQueue,
+			&presentInfos[i]
+		);
 
-		if (currentCommandBuffer->present)
+		if (presentResult != VK_SUCCESS || needsNewSwapchain[i])
 		{
-			presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-			presentInfo.pNext = NULL;
-			presentInfo.waitSemaphoreCount = 1;
-			presentInfo.pWaitSemaphores = &renderer->renderFinishedSemaphore;
-
-			presentInfo.swapchainCount = 1;
-			presentInfo.pSwapchains = &swapchainData->swapchain;
-			presentInfo.pImageIndices = &currentCommandBuffer->presentSwapchainImageIndex;
-
-			presentResult = renderer->vkQueuePresentKHR(
-				renderer->presentQueue,
-				&presentInfo
-			);
-		}
-
-		if (presentResult != VK_SUCCESS || currentCommandBuffer->needNewSwapchain)
-		{
-			VULKAN_INTERNAL_RecreateSwapchain(renderer, currentCommandBuffer->presentWindowHandle);
+			VULKAN_INTERNAL_RecreateSwapchain(renderer, presentWindowHandles[i]);
 		}
 	}
 
 	SDL_stack_free(commandBuffers);
+	SDL_stack_free(submitInfos);
+	SDL_stack_free(presentInfos);
+	SDL_stack_free(presentWindowHandles);
+	SDL_stack_free(needsNewSwapchain);
 
 	SDL_UnlockMutex(renderer->submitLock);
 }
@@ -9621,9 +9640,6 @@ static Refresh_Device* VULKAN_CreateDevice(
     VkResult vulkanResult;
 	uint32_t i;
 
-    /* Variables: Create semaphores */
-	VkSemaphoreCreateInfo semaphoreInfo;
-
 	/* Variables: Descriptor set layouts */
 	VkDescriptorSetLayoutCreateInfo setLayoutCreateInfo;
 	VkDescriptorSetLayoutBinding vertexParamLayoutBinding;
@@ -9752,53 +9768,6 @@ static Refresh_Device* VULKAN_CreateDevice(
 	if (VULKAN_INTERNAL_CreateSwapchain(renderer, presentationParameters->deviceWindowHandle) != CREATE_SWAPCHAIN_SUCCESS)
 	{
 		Refresh_LogError("Failed to create swap chain");
-		return NULL;
-	}
-
-	/*
-	 * Create semaphores
-	 */
-
-	semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-	semaphoreInfo.pNext = NULL;
-	semaphoreInfo.flags = 0;
-
-	vulkanResult = renderer->vkCreateSemaphore(
-		renderer->logicalDevice,
-		&semaphoreInfo,
-		NULL,
-		&renderer->transferFinishedSemaphore
-	);
-
-	if (vulkanResult != VK_SUCCESS)
-	{
-		LogVulkanResultAsError("vkCreateSemaphore", vulkanResult);
-		return NULL;
-	}
-
-	vulkanResult = renderer->vkCreateSemaphore(
-		renderer->logicalDevice,
-		&semaphoreInfo,
-		NULL,
-		&renderer->imageAvailableSemaphore
-	);
-
-	if (vulkanResult != VK_SUCCESS)
-	{
-		LogVulkanResultAsError("vkCreateSemaphore", vulkanResult);
-		return NULL;
-	}
-
-	vulkanResult = renderer->vkCreateSemaphore(
-		renderer->logicalDevice,
-		&semaphoreInfo,
-		NULL,
-		&renderer->renderFinishedSemaphore
-	);
-
-	if (vulkanResult != VK_SUCCESS)
-	{
-		LogVulkanResultAsError("vkCreateSemaphore", vulkanResult);
 		return NULL;
 	}
 
