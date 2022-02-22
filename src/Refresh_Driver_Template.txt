@@ -1,0 +1,687 @@
+/* Refresh - XNA-inspired 3D Graphics Library with modern capabilities
+ *
+ * Copyright (c) 2020 Evan Hemsley
+ *
+ * This software is provided 'as-is', without any express or implied warranty.
+ * In no event will the authors be held liable for any damages arising from
+ * the use of this software.
+ *
+ * Permission is granted to anyone to use this software for any purpose,
+ * including commercial applications, and to alter it and redistribute it
+ * freely, subject to the following restrictions:
+ *
+ * 1. The origin of this software must not be misrepresented; you must not
+ * claim that you wrote the original software. If you use this software in a
+ * product, an acknowledgment in the product documentation would be
+ * appreciated but is not required.
+ *
+ * 2. Altered source versions must be plainly marked as such, and must not be
+ * misrepresented as being the original software.
+ *
+ * 3. This notice may not be removed or altered from any source distribution.
+ *
+ * Evan "cosmonaut" Hemsley <evan@moonside.games>
+ *
+ */
+
+#if REFRESH_DRIVER_TEMPLATE
+
+#include "Refresh_Driver.h"
+
+#include <SDL.h>
+
+#define NOT_IMPLEMENTED SDL_assert(0 && "Not implemented!");
+
+/* Conversions */
+
+static TEMPLATE_SURFACE_FORMAT_TYPE RefreshToTEMPLATE_SurfaceFormat[] =
+{
+	0,	/* R8G8B8A8 */
+	0,	/* R5G6B5 */
+	0,	/* A1R5G5B5 */
+	0,	/* B4G4R4A4 */
+	0,	/* BC1 */
+	0,	/* BC3 */
+	0,	/* BC5 */
+	0,	/* R8G8_SNORM */
+	0,	/* R8G8B8A8_SNORM */
+	0,	/* A2R10G10B10 */
+	0,	/* R16G16 */
+	0,	/* R16G16B16A16 */
+	0,	/* R8 */
+	0,	/* R32_SFLOAT */
+	0,	/* R32G32_SFLOAT */
+	0,	/* R32G32B32A32_SFLOAT */
+	0,	/* R16_SFLOAT */
+	0,	/* R16G16_SFLOAT */
+	0,	/* R16G16B16A16_SFLOAT */
+	0,	/* D16 */
+	0,	/* D32 */
+	0,	/* D16S8 */
+	0	/* D32S8 */
+};
+
+static TEMPLATE_VERTEX_FORMAT_TYPE RefreshToTEMPLATE_VertexFormat[] =
+{
+	0,	/* SINGLE */
+	0,	/* VECTOR2 */
+	0,	/* VECTOR3 */
+	0,	/* VECTOR4 */
+	0,	/* COLOR */
+	0,	/* BYTE4 */
+	0,	/* SHORT2 */
+	0,	/* SHORT4 */
+	0,	/* NORMALIZEDSHORT2 */
+	0,	/* NORMALIZEDSHORT4 */
+	0,	/* HALFVECTOR2 */
+	0	/* HALFVECTOR4 */
+};
+
+static TEMPLATE_INDEX_TYPE RefreshToTEMPLATE_IndexType[] =
+{
+	0,	/* 16BIT */
+	0	/* 32BIT */
+};
+
+static TEMPLATE_PRIMITIVE_TYPE RefreshToTEMPLATE_PrimitiveType[] =
+{
+	0,	/* POINTLIST */
+	0,	/* LINELIST */
+	0,	/* LINESTRIP */
+	0,	/* TRIANGLELIST */
+	0	/* TRIANGLESTRIP */
+};
+
+static TEMPLATE_POLYGON_MODE_TYPE RefreshToTEMPLATE_PolygonMode[] =
+{
+	0,	/* FILL */
+	0,	/* LINE */
+	0	/* POINT */
+};
+
+static TEMPLATE_CULL_MODE_TYPE RefreshToTEMPLATE_CullMode[] =
+{
+	0,	/* NONE */
+	0,	/* FRONT */
+	0,	/* BACK */
+	0	/* FRONT_AND_BACK */
+};
+
+static TEMPLATE_FRONT_FACE_TYPE RefreshToTEMPLATE_FrontFace[] =
+{
+	0,	/* COUNTER_CLOCKWISE */
+	0	/* CLOCKWISE */
+};
+
+static TEMPLATE_BLEND_FACTOR_TYPE RefreshToTEMPLATE_BlendFactor[] =
+{
+	0,	/* ZERO */
+	0,	/* ONE */
+	0,	/* SRC_COLOR */
+	0,	/* ONE_MINUS_SRC_COLOR */
+	0,	/* DST_COLOR */
+	0,	/* ONE_MINUS_DST_COLOR */
+	0,	/* SRC_ALPHA */
+	0,	/* ONE_MINUS_SRC_ALPHA */
+	0,	/* DST_ALPHA */
+	0,	/* ONE_MINUS_DST_ALPHA */
+	0,	/* CONSTANT_COLOR */
+	0,	/* ONE_MINUS_CONSTANT_COLOR */
+	0,	/* CONSTANT_ALPHA */
+	0,	/* ONE_MINUS_CONSTANT_ALPHA */
+	0,	/* SRC_ALPHA_SATURATE */
+	0,	/* SRC1_COLOR */
+	0,	/* ONE_MINUS_SRC1_COLOR */
+	0,	/* SRC1_ALPHA */
+	0	/* ONE_MINUS_SRC1_ALPHA */
+};
+
+static TEMPLATE_BLEND_OP_TYPE RefreshToTEMPLATE_BlendOp[] =
+{
+	0,	/* ADD */
+	0,	/* SUBTRACT */
+	0,	/* REVERSE_SUBTRACT */
+	0,	/* MIN */
+	0	/* MAX */
+};
+
+static TEMPLATE_LOGIC_OP_TYPE RefreshToTEMPLATE_LogicOp[] =
+{
+	0,	/* CLEAR */
+	0,	/* AND */
+	0,	/* AND_REVERSE */
+	0,	/* COPY */
+	0,	/* AND_INVERTED */
+	0,	/* NO_OP */
+	0,	/* XOR */
+	0,	/* OR */
+	0,	/* NOR */
+	0,	/* EQUIVALENT */
+	0,	/* INVERT */
+	0,	/* OR_REVERSE */
+	0,	/* COPY_INVERTED */
+	0,	/* OR_INVERTED */
+	0,	/* NAND */
+	0	/* SET */
+};
+
+static TEMPLATE_COMPARE_OP_TYPE RefreshToTEMPLATE_CompareOp[] =
+{
+	0,	/* NEVER */
+	0,	/* LESS */
+	0,	/* EQUAL */
+	0,	/* LESS_OR_EQUAL */
+	0,	/* GREATER */
+	0,	/* NOT_EQUAL */
+	0,	/* GREATER_OR_EQUAL */
+	0	/* ALWAYS */
+};
+
+static TEMPLATE_STENCIL_OP_TYPE RefreshToTEMPLATE_StencilOp[] =
+{
+	0,	/* KEEP */
+	0,	/* ZERO */
+	0,	/* REPLACE */
+	0,	/* INCREMENT_AND_CLAMP */
+	0,	/* DECREMENT_AND_CLAMP */
+	0,	/* INVERT */
+	0,	/* INCREMENT_AND_WRAP */
+	0	/* DECREMENT_AND_WRAP */
+};
+
+static TEMPLATE_ATTACHMENT_LOAD_OP_TYPE RefreshToTEMPLATE_LoadOp[] =
+{
+	0,	/* LOAD */
+	0,	/* CLEAR */
+	0	/* DONT_CARE */
+};
+
+static TEMPLATE_ATTACHMENT_STORE_OP_TYPE RefreshToTEMPLATE_StoreOp[] =
+{
+	0,	/* STORE */
+	0	/* DONT_CARE */
+};
+
+static TEMPLATE_SAMPLE_COUNT_TYPE RefreshToTEMPLATE_SampleCount[] =
+{
+	0,	/* 1 */
+	0,	/* 2 */
+	0,	/* 4 */
+	0,	/* 8 */
+	0,	/* 16 */
+	0,	/* 32 */
+	0	/* 64 */
+};
+
+static TEMPLATE_VERTEX_INPUT_RATE_TYPE RefreshToTEMPLATE_VertexInputRate[] =
+{
+	0,	/* VERTEX */
+	0	/* INSTANCE */
+};
+
+static TEMPLATE_FILTER_TYPE RefreshToTEMPLATE_Filter[] =
+{
+	0,	/* NEAREST */
+	0,	/* LINEAR */
+	0	/* CUBIC */
+};
+
+static TEMPLATE_SAMPLER_MIPMAP_MODE_TYPE RefreshToTEMPLATE_SamplerMipmapMode[] =
+{
+	0,	/* NEAREST */
+	0	/* LINEAR */
+};
+
+static TEMPLATE_SAMPLER_ADDRESS_MODE_TYPE RefreshToTEMPLATE_SamplerAddressMode[] =
+{
+	0,	/* REPEAT */
+	0,	/* MIRRORED_REPEAT */
+	0,	/* CLAMP_TO_EDGE */
+	0	/* CLAMP_TO_BORDER */
+};
+
+static TEMPLATE_BORDER_COLOR_TYPE RefreshToTEMPLATE_BorderColor[] =
+{
+	0,	/* FLOAT_TRANSPARENT_BLACK */
+	0,	/* INT_TRANSPARENT_BLACK */
+	0,	/* FLOAT_OPAQUE_BLACK */
+	0,	/* INT_OPAQUE_BLACK */
+	0,	/* FLOAT_OPAQUE_WHITE */
+	0	/* INT_OPAQUE_WHITE */
+};
+
+/* Quit */
+
+static void TEMPLATE_DestroyDevice(
+	Refresh_Device *device
+) {
+	NOT_IMPLEMENTED
+}
+
+/* Drawing */
+
+static void TEMPLATE_Clear(
+	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_Rect *clearRect,
+	Refresh_ClearOptions options,
+	Refresh_Vec4 *colors,
+	uint32_t colorCount,
+	Refresh_DepthStencilValue depthStencil
+) {
+	NOT_IMPLEMENTED
+}
+
+static void TEMPLATE_DrawInstancedPrimitives(
+	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer,
+	uint32_t baseVertex,
+	uint32_t startIndex,
+	uint32_t primitiveCount,
+	uint32_t instanceCount,
+	uint32_t vertexParamOffset,
+	uint32_t fragmentParamOffset
+) {
+	NOT_IMPLEMENTED
+}
+
+static void TEMPLATE_DrawIndexedPrimitives(
+	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer,
+	uint32_t baseVertex,
+	uint32_t startIndex,
+	uint32_t primitiveCount,
+	uint32_t vertexParamOffset,
+	uint32_t fragmentParamOffset
+) {
+	NOT_IMPLEMENTED
+}
+
+static void TEMPLATE_DrawPrimitives(
+	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer,
+	uint32_t vertexStart,
+	uint32_t primitiveCount,
+	uint32_t vertexParamOffset,
+	uint32_t fragmentParamOffset
+) {
+	NOT_IMPLEMENTED
+}
+
+static void TEMPLATE_DispatchCompute(
+	Refresh_Renderer *device,
+	Refresh_CommandBuffer *commandBuffer,
+	uint32_t groupCountX,
+	uint32_t groupCountY,
+	uint32_t groupCountZ,
+	uint32_t computeParamOffset
+) {
+	NOT_IMPLEMENTED
+}
+
+/* State Creation */
+
+static Refresh_RenderPass* TEMPLATE_CreateRenderPass(
+	Refresh_Renderer *driverData,
+	Refresh_RenderPassCreateInfo *renderPassCreateInfo
+) {
+	NOT_IMPLEMENTED
+}
+
+static Refresh_ComputePipeline* TEMPLATE_CreateComputePipeline(
+	Refresh_Renderer *driverData,
+	Refresh_ComputePipelineCreateInfo *pipelineCreateInfo
+) {
+	NOT_IMPLEMENTED
+}
+
+static Refresh_GraphicsPipeline* TEMPLATE_CreateGraphicsPipeline(
+	Refresh_Renderer *driverData,
+	Refresh_GraphicsPipelineCreateInfo *pipelineCreateInfo
+) {
+	NOT_IMPLEMENTED
+}
+
+static Refresh_Sampler* TEMPLATE_CreateSampler(
+	Refresh_Renderer *driverData,
+	Refresh_SamplerStateCreateInfo *samplerStateCreateInfo
+) {
+	NOT_IMPLEMENTED
+}
+
+static Refresh_Framebuffer* TEMPLATE_CreateFramebuffer(
+	Refresh_Renderer *driverData,
+	Refresh_FramebufferCreateInfo *framebufferCreateInfo
+) {
+	NOT_IMPLEMENTED
+}
+
+static Refresh_ShaderModule* TEMPLATE_CreateShaderModule(
+	Refresh_Renderer *driverData,
+	Refresh_ShaderModuleCreateInfo *shaderModuleCreateInfo
+) {
+	NOT_IMPLEMENTED
+}
+
+static Refresh_Texture* TEMPLATE_CreateTexture(
+	Refresh_Renderer *driverData,
+	Refresh_TextureCreateInfo *textureCreateInfo
+) {
+	NOT_IMPLEMENTED
+}
+
+static Refresh_RenderTarget* TEMPLATE_CreateRenderTarget(
+	Refresh_Renderer *driverData,
+	Refresh_TextureSlice *textureSlice,
+	Refresh_SampleCount multisampleCount
+) {
+	NOT_IMPLEMENTED
+}
+
+static Refresh_Buffer* TEMPLATE_CreateBuffer(
+	Refresh_Renderer *driverData,
+	Refresh_BufferUsageFlags usageFlags,
+	uint32_t sizeInBytes
+) {
+	NOT_IMPLEMENTED
+}
+
+/* Setters */
+
+static void TEMPLATE_SetTextureData(
+	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_TextureSlice *textureSlice,
+	void *data,
+	uint32_t dataLengthInBytes
+) {
+	NOT_IMPLEMENTED
+}
+
+static void TEMPLATE_SetTextureDataYUV(
+	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer* commandBuffer,
+	Refresh_Texture *y,
+	Refresh_Texture *u,
+	Refresh_Texture *v,
+	uint32_t yWidth,
+	uint32_t yHeight,
+	uint32_t uvWidth,
+	uint32_t uvHeight,
+	void* data,
+	uint32_t dataLength
+) {
+	NOT_IMPLEMENTED
+}
+
+static void TEMPLATE_CopyTextureToTexture(
+	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_TextureSlice *sourceTextureSlice,
+	Refresh_TextureSlice *destinationTextureSlice,
+	Refresh_Filter filter
+) {
+	NOT_IMPLEMENTED
+}
+
+static void TEMPLATE_CopyTextureToBuffer(
+	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_TextureSlice *textureSlice,
+	Refresh_Buffer *buffer
+) {
+	NOT_IMPLEMENTED
+}
+
+static void TEMPLATE_SetBufferData(
+	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_Buffer *buffer,
+	uint32_t offsetInBytes,
+	void* data,
+	uint32_t dataLength
+) {
+	NOT_IMPLEMENTED
+}
+
+static uint32_t TEMPLATE_PushVertexShaderUniforms(
+	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer,
+	void *data,
+	uint32_t dataLengthInBytes
+) {
+	NOT_IMPLEMENTED
+}
+
+static uint32_t TEMPLATE_PushFragmentShaderUniforms(
+	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer,
+	void *data,
+	uint32_t dataLengthInBytes
+) {
+	NOT_IMPLEMENTED
+}
+
+static uint32_t TEMPLATE_PushComputeShaderUniforms(
+	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer,
+	void *data,
+	uint32_t dataLengthInBytes
+) {
+	NOT_IMPLEMENTED
+}
+
+static void TEMPLATE_BindVertexSamplers(
+	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_Texture **pTextures,
+	Refresh_Sampler **pSamplers
+) {
+	NOT_IMPLEMENTED
+}
+
+static void TEMPLATE_BindFragmentSamplers(
+	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_Texture **pTextures,
+	Refresh_Sampler **pSamplers
+) {
+	NOT_IMPLEMENTED
+}
+
+/* Getters */
+
+static void TEMPLATE_GetBufferData(
+	Refresh_Renderer *driverData,
+	Refresh_Buffer *buffer,
+	void *data,
+	uint32_t dataLengthInBytes
+) {
+	NOT_IMPLEMENTED
+}
+
+/* Disposal */
+
+static void TEMPLATE_QueueDestroyTexture(
+	Refresh_Renderer *driverData,
+	Refresh_Texture *texture
+) {
+	NOT_IMPLEMENTED
+}
+
+static void TEMPLATE_QueueDestroySampler(
+	Refresh_Renderer *driverData,
+	Refresh_Sampler *sampler
+) {
+	NOT_IMPLEMENTED
+}
+
+static void TEMPLATE_QueueDestroyBuffer(
+	Refresh_Renderer *driverData,
+	Refresh_Buffer *buffer
+) {
+	NOT_IMPLEMENTED
+}
+
+static void TEMPLATE_QueueDestroyRenderTarget(
+	Refresh_Renderer *driverData,
+	Refresh_RenderTarget *renderTarget
+) {
+	NOT_IMPLEMENTED
+}
+
+static void TEMPLATE_QueueDestroyFramebuffer(
+	Refresh_Renderer *driverData,
+	Refresh_Framebuffer *frameBuffer
+) {
+	NOT_IMPLEMENTED
+}
+
+static void TEMPLATE_QueueDestroyShaderModule(
+	Refresh_Renderer *driverData,
+	Refresh_ShaderModule *shaderModule
+) {
+	NOT_IMPLEMENTED
+}
+
+static void TEMPLATE_QueueDestroyRenderPass(
+	Refresh_Renderer *driverData,
+	Refresh_RenderPass *renderPass
+) {
+	NOT_IMPLEMENTED
+}
+
+static void TEMPLATE_QueueDestroyComputePipeline(
+	Refresh_Renderer *driverData,
+	Refresh_ComputePipeline *computePipeline
+) {
+	NOT_IMPLEMENTED
+}
+
+static void TEMPLATE_QueueDestroyGraphicsPipeline(
+	Refresh_Renderer *driverData,
+	Refresh_GraphicsPipeline *graphicsPipeline
+) {
+	NOT_IMPLEMENTED
+}
+
+/* Graphics State */
+
+static void TEMPLATE_BeginRenderPass(
+	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_RenderPass *renderPass,
+	Refresh_Framebuffer *framebuffer,
+	Refresh_Rect *renderArea,
+	Refresh_Vec4 *pColorClearValues,
+	uint32_t colorClearCount,
+	Refresh_DepthStencilValue *depthStencilClearValue
+) {
+	NOT_IMPLEMENTED
+}
+
+static void TEMPLATE_EndRenderPass(
+	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer
+) {
+	NOT_IMPLEMENTED
+}
+
+static void TEMPLATE_BindGraphicsPipeline(
+	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_GraphicsPipeline *graphicsPipeline
+) {
+	NOT_IMPLEMENTED
+}
+
+static void TEMPLATE_BindVertexBuffers(
+	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer,
+	uint32_t firstBinding,
+	uint32_t bindingCount,
+	Refresh_Buffer **pBuffers,
+	uint64_t *pOffsets
+) {
+	NOT_IMPLEMENTED
+}
+
+static void TEMPLATE_BindIndexBuffer(
+	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_Buffer *buffer,
+	uint64_t offset,
+	Refresh_IndexElementSize indexElementSize
+) {
+	NOT_IMPLEMENTED
+}
+
+static void TEMPLATE_BindComputePipeline(
+	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_ComputePipeline *computePipeline
+) {
+	NOT_IMPLEMENTED
+}
+
+static void TEMPLATE_BindComputeBuffers(
+	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_Buffer **pBuffers
+) {
+	NOT_IMPLEMENTED
+}
+
+static void TEMPLATE_BindComputeTextures(
+	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_Texture **pTextures
+) {
+	NOT_IMPLEMENTED
+}
+
+static Refresh_CommandBuffer* TEMPLATE_AcquireCommandBuffer(
+	Refresh_Renderer *driverData,
+	uint8_t fixed
+) {
+	NOT_IMPLEMENTED
+}
+
+static void TEMPLATE_QueuePresent(
+	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_TextureSlice *textureSlice,
+	Refresh_Rect *destinationRectangle,
+	Refresh_Filter filter,
+	void *windowHandle
+) {
+	NOT_IMPLEMENTED
+}
+
+static void TEMPLATE_Submit(
+	Refresh_Renderer *driverData,
+	uint32_t commandBufferCount,
+	Refresh_CommandBuffer **pCommandBuffers
+) {
+	NOT_IMPLEMENTED
+}
+
+static void TEMPLATE_Wait(
+	Refresh_Renderer *driverData
+) {
+	NOT_IMPLEMENTED
+}
+
+static Refresh_Device* TEMPLATE_CreateDevice(
+	Refresh_PresentationParameters *presentationParameters,
+	uint8_t debugMode
+) {
+	NOT_IMPLEMENTED
+}
+
+Refresh_Driver TEMPLATEDriver = {
+	"TEMPLATE",
+	TEMPLATE_CreateDevice
+};
+
+#endif //REFRESH_DRIVER_TEMPLATE
