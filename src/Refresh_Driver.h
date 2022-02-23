@@ -361,46 +361,55 @@ struct Refresh_Device
 
     void(*QueueDestroyTexture)(
         Refresh_Renderer *driverData,
+		Refresh_CommandBuffer *commandBuffer,
         Refresh_Texture *texture
     );
 
     void(*QueueDestroySampler)(
         Refresh_Renderer *driverData,
+		Refresh_CommandBuffer *commandBuffer,
         Refresh_Sampler *sampler
     );
 
     void(*QueueDestroyBuffer)(
         Refresh_Renderer *driverData,
+		Refresh_CommandBuffer *commandBuffer,
         Refresh_Buffer *buffer
     );
 
     void(*QueueDestroyRenderTarget)(
         Refresh_Renderer *driverData,
+		Refresh_CommandBuffer *commandBuffer,
 	    Refresh_RenderTarget *renderTarget
     );
 
     void(*QueueDestroyFramebuffer)(
         Refresh_Renderer *driverData,
+		Refresh_CommandBuffer *commandBuffer,
         Refresh_Framebuffer *frameBuffer
     );
 
     void(*QueueDestroyShaderModule)(
         Refresh_Renderer *driverData,
+		Refresh_CommandBuffer *commandBuffer,
         Refresh_ShaderModule *shaderModule
     );
 
     void(*QueueDestroyRenderPass)(
         Refresh_Renderer *driverData,
+		Refresh_CommandBuffer *commandBuffer,
         Refresh_RenderPass *renderPass
     );
 
     void(*QueueDestroyComputePipeline)(
         Refresh_Renderer *driverData,
+		Refresh_CommandBuffer *commandBuffer,
         Refresh_ComputePipeline *computePipeline
     );
 
     void(*QueueDestroyGraphicsPipeline)(
         Refresh_Renderer *driverData,
+		Refresh_CommandBuffer *commandBuffer,
         Refresh_GraphicsPipeline *graphicsPipeline
     );
 

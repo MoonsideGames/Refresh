@@ -706,14 +706,6 @@ struct VulkanUniformBufferPool
 	VulkanUniformBuffer **availableBuffers;
 	uint32_t availableBufferCount;
 	uint32_t availableBufferCapacity;
-
-	VulkanUniformBuffer **boundBuffers;
-	uint32_t boundBufferCount;
-	uint32_t boundBufferCapacity;
-
-	VulkanUniformBuffer **submittedBuffers;
-	uint32_t submittedBufferCount;
-	uint32_t submittedBufferCapacity;
 };
 
 /* Renderer Structure */
@@ -749,6 +741,7 @@ typedef struct VulkanSwapchainData
 	/* Synchronization primitives */
 	VkSemaphore imageAvailableSemaphore;
 	VkSemaphore renderFinishedSemaphore;
+	VkFence inFlightFence; /* borrowed from VulkanRenderer */
 } VulkanSwapchainData;
 
 typedef struct SwapChainSupportDetails
@@ -760,14 +753,13 @@ typedef struct SwapChainSupportDetails
 	uint32_t presentModesLength;
 } SwapChainSupportDetails;
 
-typedef struct BufferDescriptorSetCache BufferDescriptorSetCache;
-typedef struct ImageDescriptorSetCache ImageDescriptorSetCache;
+typedef struct DescriptorSetCache DescriptorSetCache;
 
 typedef struct VulkanGraphicsPipelineLayout
 {
 	VkPipelineLayout pipelineLayout;
-	ImageDescriptorSetCache *vertexSamplerDescriptorSetCache;
-	ImageDescriptorSetCache *fragmentSamplerDescriptorSetCache;
+	DescriptorSetCache *vertexSamplerDescriptorSetCache;
+	DescriptorSetCache *fragmentSamplerDescriptorSetCache;
 } VulkanGraphicsPipelineLayout;
 
 typedef struct VulkanGraphicsPipeline
@@ -782,8 +774,8 @@ typedef struct VulkanGraphicsPipeline
 typedef struct VulkanComputePipelineLayout
 {
 	VkPipelineLayout pipelineLayout;
-	BufferDescriptorSetCache *bufferDescriptorSetCache;
-	ImageDescriptorSetCache *imageDescriptorSetCache;
+	DescriptorSetCache *bufferDescriptorSetCache;
+	DescriptorSetCache *imageDescriptorSetCache;
 } VulkanComputePipelineLayout;
 
 typedef struct VulkanComputePipeline
@@ -917,118 +909,15 @@ static inline void DescriptorSetLayoutHashTable_Insert(
 
 /* Descriptor Set Caches */
 
-#define NUM_DESCRIPTOR_SET_HASH_BUCKETS 1031
-
-typedef struct ImageDescriptorSetData
-{
-	VkDescriptorImageInfo descriptorImageInfo[MAX_TEXTURE_SAMPLERS]; /* used for vertex samplers as well */
-} ImageDescriptorSetData;
-
-typedef struct ImageDescriptorSetHashMap
-{
-	uint64_t key;
-	ImageDescriptorSetData descriptorSetData;
-	VkDescriptorSet descriptorSet;
-	uint8_t inactiveFrameCount;
-} ImageDescriptorSetHashMap;
-
-typedef struct ImageDescriptorSetHashArray
-{
-	uint32_t *elements;
-	int32_t count;
-	int32_t capacity;
-} ImageDescriptorSetHashArray;
-
-static inline uint64_t ImageDescriptorSetHashTable_GetHashCode(
-	ImageDescriptorSetData *descriptorSetData,
-	uint32_t samplerCount
-) {
-	const uint64_t HASH_FACTOR = 97;
-	uint32_t i;
-	uint64_t result = 1;
-
-	for (i = 0; i < samplerCount; i += 1)
-	{
-		result = result * HASH_FACTOR + (uint64_t) descriptorSetData->descriptorImageInfo[i].imageView;
-		result = result * HASH_FACTOR + (uint64_t) descriptorSetData->descriptorImageInfo[i].sampler;
-	}
-
-	return result;
-}
-
-struct ImageDescriptorSetCache
+struct DescriptorSetCache
 {
 	SDL_mutex *lock;
 	VkDescriptorSetLayout descriptorSetLayout;
 	uint32_t bindingCount;
 	VkDescriptorType descriptorType;
 
-	ImageDescriptorSetHashArray buckets[NUM_DESCRIPTOR_SET_HASH_BUCKETS]; /* these buckets store indices */
-	ImageDescriptorSetHashMap *elements; /* where the hash map elements are stored */
-	uint32_t count;
-	uint32_t capacity;
-
-	VkDescriptorPool *imageDescriptorPools;
-	uint32_t imageDescriptorPoolCount;
-	uint32_t nextPoolSize;
-
-	VkDescriptorSet *inactiveDescriptorSets;
-	uint32_t inactiveDescriptorSetCount;
-	uint32_t inactiveDescriptorSetCapacity;
-};
-
-typedef struct BufferDescriptorSetData
-{
-	VkDescriptorBufferInfo descriptorBufferInfo[MAX_BUFFER_BINDINGS];
-} BufferDescriptorSetData;
-
-typedef struct BufferDescriptorSetHashMap
-{
-	uint64_t key;
-	BufferDescriptorSetData descriptorSetData;
-	VkDescriptorSet descriptorSet;
-	uint8_t inactiveFrameCount;
-} BufferDescriptorSetHashMap;
-
-typedef struct BufferDescriptorSetHashArray
-{
-	uint32_t *elements;
-	int32_t count;
-	int32_t capacity;
-} BufferDescriptorSetHashArray;
-
-static inline uint64_t BufferDescriptorSetHashTable_GetHashCode(
-	BufferDescriptorSetData *descriptorSetData,
-	uint32_t bindingCount
-) {
-	const uint64_t HASH_FACTOR = 97;
-	uint32_t i;
-	uint64_t result = 1;
-
-	for (i = 0; i < bindingCount; i += 1)
-	{
-		result = result * HASH_FACTOR + (uint64_t) descriptorSetData->descriptorBufferInfo[i].buffer;
-		result = result * HASH_FACTOR + (uint64_t) descriptorSetData->descriptorBufferInfo[i].offset;
-		result = result * HASH_FACTOR + (uint64_t) descriptorSetData->descriptorBufferInfo[i].range;
-	}
-
-	return result;
-}
-
-struct BufferDescriptorSetCache
-{
-	SDL_mutex *lock;
-	VkDescriptorSetLayout descriptorSetLayout;
-	uint32_t bindingCount;
-	VkDescriptorType descriptorType;
-
-	BufferDescriptorSetHashArray buckets[NUM_DESCRIPTOR_SET_HASH_BUCKETS];
-	BufferDescriptorSetHashMap *elements;
-	uint32_t count;
-	uint32_t capacity;
-
-	VkDescriptorPool *bufferDescriptorPools;
-	uint32_t bufferDescriptorPoolCount;
+	VkDescriptorPool *descriptorPools;
+	uint32_t descriptorPoolCount;
 	uint32_t nextPoolSize;
 
 	VkDescriptorSet *inactiveDescriptorSets;
@@ -1195,6 +1084,12 @@ static inline void ComputePipelineLayoutHashArray_Insert(
 
 /* Command structures */
 
+typedef struct DescriptorSetData
+{
+	DescriptorSetCache *descriptorSetCache;
+	VkDescriptorSet descriptorSet;
+} DescriptorSetData;
+
 typedef struct VulkanTransferBuffer
 {
 	VulkanBuffer* buffer;
@@ -1203,13 +1098,11 @@ typedef struct VulkanTransferBuffer
 
 typedef struct VulkanTransferBufferPool
 {
+	SDL_mutex *lock;
+
 	VulkanTransferBuffer **availableBuffers;
 	uint32_t availableBufferCount;
 	uint32_t availableBufferCapacity;
-
-	VulkanTransferBuffer **submittedBuffers;
-	uint32_t submittedBufferCount;
-	uint32_t submittedBufferCapacity;
 } VulkanTransferBufferPool;
 
 typedef struct VulkanCommandPool VulkanCommandPool;
@@ -1246,6 +1139,55 @@ typedef struct VulkanCommandBuffer
 
 	VulkanTransferBuffer** transferBuffers;
 	uint32_t transferBufferCount;
+	uint32_t transferBufferCapacity;
+
+	VulkanUniformBuffer **boundUniformBuffers;
+	uint32_t boundUniformBufferCount;
+	uint32_t boundUniformBufferCapacity;
+
+	DescriptorSetData *boundDescriptorSetDatas;
+	uint32_t boundDescriptorSetDataCount;
+	uint32_t boundDescriptorSetDataCapacity;
+
+	/* Deferred destroy storage */
+
+	VulkanRenderTarget **renderTargetsToDestroy;
+	uint32_t renderTargetsToDestroyCount;
+	uint32_t renderTargetsToDestroyCapacity;
+
+	VulkanTexture **texturesToDestroy;
+	uint32_t texturesToDestroyCount;
+	uint32_t texturesToDestroyCapacity;
+
+	VulkanBuffer **buffersToDestroy;
+	uint32_t buffersToDestroyCount;
+	uint32_t buffersToDestroyCapacity;
+
+	VulkanGraphicsPipeline **graphicsPipelinesToDestroy;
+	uint32_t graphicsPipelinesToDestroyCount;
+	uint32_t graphicsPipelinesToDestroyCapacity;
+
+	VulkanComputePipeline **computePipelinesToDestroy;
+	uint32_t computePipelinesToDestroyCount;
+	uint32_t computePipelinesToDestroyCapacity;
+
+	VkShaderModule *shaderModulesToDestroy;
+	uint32_t shaderModulesToDestroyCount;
+	uint32_t shaderModulesToDestroyCapacity;
+
+	VkSampler *samplersToDestroy;
+	uint32_t samplersToDestroyCount;
+	uint32_t samplersToDestroyCapacity;
+
+	VulkanFramebuffer **framebuffersToDestroy;
+	uint32_t framebuffersToDestroyCount;
+	uint32_t framebuffersToDestroyCapacity;
+
+	VkRenderPass *renderPassesToDestroy;
+	uint32_t renderPassesToDestroyCount;
+	uint32_t renderPassesToDestroyCapacity;
+
+	VkFence inFlightFence; /* borrowed from VulkanRenderer */
 } VulkanCommandBuffer;
 
 struct VulkanCommandPool
@@ -1361,10 +1303,6 @@ typedef struct VulkanRenderer
 	uint32_t availableFenceCount;
 	uint32_t availableFenceCapacity;
 
-	VkFence *usedFences;
-	uint32_t usedFenceCount;
-	uint32_t usedFenceCapacity;
-
 	VulkanCommandBuffer **submittedCommandBuffers;
 	uint32_t submittedCommandBufferCount;
 	uint32_t submittedCommandBufferCapacity;
@@ -1402,82 +1340,9 @@ typedef struct VulkanRenderer
 	VkDeviceSize minUBOAlignment;
 
 	SDL_mutex *allocatorLock;
-	SDL_mutex *disposeLock;
 	SDL_mutex *submitLock;
-
-	/* Deferred destroy storage */
-
-	VulkanRenderTarget **renderTargetsToDestroy;
-	uint32_t renderTargetsToDestroyCount;
-	uint32_t renderTargetsToDestroyCapacity;
-
-	VulkanRenderTarget **submittedRenderTargetsToDestroy;
-	uint32_t submittedRenderTargetsToDestroyCount;
-	uint32_t submittedRenderTargetsToDestroyCapacity;
-
-	VulkanTexture **texturesToDestroy;
-	uint32_t texturesToDestroyCount;
-	uint32_t texturesToDestroyCapacity;
-
-	VulkanTexture **submittedTexturesToDestroy;
-	uint32_t submittedTexturesToDestroyCount;
-	uint32_t submittedTexturesToDestroyCapacity;
-
-	VulkanBuffer **buffersToDestroy;
-	uint32_t buffersToDestroyCount;
-	uint32_t buffersToDestroyCapacity;
-
-	VulkanBuffer **submittedBuffersToDestroy;
-	uint32_t submittedBuffersToDestroyCount;
-	uint32_t submittedBuffersToDestroyCapacity;
-
-	VulkanGraphicsPipeline **graphicsPipelinesToDestroy;
-	uint32_t graphicsPipelinesToDestroyCount;
-	uint32_t graphicsPipelinesToDestroyCapacity;
-
-	VulkanGraphicsPipeline **submittedGraphicsPipelinesToDestroy;
-	uint32_t submittedGraphicsPipelinesToDestroyCount;
-	uint32_t submittedGraphicsPipelinesToDestroyCapacity;
-
-	VulkanComputePipeline **computePipelinesToDestroy;
-	uint32_t computePipelinesToDestroyCount;
-	uint32_t computePipelinesToDestroyCapacity;
-
-	VulkanComputePipeline **submittedComputePipelinesToDestroy;
-	uint32_t submittedComputePipelinesToDestroyCount;
-	uint32_t submittedComputePipelinesToDestroyCapacity;
-
-	VkShaderModule *shaderModulesToDestroy;
-	uint32_t shaderModulesToDestroyCount;
-	uint32_t shaderModulesToDestroyCapacity;
-
-	VkShaderModule *submittedShaderModulesToDestroy;
-	uint32_t submittedShaderModulesToDestroyCount;
-	uint32_t submittedShaderModulesToDestroyCapacity;
-
-	VkSampler *samplersToDestroy;
-	uint32_t samplersToDestroyCount;
-	uint32_t samplersToDestroyCapacity;
-
-	VkSampler *submittedSamplersToDestroy;
-	uint32_t submittedSamplersToDestroyCount;
-	uint32_t submittedSamplersToDestroyCapacity;
-
-	VulkanFramebuffer **framebuffersToDestroy;
-	uint32_t framebuffersToDestroyCount;
-	uint32_t framebuffersToDestroyCapacity;
-
-	VulkanFramebuffer **submittedFramebuffersToDestroy;
-	uint32_t submittedFramebuffersToDestroyCount;
-	uint32_t submittedFramebuffersToDestroyCapacity;
-
-	VkRenderPass *renderPassesToDestroy;
-	uint32_t renderPassesToDestroyCount;
-	uint32_t renderPassesToDestroyCapacity;
-
-	VkRenderPass *submittedRenderPassesToDestroy;
-	uint32_t submittedRenderPassesToDestroyCount;
-	uint32_t submittedRenderPassesToDestroyCapacity;
+	SDL_mutex *acquireFenceLock;
+	SDL_mutex *acquireCommandBufferLock;
 
     #define VULKAN_INSTANCE_FUNCTION(ext, ret, func, params) \
 		vkfntype_##func func;
@@ -1489,6 +1354,7 @@ typedef struct VulkanRenderer
 /* Forward declarations */
 
 static void VULKAN_INTERNAL_BeginCommandBuffer(VulkanRenderer *renderer, VulkanCommandBuffer *commandBuffer);
+static void VULKAN_Wait(Refresh_Renderer *driverData);
 static void VULKAN_Submit(Refresh_Renderer *driverData, uint32_t commandBufferCount, Refresh_CommandBuffer **pCommandBuffers);
 
 /* Error Handling */
@@ -2507,11 +2373,34 @@ static void VULKAN_INTERNAL_DestroyCommandPool(
 	VulkanRenderer *renderer,
 	VulkanCommandPool *commandPool
 ) {
+	uint32_t i;
+	VulkanCommandBuffer* commandBuffer;
+
 	renderer->vkDestroyCommandPool(
 		renderer->logicalDevice,
 		commandPool->commandPool,
 		NULL
 	);
+
+	for (i = 0; i < commandPool->inactiveCommandBufferCount; i += 1)
+	{
+		commandBuffer = commandPool->inactiveCommandBuffers[i];
+
+		SDL_free(commandBuffer->transferBuffers);
+		SDL_free(commandBuffer->boundUniformBuffers);
+		SDL_free(commandBuffer->boundDescriptorSetDatas);
+		SDL_free(commandBuffer->renderTargetsToDestroy);
+		SDL_free(commandBuffer->texturesToDestroy);
+		SDL_free(commandBuffer->buffersToDestroy);
+		SDL_free(commandBuffer->graphicsPipelinesToDestroy);
+		SDL_free(commandBuffer->computePipelinesToDestroy);
+		SDL_free(commandBuffer->shaderModulesToDestroy);
+		SDL_free(commandBuffer->samplersToDestroy);
+		SDL_free(commandBuffer->framebuffersToDestroy);
+		SDL_free(commandBuffer->renderPassesToDestroy);
+
+		SDL_free(commandBuffer);
+	}
 
 	SDL_free(commandPool->inactiveCommandBuffers);
 	SDL_free(commandPool);
@@ -2653,9 +2542,9 @@ static void VULKAN_INTERNAL_DestroySwapchain(
 	SDL_free(swapchainData);
 }
 
-static void VULKAN_INTERNAL_DestroyBufferDescriptorSetCache(
+static void VULKAN_INTERNAL_DestroyDescriptorSetCache(
 	VulkanRenderer *renderer,
-	BufferDescriptorSetCache *cache
+	DescriptorSetCache *cache
 ) {
 	uint32_t i;
 
@@ -2664,63 +2553,20 @@ static void VULKAN_INTERNAL_DestroyBufferDescriptorSetCache(
 		return;
 	}
 
-	for (i = 0; i < cache->bufferDescriptorPoolCount; i += 1)
+	for (i = 0; i < cache->descriptorPoolCount; i += 1)
 	{
 		renderer->vkDestroyDescriptorPool(
 			renderer->logicalDevice,
-			cache->bufferDescriptorPools[i],
+			cache->descriptorPools[i],
 			NULL
 		);
 	}
 
-	SDL_free(cache->bufferDescriptorPools);
+	SDL_free(cache->descriptorPools);
 	SDL_free(cache->inactiveDescriptorSets);
-	SDL_free(cache->elements);
-
-	for (i = 0; i < NUM_DESCRIPTOR_SET_HASH_BUCKETS; i += 1)
-	{
-		SDL_free(cache->buckets[i].elements);
-	}
-
 	SDL_DestroyMutex(cache->lock);
 	SDL_free(cache);
 }
-
-static void VULKAN_INTERNAL_DestroyImageDescriptorSetCache(
-	VulkanRenderer *renderer,
-	ImageDescriptorSetCache *cache
-) {
-	uint32_t i;
-
-	if (cache == NULL)
-	{
-		return;
-	}
-
-	for (i = 0; i < cache->imageDescriptorPoolCount; i += 1)
-	{
-		renderer->vkDestroyDescriptorPool(
-			renderer->logicalDevice,
-			cache->imageDescriptorPools[i],
-			NULL
-		);
-	}
-
-	SDL_free(cache->imageDescriptorPools);
-	SDL_free(cache->inactiveDescriptorSets);
-	SDL_free(cache->elements);
-
-	for (i = 0; i < NUM_DESCRIPTOR_SET_HASH_BUCKETS; i += 1)
-	{
-		SDL_free(cache->buckets[i].elements);
-	}
-
-	SDL_DestroyMutex(cache->lock);
-	SDL_free(cache);
-}
-
-/* Buffer creation */
-
 
 /* Descriptor cache stuff */
 
@@ -2802,112 +2648,47 @@ static uint8_t VULKAN_INTERNAL_AllocateDescriptorSets(
 	return 1;
 }
 
-static ImageDescriptorSetCache* VULKAN_INTERNAL_CreateImageDescriptorSetCache(
+static DescriptorSetCache* VULKAN_INTERNAL_CreateDescriptorSetCache(
 	VulkanRenderer *renderer,
 	VkDescriptorType descriptorType,
 	VkDescriptorSetLayout descriptorSetLayout,
 	uint32_t bindingCount
 ) {
-	uint32_t i;
-	ImageDescriptorSetCache *imageDescriptorSetCache = SDL_malloc(sizeof(ImageDescriptorSetCache));
+	DescriptorSetCache *descriptorSetCache = SDL_malloc(sizeof(DescriptorSetCache));
 
-	imageDescriptorSetCache->lock = SDL_CreateMutex();
-	imageDescriptorSetCache->elements = SDL_malloc(sizeof(ImageDescriptorSetHashMap) * 16);
-	imageDescriptorSetCache->count = 0;
-	imageDescriptorSetCache->capacity = 16;
+	descriptorSetCache->lock = SDL_CreateMutex();
 
-	for (i = 0; i < NUM_DESCRIPTOR_SET_HASH_BUCKETS; i += 1)
-	{
-		imageDescriptorSetCache->buckets[i].elements = NULL;
-		imageDescriptorSetCache->buckets[i].count = 0;
-		imageDescriptorSetCache->buckets[i].capacity = 0;
-	}
+	descriptorSetCache->descriptorSetLayout = descriptorSetLayout;
+	descriptorSetCache->bindingCount = bindingCount;
+	descriptorSetCache->descriptorType = descriptorType;
 
-	imageDescriptorSetCache->descriptorSetLayout = descriptorSetLayout;
-	imageDescriptorSetCache->bindingCount = bindingCount;
-	imageDescriptorSetCache->descriptorType = descriptorType;
-
-	imageDescriptorSetCache->imageDescriptorPools = SDL_malloc(sizeof(VkDescriptorPool));
-	imageDescriptorSetCache->imageDescriptorPoolCount = 1;
-	imageDescriptorSetCache->nextPoolSize = DESCRIPTOR_POOL_STARTING_SIZE * 2;
+	descriptorSetCache->descriptorPools = SDL_malloc(sizeof(VkDescriptorPool));
+	descriptorSetCache->descriptorPoolCount = 1;
+	descriptorSetCache->nextPoolSize = DESCRIPTOR_POOL_STARTING_SIZE * 2;
 
 	VULKAN_INTERNAL_CreateDescriptorPool(
 		renderer,
 		descriptorType,
 		DESCRIPTOR_POOL_STARTING_SIZE,
 		DESCRIPTOR_POOL_STARTING_SIZE * bindingCount,
-		&imageDescriptorSetCache->imageDescriptorPools[0]
+		&descriptorSetCache->descriptorPools[0]
 	);
 
-	imageDescriptorSetCache->inactiveDescriptorSetCapacity = DESCRIPTOR_POOL_STARTING_SIZE;
-	imageDescriptorSetCache->inactiveDescriptorSetCount = DESCRIPTOR_POOL_STARTING_SIZE;
-	imageDescriptorSetCache->inactiveDescriptorSets = SDL_malloc(
+	descriptorSetCache->inactiveDescriptorSetCapacity = DESCRIPTOR_POOL_STARTING_SIZE;
+	descriptorSetCache->inactiveDescriptorSetCount = DESCRIPTOR_POOL_STARTING_SIZE;
+	descriptorSetCache->inactiveDescriptorSets = SDL_malloc(
 		sizeof(VkDescriptorSet) * DESCRIPTOR_POOL_STARTING_SIZE
 	);
 
 	VULKAN_INTERNAL_AllocateDescriptorSets(
 		renderer,
-		imageDescriptorSetCache->imageDescriptorPools[0],
-		imageDescriptorSetCache->descriptorSetLayout,
+		descriptorSetCache->descriptorPools[0],
+		descriptorSetCache->descriptorSetLayout,
 		DESCRIPTOR_POOL_STARTING_SIZE,
-		imageDescriptorSetCache->inactiveDescriptorSets
+		descriptorSetCache->inactiveDescriptorSets
 	);
 
-	return imageDescriptorSetCache;
-}
-
-static BufferDescriptorSetCache* VULKAN_INTERNAL_CreateBufferDescriptorSetCache(
-	VulkanRenderer *renderer,
-	VkDescriptorType descriptorType,
-	VkDescriptorSetLayout descriptorSetLayout,
-	uint32_t bindingCount
-) {
-	uint32_t i;
-	BufferDescriptorSetCache *bufferDescriptorSetCache = SDL_malloc(sizeof(BufferDescriptorSetCache));
-
-	bufferDescriptorSetCache->lock = SDL_CreateMutex();
-	bufferDescriptorSetCache->elements = SDL_malloc(sizeof(BufferDescriptorSetHashMap) * 16);
-	bufferDescriptorSetCache->count = 0;
-	bufferDescriptorSetCache->capacity = 16;
-
-	for (i = 0; i < NUM_DESCRIPTOR_SET_HASH_BUCKETS; i += 1)
-	{
-		bufferDescriptorSetCache->buckets[i].elements = NULL;
-		bufferDescriptorSetCache->buckets[i].count = 0;
-		bufferDescriptorSetCache->buckets[i].capacity = 0;
-	}
-
-	bufferDescriptorSetCache->descriptorSetLayout = descriptorSetLayout;
-	bufferDescriptorSetCache->bindingCount = bindingCount;
-	bufferDescriptorSetCache->descriptorType = descriptorType;
-
-	bufferDescriptorSetCache->bufferDescriptorPools = SDL_malloc(sizeof(VkDescriptorPool));
-	bufferDescriptorSetCache->bufferDescriptorPoolCount = 1;
-	bufferDescriptorSetCache->nextPoolSize = DESCRIPTOR_POOL_STARTING_SIZE * 2;
-
-	VULKAN_INTERNAL_CreateDescriptorPool(
-		renderer,
-		VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-		DESCRIPTOR_POOL_STARTING_SIZE,
-		DESCRIPTOR_POOL_STARTING_SIZE * bindingCount,
-		&bufferDescriptorSetCache->bufferDescriptorPools[0]
-	);
-
-	bufferDescriptorSetCache->inactiveDescriptorSetCapacity = DESCRIPTOR_POOL_STARTING_SIZE;
-	bufferDescriptorSetCache->inactiveDescriptorSetCount = DESCRIPTOR_POOL_STARTING_SIZE;
-	bufferDescriptorSetCache->inactiveDescriptorSets = SDL_malloc(
-		sizeof(VkDescriptorSet) * DESCRIPTOR_POOL_STARTING_SIZE
-	);
-
-	VULKAN_INTERNAL_AllocateDescriptorSets(
-		renderer,
-		bufferDescriptorSetCache->bufferDescriptorPools[0],
-		bufferDescriptorSetCache->descriptorSetLayout,
-		DESCRIPTOR_POOL_STARTING_SIZE,
-		bufferDescriptorSetCache->inactiveDescriptorSets
-	);
-
-	return bufferDescriptorSetCache;
+	return descriptorSetCache;
 }
 
 static VkDescriptorSetLayout VULKAN_INTERNAL_FetchDescriptorSetLayout(
@@ -3095,7 +2876,7 @@ static VulkanGraphicsPipelineLayout* VULKAN_INTERNAL_FetchGraphicsPipelineLayout
 	else
 	{
 		vulkanGraphicsPipelineLayout->vertexSamplerDescriptorSetCache =
-			VULKAN_INTERNAL_CreateImageDescriptorSetCache(
+			VULKAN_INTERNAL_CreateDescriptorSetCache(
 				renderer,
 				VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
 				pipelineLayoutHash.vertexSamplerLayout,
@@ -3110,7 +2891,7 @@ static VulkanGraphicsPipelineLayout* VULKAN_INTERNAL_FetchGraphicsPipelineLayout
 	else
 	{
 		vulkanGraphicsPipelineLayout->fragmentSamplerDescriptorSetCache =
-			VULKAN_INTERNAL_CreateImageDescriptorSetCache(
+			VULKAN_INTERNAL_CreateDescriptorSetCache(
 				renderer,
 				VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
 				pipelineLayoutHash.fragmentSamplerLayout,
@@ -3247,14 +3028,6 @@ static VulkanUniformBufferPool* VULKAN_INTERNAL_CreateUniformBufferPool(
 	uniformBufferPool->availableBufferCount = 0;
 	uniformBufferPool->availableBuffers = SDL_malloc(uniformBufferPool->availableBufferCapacity * sizeof(VulkanUniformBuffer*));
 
-	uniformBufferPool->boundBufferCapacity = 16;
-	uniformBufferPool->boundBufferCount = 0;
-	uniformBufferPool->boundBuffers = SDL_malloc(uniformBufferPool->boundBufferCapacity * sizeof(VulkanUniformBuffer*));
-
-	uniformBufferPool->submittedBufferCapacity = 16;
-	uniformBufferPool->submittedBufferCount = 0;
-	uniformBufferPool->submittedBuffers = SDL_malloc(uniformBufferPool->submittedBufferCapacity * sizeof(VulkanUniformBuffer*));
-
 	uniformBufferPool->descriptorPool.availableDescriptorSetCount = 0;
 	uniformBufferPool->descriptorPool.descriptorPoolCount = 0;
 	uniformBufferPool->descriptorPool.descriptorPools = NULL;
@@ -3264,61 +3037,21 @@ static VulkanUniformBufferPool* VULKAN_INTERNAL_CreateUniformBufferPool(
 	return uniformBufferPool;
 }
 
-static void VULKAN_INTERNAL_RotateBoundUniformBuffers(
-	VulkanUniformBufferPool* uniformBufferPool
+static void VULKAN_INTERNAL_BindUniformBuffer(
+	VulkanCommandBuffer *commandBuffer,
+	VulkanUniformBuffer *uniformBuffer
 ) {
-	uint32_t i;
-
-	/* Submitted buffers are now available */
-	if (	uniformBufferPool->availableBufferCount + uniformBufferPool->submittedBufferCount >=
-		uniformBufferPool->availableBufferCapacity
-	) {
-		uniformBufferPool->availableBufferCapacity = uniformBufferPool->availableBufferCount + uniformBufferPool->submittedBufferCount;
-		uniformBufferPool->availableBuffers = SDL_realloc(
-			uniformBufferPool->availableBuffers,
-			uniformBufferPool->availableBufferCapacity * sizeof(VulkanUniformBuffer*)
+	if (commandBuffer->boundUniformBufferCount >= commandBuffer->boundUniformBufferCapacity)
+	{
+		commandBuffer->boundUniformBufferCapacity *= 2;
+		commandBuffer->boundUniformBuffers = SDL_realloc(
+			commandBuffer->boundUniformBuffers,
+			sizeof(VulkanUniformBuffer*) * commandBuffer->boundUniformBufferCapacity
 		);
 	}
 
-	for (i = 0; i < uniformBufferPool->submittedBufferCount; i += 1)
-	{
-		uniformBufferPool->availableBuffers[uniformBufferPool->availableBufferCount] = uniformBufferPool->submittedBuffers[i];
-		uniformBufferPool->availableBufferCount += 1;
-	}
-
-	/* Bound buffers are now submitted */
-	if (uniformBufferPool->boundBufferCount >= uniformBufferPool->submittedBufferCapacity)
-	{
-		uniformBufferPool->submittedBufferCapacity = uniformBufferPool->boundBufferCount;
-		uniformBufferPool->submittedBuffers = SDL_realloc(
-			uniformBufferPool->submittedBuffers,
-			uniformBufferPool->submittedBufferCapacity * sizeof(VulkanUniformBuffer*)
-		);
-	}
-
-	for (i = 0; i < uniformBufferPool->boundBufferCount; i += 1)
-	{
-		uniformBufferPool->submittedBuffers[i] = uniformBufferPool->boundBuffers[i];
-	}
-	uniformBufferPool->submittedBufferCount = uniformBufferPool->boundBufferCount;
-	uniformBufferPool->boundBufferCount = 0;
-}
-
-static void VULKAN_INTERNAL_BindUniformBuffer(VulkanUniformBuffer *uniformBuffer)
-{
-	VulkanUniformBufferPool *pool = uniformBuffer->pool;
-
-	if (pool->boundBufferCount >= pool->boundBufferCapacity)
-	{
-		pool->boundBufferCapacity *= 2;
-		pool->boundBuffers = SDL_realloc(
-			pool->boundBuffers,
-			sizeof(VulkanUniformBuffer*) * pool->boundBufferCapacity
-		);
-	}
-
-	pool->boundBuffers[pool->boundBufferCount] = uniformBuffer;
-	pool->boundBufferCount += 1;
+	commandBuffer->boundUniformBuffers[commandBuffer->boundUniformBufferCount] = uniformBuffer;
+	commandBuffer->boundUniformBufferCount += 1;
 }
 
 static uint8_t VULKAN_INTERNAL_CreateUniformBuffer(
@@ -3506,16 +3239,15 @@ static void VULKAN_INTERNAL_DestroyUniformBufferPool(
 	}
 	SDL_free(uniformBufferPool->descriptorPool.descriptorPools);
 
-	/* This is always destroyed after rotating twice, so all buffers are available */
+	/* This is always destroyed after submissions, so all buffers are available */
 	for (i = 0; i < uniformBufferPool->availableBufferCount; i += 1)
 	{
 		VULKAN_INTERNAL_DestroyBuffer(renderer, uniformBufferPool->availableBuffers[i]->vulkanBuffer);
+		SDL_free(uniformBufferPool->availableBuffers[i]);
 	}
 
-	SDL_free(uniformBufferPool->availableBuffers);
-	SDL_free(uniformBufferPool->boundBuffers);
-	SDL_free(uniformBufferPool->submittedBuffers);
 	SDL_DestroyMutex(uniformBufferPool->lock);
+	SDL_free(uniformBufferPool->availableBuffers);
 	SDL_free(uniformBufferPool);
 }
 
@@ -3574,438 +3306,13 @@ static VulkanUniformBuffer* VULKAN_INTERNAL_AcquireUniformBufferFromPool(
 	return uniformBuffer;
 }
 
-static void VULKAN_INTERNAL_DeactivateUnusedBufferDescriptorSets(
-	BufferDescriptorSetCache* bufferDescriptorSetCache
-) {
-	int32_t i, j;
-	BufferDescriptorSetHashArray* arr;
-
-	for (i = bufferDescriptorSetCache->count - 1; i >= 0; i -= 1)
-	{
-		bufferDescriptorSetCache->elements[i].inactiveFrameCount += 1;
-
-		if (bufferDescriptorSetCache->elements[i].inactiveFrameCount + 1 > DESCRIPTOR_SET_DEACTIVATE_FRAMES)
-		{
-			arr = &bufferDescriptorSetCache->buckets[bufferDescriptorSetCache->elements[i].key % NUM_DESCRIPTOR_SET_HASH_BUCKETS];
-
-			/* remove index from bucket */
-			for (j = 0; j < arr->count; j += 1)
-			{
-				if (arr->elements[j] == i)
-				{
-					if (j < arr->count - 1)
-					{
-						arr->elements[j] = arr->elements[arr->count - 1];
-					}
-
-					arr->count -= 1;
-					break;
-				}
-			}
-
-			/* remove element from table and place in inactive sets */
-
-			bufferDescriptorSetCache->inactiveDescriptorSets[bufferDescriptorSetCache->inactiveDescriptorSetCount] = bufferDescriptorSetCache->elements[i].descriptorSet;
-			bufferDescriptorSetCache->inactiveDescriptorSetCount += 1;
-
-			/* move another descriptor set to fill the hole */
-			if (i < bufferDescriptorSetCache->count - 1)
-			{
-				bufferDescriptorSetCache->elements[i] = bufferDescriptorSetCache->elements[bufferDescriptorSetCache->count - 1];
-
-				/* update index in bucket */
-				arr = &bufferDescriptorSetCache->buckets[bufferDescriptorSetCache->elements[i].key % NUM_DESCRIPTOR_SET_HASH_BUCKETS];
-
-				for (j = 0; j < arr->count; j += 1)
-				{
-					if (arr->elements[j] == bufferDescriptorSetCache->count - 1)
-					{
-						arr->elements[j] = i;
-						break;
-					}
-				}
-			}
-
-			bufferDescriptorSetCache->count -= 1;
-		}
-	}
-}
-
-static void VULKAN_INTERNAL_DeactivateUnusedImageDescriptorSets(
-	ImageDescriptorSetCache* imageDescriptorSetCache
-) {
-	int32_t i, j;
-	ImageDescriptorSetHashArray* arr;
-
-	for (i = imageDescriptorSetCache->count - 1; i >= 0; i -= 1)
-	{
-		imageDescriptorSetCache->elements[i].inactiveFrameCount += 1;
-
-		if (imageDescriptorSetCache->elements[i].inactiveFrameCount + 1 > DESCRIPTOR_SET_DEACTIVATE_FRAMES)
-		{
-			arr = &imageDescriptorSetCache->buckets[imageDescriptorSetCache->elements[i].key % NUM_DESCRIPTOR_SET_HASH_BUCKETS];
-
-			/* remove index from bucket */
-			for (j = 0; j < arr->count; j += 1)
-			{
-				if (arr->elements[j] == i)
-				{
-					if (j < arr->count - 1)
-					{
-						arr->elements[j] = arr->elements[arr->count - 1];
-					}
-
-					arr->count -= 1;
-					break;
-				}
-			}
-
-			/* remove element from table and place in inactive sets */
-
-			imageDescriptorSetCache->inactiveDescriptorSets[imageDescriptorSetCache->inactiveDescriptorSetCount] = imageDescriptorSetCache->elements[i].descriptorSet;
-			imageDescriptorSetCache->inactiveDescriptorSetCount += 1;
-
-			/* move another descriptor set to fill the hole */
-			if (i < imageDescriptorSetCache->count - 1)
-			{
-				imageDescriptorSetCache->elements[i] = imageDescriptorSetCache->elements[imageDescriptorSetCache->count - 1];
-
-				/* update index in bucket */
-				arr = &imageDescriptorSetCache->buckets[imageDescriptorSetCache->elements[i].key % NUM_DESCRIPTOR_SET_HASH_BUCKETS];
-
-				for (j = 0; j < arr->count; j += 1)
-				{
-					if (arr->elements[j] == imageDescriptorSetCache->count - 1)
-					{
-						arr->elements[j] = i;
-						break;
-					}
-				}
-			}
-
-			imageDescriptorSetCache->count -= 1;
-		}
-	}
-}
-
-static void VULKAN_INTERNAL_ResetDescriptorSetData(VulkanRenderer* renderer)
-{
-	uint32_t i, j;
-	VulkanGraphicsPipelineLayout* graphicsPipelineLayout;
-	VulkanComputePipelineLayout* computePipelineLayout;
-
-	for (i = 0; i < NUM_PIPELINE_LAYOUT_BUCKETS; i += 1)
-	{
-		for (j = 0; j < renderer->graphicsPipelineLayoutHashTable.buckets[i].count; j += 1)
-		{
-			graphicsPipelineLayout = renderer->graphicsPipelineLayoutHashTable.buckets[i].elements[j].value;
-
-			if (graphicsPipelineLayout->vertexSamplerDescriptorSetCache != NULL)
-			{
-				VULKAN_INTERNAL_DeactivateUnusedImageDescriptorSets(
-					graphicsPipelineLayout->vertexSamplerDescriptorSetCache
-				);
-			}
-
-			if (graphicsPipelineLayout->fragmentSamplerDescriptorSetCache != NULL)
-			{
-				VULKAN_INTERNAL_DeactivateUnusedImageDescriptorSets(
-					graphicsPipelineLayout->fragmentSamplerDescriptorSetCache
-				);
-			}
-		}
-
-		for (j = 0; j < renderer->computePipelineLayoutHashTable.buckets[i].count; j += 1)
-		{
-			computePipelineLayout = renderer->computePipelineLayoutHashTable.buckets[i].elements[j].value;
-
-			if (computePipelineLayout->bufferDescriptorSetCache != NULL)
-			{
-				VULKAN_INTERNAL_DeactivateUnusedBufferDescriptorSets(
-					computePipelineLayout->bufferDescriptorSetCache
-				);
-			}
-
-			if (computePipelineLayout->imageDescriptorSetCache != NULL)
-			{
-				VULKAN_INTERNAL_DeactivateUnusedImageDescriptorSets(
-					computePipelineLayout->imageDescriptorSetCache
-				);
-			}
-		}
-	}
-}
-
-static void VULKAN_INTERNAL_PostWorkCleanup(VulkanRenderer* renderer)
-{
-	uint32_t i;
-
-	/* Destroy submitted resources */
-
-	SDL_LockMutex(renderer->disposeLock);
-
-	for (i = 0; i < renderer->submittedRenderTargetsToDestroyCount; i += 1)
-	{
-		VULKAN_INTERNAL_DestroyRenderTarget(
-			renderer,
-			renderer->submittedRenderTargetsToDestroy[i]
-		);
-	}
-	renderer->submittedRenderTargetsToDestroyCount = 0;
-
-	for (i = 0; i < renderer->submittedTexturesToDestroyCount; i += 1)
-	{
-		VULKAN_INTERNAL_DestroyTexture(
-			renderer,
-			renderer->submittedTexturesToDestroy[i]
-		);
-	}
-	renderer->submittedTexturesToDestroyCount = 0;
-
-	for (i = 0; i < renderer->submittedBuffersToDestroyCount; i += 1)
-	{
-		VULKAN_INTERNAL_DestroyBuffer(
-			renderer,
-			renderer->submittedBuffersToDestroy[i]
-		);
-	}
-	renderer->submittedBuffersToDestroyCount = 0;
-
-	for (i = 0; i < renderer->submittedGraphicsPipelinesToDestroyCount; i += 1)
-	{
-		VULKAN_INTERNAL_DestroyGraphicsPipeline(
-			renderer,
-			renderer->submittedGraphicsPipelinesToDestroy[i]
-		);
-	}
-	renderer->submittedGraphicsPipelinesToDestroyCount = 0;
-
-	for (i = 0; i < renderer->submittedComputePipelinesToDestroyCount; i += 1)
-	{
-		VULKAN_INTERNAL_DestroyComputePipeline(
-			renderer,
-			renderer->submittedComputePipelinesToDestroy[i]
-		);
-	}
-	renderer->submittedComputePipelinesToDestroyCount = 0;
-
-	for (i = 0; i < renderer->submittedShaderModulesToDestroyCount; i += 1)
-	{
-		VULKAN_INTERNAL_DestroyShaderModule(
-			renderer,
-			renderer->submittedShaderModulesToDestroy[i]
-		);
-	}
-	renderer->submittedShaderModulesToDestroyCount = 0;
-
-	for (i = 0; i < renderer->submittedSamplersToDestroyCount; i += 1)
-	{
-		VULKAN_INTERNAL_DestroySampler(
-			renderer,
-			renderer->submittedSamplersToDestroy[i]
-		);
-	}
-	renderer->submittedSamplersToDestroyCount = 0;
-
-	for (i = 0; i < renderer->submittedFramebuffersToDestroyCount; i += 1)
-	{
-		VULKAN_INTERNAL_DestroyFramebuffer(
-			renderer,
-			renderer->submittedFramebuffersToDestroy[i]
-		);
-	}
-	renderer->submittedFramebuffersToDestroyCount = 0;
-
-	for (i = 0; i < renderer->submittedRenderPassesToDestroyCount; i += 1)
-	{
-		VULKAN_INTERNAL_DestroyRenderPass(
-			renderer,
-			renderer->submittedRenderPassesToDestroy[i]
-		);
-	}
-	renderer->submittedRenderPassesToDestroyCount = 0;
-
-	/* Re-size submitted destroy lists */
-
-	EXPAND_ARRAY_IF_NEEDED(
-		renderer->submittedRenderTargetsToDestroy,
-		VulkanRenderTarget*,
-		renderer->renderTargetsToDestroyCount,
-		renderer->submittedRenderTargetsToDestroyCapacity,
-		renderer->renderTargetsToDestroyCount
-	)
-
-	EXPAND_ARRAY_IF_NEEDED(
-		renderer->submittedTexturesToDestroy,
-		VulkanTexture*,
-		renderer->texturesToDestroyCount,
-		renderer->submittedTexturesToDestroyCapacity,
-		renderer->texturesToDestroyCount
-	)
-
-	EXPAND_ARRAY_IF_NEEDED(
-		renderer->submittedBuffersToDestroy,
-		VulkanBuffer*,
-		renderer->buffersToDestroyCount,
-		renderer->submittedBuffersToDestroyCapacity,
-		renderer->buffersToDestroyCount
-	)
-
-	EXPAND_ARRAY_IF_NEEDED(
-		renderer->submittedGraphicsPipelinesToDestroy,
-		VulkanGraphicsPipeline*,
-		renderer->graphicsPipelinesToDestroyCount,
-		renderer->submittedGraphicsPipelinesToDestroyCapacity,
-		renderer->graphicsPipelinesToDestroyCount
-	)
-
-	EXPAND_ARRAY_IF_NEEDED(
-		renderer->submittedComputePipelinesToDestroy,
-		VulkanComputePipeline*,
-		renderer->computePipelinesToDestroyCount,
-		renderer->submittedComputePipelinesToDestroyCapacity,
-		renderer->computePipelinesToDestroyCount
-	)
-
-	EXPAND_ARRAY_IF_NEEDED(
-		renderer->submittedShaderModulesToDestroy,
-		VkShaderModule,
-		renderer->shaderModulesToDestroyCount,
-		renderer->submittedShaderModulesToDestroyCapacity,
-		renderer->shaderModulesToDestroyCount
-	)
-
-	EXPAND_ARRAY_IF_NEEDED(
-		renderer->submittedSamplersToDestroy,
-		VkSampler,
-		renderer->samplersToDestroyCount,
-		renderer->submittedSamplersToDestroyCapacity,
-		renderer->samplersToDestroyCount
-	)
-
-	EXPAND_ARRAY_IF_NEEDED(
-		renderer->submittedFramebuffersToDestroy,
-		VulkanFramebuffer*,
-		renderer->framebuffersToDestroyCount,
-		renderer->submittedFramebuffersToDestroyCapacity,
-		renderer->framebuffersToDestroyCount
-	)
-
-	EXPAND_ARRAY_IF_NEEDED(
-		renderer->submittedRenderPassesToDestroy,
-		VkRenderPass,
-		renderer->renderPassesToDestroyCount,
-		renderer->submittedRenderPassesToDestroyCapacity,
-		renderer->renderPassesToDestroyCount
-	)
-
-	/* Rotate destroy lists */
-
-	MOVE_ARRAY_CONTENTS_AND_RESET(
-		i,
-		renderer->submittedRenderTargetsToDestroy,
-		renderer->submittedRenderTargetsToDestroyCount,
-		renderer->renderTargetsToDestroy,
-		renderer->renderTargetsToDestroyCount
-	)
-
-	MOVE_ARRAY_CONTENTS_AND_RESET(
-		i,
-		renderer->submittedTexturesToDestroy,
-		renderer->submittedTexturesToDestroyCount,
-		renderer->texturesToDestroy,
-		renderer->texturesToDestroyCount
-	)
-
-	MOVE_ARRAY_CONTENTS_AND_RESET(
-		i,
-		renderer->submittedBuffersToDestroy,
-		renderer->submittedBuffersToDestroyCount,
-		renderer->buffersToDestroy,
-		renderer->buffersToDestroyCount
-	)
-
-	MOVE_ARRAY_CONTENTS_AND_RESET(
-		i,
-		renderer->submittedGraphicsPipelinesToDestroy,
-		renderer->submittedGraphicsPipelinesToDestroyCount,
-		renderer->graphicsPipelinesToDestroy,
-		renderer->graphicsPipelinesToDestroyCount
-	)
-
-	MOVE_ARRAY_CONTENTS_AND_RESET(
-		i,
-		renderer->submittedComputePipelinesToDestroy,
-		renderer->submittedComputePipelinesToDestroyCount,
-		renderer->computePipelinesToDestroy,
-		renderer->computePipelinesToDestroyCount
-	)
-
-	MOVE_ARRAY_CONTENTS_AND_RESET(
-		i,
-		renderer->submittedShaderModulesToDestroy,
-		renderer->submittedShaderModulesToDestroyCount,
-		renderer->shaderModulesToDestroy,
-		renderer->shaderModulesToDestroyCount
-	)
-
-	MOVE_ARRAY_CONTENTS_AND_RESET(
-		i,
-		renderer->submittedSamplersToDestroy,
-		renderer->submittedSamplersToDestroyCount,
-		renderer->samplersToDestroy,
-		renderer->samplersToDestroyCount
-	)
-
-	MOVE_ARRAY_CONTENTS_AND_RESET(
-		i,
-		renderer->submittedFramebuffersToDestroy,
-		renderer->submittedFramebuffersToDestroyCount,
-		renderer->framebuffersToDestroy,
-		renderer->framebuffersToDestroyCount
-	)
-
-	MOVE_ARRAY_CONTENTS_AND_RESET(
-		i,
-		renderer->submittedRenderPassesToDestroy,
-		renderer->submittedRenderPassesToDestroyCount,
-		renderer->renderPassesToDestroy,
-		renderer->renderPassesToDestroyCount
-	)
-
-	SDL_UnlockMutex(renderer->disposeLock);
-
-	VULKAN_INTERNAL_RotateBoundUniformBuffers(renderer->vertexUniformBufferPool);
-	VULKAN_INTERNAL_RotateBoundUniformBuffers(renderer->fragmentUniformBufferPool);
-	VULKAN_INTERNAL_RotateBoundUniformBuffers(renderer->computeUniformBufferPool);
-
-	if (renderer->transferBufferPool.submittedBufferCount + renderer->transferBufferPool.availableBufferCount > renderer->transferBufferPool.availableBufferCapacity)
-	{
-		renderer->transferBufferPool.availableBufferCapacity = renderer->transferBufferPool.submittedBufferCount + renderer->transferBufferPool.availableBufferCount;
-		renderer->transferBufferPool.availableBuffers = SDL_realloc(
-			renderer->transferBufferPool.availableBuffers,
-			renderer->transferBufferPool.availableBufferCapacity * sizeof(VulkanTransferBuffer*)
-		);
-	}
-
-	for (i = 0; i < renderer->transferBufferPool.submittedBufferCount; i += 1)
-	{
-		renderer->transferBufferPool.submittedBuffers[i]->offset = 0;
-		renderer->transferBufferPool.availableBuffers[renderer->transferBufferPool.availableBufferCount] = renderer->transferBufferPool.submittedBuffers[i];
-		renderer->transferBufferPool.availableBufferCount += 1;
-	}
-	renderer->transferBufferPool.submittedBufferCount = 0;
-
-	/* Reset descriptor set data */
-	VULKAN_INTERNAL_ResetDescriptorSetData(renderer);
-}
-
 /* Swapchain */
 
 static uint8_t VULKAN_INTERNAL_QuerySwapChainSupport(
 	VulkanRenderer *renderer,
 	VkPhysicalDevice physicalDevice,
 	VkSurfaceKHR surface,
+	uint32_t graphicsFamilyIndex,
 	SwapChainSupportDetails *outputDetails
 ) {
 	VkResult result;
@@ -4013,17 +3320,20 @@ static uint8_t VULKAN_INTERNAL_QuerySwapChainSupport(
 	uint32_t presentModeCount;
 	VkBool32 supportsPresent;
 
-	renderer->vkGetPhysicalDeviceSurfaceSupportKHR(
-		physicalDevice,
-		renderer->queueFamilyIndices.graphicsFamily,
-		surface,
-		&supportsPresent
-	);
-
-	if (!supportsPresent)
+	if (graphicsFamilyIndex != UINT32_MAX)
 	{
-		Refresh_LogWarn("This surface does not support presenting!");
-		return 0;
+		renderer->vkGetPhysicalDeviceSurfaceSupportKHR(
+			physicalDevice,
+			graphicsFamilyIndex,
+			surface,
+			&supportsPresent
+		);
+
+		if (!supportsPresent)
+		{
+			Refresh_LogWarn("This surface does not support presenting!");
+			return 0;
+		}
 	}
 
 	result = renderer->vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
@@ -4228,6 +3538,7 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 		renderer,
 		renderer->physicalDevice,
 		swapchainData->surface,
+		renderer->queueFamilyIndices.graphicsFamily,
 		&swapchainSupportDetails
 	)) {
 		renderer->vkDestroySurfaceKHR(
@@ -4560,6 +3871,8 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 		&swapchainData->renderFinishedSemaphore
 	);
 
+	swapchainData->inFlightFence = VK_NULL_HANDLE;
+
 	SDL_SetWindowData(windowHandle, WINDOW_SWAPCHAIN_DATA, swapchainData);
 
 	if (renderer->swapchainDataCount >= renderer->swapchainDataCapacity)
@@ -4583,18 +3896,17 @@ static void VULKAN_INTERNAL_RecreateSwapchain(
 ) {
 	CreateSwapchainResult createSwapchainResult;
 
-	renderer->vkDeviceWaitIdle(renderer->logicalDevice);
+	VULKAN_Wait((Refresh_Renderer*)renderer);
 
 	VULKAN_INTERNAL_DestroySwapchain(renderer, windowHandle);
 	createSwapchainResult = VULKAN_INTERNAL_CreateSwapchain(renderer, windowHandle);
 
 	if (createSwapchainResult == CREATE_SWAPCHAIN_FAIL)
 	{
-		Refresh_LogError("Failed to recreate swapchain!");
 		return;
 	}
 
-	renderer->vkDeviceWaitIdle(renderer->logicalDevice);
+	VULKAN_Wait((Refresh_Renderer*)renderer);
 }
 
 /* Command Buffers */
@@ -4637,7 +3949,10 @@ static void VULKAN_INTERNAL_EndCommandBuffer(
 	if (	commandBuffer->computeUniformBuffer != renderer->dummyComputeUniformBuffer &&
 		commandBuffer->computeUniformBuffer != NULL
 	) {
-		VULKAN_INTERNAL_BindUniformBuffer(commandBuffer->computeUniformBuffer);
+		VULKAN_INTERNAL_BindUniformBuffer(
+			commandBuffer,
+			commandBuffer->computeUniformBuffer
+		);
 	}
 	commandBuffer->computeUniformBuffer = NULL;
 	commandBuffer->currentComputePipeline = NULL;
@@ -4653,33 +3968,36 @@ static void VULKAN_INTERNAL_EndCommandBuffer(
 	}
 }
 
-/* Public API */
-
 static void VULKAN_DestroyDevice(
     Refresh_Device *device
 ) {
 	VulkanRenderer* renderer = (VulkanRenderer*) device->driverData;
-	VkResult waitResult;
 	CommandPoolHashArray commandPoolHashArray;
 	GraphicsPipelineLayoutHashArray graphicsPipelineLayoutHashArray;
 	ComputePipelineLayoutHashArray computePipelineLayoutHashArray;
 	VulkanMemorySubAllocator *allocator;
-	uint32_t i, j, k;
+	int32_t i, j, k;
 
-	waitResult = renderer->vkDeviceWaitIdle(renderer->logicalDevice);
+	VULKAN_Wait(device->driverData);
 
-	if (waitResult != VK_SUCCESS)
-	{
-		LogVulkanResultAsError("vkDeviceWaitIdle", waitResult);
-	}
-
-	/* We have to do this twice so the rotation happens correctly */
-	VULKAN_INTERNAL_PostWorkCleanup(renderer);
-	VULKAN_INTERNAL_PostWorkCleanup(renderer);
+	SDL_free(renderer->submittedCommandBuffers);
 
 	VULKAN_INTERNAL_DestroyBuffer(renderer, renderer->dummyVertexUniformBuffer->vulkanBuffer);
 	VULKAN_INTERNAL_DestroyBuffer(renderer, renderer->dummyFragmentUniformBuffer->vulkanBuffer);
 	VULKAN_INTERNAL_DestroyBuffer(renderer, renderer->dummyComputeUniformBuffer->vulkanBuffer);
+
+	SDL_free(renderer->dummyVertexUniformBuffer);
+	SDL_free(renderer->dummyFragmentUniformBuffer);
+	SDL_free(renderer->dummyComputeUniformBuffer);
+
+	for (i = 0; i < renderer->transferBufferPool.availableBufferCount; i += 1)
+	{
+		VULKAN_INTERNAL_DestroyBuffer(renderer, renderer->transferBufferPool.availableBuffers[i]->buffer);
+		SDL_free(renderer->transferBufferPool.availableBuffers[i]);
+	}
+
+	SDL_free(renderer->transferBufferPool.availableBuffers);
+	SDL_DestroyMutex(renderer->transferBufferPool.lock);
 
 	for (i = 0; i < renderer->availableFenceCount; i += 1)
 	{
@@ -4690,14 +4008,7 @@ static void VULKAN_DestroyDevice(
 		);
 	}
 
-	for (i = 0; i < renderer->usedFenceCount; i += 1)
-	{
-		renderer->vkDestroyFence(
-			renderer->logicalDevice,
-			renderer->usedFences[i],
-			NULL
-		);
-	}
+	SDL_free(renderer->availableFences);
 
 	for (i = 0; i < NUM_COMMAND_POOL_BUCKETS; i += 1)
 	{
@@ -4721,12 +4032,12 @@ static void VULKAN_DestroyDevice(
 		graphicsPipelineLayoutHashArray = renderer->graphicsPipelineLayoutHashTable.buckets[i];
 		for (j = 0; j < graphicsPipelineLayoutHashArray.count; j += 1)
 		{
-			VULKAN_INTERNAL_DestroyImageDescriptorSetCache(
+			VULKAN_INTERNAL_DestroyDescriptorSetCache(
 				renderer,
 				graphicsPipelineLayoutHashArray.elements[j].value->vertexSamplerDescriptorSetCache
 			);
 
-			VULKAN_INTERNAL_DestroyImageDescriptorSetCache(
+			VULKAN_INTERNAL_DestroyDescriptorSetCache(
 				renderer,
 				graphicsPipelineLayoutHashArray.elements[j].value->fragmentSamplerDescriptorSetCache
 			);
@@ -4736,6 +4047,8 @@ static void VULKAN_DestroyDevice(
 				graphicsPipelineLayoutHashArray.elements[j].value->pipelineLayout,
 				NULL
 			);
+
+			SDL_free(graphicsPipelineLayoutHashArray.elements[j].value);
 		}
 
 		if (graphicsPipelineLayoutHashArray.elements != NULL)
@@ -4746,12 +4059,12 @@ static void VULKAN_DestroyDevice(
 		computePipelineLayoutHashArray = renderer->computePipelineLayoutHashTable.buckets[i];
 		for (j = 0; j < computePipelineLayoutHashArray.count; j += 1)
 		{
-			VULKAN_INTERNAL_DestroyBufferDescriptorSetCache(
+			VULKAN_INTERNAL_DestroyDescriptorSetCache(
 				renderer,
 				computePipelineLayoutHashArray.elements[j].value->bufferDescriptorSetCache
 			);
 
-			VULKAN_INTERNAL_DestroyImageDescriptorSetCache(
+			VULKAN_INTERNAL_DestroyDescriptorSetCache(
 				renderer,
 				computePipelineLayoutHashArray.elements[j].value->imageDescriptorSetCache
 			);
@@ -4761,6 +4074,8 @@ static void VULKAN_DestroyDevice(
 				computePipelineLayoutHashArray.elements[j].value->pipelineLayout,
 				NULL
 			);
+
+			SDL_free(computePipelineLayoutHashArray.elements[j].value);
 		}
 
 		if (computePipelineLayoutHashArray.elements != NULL)
@@ -4840,6 +4155,8 @@ static void VULKAN_DestroyDevice(
 		VULKAN_INTERNAL_DestroySwapchain(renderer, renderer->swapchainDatas[i]->windowHandle);
 	}
 
+	SDL_free(renderer->swapchainDatas);
+
 	for (i = 0; i < VK_MAX_MEMORY_TYPES; i += 1)
 	{
 		allocator = &renderer->memoryAllocator->subAllocators[i];
@@ -4870,8 +4187,9 @@ static void VULKAN_DestroyDevice(
 	SDL_free(renderer->memoryAllocator);
 
 	SDL_DestroyMutex(renderer->allocatorLock);
-	SDL_DestroyMutex(renderer->disposeLock);
 	SDL_DestroyMutex(renderer->submitLock);
+	SDL_DestroyMutex(renderer->acquireFenceLock);
+	SDL_DestroyMutex(renderer->acquireCommandBufferLock);
 
 	renderer->vkDestroyDevice(renderer->logicalDevice, NULL);
 	renderer->vkDestroyInstance(renderer->instance, NULL);
@@ -5812,7 +5130,7 @@ static VulkanComputePipelineLayout* VULKAN_INTERNAL_FetchComputePipelineLayout(
 	else
 	{
 		vulkanComputePipelineLayout->bufferDescriptorSetCache =
-			VULKAN_INTERNAL_CreateBufferDescriptorSetCache(
+			VULKAN_INTERNAL_CreateDescriptorSetCache(
 				renderer,
 				VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
 				pipelineLayoutHash.bufferLayout,
@@ -5827,7 +5145,7 @@ static VulkanComputePipelineLayout* VULKAN_INTERNAL_FetchComputePipelineLayout(
 	else
 	{
 		vulkanComputePipelineLayout->imageDescriptorSetCache =
-			VULKAN_INTERNAL_CreateImageDescriptorSetCache(
+			VULKAN_INTERNAL_CreateDescriptorSetCache(
 				renderer,
 				VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
 				pipelineLayoutHash.imageLayout,
@@ -6408,7 +5726,7 @@ static Refresh_Buffer* VULKAN_CreateBuffer(
 	Refresh_BufferUsageFlags usageFlags,
 	uint32_t sizeInBytes
 ) {
-	VulkanBuffer* buffer = SDL_malloc(sizeof(VulkanBuffer));
+	VulkanBuffer* buffer;
 
 	VkBufferUsageFlags vulkanUsageFlags =
 		VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
@@ -6469,25 +5787,35 @@ static VulkanTransferBuffer* VULKAN_INTERNAL_AcquireTransferBuffer(
 
 	/* Nothing fits, so let's get a transfer buffer from the pool */
 
+	SDL_LockMutex(renderer->transferBufferPool.lock);
+
 	for (i = 0; i < renderer->transferBufferPool.availableBufferCount; i += 1)
 	{
 		transferBuffer = renderer->transferBufferPool.availableBuffers[i];
 
 		if (transferBuffer->offset + requiredSize <= transferBuffer->buffer->size)
 		{
-			commandBuffer->transferBuffers = SDL_realloc(
-				commandBuffer->transferBuffers,
-				(commandBuffer->transferBufferCount + 1) * sizeof(VulkanTransferBuffer*)
-			);
+			if (commandBuffer->transferBufferCount == commandBuffer->transferBufferCapacity)
+			{
+				commandBuffer->transferBufferCapacity *= 2;
+				commandBuffer->transferBuffers = SDL_realloc(
+					commandBuffer->transferBuffers,
+					commandBuffer->transferBufferCapacity * sizeof(VulkanTransferBuffer*)
+				);
+			}
+
 			commandBuffer->transferBuffers[commandBuffer->transferBufferCount] = transferBuffer;
 			commandBuffer->transferBufferCount += 1;
 
 			renderer->transferBufferPool.availableBuffers[i] = renderer->transferBufferPool.availableBuffers[renderer->transferBufferPool.availableBufferCount - 1];
 			renderer->transferBufferPool.availableBufferCount -= 1;
+			SDL_UnlockMutex(renderer->transferBufferPool.lock);
 
 			return transferBuffer;
 		}
 	}
+
+	SDL_UnlockMutex(renderer->transferBufferPool.lock);
 
 	/* Nothing fits still, so let's create a new transfer buffer */
 
@@ -6513,10 +5841,15 @@ static VulkanTransferBuffer* VULKAN_INTERNAL_AcquireTransferBuffer(
 		return NULL;
 	}
 
-	commandBuffer->transferBuffers = SDL_realloc(
-		commandBuffer->transferBuffers,
-		(commandBuffer->transferBufferCount + 1) * sizeof(VulkanTransferBuffer*)
-	);
+	if (commandBuffer->transferBufferCount == commandBuffer->transferBufferCapacity)
+	{
+		commandBuffer->transferBufferCapacity *= 2;
+		commandBuffer->transferBuffers = SDL_realloc(
+			commandBuffer->transferBuffers,
+			commandBuffer->transferBufferCapacity * sizeof(VulkanTransferBuffer*)
+		);
+	}
+
 	commandBuffer->transferBuffers[commandBuffer->transferBufferCount] = transferBuffer;
 	commandBuffer->transferBufferCount += 1;
 
@@ -7083,7 +6416,10 @@ static uint32_t VULKAN_PushVertexShaderUniforms(
 		UBO_BUFFER_SIZE
 	) {
 		/* We're out of space in this buffer, bind the old one and acquire a new one */
-		VULKAN_INTERNAL_BindUniformBuffer(vulkanCommandBuffer->vertexUniformBuffer);
+		VULKAN_INTERNAL_BindUniformBuffer(
+			vulkanCommandBuffer,
+			vulkanCommandBuffer->vertexUniformBuffer
+		);
 		vulkanCommandBuffer->vertexUniformBuffer = VULKAN_INTERNAL_AcquireUniformBufferFromPool(
 			renderer,
 			renderer->vertexUniformBufferPool,
@@ -7135,7 +6471,10 @@ static uint32_t VULKAN_PushFragmentShaderUniforms(
 		UBO_BUFFER_SIZE
 	) {
 		/* We're out of space in this buffer, bind the old one and acquire a new one */
-		VULKAN_INTERNAL_BindUniformBuffer(vulkanCommandBuffer->fragmentUniformBuffer);
+		VULKAN_INTERNAL_BindUniformBuffer(
+			vulkanCommandBuffer,
+			vulkanCommandBuffer->fragmentUniformBuffer
+		);
 		vulkanCommandBuffer->fragmentUniformBuffer = VULKAN_INTERNAL_AcquireUniformBufferFromPool(
 			renderer,
 			renderer->fragmentUniformBufferPool,
@@ -7186,7 +6525,10 @@ static uint32_t VULKAN_PushComputeShaderUniforms(
 		UBO_BUFFER_SIZE
 	) {
 		/* We're out of space in this buffer, bind the old one and acquire a new one */
-		VULKAN_INTERNAL_BindUniformBuffer(vulkanCommandBuffer->computeUniformBuffer);
+		VULKAN_INTERNAL_BindUniformBuffer(
+			vulkanCommandBuffer,
+			vulkanCommandBuffer->computeUniformBuffer
+		);
 		vulkanCommandBuffer->computeUniformBuffer = VULKAN_INTERNAL_AcquireUniformBufferFromPool(
 			renderer,
 			renderer->computeUniformBufferPool,
@@ -7208,325 +6550,133 @@ static uint32_t VULKAN_PushComputeShaderUniforms(
 	return offset;
 }
 
-static inline uint8_t BufferDescriptorSetDataEqual(
-	BufferDescriptorSetData *a,
-	BufferDescriptorSetData *b,
-	uint8_t bindingCount
-) {
-	uint32_t i;
-
-	for (i = 0; i < bindingCount; i += 1)
-	{
-		if (	a->descriptorBufferInfo[i].buffer != b->descriptorBufferInfo[i].buffer ||
-			a->descriptorBufferInfo[i].offset != b->descriptorBufferInfo[i].offset ||
-			a->descriptorBufferInfo[i].range != b->descriptorBufferInfo[i].range	)
-		{
-			return 0;
-		}
-	}
-
-	return 1;
-}
-
-/* FIXME: this can probably be cleverly folded into the same cache structure as image descriptors */
-static VkDescriptorSet VULKAN_INTERNAL_FetchBufferDescriptorSet(
+/* If fetching an image descriptor, descriptorImageInfos must not be NULL.
+ * If fetching a buffer descriptor, descriptorBufferInfos must not be NULL.
+ */
+static VkDescriptorSet VULKAN_INTERNAL_FetchDescriptorSet(
 	VulkanRenderer *renderer,
-	BufferDescriptorSetCache *bufferDescriptorSetCache,
-	BufferDescriptorSetData *bufferDescriptorSetData
+	VulkanCommandBuffer *vulkanCommandBuffer,
+	DescriptorSetCache *descriptorSetCache,
+	VkDescriptorImageInfo *descriptorImageInfos, /* Can be NULL */
+	VkDescriptorBufferInfo *descriptorBufferInfos /* Can be NULL */
 ) {
 	uint32_t i;
-	uint64_t hashcode;
-	BufferDescriptorSetHashArray *arr;
-	VkDescriptorSet newDescriptorSet;
-	VkWriteDescriptorSet writeDescriptorSets[MAX_BUFFER_BINDINGS];
-	BufferDescriptorSetHashMap *map;
-
-	SDL_LockMutex(bufferDescriptorSetCache->lock);
-	hashcode = BufferDescriptorSetHashTable_GetHashCode(
-		bufferDescriptorSetData,
-		bufferDescriptorSetCache->bindingCount
-	);
-	arr = &bufferDescriptorSetCache->buckets[hashcode % NUM_DESCRIPTOR_SET_HASH_BUCKETS];
-
-	for (i = 0; i < arr->count; i += 1)
-	{
-		BufferDescriptorSetHashMap *e = &bufferDescriptorSetCache->elements[arr->elements[i]];
-		if (BufferDescriptorSetDataEqual(
-			bufferDescriptorSetData,
-			&e->descriptorSetData,
-			bufferDescriptorSetCache->bindingCount
-		)) {
-			e->inactiveFrameCount = 0;
-			SDL_UnlockMutex(bufferDescriptorSetCache->lock);
-			return e->descriptorSet;
-		}
-	}
-
-	/* If no match exists, assign a new descriptor set and prepare it for update */
-	/* If no inactive descriptor sets remain, create a new pool and allocate new inactive sets */
-
-	if (bufferDescriptorSetCache->inactiveDescriptorSetCount == 0)
-	{
-		bufferDescriptorSetCache->bufferDescriptorPoolCount += 1;
-		bufferDescriptorSetCache->bufferDescriptorPools = SDL_realloc(
-			bufferDescriptorSetCache->bufferDescriptorPools,
-			sizeof(VkDescriptorPool) * bufferDescriptorSetCache->bufferDescriptorPoolCount
-		);
-
-		if (!VULKAN_INTERNAL_CreateDescriptorPool(
-			renderer,
-			VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-			bufferDescriptorSetCache->nextPoolSize,
-			bufferDescriptorSetCache->nextPoolSize * bufferDescriptorSetCache->bindingCount,
-			&bufferDescriptorSetCache->bufferDescriptorPools[bufferDescriptorSetCache->bufferDescriptorPoolCount - 1]
-		)) {
-			SDL_UnlockMutex(bufferDescriptorSetCache->lock);
-			Refresh_LogError("Failed to create descriptor pool!");
-			return VK_NULL_HANDLE;
-		}
-
-		bufferDescriptorSetCache->inactiveDescriptorSetCapacity += bufferDescriptorSetCache->nextPoolSize;
-
-		bufferDescriptorSetCache->inactiveDescriptorSets = SDL_realloc(
-			bufferDescriptorSetCache->inactiveDescriptorSets,
-			sizeof(VkDescriptorSet) * bufferDescriptorSetCache->inactiveDescriptorSetCapacity
-		);
-
-		if (!VULKAN_INTERNAL_AllocateDescriptorSets(
-			renderer,
-			bufferDescriptorSetCache->bufferDescriptorPools[bufferDescriptorSetCache->bufferDescriptorPoolCount - 1],
-			bufferDescriptorSetCache->descriptorSetLayout,
-			bufferDescriptorSetCache->nextPoolSize,
-			bufferDescriptorSetCache->inactiveDescriptorSets
-		)) {
-			SDL_UnlockMutex(bufferDescriptorSetCache->lock);
-			Refresh_LogError("Failed to allocate descriptor sets!");
-			return VK_NULL_HANDLE;
-		}
-
-		bufferDescriptorSetCache->inactiveDescriptorSetCount = bufferDescriptorSetCache->nextPoolSize;
-
-		bufferDescriptorSetCache->nextPoolSize *= 2;
-	}
-
-	newDescriptorSet = bufferDescriptorSetCache->inactiveDescriptorSets[bufferDescriptorSetCache->inactiveDescriptorSetCount - 1];
-	bufferDescriptorSetCache->inactiveDescriptorSetCount -= 1;
-
-	for (i = 0; i < bufferDescriptorSetCache->bindingCount; i += 1)
-	{
-		writeDescriptorSets[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		writeDescriptorSets[i].pNext = NULL;
-		writeDescriptorSets[i].descriptorCount = 1;
-		writeDescriptorSets[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-		writeDescriptorSets[i].dstArrayElement = 0;
-		writeDescriptorSets[i].dstBinding = i;
-		writeDescriptorSets[i].dstSet = newDescriptorSet;
-		writeDescriptorSets[i].pBufferInfo = &bufferDescriptorSetData->descriptorBufferInfo[i];
-		writeDescriptorSets[i].pImageInfo = NULL;
-		writeDescriptorSets[i].pTexelBufferView = NULL;
-	}
-
-	renderer->vkUpdateDescriptorSets(
-		renderer->logicalDevice,
-		bufferDescriptorSetCache->bindingCount,
-		writeDescriptorSets,
-		0,
-		NULL
-	);
-
-	EXPAND_ELEMENTS_IF_NEEDED(arr, 2, uint32_t)
-	arr->elements[arr->count] = bufferDescriptorSetCache->count;
-	arr->count += 1;
-
-	if (bufferDescriptorSetCache->count == bufferDescriptorSetCache->capacity)
-	{
-		bufferDescriptorSetCache->capacity *= 2;
-
-		bufferDescriptorSetCache->elements = SDL_realloc(
-			bufferDescriptorSetCache->elements,
-			sizeof(BufferDescriptorSetHashMap) * bufferDescriptorSetCache->capacity
-		);
-	}
-
-	map = &bufferDescriptorSetCache->elements[bufferDescriptorSetCache->count];
-	map->key = hashcode;
-
-	for (i = 0; i < bufferDescriptorSetCache->bindingCount; i += 1)
-	{
-		map->descriptorSetData.descriptorBufferInfo[i].buffer =
-			bufferDescriptorSetData->descriptorBufferInfo[i].buffer;
-		map->descriptorSetData.descriptorBufferInfo[i].offset =
-			bufferDescriptorSetData->descriptorBufferInfo[i].offset;
-		map->descriptorSetData.descriptorBufferInfo[i].range =
-			bufferDescriptorSetData->descriptorBufferInfo[i].range;
-	}
-
-	map->descriptorSet = newDescriptorSet;
-	map->inactiveFrameCount = 0;
-	bufferDescriptorSetCache->count += 1;
-
-	SDL_UnlockMutex(bufferDescriptorSetCache->lock);
-	return newDescriptorSet;
-}
-
-static inline uint8_t ImageDescriptorSetDataEqual(
-	ImageDescriptorSetData *a,
-	ImageDescriptorSetData *b,
-	uint8_t bindingCount
-) {
-	uint32_t i;
-
-	for (i = 0; i < bindingCount; i += 1)
-	{
-		if (	a->descriptorImageInfo[i].imageLayout != b->descriptorImageInfo[i].imageLayout ||
-			a->descriptorImageInfo[i].imageView != b->descriptorImageInfo[i].imageView ||
-			a->descriptorImageInfo[i].sampler != b->descriptorImageInfo[i].sampler	)
-		{
-			return 0;
-		}
-	}
-
-	return 1;
-}
-
-static VkDescriptorSet VULKAN_INTERNAL_FetchImageDescriptorSet(
-	VulkanRenderer *renderer,
-	ImageDescriptorSetCache *imageDescriptorSetCache,
-	ImageDescriptorSetData *imageDescriptorSetData
-) {
-	uint32_t i;
-	uint64_t hashcode;
-	ImageDescriptorSetHashArray *arr;
-	VkDescriptorSet newDescriptorSet;
+	VkDescriptorSet descriptorSet;
 	VkWriteDescriptorSet writeDescriptorSets[MAX_TEXTURE_SAMPLERS];
-	ImageDescriptorSetHashMap *map;
+	uint8_t isImage;
 
-	SDL_LockMutex(imageDescriptorSetCache->lock);
-	hashcode = ImageDescriptorSetHashTable_GetHashCode(
-		imageDescriptorSetData,
-		imageDescriptorSetCache->bindingCount
-	);
-	arr = &imageDescriptorSetCache->buckets[hashcode % NUM_DESCRIPTOR_SET_HASH_BUCKETS];
-
-	for (i = 0; i < arr->count; i += 1)
+	if (descriptorImageInfos == NULL && descriptorBufferInfos == NULL)
 	{
-		ImageDescriptorSetHashMap *e = &imageDescriptorSetCache->elements[arr->elements[i]];
-		if (ImageDescriptorSetDataEqual(
-			imageDescriptorSetData,
-			&e->descriptorSetData,
-			imageDescriptorSetCache->bindingCount
-		)) {
-			e->inactiveFrameCount = 0;
-			SDL_UnlockMutex(imageDescriptorSetCache->lock);
-			return e->descriptorSet;
-		}
+		Refresh_LogError("descriptorImageInfos and descriptorBufferInfos cannot both be NULL!");
+		return VK_NULL_HANDLE;
+	}
+	else if (descriptorImageInfos != NULL && descriptorBufferInfos != NULL)
+	{
+		Refresh_LogError("descriptorImageInfos and descriptorBufferInfos cannot both be set!");
+		return VK_NULL_HANDLE;
 	}
 
-	/* If no match exists, assign a new descriptor set and prepare it for update */
+	isImage = descriptorImageInfos != NULL;
+
+	SDL_LockMutex(descriptorSetCache->lock);
+
 	/* If no inactive descriptor sets remain, create a new pool and allocate new inactive sets */
 
-	if (imageDescriptorSetCache->inactiveDescriptorSetCount == 0)
+	if (descriptorSetCache->inactiveDescriptorSetCount == 0)
 	{
-		imageDescriptorSetCache->imageDescriptorPoolCount += 1;
-		imageDescriptorSetCache->imageDescriptorPools = SDL_realloc(
-			imageDescriptorSetCache->imageDescriptorPools,
-			sizeof(VkDescriptorPool) * imageDescriptorSetCache->imageDescriptorPoolCount
+		descriptorSetCache->descriptorPoolCount += 1;
+		descriptorSetCache->descriptorPools = SDL_realloc(
+			descriptorSetCache->descriptorPools,
+			sizeof(VkDescriptorPool) * descriptorSetCache->descriptorPoolCount
 		);
 
 		if (!VULKAN_INTERNAL_CreateDescriptorPool(
 			renderer,
-			imageDescriptorSetCache->descriptorType,
-			imageDescriptorSetCache->nextPoolSize,
-			imageDescriptorSetCache->nextPoolSize * imageDescriptorSetCache->bindingCount,
-			&imageDescriptorSetCache->imageDescriptorPools[imageDescriptorSetCache->imageDescriptorPoolCount - 1]
+			descriptorSetCache->descriptorType,
+			descriptorSetCache->nextPoolSize,
+			descriptorSetCache->nextPoolSize * descriptorSetCache->bindingCount,
+			&descriptorSetCache->descriptorPools[descriptorSetCache->descriptorPoolCount - 1]
 		)) {
-			SDL_UnlockMutex(imageDescriptorSetCache->lock);
+			SDL_UnlockMutex(descriptorSetCache->lock);
 			Refresh_LogError("Failed to create descriptor pool!");
 			return VK_NULL_HANDLE;
 		}
 
-		imageDescriptorSetCache->inactiveDescriptorSetCapacity += imageDescriptorSetCache->nextPoolSize;
+		descriptorSetCache->inactiveDescriptorSetCapacity += descriptorSetCache->nextPoolSize;
 
-		imageDescriptorSetCache->inactiveDescriptorSets = SDL_realloc(
-			imageDescriptorSetCache->inactiveDescriptorSets,
-			sizeof(VkDescriptorSet) * imageDescriptorSetCache->inactiveDescriptorSetCapacity
+		descriptorSetCache->inactiveDescriptorSets = SDL_realloc(
+			descriptorSetCache->inactiveDescriptorSets,
+			sizeof(VkDescriptorSet) * descriptorSetCache->inactiveDescriptorSetCapacity
 		);
 
 		if (!VULKAN_INTERNAL_AllocateDescriptorSets(
 			renderer,
-			imageDescriptorSetCache->imageDescriptorPools[imageDescriptorSetCache->imageDescriptorPoolCount - 1],
-			imageDescriptorSetCache->descriptorSetLayout,
-			imageDescriptorSetCache->nextPoolSize,
-			imageDescriptorSetCache->inactiveDescriptorSets
+			descriptorSetCache->descriptorPools[descriptorSetCache->descriptorPoolCount - 1],
+			descriptorSetCache->descriptorSetLayout,
+			descriptorSetCache->nextPoolSize,
+			descriptorSetCache->inactiveDescriptorSets
 		)) {
-			SDL_UnlockMutex(imageDescriptorSetCache->lock);
+			SDL_UnlockMutex(descriptorSetCache->lock);
 			Refresh_LogError("Failed to allocate descriptor sets!");
 			return VK_NULL_HANDLE;
 		}
 
-		imageDescriptorSetCache->inactiveDescriptorSetCount = imageDescriptorSetCache->nextPoolSize;
+		descriptorSetCache->inactiveDescriptorSetCount = descriptorSetCache->nextPoolSize;
 
-		imageDescriptorSetCache->nextPoolSize *= 2;
+		descriptorSetCache->nextPoolSize *= 2;
 	}
 
-	newDescriptorSet = imageDescriptorSetCache->inactiveDescriptorSets[imageDescriptorSetCache->inactiveDescriptorSetCount - 1];
-	imageDescriptorSetCache->inactiveDescriptorSetCount -= 1;
+	descriptorSet = descriptorSetCache->inactiveDescriptorSets[descriptorSetCache->inactiveDescriptorSetCount - 1];
+	descriptorSetCache->inactiveDescriptorSetCount -= 1;
 
-	for (i = 0; i < imageDescriptorSetCache->bindingCount; i += 1)
+	for (i = 0; i < descriptorSetCache->bindingCount; i += 1)
 	{
 		writeDescriptorSets[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 		writeDescriptorSets[i].pNext = NULL;
 		writeDescriptorSets[i].descriptorCount = 1;
-		writeDescriptorSets[i].descriptorType = imageDescriptorSetCache->descriptorType;
+		writeDescriptorSets[i].descriptorType = descriptorSetCache->descriptorType;
 		writeDescriptorSets[i].dstArrayElement = 0;
 		writeDescriptorSets[i].dstBinding = i;
-		writeDescriptorSets[i].dstSet = newDescriptorSet;
-		writeDescriptorSets[i].pBufferInfo = NULL;
-		writeDescriptorSets[i].pImageInfo = &imageDescriptorSetData->descriptorImageInfo[i];
+		writeDescriptorSets[i].dstSet = descriptorSet;
 		writeDescriptorSets[i].pTexelBufferView = NULL;
+
+		if (isImage)
+		{
+			writeDescriptorSets[i].pImageInfo = &descriptorImageInfos[i];
+			writeDescriptorSets[i].pBufferInfo = NULL;
+
+		}
+		else
+		{
+			writeDescriptorSets[i].pBufferInfo = &descriptorBufferInfos[i];
+			writeDescriptorSets[i].pImageInfo = NULL;
+		}
 	}
 
 	renderer->vkUpdateDescriptorSets(
 		renderer->logicalDevice,
-		imageDescriptorSetCache->bindingCount,
+		descriptorSetCache->bindingCount,
 		writeDescriptorSets,
 		0,
 		NULL
 	);
 
-	EXPAND_ELEMENTS_IF_NEEDED(arr, 2, uint32_t)
-	arr->elements[arr->count] = imageDescriptorSetCache->count;
-	arr->count += 1;
+	SDL_UnlockMutex(descriptorSetCache->lock);
 
-	if (imageDescriptorSetCache->count == imageDescriptorSetCache->capacity)
+	if (vulkanCommandBuffer->boundDescriptorSetDataCount == vulkanCommandBuffer->boundDescriptorSetDataCapacity)
 	{
-		imageDescriptorSetCache->capacity *= 2;
-
-		imageDescriptorSetCache->elements = SDL_realloc(
-			imageDescriptorSetCache->elements,
-			sizeof(ImageDescriptorSetHashMap) * imageDescriptorSetCache->capacity
+		vulkanCommandBuffer->boundDescriptorSetDataCapacity *= 2;
+		vulkanCommandBuffer->boundDescriptorSetDatas = SDL_realloc(
+			vulkanCommandBuffer->boundDescriptorSetDatas,
+			vulkanCommandBuffer->boundDescriptorSetDataCapacity * sizeof(DescriptorSetData)
 		);
 	}
 
-	map = &imageDescriptorSetCache->elements[imageDescriptorSetCache->count];
-	map->key = hashcode;
+	vulkanCommandBuffer->boundDescriptorSetDatas[vulkanCommandBuffer->boundDescriptorSetDataCount].descriptorSet = descriptorSet;
+	vulkanCommandBuffer->boundDescriptorSetDatas[vulkanCommandBuffer->boundDescriptorSetDataCount].descriptorSetCache = descriptorSetCache;
+	vulkanCommandBuffer->boundDescriptorSetDataCount += 1;
 
-	for (i = 0; i < imageDescriptorSetCache->bindingCount; i += 1)
-	{
-		map->descriptorSetData.descriptorImageInfo[i].imageLayout =
-			imageDescriptorSetData->descriptorImageInfo[i].imageLayout;
-		map->descriptorSetData.descriptorImageInfo[i].imageView =
-			imageDescriptorSetData->descriptorImageInfo[i].imageView;
-		map->descriptorSetData.descriptorImageInfo[i].sampler =
-			imageDescriptorSetData->descriptorImageInfo[i].sampler;
-	}
-
-	map->descriptorSet = newDescriptorSet;
-	map->inactiveFrameCount = 0;
-	imageDescriptorSetCache->count += 1;
-
-	SDL_UnlockMutex(imageDescriptorSetCache->lock);
-	return newDescriptorSet;
+	return descriptorSet;
 }
 
 static void VULKAN_BindVertexSamplers(
@@ -7541,7 +6691,7 @@ static void VULKAN_BindVertexSamplers(
 
 	VulkanTexture *currentTexture;
 	uint32_t i, samplerCount;
-	ImageDescriptorSetData vertexSamplerDescriptorSetData;
+	VkDescriptorImageInfo descriptorImageInfos[MAX_TEXTURE_SAMPLERS];
 
 	if (graphicsPipeline->pipelineLayout->vertexSamplerDescriptorSetCache == NULL)
 	{
@@ -7553,15 +6703,17 @@ static void VULKAN_BindVertexSamplers(
 	for (i = 0; i < samplerCount; i += 1)
 	{
 		currentTexture = (VulkanTexture*) pTextures[i];
-		vertexSamplerDescriptorSetData.descriptorImageInfo[i].imageView = currentTexture->view;
-		vertexSamplerDescriptorSetData.descriptorImageInfo[i].sampler = (VkSampler) pSamplers[i];
-		vertexSamplerDescriptorSetData.descriptorImageInfo[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		descriptorImageInfos[i].imageView = currentTexture->view;
+		descriptorImageInfos[i].sampler = (VkSampler) pSamplers[i];
+		descriptorImageInfos[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 	}
 
-	vulkanCommandBuffer->vertexSamplerDescriptorSet = VULKAN_INTERNAL_FetchImageDescriptorSet(
+	vulkanCommandBuffer->vertexSamplerDescriptorSet = VULKAN_INTERNAL_FetchDescriptorSet(
 		renderer,
+		vulkanCommandBuffer,
 		graphicsPipeline->pipelineLayout->vertexSamplerDescriptorSetCache,
-		&vertexSamplerDescriptorSetData
+		descriptorImageInfos,
+		NULL
 	);
 }
 
@@ -7574,10 +6726,10 @@ static void VULKAN_BindFragmentSamplers(
 	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
 	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
 	VulkanGraphicsPipeline *graphicsPipeline = vulkanCommandBuffer->currentGraphicsPipeline;
-	VulkanTexture *currentTexture;
 
+	VulkanTexture *currentTexture;
 	uint32_t i, samplerCount;
-	ImageDescriptorSetData fragmentSamplerDescriptorSetData;
+	VkDescriptorImageInfo descriptorImageInfos[MAX_TEXTURE_SAMPLERS];
 
 	if (graphicsPipeline->pipelineLayout->fragmentSamplerDescriptorSetCache == NULL)
 	{
@@ -7589,15 +6741,17 @@ static void VULKAN_BindFragmentSamplers(
 	for (i = 0; i < samplerCount; i += 1)
 	{
 		currentTexture = (VulkanTexture*) pTextures[i];
-		fragmentSamplerDescriptorSetData.descriptorImageInfo[i].imageView = currentTexture->view;
-		fragmentSamplerDescriptorSetData.descriptorImageInfo[i].sampler = (VkSampler) pSamplers[i];
-		fragmentSamplerDescriptorSetData.descriptorImageInfo[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		descriptorImageInfos[i].imageView = currentTexture->view;
+		descriptorImageInfos[i].sampler = (VkSampler) pSamplers[i];
+		descriptorImageInfos[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 	}
 
-	vulkanCommandBuffer->fragmentSamplerDescriptorSet = VULKAN_INTERNAL_FetchImageDescriptorSet(
+	vulkanCommandBuffer->fragmentSamplerDescriptorSet = VULKAN_INTERNAL_FetchDescriptorSet(
 		renderer,
+		vulkanCommandBuffer,
 		graphicsPipeline->pipelineLayout->fragmentSamplerDescriptorSetCache,
-		&fragmentSamplerDescriptorSetData
+		descriptorImageInfos,
+		NULL
 	);
 }
 
@@ -7697,213 +6851,184 @@ static void VULKAN_CopyTextureToBuffer(
 
 static void VULKAN_QueueDestroyTexture(
 	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer,
 	Refresh_Texture *texture
 ) {
-	VulkanRenderer* renderer = (VulkanRenderer*)driverData;
+	VulkanCommandBuffer* vulkanCommandBuffer = (VulkanCommandBuffer*)commandBuffer;
 	VulkanTexture* vulkanTexture = (VulkanTexture*)texture;
 
-	SDL_LockMutex(renderer->disposeLock);
-
 	EXPAND_ARRAY_IF_NEEDED(
-		renderer->texturesToDestroy,
+		vulkanCommandBuffer->texturesToDestroy,
 		VulkanTexture*,
-		renderer->texturesToDestroyCount + 1,
-		renderer->texturesToDestroyCapacity,
-		renderer->texturesToDestroyCapacity * 2
+		vulkanCommandBuffer->texturesToDestroyCount + 1,
+		vulkanCommandBuffer->texturesToDestroyCapacity,
+		vulkanCommandBuffer->texturesToDestroyCapacity * 2
 	)
 
-	renderer->texturesToDestroy[renderer->texturesToDestroyCount] = vulkanTexture;
-	renderer->texturesToDestroyCount += 1;
-
-	SDL_UnlockMutex(renderer->disposeLock);
+	vulkanCommandBuffer->texturesToDestroy[vulkanCommandBuffer->texturesToDestroyCount] = vulkanTexture;
+	vulkanCommandBuffer->texturesToDestroyCount += 1;
 }
 
 static void VULKAN_QueueDestroySampler(
 	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer,
 	Refresh_Sampler *sampler
 ) {
-	VulkanRenderer* renderer = (VulkanRenderer*)driverData;
+	VulkanCommandBuffer* vulkanCommandBuffer = (VulkanCommandBuffer*)commandBuffer;
 	VkSampler vulkanSampler = (VkSampler) sampler;
 
-	SDL_LockMutex(renderer->disposeLock);
-
 	EXPAND_ARRAY_IF_NEEDED(
-		renderer->samplersToDestroy,
+		vulkanCommandBuffer->samplersToDestroy,
 		VkSampler,
-		renderer->samplersToDestroyCount + 1,
-		renderer->samplersToDestroyCapacity,
-		renderer->samplersToDestroyCapacity * 2
+		vulkanCommandBuffer->samplersToDestroyCount + 1,
+		vulkanCommandBuffer->samplersToDestroyCapacity,
+		vulkanCommandBuffer->samplersToDestroyCapacity * 2
 	)
 
-	renderer->samplersToDestroy[renderer->samplersToDestroyCount] = vulkanSampler;
-	renderer->samplersToDestroyCount += 1;
-
-	SDL_UnlockMutex(renderer->disposeLock);
+	vulkanCommandBuffer->samplersToDestroy[vulkanCommandBuffer->samplersToDestroyCount] = vulkanSampler;
+	vulkanCommandBuffer->samplersToDestroyCount += 1;
 }
 
 static void VULKAN_QueueDestroyBuffer(
 	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer,
 	Refresh_Buffer *buffer
 ) {
-	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	VulkanCommandBuffer* vulkanCommandBuffer = (VulkanCommandBuffer*)commandBuffer;
 	VulkanBuffer *vulkanBuffer = (VulkanBuffer*) buffer;
 
-	SDL_LockMutex(renderer->disposeLock);
-
 	EXPAND_ARRAY_IF_NEEDED(
-		renderer->buffersToDestroy,
+		vulkanCommandBuffer->buffersToDestroy,
 		VulkanBuffer*,
-		renderer->buffersToDestroyCount + 1,
-		renderer->buffersToDestroyCapacity,
-		renderer->buffersToDestroyCapacity * 2
+		vulkanCommandBuffer->buffersToDestroyCount + 1,
+		vulkanCommandBuffer->buffersToDestroyCapacity,
+		vulkanCommandBuffer->buffersToDestroyCapacity * 2
 	)
 
-	renderer->buffersToDestroy[
-		renderer->buffersToDestroyCount
+	vulkanCommandBuffer->buffersToDestroy[
+		vulkanCommandBuffer->buffersToDestroyCount
 	] = vulkanBuffer;
-	renderer->buffersToDestroyCount += 1;
-
-	SDL_free(vulkanBuffer);
-
-	SDL_UnlockMutex(renderer->disposeLock);
+	vulkanCommandBuffer->buffersToDestroyCount += 1;
 }
 
 static void VULKAN_QueueDestroyRenderTarget(
 	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer,
 	Refresh_RenderTarget *renderTarget
 ) {
-	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	VulkanCommandBuffer* vulkanCommandBuffer = (VulkanCommandBuffer*)commandBuffer;
 	VulkanRenderTarget *vulkanRenderTarget = (VulkanRenderTarget*) renderTarget;
 
-	SDL_LockMutex(renderer->disposeLock);
-
 	EXPAND_ARRAY_IF_NEEDED(
-		renderer->renderTargetsToDestroy,
+		vulkanCommandBuffer->renderTargetsToDestroy,
 		VulkanRenderTarget*,
-		renderer->renderTargetsToDestroyCount + 1,
-		renderer->renderTargetsToDestroyCapacity,
-		renderer->renderTargetsToDestroyCapacity * 2
+		vulkanCommandBuffer->renderTargetsToDestroyCount + 1,
+		vulkanCommandBuffer->renderTargetsToDestroyCapacity,
+		vulkanCommandBuffer->renderTargetsToDestroyCapacity * 2
 	)
 
-	renderer->renderTargetsToDestroy[renderer->renderTargetsToDestroyCount] = vulkanRenderTarget;
-	renderer->renderTargetsToDestroyCount += 1;
-
-	SDL_UnlockMutex(renderer->disposeLock);
+	vulkanCommandBuffer->renderTargetsToDestroy[vulkanCommandBuffer->renderTargetsToDestroyCount] = vulkanRenderTarget;
+	vulkanCommandBuffer->renderTargetsToDestroyCount += 1;
 }
 
 static void VULKAN_QueueDestroyFramebuffer(
 	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer,
 	Refresh_Framebuffer *framebuffer
 ) {
-	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	VulkanCommandBuffer* vulkanCommandBuffer = (VulkanCommandBuffer*)commandBuffer;
 	VulkanFramebuffer *vulkanFramebuffer = (VulkanFramebuffer*) framebuffer;
 
-	SDL_LockMutex(renderer->disposeLock);
-
 	EXPAND_ARRAY_IF_NEEDED(
-		renderer->framebuffersToDestroy,
+		vulkanCommandBuffer->framebuffersToDestroy,
 		VulkanFramebuffer*,
-		renderer->framebuffersToDestroyCount + 1,
-		renderer->framebuffersToDestroyCapacity,
-		renderer->framebuffersToDestroyCapacity * 2
+		vulkanCommandBuffer->framebuffersToDestroyCount + 1,
+		vulkanCommandBuffer->framebuffersToDestroyCapacity,
+		vulkanCommandBuffer->framebuffersToDestroyCapacity * 2
 	)
 
-	renderer->framebuffersToDestroy[renderer->framebuffersToDestroyCount] = vulkanFramebuffer;
-	renderer->framebuffersToDestroyCount += 1;
-
-	SDL_UnlockMutex(renderer->disposeLock);
+	vulkanCommandBuffer->framebuffersToDestroy[vulkanCommandBuffer->framebuffersToDestroyCount] = vulkanFramebuffer;
+	vulkanCommandBuffer->framebuffersToDestroyCount += 1;
 }
 
 static void VULKAN_QueueDestroyShaderModule(
 	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer,
 	Refresh_ShaderModule *shaderModule
 ) {
-	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	VulkanCommandBuffer* vulkanCommandBuffer = (VulkanCommandBuffer*)commandBuffer;
 	VkShaderModule vulkanShaderModule = (VkShaderModule) shaderModule;
 
-	SDL_LockMutex(renderer->disposeLock);
-
 	EXPAND_ARRAY_IF_NEEDED(
-		renderer->shaderModulesToDestroy,
+		vulkanCommandBuffer->shaderModulesToDestroy,
 		VkShaderModule,
-		renderer->shaderModulesToDestroyCount + 1,
-		renderer->shaderModulesToDestroyCapacity,
-		renderer->shaderModulesToDestroyCapacity * 2
+		vulkanCommandBuffer->shaderModulesToDestroyCount + 1,
+		vulkanCommandBuffer->shaderModulesToDestroyCapacity,
+		vulkanCommandBuffer->shaderModulesToDestroyCapacity * 2
 	)
 
-	renderer->shaderModulesToDestroy[renderer->shaderModulesToDestroyCount] = vulkanShaderModule;
-	renderer->shaderModulesToDestroyCount += 1;
-
-	SDL_UnlockMutex(renderer->disposeLock);
+	vulkanCommandBuffer->shaderModulesToDestroy[vulkanCommandBuffer->shaderModulesToDestroyCount] = vulkanShaderModule;
+	vulkanCommandBuffer->shaderModulesToDestroyCount += 1;
 }
 
 static void VULKAN_QueueDestroyRenderPass(
 	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer,
 	Refresh_RenderPass *renderPass
 ) {
-	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	VulkanCommandBuffer* vulkanCommandBuffer = (VulkanCommandBuffer*)commandBuffer;
 	VkRenderPass vulkanRenderPass = (VkRenderPass) renderPass;
 
-	SDL_LockMutex(renderer->disposeLock);
-
 	EXPAND_ARRAY_IF_NEEDED(
-		renderer->renderPassesToDestroy,
+		vulkanCommandBuffer->renderPassesToDestroy,
 		VkRenderPass,
-		renderer->renderPassesToDestroyCount + 1,
-		renderer->renderPassesToDestroyCapacity,
-		renderer->renderPassesToDestroyCapacity * 2
+		vulkanCommandBuffer->renderPassesToDestroyCount + 1,
+		vulkanCommandBuffer->renderPassesToDestroyCapacity,
+		vulkanCommandBuffer->renderPassesToDestroyCapacity * 2
 	)
 
-	renderer->renderPassesToDestroy[renderer->renderPassesToDestroyCount] = vulkanRenderPass;
-	renderer->renderPassesToDestroyCount += 1;
-
-	SDL_UnlockMutex(renderer->disposeLock);
+	vulkanCommandBuffer->renderPassesToDestroy[vulkanCommandBuffer->renderPassesToDestroyCount] = vulkanRenderPass;
+	vulkanCommandBuffer->renderPassesToDestroyCount += 1;
 }
 
 static void VULKAN_QueueDestroyComputePipeline(
 	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer,
 	Refresh_ComputePipeline *computePipeline
 ) {
-	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	VulkanCommandBuffer* vulkanCommandBuffer = (VulkanCommandBuffer*)commandBuffer;
 	VulkanComputePipeline *vulkanComputePipeline = (VulkanComputePipeline*) computePipeline;
 
-	SDL_LockMutex(renderer->disposeLock);
-
 	EXPAND_ARRAY_IF_NEEDED(
-		renderer->computePipelinesToDestroy,
+		vulkanCommandBuffer->computePipelinesToDestroy,
 		VulkanComputePipeline*,
-		renderer->computePipelinesToDestroyCount + 1,
-		renderer->computePipelinesToDestroyCapacity,
-		renderer->computePipelinesToDestroyCapacity * 2
+		vulkanCommandBuffer->computePipelinesToDestroyCount + 1,
+		vulkanCommandBuffer->computePipelinesToDestroyCapacity,
+		vulkanCommandBuffer->computePipelinesToDestroyCapacity * 2
 	)
 
-	renderer->computePipelinesToDestroy[renderer->computePipelinesToDestroyCount] = vulkanComputePipeline;
-	renderer->computePipelinesToDestroyCount += 1;
-
-	SDL_UnlockMutex(renderer->disposeLock);
+	vulkanCommandBuffer->computePipelinesToDestroy[vulkanCommandBuffer->computePipelinesToDestroyCount] = vulkanComputePipeline;
+	vulkanCommandBuffer->computePipelinesToDestroyCount += 1;
 }
 
 static void VULKAN_QueueDestroyGraphicsPipeline(
 	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer,
 	Refresh_GraphicsPipeline *graphicsPipeline
 ) {
-	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	VulkanCommandBuffer* vulkanCommandBuffer = (VulkanCommandBuffer*)commandBuffer;
 	VulkanGraphicsPipeline *vulkanGraphicsPipeline = (VulkanGraphicsPipeline*) graphicsPipeline;
 
-	SDL_LockMutex(renderer->disposeLock);
-
 	EXPAND_ARRAY_IF_NEEDED(
-		renderer->graphicsPipelinesToDestroy,
+		vulkanCommandBuffer->graphicsPipelinesToDestroy,
 		VulkanGraphicsPipeline*,
-		renderer->graphicsPipelinesToDestroyCount + 1,
-		renderer->graphicsPipelinesToDestroyCapacity,
-		renderer->graphicsPipelinesToDestroyCapacity * 2
+		vulkanCommandBuffer->graphicsPipelinesToDestroyCount + 1,
+		vulkanCommandBuffer->graphicsPipelinesToDestroyCapacity,
+		vulkanCommandBuffer->graphicsPipelinesToDestroyCapacity * 2
 	)
 
-	renderer->graphicsPipelinesToDestroy[renderer->graphicsPipelinesToDestroyCount] = vulkanGraphicsPipeline;
-	renderer->graphicsPipelinesToDestroyCount += 1;
-
-	SDL_UnlockMutex(renderer->disposeLock);
+	vulkanCommandBuffer->graphicsPipelinesToDestroy[vulkanCommandBuffer->graphicsPipelinesToDestroyCount] = vulkanGraphicsPipeline;
+	vulkanCommandBuffer->graphicsPipelinesToDestroyCount += 1;
 }
 
 /* Command Buffer render state */
@@ -8034,14 +7159,20 @@ static void VULKAN_EndRenderPass(
 	if (	vulkanCommandBuffer->vertexUniformBuffer != renderer->dummyVertexUniformBuffer &&
 		vulkanCommandBuffer->vertexUniformBuffer != NULL
 	) {
-		VULKAN_INTERNAL_BindUniformBuffer(vulkanCommandBuffer->vertexUniformBuffer);
+		VULKAN_INTERNAL_BindUniformBuffer(
+			vulkanCommandBuffer,
+			vulkanCommandBuffer->vertexUniformBuffer
+		);
 	}
 	vulkanCommandBuffer->vertexUniformBuffer = NULL;
 
 	if (	vulkanCommandBuffer->fragmentUniformBuffer != renderer->dummyFragmentUniformBuffer &&
 		vulkanCommandBuffer->fragmentUniformBuffer != NULL
 	) {
-		VULKAN_INTERNAL_BindUniformBuffer(vulkanCommandBuffer->fragmentUniformBuffer);
+		VULKAN_INTERNAL_BindUniformBuffer(
+			vulkanCommandBuffer,
+			vulkanCommandBuffer->fragmentUniformBuffer
+		);
 	}
 	vulkanCommandBuffer->fragmentUniformBuffer = NULL;
 
@@ -8114,7 +7245,10 @@ static void VULKAN_BindGraphicsPipeline(
 	if (	vulkanCommandBuffer->vertexUniformBuffer != renderer->dummyVertexUniformBuffer &&
 		vulkanCommandBuffer->vertexUniformBuffer != NULL
 	) {
-		VULKAN_INTERNAL_BindUniformBuffer(vulkanCommandBuffer->vertexUniformBuffer);
+		VULKAN_INTERNAL_BindUniformBuffer(
+			vulkanCommandBuffer,
+			vulkanCommandBuffer->vertexUniformBuffer
+		);
 	}
 
 	if (pipeline->vertexUniformBlockSize == 0)
@@ -8133,7 +7267,10 @@ static void VULKAN_BindGraphicsPipeline(
 	if (	vulkanCommandBuffer->fragmentUniformBuffer != renderer->dummyFragmentUniformBuffer &&
 		vulkanCommandBuffer->fragmentUniformBuffer != NULL
 	) {
-		VULKAN_INTERNAL_BindUniformBuffer(vulkanCommandBuffer->fragmentUniformBuffer);
+		VULKAN_INTERNAL_BindUniformBuffer(
+			vulkanCommandBuffer,
+			vulkanCommandBuffer->fragmentUniformBuffer
+		);
 	}
 
 	if (pipeline->fragmentUniformBlockSize == 0)
@@ -8242,7 +7379,10 @@ static void VULKAN_BindComputePipeline(
 	if (	vulkanCommandBuffer->computeUniformBuffer != renderer->dummyComputeUniformBuffer &&
 		vulkanCommandBuffer->computeUniformBuffer != NULL
 	) {
-		VULKAN_INTERNAL_BindUniformBuffer(vulkanCommandBuffer->computeUniformBuffer);
+		VULKAN_INTERNAL_BindUniformBuffer(
+			vulkanCommandBuffer,
+			vulkanCommandBuffer->computeUniformBuffer
+		);
 	}
 	vulkanCommandBuffer->computeUniformBuffer = NULL;
 
@@ -8274,7 +7414,7 @@ static void VULKAN_BindComputeBuffers(
 	VulkanComputePipeline *computePipeline = vulkanCommandBuffer->currentComputePipeline;
 
 	VulkanBuffer *currentVulkanBuffer;
-	BufferDescriptorSetData bufferDescriptorSetData;
+	VkDescriptorBufferInfo descriptorBufferInfos[MAX_BUFFER_BINDINGS];
 	uint32_t i;
 
 	if (computePipeline->pipelineLayout->bufferDescriptorSetCache == NULL)
@@ -8286,9 +7426,9 @@ static void VULKAN_BindComputeBuffers(
 	{
 		currentVulkanBuffer = (VulkanBuffer*) pBuffers[i];
 
-		bufferDescriptorSetData.descriptorBufferInfo[i].buffer = currentVulkanBuffer->buffer;
-		bufferDescriptorSetData.descriptorBufferInfo[i].offset = 0;
-		bufferDescriptorSetData.descriptorBufferInfo[i].range = currentVulkanBuffer->size;
+		descriptorBufferInfos[i].buffer = currentVulkanBuffer->buffer;
+		descriptorBufferInfos[i].offset = 0;
+		descriptorBufferInfos[i].range = currentVulkanBuffer->size;
 
 		vulkanCommandBuffer->boundComputeBuffers[i] = currentVulkanBuffer;
 	}
@@ -8296,10 +7436,12 @@ static void VULKAN_BindComputeBuffers(
 	vulkanCommandBuffer->boundComputeBufferCount = computePipeline->pipelineLayout->bufferDescriptorSetCache->bindingCount;
 
 	vulkanCommandBuffer->bufferDescriptorSet =
-		VULKAN_INTERNAL_FetchBufferDescriptorSet(
+		VULKAN_INTERNAL_FetchDescriptorSet(
 			renderer,
+			vulkanCommandBuffer,
 			computePipeline->pipelineLayout->bufferDescriptorSetCache,
-			&bufferDescriptorSetData
+			NULL,
+			descriptorBufferInfos
 		);
 }
 
@@ -8313,7 +7455,7 @@ static void VULKAN_BindComputeTextures(
 	VulkanComputePipeline *computePipeline = vulkanCommandBuffer->currentComputePipeline;
 
 	VulkanTexture *currentTexture;
-	ImageDescriptorSetData imageDescriptorSetData;
+	VkDescriptorImageInfo descriptorImageInfos[MAX_TEXTURE_SAMPLERS];
 	uint32_t i;
 
 	if (computePipeline->pipelineLayout->imageDescriptorSetCache == NULL)
@@ -8324,16 +7466,18 @@ static void VULKAN_BindComputeTextures(
 	for (i = 0; i < computePipeline->pipelineLayout->imageDescriptorSetCache->bindingCount; i += 1)
 	{
 		currentTexture = (VulkanTexture*) pTextures[i];
-		imageDescriptorSetData.descriptorImageInfo[i].imageView = currentTexture->view;
-		imageDescriptorSetData.descriptorImageInfo[i].sampler = VK_NULL_HANDLE;
-		imageDescriptorSetData.descriptorImageInfo[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		descriptorImageInfos[i].imageView = currentTexture->view;
+		descriptorImageInfos[i].sampler = VK_NULL_HANDLE;
+		descriptorImageInfos[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 	}
 
 	vulkanCommandBuffer->imageDescriptorSet =
-		VULKAN_INTERNAL_FetchImageDescriptorSet(
+		VULKAN_INTERNAL_FetchDescriptorSet(
 			renderer,
+			vulkanCommandBuffer,
 			computePipeline->pipelineLayout->imageDescriptorSetCache,
-			&imageDescriptorSetData
+			descriptorImageInfos,
+			NULL
 		);
 }
 
@@ -8346,7 +7490,7 @@ static void VULKAN_INTERNAL_AllocateCommandBuffers(
 	VkResult vulkanResult;
 	uint32_t i;
 	VkCommandBuffer *commandBuffers = SDL_stack_alloc(VkCommandBuffer, allocateCount);
-	VulkanCommandBuffer *currentVulkanCommandBuffer;
+	VulkanCommandBuffer *commandBuffer;
 
 	vulkanCommandPool->inactiveCommandBufferCapacity += allocateCount;
 
@@ -8377,20 +7521,117 @@ static void VULKAN_INTERNAL_AllocateCommandBuffers(
 
 	for (i = 0; i < allocateCount; i += 1)
 	{
-		currentVulkanCommandBuffer = SDL_malloc(sizeof(VulkanCommandBuffer));
-		currentVulkanCommandBuffer->commandPool = vulkanCommandPool;
-		currentVulkanCommandBuffer->commandBuffer = commandBuffers[i];
-		currentVulkanCommandBuffer->boundComputeBufferCount = 0;
-		currentVulkanCommandBuffer->transferBuffers = NULL;
-		currentVulkanCommandBuffer->transferBufferCount = 0;
-		currentVulkanCommandBuffer->present = 0;
-		currentVulkanCommandBuffer->presentWindowHandle = NULL;
-		currentVulkanCommandBuffer->presentSwapchainImageIndex = 0;
-		currentVulkanCommandBuffer->needNewSwapchain = 0;
+		commandBuffer = SDL_malloc(sizeof(VulkanCommandBuffer));
+		commandBuffer->commandPool = vulkanCommandPool;
+		commandBuffer->commandBuffer = commandBuffers[i];
+		commandBuffer->boundComputeBufferCount = 0;
+
+		commandBuffer->present = 0;
+		commandBuffer->presentWindowHandle = NULL;
+		commandBuffer->presentSwapchainImageIndex = 0;
+		commandBuffer->needNewSwapchain = 0;
+
+		/* Transfer buffer tracking */
+
+		commandBuffer->transferBufferCapacity = 4;
+		commandBuffer->transferBufferCount = 0;
+		commandBuffer->transferBuffers = SDL_malloc(
+			commandBuffer->transferBufferCapacity * sizeof(VulkanTransferBuffer*)
+		);
+
+		/* Bound buffer tracking */
+
+		commandBuffer->boundUniformBufferCapacity = 16;
+		commandBuffer->boundUniformBufferCount = 0;
+		commandBuffer->boundUniformBuffers = SDL_malloc(
+			commandBuffer->boundUniformBufferCapacity * sizeof(VulkanUniformBuffer*)
+		);
+
+		/* Descriptor set tracking */
+
+		commandBuffer->boundDescriptorSetDataCapacity = 16;
+		commandBuffer->boundDescriptorSetDataCount = 0;
+		commandBuffer->boundDescriptorSetDatas = SDL_malloc(
+			commandBuffer->boundDescriptorSetDataCapacity * sizeof(DescriptorSetData)
+		);
+
+		/* Deferred destroy storage */
+
+		commandBuffer->renderTargetsToDestroyCapacity = 16;
+		commandBuffer->renderTargetsToDestroyCount = 0;
+
+		commandBuffer->renderTargetsToDestroy = (VulkanRenderTarget**) SDL_malloc(
+			sizeof(VulkanRenderTarget*) *
+			commandBuffer->renderTargetsToDestroyCapacity
+		);
+
+		commandBuffer->texturesToDestroyCapacity = 16;
+		commandBuffer->texturesToDestroyCount = 0;
+
+		commandBuffer->texturesToDestroy = (VulkanTexture**)SDL_malloc(
+			sizeof(VulkanTexture*) *
+			commandBuffer->texturesToDestroyCapacity
+		);
+
+		commandBuffer->buffersToDestroyCapacity = 16;
+		commandBuffer->buffersToDestroyCount = 0;
+
+		commandBuffer->buffersToDestroy = (VulkanBuffer**) SDL_malloc(
+			sizeof(VulkanBuffer*) *
+			commandBuffer->buffersToDestroyCapacity
+		);
+
+		commandBuffer->graphicsPipelinesToDestroyCapacity = 16;
+		commandBuffer->graphicsPipelinesToDestroyCount = 0;
+
+		commandBuffer->graphicsPipelinesToDestroy = (VulkanGraphicsPipeline**) SDL_malloc(
+			sizeof(VulkanGraphicsPipeline*) *
+			commandBuffer->graphicsPipelinesToDestroyCapacity
+		);
+
+		commandBuffer->computePipelinesToDestroyCapacity = 16;
+		commandBuffer->computePipelinesToDestroyCount = 0;
+
+		commandBuffer->computePipelinesToDestroy = (VulkanComputePipeline**) SDL_malloc(
+			sizeof(VulkanComputePipeline*) *
+			commandBuffer->computePipelinesToDestroyCapacity
+		);
+
+		commandBuffer->shaderModulesToDestroyCapacity = 16;
+		commandBuffer->shaderModulesToDestroyCount = 0;
+
+		commandBuffer->shaderModulesToDestroy = (VkShaderModule*) SDL_malloc(
+			sizeof(VkShaderModule) *
+			commandBuffer->shaderModulesToDestroyCapacity
+		);
+
+		commandBuffer->samplersToDestroyCapacity = 16;
+		commandBuffer->samplersToDestroyCount = 0;
+
+		commandBuffer->samplersToDestroy = (VkSampler*) SDL_malloc(
+			sizeof(VkSampler) *
+			commandBuffer->samplersToDestroyCapacity
+		);
+
+		commandBuffer->framebuffersToDestroyCapacity = 16;
+		commandBuffer->framebuffersToDestroyCount = 0;
+
+		commandBuffer->framebuffersToDestroy = (VulkanFramebuffer**) SDL_malloc(
+			sizeof(VulkanFramebuffer*) *
+			commandBuffer->framebuffersToDestroyCapacity
+		);
+
+		commandBuffer->renderPassesToDestroyCapacity = 16;
+		commandBuffer->renderPassesToDestroyCount = 0;
+
+		commandBuffer->renderPassesToDestroy = (VkRenderPass*) SDL_malloc(
+			sizeof(VkRenderPass) *
+			commandBuffer->renderPassesToDestroyCapacity
+		);
 
 		vulkanCommandPool->inactiveCommandBuffers[
 			vulkanCommandPool->inactiveCommandBufferCount
-		] = currentVulkanCommandBuffer;
+		] = commandBuffer;
 		vulkanCommandPool->inactiveCommandBufferCount += 1;
 	}
 
@@ -8492,10 +7733,14 @@ static Refresh_CommandBuffer* VULKAN_AcquireCommandBuffer(
 
 	SDL_threadID threadID = SDL_ThreadID();
 
+	SDL_LockMutex(renderer->acquireCommandBufferLock);
+
 	VulkanCommandBuffer *commandBuffer =
 		VULKAN_INTERNAL_GetInactiveCommandBufferFromPool(renderer, threadID);
 
-	/* State tracking */
+	SDL_UnlockMutex(renderer->acquireCommandBufferLock);
+
+	/* Reset state */
 
 	commandBuffer->currentComputePipeline = NULL;
 	commandBuffer->currentGraphicsPipeline = NULL;
@@ -8504,18 +7749,16 @@ static Refresh_CommandBuffer* VULKAN_AcquireCommandBuffer(
 	commandBuffer->fragmentUniformBuffer = NULL;
 	commandBuffer->computeUniformBuffer = NULL;
 
-	/* init bound compute buffer array */
+	commandBuffer->fixed = fixed;
+	commandBuffer->submitted = 0;
+	commandBuffer->present = 0;
+	commandBuffer->renderPassInProgress = 0;
 
 	for (i = 0; i < MAX_BUFFER_BINDINGS; i += 1)
 	{
 		commandBuffer->boundComputeBuffers[i] = NULL;
 	}
 	commandBuffer->boundComputeBufferCount = 0;
-
-	commandBuffer->fixed = fixed;
-	commandBuffer->submitted = 0;
-	commandBuffer->present = 0;
-	commandBuffer->renderPassInProgress = 0;
 
 	VULKAN_INTERNAL_BeginCommandBuffer(renderer, commandBuffer);
 
@@ -8635,52 +7878,6 @@ static void VULKAN_QueuePresent(
 	}
 }
 
-static void VULKAN_INTERNAL_ResetCommandBuffer(
-	VulkanRenderer *renderer,
-	VulkanCommandBuffer *commandBuffer
-) {
-	VkResult vulkanResult;
-	uint32_t i;
-	VulkanCommandPool *commandPool = commandBuffer->commandPool;
-
-	vulkanResult = renderer->vkResetCommandBuffer(
-		commandBuffer->commandBuffer,
-		VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT
-	);
-
-	if (vulkanResult != VK_SUCCESS)
-	{
-		LogVulkanResultAsError("vkResetCommandBuffer", vulkanResult);
-	}
-
-	/* Return transfer buffers to the pool */
-	if (renderer->transferBufferPool.submittedBufferCount + commandBuffer->transferBufferCount > renderer->transferBufferPool.submittedBufferCapacity)
-	{
-		renderer->transferBufferPool.submittedBufferCapacity = renderer->transferBufferPool.submittedBufferCount + commandBuffer->transferBufferCount;
-		renderer->transferBufferPool.submittedBuffers = SDL_realloc(
-			renderer->transferBufferPool.submittedBuffers,
-			renderer->transferBufferPool.submittedBufferCapacity * sizeof(VulkanTransferBuffer*)
-		);
-	}
-
-	for (i = 0; i < commandBuffer->transferBufferCount; i+= 1)
-	{
-		renderer->transferBufferPool.submittedBuffers[renderer->transferBufferPool.submittedBufferCount] = commandBuffer->transferBuffers[i];
-		renderer->transferBufferPool.submittedBufferCount += 1;
-	}
-
-	SDL_free(commandBuffer->transferBuffers);
-	commandBuffer->transferBuffers = NULL;
-	commandBuffer->transferBufferCount = 0;
-
-	commandBuffer->submitted = 0;
-
-	commandPool->inactiveCommandBuffers[
-		commandPool->inactiveCommandBufferCount
-	] = commandBuffer;
-	commandPool->inactiveCommandBufferCount += 1;
-}
-
 /* Synchronization management */
 
 static VkFence VULKAN_INTERNAL_AcquireFence(
@@ -8689,6 +7886,8 @@ static VkFence VULKAN_INTERNAL_AcquireFence(
 	VkFenceCreateInfo fenceCreateInfo;
 	VkFence fence;
 	VkResult fenceCreateResult;
+
+	SDL_LockMutex(renderer->acquireFenceLock);
 
 	if (renderer->availableFenceCount == 0)
 	{
@@ -8705,6 +7904,7 @@ static VkFence VULKAN_INTERNAL_AcquireFence(
 
 		if (fenceCreateResult != VK_SUCCESS)
 		{
+			SDL_UnlockMutex(renderer->acquireFenceLock);
 			LogVulkanResultAsError("vkCreateFence", fenceCreateResult);
 			return VK_NULL_HANDLE;
 		}
@@ -8715,72 +7915,266 @@ static VkFence VULKAN_INTERNAL_AcquireFence(
 	fence = renderer->availableFences[renderer->availableFenceCount - 1];
 	renderer->availableFenceCount -= 1;
 
-	if (renderer->usedFenceCount >= renderer->usedFenceCapacity)
-	{
-		renderer->usedFenceCapacity *= 2;
-		renderer->usedFences = SDL_realloc(
-			renderer->usedFences,
-			renderer->usedFenceCapacity * sizeof(VkFence)
-		);
-	}
-
-	renderer->usedFences[renderer->usedFenceCount] = fence;
-	renderer->usedFenceCount += 1;
+	SDL_UnlockMutex(renderer->acquireFenceLock);
 
 	return fence;
 }
 
-static void VULKAN_INTERNAL_ResetUsedFences(
-	VulkanRenderer *renderer
+/* Submission structure */
+
+static void VULKAN_INTERNAL_CleanCommandBuffer(
+	VulkanRenderer *renderer,
+	VulkanCommandBuffer *commandBuffer
 ) {
 	uint32_t i;
+	VulkanUniformBuffer *uniformBuffer;
+	VkResult result;
+	DescriptorSetData *descriptorSetData;
 
-	if (renderer->usedFenceCount > 0)
+	result = renderer->vkResetCommandBuffer(
+		commandBuffer->commandBuffer,
+		VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT
+	);
+
+	if (result != VK_SUCCESS)
 	{
-		/* Prepare the command buffer fence for submission */
-		renderer->vkResetFences(
-			renderer->logicalDevice,
-			renderer->usedFenceCount,
-			renderer->usedFences
-		);
+		LogVulkanResultAsError("vkResetCommandBuffer", result);
+	}
 
-		/* Used fences are now available */
-		if (renderer->usedFenceCount + renderer->availableFenceCount >= renderer->availableFenceCapacity)
+	commandBuffer->submitted = 0;
+
+	/* Bound uniform buffers are now available */
+
+	for (i = 0; i < commandBuffer->boundUniformBufferCount; i += 1)
+	{
+		uniformBuffer = commandBuffer->boundUniformBuffers[i];
+
+		SDL_LockMutex(uniformBuffer->pool->lock);
+		if (uniformBuffer->pool->availableBufferCount == uniformBuffer->pool->availableBufferCapacity)
 		{
-			renderer->availableFenceCapacity = renderer->usedFenceCount + renderer->availableFenceCount;
-			renderer->availableFences = SDL_realloc(
-				renderer->availableFences,
-				renderer->availableFenceCapacity * sizeof(VkFence)
+			uniformBuffer->pool->availableBufferCapacity *= 2;
+			uniformBuffer->pool->availableBuffers = SDL_realloc(
+				uniformBuffer->pool->availableBuffers,
+				uniformBuffer->pool->availableBufferCapacity * sizeof(VulkanUniformBuffer*)
 			);
 		}
 
-		for (i = 0; i < renderer->usedFenceCount; i += 1)
+		uniformBuffer->pool->availableBuffers[uniformBuffer->pool->availableBufferCount] = uniformBuffer;
+		uniformBuffer->pool->availableBufferCount += 1;
+		SDL_UnlockMutex(uniformBuffer->pool->lock);
+	}
+
+	commandBuffer->boundUniformBufferCount = 0;
+
+	SDL_LockMutex(renderer->transferBufferPool.lock);
+
+	if (renderer->transferBufferPool.availableBufferCount + commandBuffer->transferBufferCount >= renderer->transferBufferPool.availableBufferCapacity)
+	{
+		renderer->transferBufferPool.availableBufferCapacity = renderer->transferBufferPool.availableBufferCount + commandBuffer->transferBufferCount;
+		renderer->transferBufferPool.availableBuffers = SDL_realloc(
+			renderer->transferBufferPool.availableBuffers,
+			renderer->transferBufferPool.availableBufferCapacity * sizeof(VulkanTransferBuffer*)
+		);
+	}
+
+	for (i = 0; i < commandBuffer->transferBufferCount; i += 1)
+	{
+		commandBuffer->transferBuffers[i]->offset = 0;
+		renderer->transferBufferPool.availableBuffers[renderer->transferBufferPool.availableBufferCount] = commandBuffer->transferBuffers[i];
+		renderer->transferBufferPool.availableBufferCount += 1;
+	}
+
+	SDL_UnlockMutex(renderer->transferBufferPool.lock);
+
+	commandBuffer->transferBufferCount = 0;
+
+	/* Bound descriptor sets are now available */
+
+	for (i = 0; i < commandBuffer->boundDescriptorSetDataCount; i += 1)
+	{
+		descriptorSetData = &commandBuffer->boundDescriptorSetDatas[i];
+
+		SDL_LockMutex(descriptorSetData->descriptorSetCache->lock);
+
+		if (descriptorSetData->descriptorSetCache->inactiveDescriptorSetCount == descriptorSetData->descriptorSetCache->inactiveDescriptorSetCapacity)
 		{
-			renderer->availableFences[renderer->availableFenceCount] = renderer->usedFences[i];
-			renderer->availableFenceCount += 1;
+			descriptorSetData->descriptorSetCache->inactiveDescriptorSetCapacity *= 2;
+			descriptorSetData->descriptorSetCache->inactiveDescriptorSets = SDL_realloc(
+				descriptorSetData->descriptorSetCache->inactiveDescriptorSets,
+				descriptorSetData->descriptorSetCache->inactiveDescriptorSetCapacity * sizeof(VkDescriptorSet)
+			);
 		}
-		renderer->usedFenceCount = 0;
+
+		descriptorSetData->descriptorSetCache->inactiveDescriptorSets[descriptorSetData->descriptorSetCache->inactiveDescriptorSetCount] = descriptorSetData->descriptorSet;
+		descriptorSetData->descriptorSetCache->inactiveDescriptorSetCount += 1;
+
+		SDL_UnlockMutex(descriptorSetData->descriptorSetCache->lock);
+	}
+
+	commandBuffer->boundDescriptorSetDataCount = 0;
+
+	/* Perform pending destroys */
+
+	for (i = 0; i < commandBuffer->renderTargetsToDestroyCount; i += 1)
+	{
+		VULKAN_INTERNAL_DestroyRenderTarget(
+			renderer,
+			commandBuffer->renderTargetsToDestroy[i]
+		);
+	}
+	commandBuffer->renderTargetsToDestroyCount = 0;
+
+	for (i = 0; i < commandBuffer->texturesToDestroyCount; i += 1)
+	{
+		VULKAN_INTERNAL_DestroyTexture(
+			renderer,
+			commandBuffer->texturesToDestroy[i]
+		);
+	}
+	commandBuffer->texturesToDestroyCount = 0;
+
+	for (i = 0; i < commandBuffer->buffersToDestroyCount; i += 1)
+	{
+		VULKAN_INTERNAL_DestroyBuffer(
+			renderer,
+			commandBuffer->buffersToDestroy[i]
+		);
+	}
+	commandBuffer->buffersToDestroyCount = 0;
+
+	for (i = 0; i < commandBuffer->graphicsPipelinesToDestroyCount; i += 1)
+	{
+		VULKAN_INTERNAL_DestroyGraphicsPipeline(
+			renderer,
+			commandBuffer->graphicsPipelinesToDestroy[i]
+		);
+	}
+	commandBuffer->graphicsPipelinesToDestroyCount = 0;
+
+	for (i = 0; i < commandBuffer->computePipelinesToDestroyCount; i += 1)
+	{
+		VULKAN_INTERNAL_DestroyComputePipeline(
+			renderer,
+			commandBuffer->computePipelinesToDestroy[i]
+		);
+	}
+	commandBuffer->computePipelinesToDestroyCount = 0;
+
+	for (i = 0; i < commandBuffer->shaderModulesToDestroyCount; i += 1)
+	{
+		VULKAN_INTERNAL_DestroyShaderModule(
+			renderer,
+			commandBuffer->shaderModulesToDestroy[i]
+		);
+	}
+	commandBuffer->shaderModulesToDestroyCount = 0;
+
+	for (i = 0; i < commandBuffer->samplersToDestroyCount; i += 1)
+	{
+		VULKAN_INTERNAL_DestroySampler(
+			renderer,
+			commandBuffer->samplersToDestroy[i]
+		);
+	}
+	commandBuffer->samplersToDestroyCount = 0;
+
+	for (i = 0; i < commandBuffer->framebuffersToDestroyCount; i += 1)
+	{
+		VULKAN_INTERNAL_DestroyFramebuffer(
+			renderer,
+			commandBuffer->framebuffersToDestroy[i]
+		);
+	}
+	commandBuffer->framebuffersToDestroyCount = 0;
+
+	for (i = 0; i < commandBuffer->renderPassesToDestroyCount; i += 1)
+	{
+		VULKAN_INTERNAL_DestroyRenderPass(
+			renderer,
+			commandBuffer->renderPassesToDestroy[i]
+		);
+	}
+	commandBuffer->renderPassesToDestroyCount = 0;
+
+	SDL_LockMutex(renderer->acquireCommandBufferLock);
+
+	if (commandBuffer->commandPool->inactiveCommandBufferCount == commandBuffer->commandPool->inactiveCommandBufferCapacity)
+	{
+		commandBuffer->commandPool->inactiveCommandBufferCapacity += 1;
+		commandBuffer->commandPool->inactiveCommandBuffers = SDL_realloc(
+			commandBuffer->commandPool->inactiveCommandBuffers,
+			commandBuffer->commandPool->inactiveCommandBufferCapacity * sizeof(VulkanCommandBuffer*)
+		);
+	}
+
+	commandBuffer->commandPool->inactiveCommandBuffers[
+		commandBuffer->commandPool->inactiveCommandBufferCount
+	] = commandBuffer;
+	commandBuffer->commandPool->inactiveCommandBufferCount += 1;
+
+	SDL_UnlockMutex(renderer->acquireCommandBufferLock);
+
+	renderer->vkResetFences(
+		renderer->logicalDevice,
+		1,
+		&commandBuffer->inFlightFence
+	);
+
+	SDL_LockMutex(renderer->acquireFenceLock);
+
+	if (renderer->availableFenceCount == renderer->availableFenceCapacity)
+	{
+		renderer->availableFenceCapacity *= 2;
+		renderer->availableFences = SDL_realloc(
+			renderer->availableFences,
+			renderer->availableFenceCapacity * sizeof(VkFence)
+		);
+	}
+
+	renderer->availableFences[renderer->availableFenceCount] = commandBuffer->inFlightFence;
+	renderer->availableFenceCount += 1;
+
+	SDL_UnlockMutex(renderer->acquireFenceLock);
+
+	commandBuffer->inFlightFence = VK_NULL_HANDLE;
+
+	/* Remove this command buffer from the submitted list */
+	for (i = 0; i < renderer->submittedCommandBufferCount; i += 1)
+	{
+		if (renderer->submittedCommandBuffers[i] == commandBuffer)
+		{
+			renderer->submittedCommandBuffers[i] = renderer->submittedCommandBuffers[renderer->submittedCommandBufferCount - 1];
+			renderer->submittedCommandBufferCount -= 1;
+		}
 	}
 }
-
-/* Submission structure */
 
 static void VULKAN_Wait(
     Refresh_Renderer *driverData
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	VulkanCommandBuffer *commandBuffer;
+	VkResult result;
+	int32_t i;
 
-	if (renderer->usedFenceCount > 0)
+	for (i = renderer->submittedCommandBufferCount - 1; i >= 0; i -= 1)
 	{
-		renderer->vkWaitForFences(
+		commandBuffer = renderer->submittedCommandBuffers[i];
+
+		result = renderer->vkWaitForFences(
 			renderer->logicalDevice,
-			renderer->usedFenceCount,
-			renderer->usedFences,
+			1,
+			&commandBuffer->inFlightFence,
 			VK_TRUE,
 			UINT64_MAX
 		);
 
-		VULKAN_INTERNAL_ResetUsedFences(renderer);
+		if (result != VK_SUCCESS)
+		{
+			LogVulkanResultAsError("vkWaitForFences", result);
+		}
+
+		VULKAN_INTERNAL_CleanCommandBuffer(renderer, commandBuffer);
 	}
 }
 
@@ -8801,7 +8195,7 @@ static void VULKAN_Submit(
 	VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 	VulkanSwapchainData *swapchainData;
 	VkFence fence;
-	uint32_t i;
+	int32_t i;
 
 	SDL_LockMutex(renderer->submitLock);
 
@@ -8859,43 +8253,56 @@ static void VULKAN_Submit(
 		}
 	}
 
-	if (presentCount > 0)
+	/* Wait for any previous submissions on swapchains */
+	for (i = 0; i < commandBufferCount; i += 1)
 	{
-		/* Wait for the previous submission to complete */
-		if (renderer->usedFenceCount > 0)
+		currentCommandBuffer = (VulkanCommandBuffer*)pCommandBuffers[i];
+
+		if (currentCommandBuffer->present)
 		{
-			vulkanResult = renderer->vkWaitForFences(
-				renderer->logicalDevice,
-				renderer->usedFenceCount,
-				renderer->usedFences,
-				VK_TRUE,
-				UINT64_MAX
-			);
+			swapchainData = (VulkanSwapchainData*) SDL_GetWindowData(currentCommandBuffer->presentWindowHandle, WINDOW_SWAPCHAIN_DATA);
 
-			if (vulkanResult != VK_SUCCESS)
+			if (swapchainData->inFlightFence != VK_NULL_HANDLE)
 			{
-				SDL_UnlockMutex(renderer->submitLock);
-				LogVulkanResultAsError("vkWaitForFences", vulkanResult);
-				return;
-			}
-		}
-
-		VULKAN_INTERNAL_PostWorkCleanup(renderer);
-
-		/* Reset the previously submitted command buffers */
-		for (i = 0; i < renderer->submittedCommandBufferCount; i += 1)
-		{
-			if (!renderer->submittedCommandBuffers[i]->fixed)
-			{
-				VULKAN_INTERNAL_ResetCommandBuffer(
-					renderer,
-					renderer->submittedCommandBuffers[i]
+				vulkanResult = renderer->vkWaitForFences(
+					renderer->logicalDevice,
+					1,
+					&swapchainData->inFlightFence,
+					VK_TRUE,
+					UINT64_MAX
 				);
+
+				if (vulkanResult != VK_SUCCESS)
+				{
+					SDL_UnlockMutex(renderer->submitLock);
+					LogVulkanResultAsError("vkWaitForFences", vulkanResult);
+					return;
+				}
+
+				swapchainData->inFlightFence = VK_NULL_HANDLE;
 			}
 		}
-		renderer->submittedCommandBufferCount = 0;
+	}
 
-		VULKAN_INTERNAL_ResetUsedFences(renderer);
+	/* Check if we can perform any cleanups */
+	for (i = renderer->submittedCommandBufferCount - 1; i >= 0; i -= 1)
+	{
+		/* If we set a timeout of 0, we can query the command buffer state */
+		vulkanResult = renderer->vkWaitForFences(
+			renderer->logicalDevice,
+			1,
+			&renderer->submittedCommandBuffers[i]->inFlightFence,
+			VK_TRUE,
+			0
+		);
+
+		if (vulkanResult == VK_SUCCESS)
+		{
+			VULKAN_INTERNAL_CleanCommandBuffer(
+				renderer,
+				renderer->submittedCommandBuffers[i]
+			);
+		}
 	}
 
 	/* Acquire a fence */
@@ -8921,6 +8328,18 @@ static void VULKAN_Submit(
 		SDL_UnlockMutex(renderer->submitLock);
 		LogVulkanResultAsError("vkQueueSubmit", vulkanResult);
 		return;
+	}
+
+	for (i = 0; i < commandBufferCount; i += 1)
+	{
+		currentCommandBuffer = (VulkanCommandBuffer*)pCommandBuffers[i];
+		currentCommandBuffer->inFlightFence = fence;
+
+		if (currentCommandBuffer->present)
+		{
+			swapchainData = (VulkanSwapchainData*) SDL_GetWindowData(currentCommandBuffer->presentWindowHandle, WINDOW_SWAPCHAIN_DATA);
+			swapchainData->inFlightFence = fence;
+		}
 	}
 
 	if (renderer->submittedCommandBufferCount + commandBufferCount >= renderer->submittedCommandBufferCapacity)
@@ -9169,6 +8588,10 @@ static uint8_t VULKAN_INTERNAL_CreateInstance(
 			Refresh_LogWarn("Validation layers not found, continuing without validation");
 			createInfo.enabledLayerCount = 0;
 		}
+		else
+		{
+			Refresh_LogInfo("Validation layers enabled, expect debug level performance!");
+		}
 	}
 	else
 	{
@@ -9281,6 +8704,7 @@ static uint8_t VULKAN_INTERNAL_IsDeviceSuitable(
 		renderer,
 		physicalDevice,
 		surface,
+		UINT32_MAX,
 		&swapChainSupportDetails
 	);
 
@@ -9774,18 +9198,15 @@ static Refresh_Device* VULKAN_CreateDevice(
 	/* Threading */
 
 	renderer->allocatorLock = SDL_CreateMutex();
-	renderer->disposeLock = SDL_CreateMutex();
 	renderer->submitLock = SDL_CreateMutex();
+	renderer->acquireFenceLock = SDL_CreateMutex();
+	renderer->acquireCommandBufferLock = SDL_CreateMutex();
 
 	/* Create fence lists */
 
 	renderer->availableFenceCount = 0;
 	renderer->availableFenceCapacity = 4;
 	renderer->availableFences = SDL_malloc(renderer->availableFenceCapacity * sizeof(VkFence));
-
-	renderer->usedFenceCount = 0;
-	renderer->usedFenceCapacity = 4;
-	renderer->usedFences = SDL_malloc(renderer->usedFenceCapacity * sizeof(VkFence));
 
 	/*
 	 * Create submitted command buffer list
@@ -10088,160 +9509,11 @@ static Refresh_Device* VULKAN_CreateDevice(
 	}
 
 	/* Initialize transfer buffer pool */
+	renderer->transferBufferPool.lock = SDL_CreateMutex();
 
 	renderer->transferBufferPool.availableBufferCapacity = 4;
 	renderer->transferBufferPool.availableBufferCount = 0;
 	renderer->transferBufferPool.availableBuffers = SDL_malloc(renderer->transferBufferPool.availableBufferCapacity * sizeof(VulkanTransferBuffer*));
-
-	renderer->transferBufferPool.submittedBufferCapacity = 4;
-	renderer->transferBufferPool.submittedBufferCount = 0;
-	renderer->transferBufferPool.submittedBuffers = SDL_malloc(renderer->transferBufferPool.submittedBufferCapacity * sizeof(VulkanTransferBuffer*));
-
-	/* Deferred destroy storage */
-
-	renderer->renderTargetsToDestroyCapacity = 16;
-	renderer->renderTargetsToDestroyCount = 0;
-
-	renderer->renderTargetsToDestroy = (VulkanRenderTarget**) SDL_malloc(
-		sizeof(VulkanRenderTarget*) *
-		renderer->renderTargetsToDestroyCapacity
-	);
-
-	renderer->submittedRenderTargetsToDestroyCapacity = 16;
-	renderer->submittedRenderTargetsToDestroyCount = 0;
-
-	renderer->submittedRenderTargetsToDestroy = (VulkanRenderTarget**) SDL_malloc(
-		sizeof(VulkanRenderTarget*) *
-		renderer->submittedRenderTargetsToDestroyCapacity
-	);
-
-	renderer->texturesToDestroyCapacity = 16;
-	renderer->texturesToDestroyCount = 0;
-
-	renderer->texturesToDestroy = (VulkanTexture**)SDL_malloc(
-		sizeof(VulkanTexture*) *
-		renderer->texturesToDestroyCapacity
-	);
-
-	renderer->submittedTexturesToDestroyCapacity = 16;
-	renderer->submittedTexturesToDestroyCount = 0;
-
-	renderer->submittedTexturesToDestroy = (VulkanTexture**)SDL_malloc(
-		sizeof(VulkanTexture*) *
-		renderer->submittedTexturesToDestroyCapacity
-	);
-
-	renderer->buffersToDestroyCapacity = 16;
-	renderer->buffersToDestroyCount = 0;
-
-	renderer->buffersToDestroy = (VulkanBuffer**) SDL_malloc(
-		sizeof(VulkanBuffer*) *
-		renderer->buffersToDestroyCapacity
-	);
-
-	renderer->submittedBuffersToDestroyCapacity = 16;
-	renderer->submittedBuffersToDestroyCount = 0;
-
-	renderer->submittedBuffersToDestroy = (VulkanBuffer**) SDL_malloc(
-		sizeof(VulkanBuffer*) *
-		renderer->submittedBuffersToDestroyCapacity
-	);
-
-	renderer->graphicsPipelinesToDestroyCapacity = 16;
-	renderer->graphicsPipelinesToDestroyCount = 0;
-
-	renderer->graphicsPipelinesToDestroy = (VulkanGraphicsPipeline**) SDL_malloc(
-		sizeof(VulkanGraphicsPipeline*) *
-		renderer->graphicsPipelinesToDestroyCapacity
-	);
-
-	renderer->submittedGraphicsPipelinesToDestroyCapacity = 16;
-	renderer->submittedGraphicsPipelinesToDestroyCount = 0;
-
-	renderer->submittedGraphicsPipelinesToDestroy = (VulkanGraphicsPipeline**) SDL_malloc(
-		sizeof(VulkanGraphicsPipeline*) *
-		renderer->submittedGraphicsPipelinesToDestroyCapacity
-	);
-
-	renderer->computePipelinesToDestroyCapacity = 16;
-	renderer->computePipelinesToDestroyCount = 0;
-
-	renderer->computePipelinesToDestroy = (VulkanComputePipeline**) SDL_malloc(
-		sizeof(VulkanComputePipeline*) *
-		renderer->computePipelinesToDestroyCapacity
-	);
-
-	renderer->submittedComputePipelinesToDestroyCapacity = 16;
-	renderer->submittedComputePipelinesToDestroyCount = 0;
-
-	renderer->submittedComputePipelinesToDestroy = (VulkanComputePipeline**) SDL_malloc(
-		sizeof(VulkanComputePipeline*) *
-		renderer->submittedComputePipelinesToDestroyCapacity
-	);
-
-	renderer->shaderModulesToDestroyCapacity = 16;
-	renderer->shaderModulesToDestroyCount = 0;
-
-	renderer->shaderModulesToDestroy = (VkShaderModule*) SDL_malloc(
-		sizeof(VkShaderModule) *
-		renderer->shaderModulesToDestroyCapacity
-	);
-
-	renderer->submittedShaderModulesToDestroyCapacity = 16;
-	renderer->submittedShaderModulesToDestroyCount = 0;
-
-	renderer->submittedShaderModulesToDestroy = (VkShaderModule*) SDL_malloc(
-		sizeof(VkShaderModule) *
-		renderer->submittedShaderModulesToDestroyCapacity
-	);
-
-	renderer->samplersToDestroyCapacity = 16;
-	renderer->samplersToDestroyCount = 0;
-
-	renderer->samplersToDestroy = (VkSampler*) SDL_malloc(
-		sizeof(VkSampler) *
-		renderer->samplersToDestroyCapacity
-	);
-
-	renderer->submittedSamplersToDestroyCapacity = 16;
-	renderer->submittedSamplersToDestroyCount = 0;
-
-	renderer->submittedSamplersToDestroy = (VkSampler*) SDL_malloc(
-		sizeof(VkSampler) *
-		renderer->submittedSamplersToDestroyCapacity
-	);
-
-	renderer->framebuffersToDestroyCapacity = 16;
-	renderer->framebuffersToDestroyCount = 0;
-
-	renderer->framebuffersToDestroy = (VulkanFramebuffer**) SDL_malloc(
-		sizeof(VulkanFramebuffer*) *
-		renderer->framebuffersToDestroyCapacity
-	);
-
-	renderer->submittedFramebuffersToDestroyCapacity = 16;
-	renderer->submittedFramebuffersToDestroyCount = 0;
-
-	renderer->submittedFramebuffersToDestroy = (VulkanFramebuffer**) SDL_malloc(
-		sizeof(VulkanFramebuffer*) *
-		renderer->submittedFramebuffersToDestroyCapacity
-	);
-
-	renderer->renderPassesToDestroyCapacity = 16;
-	renderer->renderPassesToDestroyCount = 0;
-
-	renderer->renderPassesToDestroy = (VkRenderPass*) SDL_malloc(
-		sizeof(VkRenderPass) *
-		renderer->renderPassesToDestroyCapacity
-	);
-
-	renderer->submittedRenderPassesToDestroyCapacity = 16;
-	renderer->submittedRenderPassesToDestroyCount = 0;
-
-	renderer->submittedRenderPassesToDestroy = (VkRenderPass*) SDL_malloc(
-		sizeof(VkRenderPass) *
-		renderer->submittedRenderPassesToDestroyCapacity
-	);
 
     return result;
 }
