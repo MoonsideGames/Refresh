@@ -7915,6 +7915,12 @@ static VkFence VULKAN_INTERNAL_AcquireFence(
 	fence = renderer->availableFences[renderer->availableFenceCount - 1];
 	renderer->availableFenceCount -= 1;
 
+	renderer->vkResetFences(
+		renderer->logicalDevice,
+		1,
+		&fence
+	);
+
 	SDL_UnlockMutex(renderer->acquireFenceLock);
 
 	return fence;
@@ -8113,12 +8119,6 @@ static void VULKAN_INTERNAL_CleanCommandBuffer(
 	commandBuffer->commandPool->inactiveCommandBufferCount += 1;
 
 	SDL_UnlockMutex(renderer->acquireCommandBufferLock);
-
-	renderer->vkResetFences(
-		renderer->logicalDevice,
-		1,
-		&commandBuffer->inFlightFence
-	);
 
 	SDL_LockMutex(renderer->acquireFenceLock);
 
