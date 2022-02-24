@@ -218,11 +218,6 @@ struct Refresh_Device
 
     /* State Creation */
 
-    Refresh_RenderPass* (*CreateRenderPass)(
-        Refresh_Renderer *driverData,
-        Refresh_RenderPassCreateInfo *renderPassCreateInfo
-    );
-
     Refresh_ComputePipeline* (*CreateComputePipeline)(
         Refresh_Renderer *driverData,
         Refresh_ComputePipelineCreateInfo *pipelineCreateInfo
@@ -236,11 +231,6 @@ struct Refresh_Device
     Refresh_Sampler* (*CreateSampler)(
         Refresh_Renderer *driverData,
 	    Refresh_SamplerStateCreateInfo *samplerStateCreateInfo
-    );
-
-    Refresh_Framebuffer* (*CreateFramebuffer)(
-        Refresh_Renderer *driverData,
-        Refresh_FramebufferCreateInfo *framebufferCreateInfo
     );
 
     Refresh_ShaderModule* (*CreateShaderModule)(
@@ -383,22 +373,10 @@ struct Refresh_Device
 	    Refresh_RenderTarget *renderTarget
     );
 
-    void(*QueueDestroyFramebuffer)(
-        Refresh_Renderer *driverData,
-		Refresh_CommandBuffer *commandBuffer,
-        Refresh_Framebuffer *frameBuffer
-    );
-
     void(*QueueDestroyShaderModule)(
         Refresh_Renderer *driverData,
 		Refresh_CommandBuffer *commandBuffer,
         Refresh_ShaderModule *shaderModule
-    );
-
-    void(*QueueDestroyRenderPass)(
-        Refresh_Renderer *driverData,
-		Refresh_CommandBuffer *commandBuffer,
-        Refresh_RenderPass *renderPass
     );
 
     void(*QueueDestroyComputePipeline)(
@@ -417,13 +395,11 @@ struct Refresh_Device
 
     void(*BeginRenderPass)(
         Refresh_Renderer *driverData,
-        Refresh_CommandBuffer *commandBuffer,
-        Refresh_RenderPass *renderPass,
-        Refresh_Framebuffer *framebuffer,
-        Refresh_Rect *renderArea,
-        Refresh_Vec4 *pColorClearValues,
-        uint32_t colorClearCount,
-        Refresh_DepthStencilValue *depthStencilClearValue
+		Refresh_CommandBuffer *commandBuffer,
+		Refresh_Rect *renderArea,
+		Refresh_ColorAttachmentInfo *colorAttachmentInfos,
+		uint32_t colorAttachmentCount,
+		Refresh_DepthStencilAttachmentInfo *depthStencilAttachmentInfo
     );
 
     void(*EndRenderPass)(
@@ -509,11 +485,9 @@ struct Refresh_Device
 	ASSIGN_DRIVER_FUNC(DrawInstancedPrimitives, name) \
 	ASSIGN_DRIVER_FUNC(DrawPrimitives, name) \
     ASSIGN_DRIVER_FUNC(DispatchCompute, name) \
-    ASSIGN_DRIVER_FUNC(CreateRenderPass, name) \
     ASSIGN_DRIVER_FUNC(CreateComputePipeline, name) \
     ASSIGN_DRIVER_FUNC(CreateGraphicsPipeline, name) \
     ASSIGN_DRIVER_FUNC(CreateSampler, name) \
-    ASSIGN_DRIVER_FUNC(CreateFramebuffer, name) \
     ASSIGN_DRIVER_FUNC(CreateShaderModule, name) \
     ASSIGN_DRIVER_FUNC(CreateTexture, name) \
     ASSIGN_DRIVER_FUNC(CreateRenderTarget, name) \
@@ -533,9 +507,7 @@ struct Refresh_Device
     ASSIGN_DRIVER_FUNC(QueueDestroySampler, name) \
     ASSIGN_DRIVER_FUNC(QueueDestroyBuffer, name) \
     ASSIGN_DRIVER_FUNC(QueueDestroyRenderTarget, name) \
-    ASSIGN_DRIVER_FUNC(QueueDestroyFramebuffer, name) \
     ASSIGN_DRIVER_FUNC(QueueDestroyShaderModule, name) \
-    ASSIGN_DRIVER_FUNC(QueueDestroyRenderPass, name) \
     ASSIGN_DRIVER_FUNC(QueueDestroyComputePipeline, name) \
     ASSIGN_DRIVER_FUNC(QueueDestroyGraphicsPipeline, name) \
     ASSIGN_DRIVER_FUNC(BeginRenderPass, name) \

@@ -250,17 +250,6 @@ void Refresh_DispatchCompute(
     );
 }
 
-Refresh_RenderPass* Refresh_CreateRenderPass(
-	Refresh_Device *device,
-	Refresh_RenderPassCreateInfo *renderPassCreateInfo
-) {
-    NULL_RETURN_NULL(device);
-    return device->CreateRenderPass(
-        device->driverData,
-        renderPassCreateInfo
-    );
-}
-
 Refresh_ComputePipeline* Refresh_CreateComputePipeline(
     Refresh_Device *device,
     Refresh_ComputePipelineCreateInfo *pipelineCreateInfo
@@ -291,17 +280,6 @@ Refresh_Sampler* Refresh_CreateSampler(
     return device->CreateSampler(
         device->driverData,
         samplerStateCreateInfo
-    );
-}
-
-Refresh_Framebuffer* Refresh_CreateFramebuffer(
-	Refresh_Device *device,
-	Refresh_FramebufferCreateInfo *framebufferCreateInfo
-) {
-    NULL_RETURN_NULL(device);
-    return device->CreateFramebuffer(
-        device->driverData,
-        framebufferCreateInfo
     );
 }
 
@@ -592,19 +570,6 @@ void Refresh_QueueDestroyRenderTarget(
     );
 }
 
-void Refresh_QueueDestroyFramebuffer(
-	Refresh_Device *device,
-	Refresh_CommandBuffer *commandBuffer,
-	Refresh_Framebuffer *frameBuffer
-) {
-    NULL_RETURN(device);
-    device->QueueDestroyFramebuffer(
-        device->driverData,
-		commandBuffer,
-        frameBuffer
-    );
-}
-
 void Refresh_QueueDestroyShaderModule(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
@@ -615,19 +580,6 @@ void Refresh_QueueDestroyShaderModule(
         device->driverData,
 		commandBuffer,
         shaderModule
-    );
-}
-
-void Refresh_QueueDestroyRenderPass(
-	Refresh_Device *device,
-	Refresh_CommandBuffer *commandBuffer,
-	Refresh_RenderPass *renderPass
-) {
-    NULL_RETURN(device);
-    device->QueueDestroyRenderPass(
-        device->driverData,
-		commandBuffer,
-        renderPass
     );
 }
 
@@ -659,24 +611,20 @@ void Refresh_QueueDestroyGraphicsPipeline(
 
 void Refresh_BeginRenderPass(
 	Refresh_Device *device,
-    Refresh_CommandBuffer *commandBuffer,
-	Refresh_RenderPass *renderPass,
-	Refresh_Framebuffer *framebuffer,
+	Refresh_CommandBuffer *commandBuffer,
 	Refresh_Rect *renderArea,
-	Refresh_Vec4 *pColorClearValues,
-	uint32_t colorClearCount,
-	Refresh_DepthStencilValue *depthStencilClearValue
+	Refresh_ColorAttachmentInfo *colorAttachmentInfos,
+	uint32_t colorAttachmentCount,
+	Refresh_DepthStencilAttachmentInfo *depthStencilAttachmentInfo
 ) {
     NULL_RETURN(device);
     device->BeginRenderPass(
         device->driverData,
         commandBuffer,
-        renderPass,
-        framebuffer,
         renderArea,
-        pColorClearValues,
-        colorClearCount,
-        depthStencilClearValue
+        colorAttachmentInfos,
+        colorAttachmentCount,
+        depthStencilAttachmentInfo
     );
 }
 

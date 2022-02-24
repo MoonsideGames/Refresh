@@ -321,12 +321,6 @@ static void TEMPLATE_DispatchCompute(
 
 /* State Creation */
 
-static Refresh_RenderPass* TEMPLATE_CreateRenderPass(
-	Refresh_Renderer *driverData,
-	Refresh_RenderPassCreateInfo *renderPassCreateInfo
-) {
-	NOT_IMPLEMENTED
-}
 
 static Refresh_ComputePipeline* TEMPLATE_CreateComputePipeline(
 	Refresh_Renderer *driverData,
@@ -345,13 +339,6 @@ static Refresh_GraphicsPipeline* TEMPLATE_CreateGraphicsPipeline(
 static Refresh_Sampler* TEMPLATE_CreateSampler(
 	Refresh_Renderer *driverData,
 	Refresh_SamplerStateCreateInfo *samplerStateCreateInfo
-) {
-	NOT_IMPLEMENTED
-}
-
-static Refresh_Framebuffer* TEMPLATE_CreateFramebuffer(
-	Refresh_Renderer *driverData,
-	Refresh_FramebufferCreateInfo *framebufferCreateInfo
 ) {
 	NOT_IMPLEMENTED
 }
@@ -504,6 +491,7 @@ static void TEMPLATE_GetBufferData(
 
 static void TEMPLATE_QueueDestroyTexture(
 	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer,
 	Refresh_Texture *texture
 ) {
 	NOT_IMPLEMENTED
@@ -511,6 +499,7 @@ static void TEMPLATE_QueueDestroyTexture(
 
 static void TEMPLATE_QueueDestroySampler(
 	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer,
 	Refresh_Sampler *sampler
 ) {
 	NOT_IMPLEMENTED
@@ -518,6 +507,7 @@ static void TEMPLATE_QueueDestroySampler(
 
 static void TEMPLATE_QueueDestroyBuffer(
 	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer,
 	Refresh_Buffer *buffer
 ) {
 	NOT_IMPLEMENTED
@@ -525,34 +515,25 @@ static void TEMPLATE_QueueDestroyBuffer(
 
 static void TEMPLATE_QueueDestroyRenderTarget(
 	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer,
 	Refresh_RenderTarget *renderTarget
-) {
-	NOT_IMPLEMENTED
-}
-
-static void TEMPLATE_QueueDestroyFramebuffer(
-	Refresh_Renderer *driverData,
-	Refresh_Framebuffer *frameBuffer
 ) {
 	NOT_IMPLEMENTED
 }
 
 static void TEMPLATE_QueueDestroyShaderModule(
 	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer,
+
 	Refresh_ShaderModule *shaderModule
 ) {
 	NOT_IMPLEMENTED
 }
 
-static void TEMPLATE_QueueDestroyRenderPass(
-	Refresh_Renderer *driverData,
-	Refresh_RenderPass *renderPass
-) {
-	NOT_IMPLEMENTED
-}
 
 static void TEMPLATE_QueueDestroyComputePipeline(
 	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer,
 	Refresh_ComputePipeline *computePipeline
 ) {
 	NOT_IMPLEMENTED
@@ -560,6 +541,7 @@ static void TEMPLATE_QueueDestroyComputePipeline(
 
 static void TEMPLATE_QueueDestroyGraphicsPipeline(
 	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer,
 	Refresh_GraphicsPipeline *graphicsPipeline
 ) {
 	NOT_IMPLEMENTED
@@ -570,12 +552,10 @@ static void TEMPLATE_QueueDestroyGraphicsPipeline(
 static void TEMPLATE_BeginRenderPass(
 	Refresh_Renderer *driverData,
 	Refresh_CommandBuffer *commandBuffer,
-	Refresh_RenderPass *renderPass,
-	Refresh_Framebuffer *framebuffer,
 	Refresh_Rect *renderArea,
-	Refresh_Vec4 *pColorClearValues,
-	uint32_t colorClearCount,
-	Refresh_DepthStencilValue *depthStencilClearValue
+	Refresh_ColorAttachmentInfo *colorAttachmentInfos,
+	uint32_t colorAttachmentCount,
+	Refresh_DepthStencilAttachmentInfo *depthStencilAttachmentInfo
 ) {
 	NOT_IMPLEMENTED
 }

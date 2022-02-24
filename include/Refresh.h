@@ -59,9 +59,7 @@ typedef struct Refresh_Buffer Refresh_Buffer;
 typedef struct Refresh_Texture Refresh_Texture;
 typedef struct Refresh_Sampler Refresh_Sampler;
 typedef struct Refresh_RenderTarget Refresh_RenderTarget;
-typedef struct Refresh_Framebuffer Refresh_Framebuffer;
 typedef struct Refresh_ShaderModule Refresh_ShaderModule;
-typedef struct Refresh_RenderPass Refresh_RenderPass;
 typedef struct Refresh_ComputePipeline Refresh_ComputePipeline;
 typedef struct Refresh_GraphicsPipeline Refresh_GraphicsPipeline;
 typedef struct Refresh_CommandBuffer Refresh_CommandBuffer;
@@ -473,30 +471,6 @@ typedef struct Refresh_GraphicsPipelineLayoutCreateInfo
 	uint32_t fragmentSamplerBindingCount;
 } Refresh_GraphicsPipelineLayoutCreateInfo;
 
-typedef struct Refresh_ColorTargetDescription
-{
-	Refresh_TextureFormat format;
-	Refresh_SampleCount multisampleCount;
-	Refresh_LoadOp loadOp;
-	Refresh_StoreOp storeOp;
-} Refresh_ColorTargetDescription;
-
-typedef struct Refresh_DepthStencilTargetDescription
-{
-	Refresh_TextureFormat depthStencilFormat;
-	Refresh_LoadOp loadOp;
-	Refresh_StoreOp storeOp;
-	Refresh_LoadOp stencilLoadOp;
-	Refresh_StoreOp stencilStoreOp;
-} Refresh_DepthStencilTargetDescription;
-
-typedef struct Refresh_RenderPassCreateInfo
-{
-	const Refresh_ColorTargetDescription *colorTargetDescriptions;
-	uint32_t colorTargetCount;
-	const Refresh_DepthStencilTargetDescription *depthTargetDescription; /* can be NULL */
-} Refresh_RenderPassCreateInfo;
-
 typedef struct Refresh_ShaderModuleCreateInfo
 {
 	size_t codeSize;
@@ -579,6 +553,20 @@ typedef struct Refresh_ComputePipelineCreateInfo
 	Refresh_ComputePipelineLayoutCreateInfo pipelineLayoutCreateInfo;
 } Refresh_ComputePipelineCreateInfo;
 
+typedef struct Refresh_ColorAttachmentDescription
+{
+	Refresh_TextureFormat format;
+	Refresh_SampleCount sampleCount;
+} Refresh_ColorAttachmentDescription;
+
+typedef struct Refresh_GraphicsPipelineAttachmentInfo
+{
+	Refresh_ColorAttachmentDescription colorAttachmentDescriptions[4];
+	uint32_t colorAttachmentCount;
+	uint8_t hasDepthStencilAttachment;
+	Refresh_TextureFormat depthStencilFormat;
+} Refresh_GraphicsPipelineAttachmentInfo;
+
 typedef struct Refresh_GraphicsPipelineCreateInfo
 {
 	Refresh_ShaderStageState vertexShaderState;
@@ -591,18 +579,28 @@ typedef struct Refresh_GraphicsPipelineCreateInfo
 	Refresh_DepthStencilState depthStencilState;
 	Refresh_ColorBlendState colorBlendState;
 	Refresh_GraphicsPipelineLayoutCreateInfo pipelineLayoutCreateInfo;
-	Refresh_RenderPass *renderPass;
+	Refresh_GraphicsPipelineAttachmentInfo attachmentInfo;
 } Refresh_GraphicsPipelineCreateInfo;
 
-typedef struct Refresh_FramebufferCreateInfo
+/* Render pass structures */
+
+typedef struct Refresh_ColorAttachmentInfo
 {
-	Refresh_RenderPass *renderPass;
-	Refresh_RenderTarget **pColorTargets;
-	uint32_t colorTargetCount;
+	Refresh_RenderTarget *pRenderTarget;
+	Refresh_Vec4 clearColor; /* Can be ignored by RenderPass */
+	Refresh_LoadOp loadOp;
+	Refresh_StoreOp storeOp;
+} Refresh_ColorAttachmentInfo;
+
+typedef struct Refresh_DepthStencilAttachmentInfo
+{
 	Refresh_RenderTarget *pDepthStencilTarget;
-	uint32_t width;
-	uint32_t height;
-} Refresh_FramebufferCreateInfo;
+	Refresh_DepthStencilValue depthStencilValue; /* Can be ignored by RenderPass */
+	Refresh_LoadOp loadOp;
+	Refresh_StoreOp storeOp;
+	Refresh_LoadOp stencilLoadOp;
+	Refresh_StoreOp stencilStoreOp;
+} Refresh_DepthStencilAttachmentInfo;
 
 /* Interop Structs */
 
@@ -802,12 +800,6 @@ REFRESHAPI void Refresh_DispatchCompute(
 
 /* State Creation */
 
-/* Returns an allocated RenderPass* object. */
-REFRESHAPI Refresh_RenderPass* Refresh_CreateRenderPass(
-	Refresh_Device *device,
-	Refresh_RenderPassCreateInfo *renderPassCreateInfo
-);
-
 /* Returns an allocated ComputePipeline* object. */
 REFRESHAPI Refresh_ComputePipeline* Refresh_CreateComputePipeline(
 	Refresh_Device *device,
@@ -824,12 +816,6 @@ REFRESHAPI Refresh_GraphicsPipeline* Refresh_CreateGraphicsPipeline(
 REFRESHAPI Refresh_Sampler* Refresh_CreateSampler(
 	Refresh_Device *device,
 	Refresh_SamplerStateCreateInfo *samplerStateCreateInfo
-);
-
-/* Returns an allocated Framebuffer* object. */
-REFRESHAPI Refresh_Framebuffer* Refresh_CreateFramebuffer(
-	Refresh_Device *device,
-	Refresh_FramebufferCreateInfo *framebufferCreateInfo
 );
 
 /* Returns an allocated ShaderModule* object. */
@@ -1081,19 +1067,6 @@ REFRESHAPI void Refresh_QueueDestroyRenderTarget(
 	Refresh_RenderTarget *renderTarget
 );
 
-/* Sends a framebuffer to be destroyed by the renderer. Note that we call it
- * "QueueDestroy" because it may not be immediately destroyed by the renderer if
- * this is not called from the main thread (for example, if a garbage collector
- * deletes the resource instead of the programmer).
- *
- * framebuffer: The Refresh_Framebuffer to be destroyed.
- */
-REFRESHAPI void Refresh_QueueDestroyFramebuffer(
-	Refresh_Device *device,
-	Refresh_CommandBuffer *commandBuffer,
-	Refresh_Framebuffer *frameBuffer
-);
-
 /* Sends a shader module to be destroyed by the renderer. Note that we call it
  * "QueueDestroy" because it may not be immediately destroyed by the renderer if
  * this is not called from the main thread (for example, if a garbage collector
@@ -1105,19 +1078,6 @@ REFRESHAPI void Refresh_QueueDestroyShaderModule(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
 	Refresh_ShaderModule *shaderModule
-);
-
-/* Sends a render pass to be destroyed by the renderer. Note that we call it
- * "QueueDestroy" because it may not be immediately destroyed by the renderer if
- * this is not called from the main thread (for example, if a garbage collector
- * deletes the resource instead of the programmer).
- *
- * renderPass: The Refresh_RenderPass to be destroyed.
- */
-REFRESHAPI void Refresh_QueueDestroyRenderPass(
-	Refresh_Device *device,
-	Refresh_CommandBuffer *commandBuffer,
-	Refresh_RenderPass *renderPass
 );
 
 /* Sends a compute pipeline to be destroyed by the renderer. Note that we call it
@@ -1150,28 +1110,23 @@ REFRESHAPI void Refresh_QueueDestroyGraphicsPipeline(
 
 /* Begins a render pass.
  *
- * renderPass: The renderpass to begin.
- * framebuffer: The framebuffer to bind for the render pass.
  * renderArea:
  * 		The area affected by the render pass.
  * 		All load, store and resolve operations are restricted
  * 		to the given rectangle.
- * clearValues:
- * 		A pointer to an array of Refresh_Color structures
- * 		that contains clear values for each color target in the
- * 		framebuffer. May be NULL.
- * clearCount: The amount of color structs in the above array.
- * depthStencilClearValue: The depth/stencil clear value. May be NULL.
+ * colorAttachmentInfos:
+ * 		A pointer to an array of Refresh_ColorAttachmentInfo structures
+ * 		that contains render targets and clear values. May be NULL.
+ * colorAttachmentCount: The amount of structs in the above array.
+ * depthStencilAttachmentInfo: The depth/stencil render target and clear value. May be NULL.
  */
 REFRESHAPI void Refresh_BeginRenderPass(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
-	Refresh_RenderPass *renderPass,
-	Refresh_Framebuffer *framebuffer,
 	Refresh_Rect *renderArea,
-	Refresh_Vec4 *pColorClearValues,
-	uint32_t colorClearCount,
-	Refresh_DepthStencilValue *depthStencilClearValue
+	Refresh_ColorAttachmentInfo *colorAttachmentInfos,
+	uint32_t colorAttachmentCount,
+	Refresh_DepthStencilAttachmentInfo *depthStencilAttachmentInfo
 );
 
 /* Ends the current render pass. */
