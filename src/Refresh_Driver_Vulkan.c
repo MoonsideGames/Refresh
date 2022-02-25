@@ -8218,6 +8218,7 @@ static Refresh_CommandBuffer* VULKAN_AcquireCommandBuffer(
 	uint8_t fixed
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	VkResult result;
 
 	SDL_threadID threadID = SDL_ThreadID();
 
@@ -8243,6 +8244,16 @@ static Refresh_CommandBuffer* VULKAN_AcquireCommandBuffer(
 
 	commandBuffer->renderPassInProgress = 0;
 	commandBuffer->renderPassColorTargetCount = 0;
+
+	result = renderer->vkResetCommandBuffer(
+		commandBuffer->commandBuffer,
+		VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT
+	);
+
+	if (result != VK_SUCCESS)
+	{
+		LogVulkanResultAsError("vkResetCommandBuffer", result);
+	}
 
 	VULKAN_INTERNAL_BeginCommandBuffer(renderer, commandBuffer);
 
@@ -8418,20 +8429,7 @@ static void VULKAN_INTERNAL_CleanCommandBuffer(
 ) {
 	uint32_t i;
 	VulkanUniformBuffer *uniformBuffer;
-	VkResult result;
 	DescriptorSetData *descriptorSetData;
-
-	result = renderer->vkResetCommandBuffer(
-		commandBuffer->commandBuffer,
-		VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT
-	);
-
-	if (result != VK_SUCCESS)
-	{
-		LogVulkanResultAsError("vkResetCommandBuffer", result);
-	}
-
-	commandBuffer->submitted = 0;
 
 	/* Bound uniform buffers are now available */
 
