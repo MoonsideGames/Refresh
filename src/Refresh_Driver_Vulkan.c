@@ -2544,7 +2544,7 @@ static void VULKAN_INTERNAL_DestroyRenderTarget(
 	SDL_LockMutex(renderer->framebufferFetchLock);
 
 	/* Remove all associated framebuffers */
-	for (i = renderer->framebufferHashArray.count; i >= 0; i -= 1)
+	for (i = renderer->framebufferHashArray.count - 1; i >= 0; i -= 1)
 	{
 		hash = &renderer->framebufferHashArray.elements[i].key;
 
@@ -7335,6 +7335,8 @@ static VkRenderPass VULKAN_INTERNAL_FetchRenderPass(
 		hash.colorTargetDescriptions[i].loadOp = colorAttachmentInfos[i].loadOp;
 		hash.colorTargetDescriptions[i].storeOp = colorAttachmentInfos[i].storeOp;
 	}
+
+	hash.colorAttachmentCount = colorAttachmentCount;
 
 	if (depthStencilAttachmentInfo == NULL)
 	{
