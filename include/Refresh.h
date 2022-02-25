@@ -561,7 +561,7 @@ typedef struct Refresh_ColorAttachmentDescription
 
 typedef struct Refresh_GraphicsPipelineAttachmentInfo
 {
-	Refresh_ColorAttachmentDescription colorAttachmentDescriptions[4];
+	const Refresh_ColorAttachmentDescription *colorAttachmentDescriptions;
 	uint32_t colorAttachmentCount;
 	uint8_t hasDepthStencilAttachment;
 	Refresh_TextureFormat depthStencilFormat;
