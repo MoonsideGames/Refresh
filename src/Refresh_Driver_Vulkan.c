@@ -71,20 +71,20 @@ static uint32_t deviceExtensionCount = SDL_arraysize(deviceExtensionNames);
 
 /* Defines */
 
-#define STARTING_ALLOCATION_SIZE 64000000 		/* 64MB */
-#define MAX_ALLOCATION_SIZE 256000000 			/* 256MB */
+#define STARTING_ALLOCATION_SIZE 64000000 	/* 64MB */
+#define MAX_ALLOCATION_SIZE 256000000 		/* 256MB */
 #define TRANSFER_BUFFER_STARTING_SIZE 8000000 	/* 8MB */
-#define UBO_BUFFER_SIZE 16000 					/* 16KB */
+#define UBO_BUFFER_SIZE 16000 			/* 16KB */
 #define DESCRIPTOR_POOL_STARTING_SIZE 128
 #define DESCRIPTOR_SET_DEACTIVATE_FRAMES 10
 #define WINDOW_SWAPCHAIN_DATA "Refresh_VulkanSwapchain"
 
-#define IDENTITY_SWIZZLE \
-{ \
-	VK_COMPONENT_SWIZZLE_IDENTITY, \
-	VK_COMPONENT_SWIZZLE_IDENTITY, \
-	VK_COMPONENT_SWIZZLE_IDENTITY, \
-	VK_COMPONENT_SWIZZLE_IDENTITY \
+#define IDENTITY_SWIZZLE 		\
+{					\
+	VK_COMPONENT_SWIZZLE_IDENTITY, 	\
+	VK_COMPONENT_SWIZZLE_IDENTITY, 	\
+	VK_COMPONENT_SWIZZLE_IDENTITY, 	\
+	VK_COMPONENT_SWIZZLE_IDENTITY 	\
 }
 
 #define NULL_DESC_LAYOUT (VkDescriptorSetLayout) 0
@@ -92,38 +92,38 @@ static uint32_t deviceExtensionCount = SDL_arraysize(deviceExtensionNames);
 #define NULL_RENDER_PASS (Refresh_RenderPass*) 0
 
 #define EXPAND_ELEMENTS_IF_NEEDED(arr, initialValue, type)	\
-	if (arr->count == arr->capacity)						\
-	{														\
-		if (arr->capacity == 0)								\
-		{													\
-			arr->capacity = initialValue;					\
-		}													\
-		else												\
-		{													\
-			arr->capacity *= 2;								\
-		}													\
-		arr->elements = (type*) SDL_realloc(				\
-			arr->elements,									\
-			arr->capacity * sizeof(type)					\
-		);													\
+	if (arr->count == arr->capacity)			\
+	{							\
+		if (arr->capacity == 0)				\
+		{						\
+			arr->capacity = initialValue;		\
+		}						\
+		else						\
+		{						\
+			arr->capacity *= 2;			\
+		}						\
+		arr->elements = (type*) SDL_realloc(		\
+			arr->elements,				\
+			arr->capacity * sizeof(type)		\
+		);						\
 	}
 
 #define EXPAND_ARRAY_IF_NEEDED(arr, elementType, newCount, capacity, newCapacity)	\
-	if (newCount >= capacity)														\
-	{																				\
-		capacity = newCapacity;														\
-		arr = (elementType*) SDL_realloc(											\
-			arr,																	\
-			sizeof(elementType) * capacity											\
-		);																			\
+	if (newCount >= capacity)							\
+	{										\
+		capacity = newCapacity;							\
+		arr = (elementType*) SDL_realloc(					\
+			arr,								\
+			sizeof(elementType) * capacity					\
+		);									\
 	}
 
 #define MOVE_ARRAY_CONTENTS_AND_RESET(i, dstArr, dstCount, srcArr, srcCount)	\
-	for (i = 0; i < srcCount; i += 1)											\
-	{																			\
-		dstArr[i] = srcArr[i];													\
-	}																			\
-	dstCount = srcCount;														\
+	for (i = 0; i < srcCount; i += 1)					\
+	{									\
+		dstArr[i] = srcArr[i];						\
+	}									\
+	dstCount = srcCount;							\
 	srcCount = 0;
 
 /* Enums */
@@ -189,44 +189,44 @@ static const uint8_t DEVICE_PRIORITY[] =
 
 static VkFormat RefreshToVK_SurfaceFormat[] =
 {
-	VK_FORMAT_R8G8B8A8_UNORM,			/* R8G8B8A8 */
+	VK_FORMAT_R8G8B8A8_UNORM,		/* R8G8B8A8 */
 	VK_FORMAT_R5G6B5_UNORM_PACK16,		/* R5G6B5 */
 	VK_FORMAT_A1R5G5B5_UNORM_PACK16,	/* A1R5G5B5 */
 	VK_FORMAT_B4G4R4A4_UNORM_PACK16,	/* B4G4R4A4 */
 	VK_FORMAT_BC1_RGBA_UNORM_BLOCK,		/* BC1 */
-	VK_FORMAT_BC2_UNORM_BLOCK,			/* BC3 */
-	VK_FORMAT_BC3_UNORM_BLOCK,			/* BC5 */
-	VK_FORMAT_R8G8_SNORM,				/* R8G8_SNORM */
-	VK_FORMAT_R8G8B8A8_SNORM,			/* R8G8B8A8_SNORM */
+	VK_FORMAT_BC2_UNORM_BLOCK,		/* BC3 */
+	VK_FORMAT_BC3_UNORM_BLOCK,		/* BC5 */
+	VK_FORMAT_R8G8_SNORM,			/* R8G8_SNORM */
+	VK_FORMAT_R8G8B8A8_SNORM,		/* R8G8B8A8_SNORM */
 	VK_FORMAT_A2R10G10B10_UNORM_PACK32,	/* A2R10G10B10 */
-	VK_FORMAT_R16G16_UNORM,				/* R16G16 */
+	VK_FORMAT_R16G16_UNORM,			/* R16G16 */
 	VK_FORMAT_R16G16B16A16_UNORM,		/* R16G16B16A16 */
-	VK_FORMAT_R8_UNORM,					/* R8 */
-	VK_FORMAT_R32_SFLOAT,				/* R32_SFLOAT */
-	VK_FORMAT_R32G32_SFLOAT,			/* R32G32_SFLOAT */
+	VK_FORMAT_R8_UNORM,			/* R8 */
+	VK_FORMAT_R32_SFLOAT,			/* R32_SFLOAT */
+	VK_FORMAT_R32G32_SFLOAT,		/* R32G32_SFLOAT */
 	VK_FORMAT_R32G32B32A32_SFLOAT,		/* R32G32B32A32_SFLOAT */
-	VK_FORMAT_R16_SFLOAT,				/* R16_SFLOAT */
-	VK_FORMAT_R16G16_SFLOAT,			/* R16G16_SFLOAT */
+	VK_FORMAT_R16_SFLOAT,			/* R16_SFLOAT */
+	VK_FORMAT_R16G16_SFLOAT,		/* R16G16_SFLOAT */
 	VK_FORMAT_R16G16B16A16_SFLOAT,		/* R16G16B16A16_SFLOAT */
-	VK_FORMAT_D16_UNORM,				/* D16 */
-	VK_FORMAT_D32_SFLOAT,				/* D32 */
+	VK_FORMAT_D16_UNORM,			/* D16 */
+	VK_FORMAT_D32_SFLOAT,			/* D32 */
 	VK_FORMAT_D16_UNORM_S8_UINT,		/* D16S8 */
 	VK_FORMAT_D32_SFLOAT_S8_UINT		/* D32S8 */
 };
 
 static VkFormat RefreshToVK_VertexFormat[] =
 {
-	VK_FORMAT_R32_SFLOAT,			/* SINGLE */
-	VK_FORMAT_R32G32_SFLOAT,		/* VECTOR2 */
-	VK_FORMAT_R32G32B32_SFLOAT,		/* VECTOR3 */
+	VK_FORMAT_R32_SFLOAT,		/* SINGLE */
+	VK_FORMAT_R32G32_SFLOAT,	/* VECTOR2 */
+	VK_FORMAT_R32G32B32_SFLOAT,	/* VECTOR3 */
 	VK_FORMAT_R32G32B32A32_SFLOAT,	/* VECTOR4 */
-	VK_FORMAT_R8G8B8A8_UNORM,		/* COLOR */
-	VK_FORMAT_R8G8B8A8_USCALED,		/* BYTE4 */
-	VK_FORMAT_R16G16_SSCALED,		/* SHORT2 */
+	VK_FORMAT_R8G8B8A8_UNORM,	/* COLOR */
+	VK_FORMAT_R8G8B8A8_USCALED,	/* BYTE4 */
+	VK_FORMAT_R16G16_SSCALED,	/* SHORT2 */
 	VK_FORMAT_R16G16B16A16_SSCALED,	/* SHORT4 */
-	VK_FORMAT_R16G16_SNORM,			/* NORMALIZEDSHORT2 */
+	VK_FORMAT_R16G16_SNORM,		/* NORMALIZEDSHORT2 */
 	VK_FORMAT_R16G16B16A16_SNORM,	/* NORMALIZEDSHORT4 */
-	VK_FORMAT_R16G16_SFLOAT,		/* HALFVECTOR2 */
+	VK_FORMAT_R16G16_SFLOAT,	/* HALFVECTOR2 */
 	VK_FORMAT_R16G16B16A16_SFLOAT	/* HALFVECTOR4 */
 };
 
