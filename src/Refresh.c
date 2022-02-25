@@ -34,8 +34,8 @@
 /* Drivers */
 
 static const Refresh_Driver *drivers[] = {
-    &VulkanDriver,
-    NULL
+	&VulkanDriver,
+	NULL
 };
 
 /* Logging */
@@ -127,230 +127,230 @@ uint32_t Refresh_LinkedVersion(void)
 static int32_t selectedDriver = 0;
 
 Refresh_Device* Refresh_CreateDevice(
-    Refresh_PresentationParameters *presentationParameters,
-    uint8_t debugMode
+	Refresh_PresentationParameters *presentationParameters,
+	uint8_t debugMode
 ) {
-    if (selectedDriver < 0)
-    {
-        return NULL;
-    }
+	if (selectedDriver < 0)
+	{
+		return NULL;
+	}
 
-    return drivers[selectedDriver]->CreateDevice(
-        presentationParameters,
-        debugMode
-    );
+	return drivers[selectedDriver]->CreateDevice(
+		presentationParameters,
+		debugMode
+	);
 }
 
 void Refresh_DestroyDevice(Refresh_Device *device)
 {
-    NULL_RETURN(device);
-    device->DestroyDevice(device);
+	NULL_RETURN(device);
+	device->DestroyDevice(device);
 }
 
 void Refresh_Clear(
-    Refresh_Device *device,
+	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
 	Refresh_Rect *clearRect,
 	Refresh_ClearOptions options,
 	Refresh_Vec4 *colors,
 	uint32_t colorCount,
-    Refresh_DepthStencilValue depthStencil
+	Refresh_DepthStencilValue depthStencil
 ) {
-    NULL_RETURN(device);
-    device->Clear(
-        device->driverData,
-        commandBuffer,
-        clearRect,
-        options,
-        colors,
-        colorCount,
-        depthStencil
-    );
+	NULL_RETURN(device);
+	device->Clear(
+		device->driverData,
+		commandBuffer,
+		clearRect,
+		options,
+		colors,
+		colorCount,
+		depthStencil
+	);
 }
 
 void Refresh_DrawIndexedPrimitives(
 	Refresh_Device *device,
-    Refresh_CommandBuffer *commandBuffer,
+	Refresh_CommandBuffer *commandBuffer,
 	uint32_t baseVertex,
 	uint32_t startIndex,
 	uint32_t primitiveCount,
-    uint32_t vertexParamOffset,
+	uint32_t vertexParamOffset,
 	uint32_t fragmentParamOffset
 ) {
-    NULL_RETURN(device);
-    device->DrawIndexedPrimitives(
-        device->driverData,
-        commandBuffer,
-        baseVertex,
-        startIndex,
-        primitiveCount,
-        vertexParamOffset,
-        fragmentParamOffset
-    );
+	NULL_RETURN(device);
+	device->DrawIndexedPrimitives(
+		device->driverData,
+		commandBuffer,
+		baseVertex,
+		startIndex,
+		primitiveCount,
+		vertexParamOffset,
+		fragmentParamOffset
+	);
 }
 
 void Refresh_DrawInstancedPrimitives(
 	Refresh_Device *device,
-    Refresh_CommandBuffer *commandBuffer,
+	Refresh_CommandBuffer *commandBuffer,
 	uint32_t baseVertex,
 	uint32_t startIndex,
 	uint32_t primitiveCount,
 	uint32_t instanceCount,
-    uint32_t vertexParamOffset,
+	uint32_t vertexParamOffset,
 	uint32_t fragmentParamOffset
 ) {
-    NULL_RETURN(device);
-    device->DrawInstancedPrimitives(
-        device->driverData,
-        commandBuffer,
-        baseVertex,
-        startIndex,
-        primitiveCount,
-        instanceCount,
-        vertexParamOffset,
-        fragmentParamOffset
-    );
+	NULL_RETURN(device);
+	device->DrawInstancedPrimitives(
+		device->driverData,
+		commandBuffer,
+		baseVertex,
+		startIndex,
+		primitiveCount,
+		instanceCount,
+		vertexParamOffset,
+		fragmentParamOffset
+	);
 }
 
 void Refresh_DrawPrimitives(
 	Refresh_Device *device,
-    Refresh_CommandBuffer *commandBuffer,
+	Refresh_CommandBuffer *commandBuffer,
 	uint32_t vertexStart,
 	uint32_t primitiveCount,
-    uint32_t vertexParamOffset,
+	uint32_t vertexParamOffset,
 	uint32_t fragmentParamOffset
 ) {
-    NULL_RETURN(device);
-    device->DrawPrimitives(
-        device->driverData,
-        commandBuffer,
-        vertexStart,
-        primitiveCount,
-        vertexParamOffset,
-        fragmentParamOffset
-    );
+	NULL_RETURN(device);
+	device->DrawPrimitives(
+		device->driverData,
+		commandBuffer,
+		vertexStart,
+		primitiveCount,
+		vertexParamOffset,
+		fragmentParamOffset
+	);
 }
 
 void Refresh_DispatchCompute(
-    Refresh_Device *device,
-    Refresh_CommandBuffer *commandBuffer,
-    uint32_t groupCountX,
-    uint32_t groupCountY,
-    uint32_t groupCountZ,
-    uint32_t computeParamOffset
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer,
+	uint32_t groupCountX,
+	uint32_t groupCountY,
+	uint32_t groupCountZ,
+	uint32_t computeParamOffset
 ) {
-    NULL_RETURN(device);
-    device->DispatchCompute(
-        device->driverData,
-        commandBuffer,
-        groupCountX,
-        groupCountY,
-        groupCountZ,
-        computeParamOffset
-    );
+	NULL_RETURN(device);
+	device->DispatchCompute(
+		device->driverData,
+		commandBuffer,
+		groupCountX,
+		groupCountY,
+		groupCountZ,
+		computeParamOffset
+	);
 }
 
 Refresh_ComputePipeline* Refresh_CreateComputePipeline(
-    Refresh_Device *device,
-    Refresh_ComputePipelineCreateInfo *pipelineCreateInfo
+	Refresh_Device *device,
+	Refresh_ComputePipelineCreateInfo *pipelineCreateInfo
 ) {
-    NULL_RETURN_NULL(device);
-    return device->CreateComputePipeline(
-        device->driverData,
-        pipelineCreateInfo
-    );
+	NULL_RETURN_NULL(device);
+	return device->CreateComputePipeline(
+		device->driverData,
+		pipelineCreateInfo
+	);
 }
 
 Refresh_GraphicsPipeline* Refresh_CreateGraphicsPipeline(
 	Refresh_Device *device,
 	Refresh_GraphicsPipelineCreateInfo *pipelineCreateInfo
 ) {
-    NULL_RETURN_NULL(device);
-    return device->CreateGraphicsPipeline(
-        device->driverData,
-        pipelineCreateInfo
-    );
+	NULL_RETURN_NULL(device);
+	return device->CreateGraphicsPipeline(
+		device->driverData,
+		pipelineCreateInfo
+	);
 }
 
 Refresh_Sampler* Refresh_CreateSampler(
 	Refresh_Device *device,
 	Refresh_SamplerStateCreateInfo *samplerStateCreateInfo
 ) {
-    NULL_RETURN_NULL(device);
-    return device->CreateSampler(
-        device->driverData,
-        samplerStateCreateInfo
-    );
+	NULL_RETURN_NULL(device);
+	return device->CreateSampler(
+		device->driverData,
+		samplerStateCreateInfo
+	);
 }
 
 Refresh_ShaderModule* Refresh_CreateShaderModule(
 	Refresh_Device *device,
 	Refresh_ShaderModuleCreateInfo *shaderModuleCreateInfo
 ) {
-    NULL_RETURN_NULL(device);
-    return device->CreateShaderModule(
-        device->driverData,
-        shaderModuleCreateInfo
-    );
+	NULL_RETURN_NULL(device);
+	return device->CreateShaderModule(
+		device->driverData,
+		shaderModuleCreateInfo
+	);
 }
 
 Refresh_Texture* Refresh_CreateTexture(
 	Refresh_Device *device,
-    Refresh_TextureCreateInfo *textureCreateInfo
+	Refresh_TextureCreateInfo *textureCreateInfo
 ) {
-    NULL_RETURN_NULL(device);
-    return device->CreateTexture(
-        device->driverData,
-        textureCreateInfo
-    );
+	NULL_RETURN_NULL(device);
+	return device->CreateTexture(
+		device->driverData,
+		textureCreateInfo
+	);
 }
 
 Refresh_RenderTarget* Refresh_CreateRenderTarget(
 	Refresh_Device *device,
 	Refresh_TextureSlice *textureSlice,
-    Refresh_SampleCount multisampleCount
+	Refresh_SampleCount multisampleCount
 ) {
-    NULL_RETURN_NULL(device);
-    return device->CreateRenderTarget(
-        device->driverData,
-        textureSlice,
-        multisampleCount
-    );
+	NULL_RETURN_NULL(device);
+	return device->CreateRenderTarget(
+		device->driverData,
+		textureSlice,
+		multisampleCount
+	);
 }
 
 Refresh_Buffer* Refresh_CreateBuffer(
 	Refresh_Device *device,
-    Refresh_BufferUsageFlags usageFlags,
+	Refresh_BufferUsageFlags usageFlags,
 	uint32_t sizeInBytes
 ) {
-    NULL_RETURN_NULL(device);
-    return device->CreateBuffer(
-        device->driverData,
-        usageFlags,
-        sizeInBytes
-    );
+	NULL_RETURN_NULL(device);
+	return device->CreateBuffer(
+		device->driverData,
+		usageFlags,
+		sizeInBytes
+	);
 }
 
 void Refresh_SetTextureData(
 	Refresh_Device *device,
-    Refresh_CommandBuffer *commandBuffer,
+	Refresh_CommandBuffer *commandBuffer,
 	Refresh_TextureSlice *textureSlice,
 	void *data,
 	uint32_t dataLengthInBytes
 ) {
-    NULL_RETURN(device);
-    device->SetTextureData(
-        device->driverData,
-        commandBuffer,
-        textureSlice,
-        data,
-        dataLengthInBytes
-    );
+	NULL_RETURN(device);
+	device->SetTextureData(
+		device->driverData,
+		commandBuffer,
+		textureSlice,
+		data,
+		dataLengthInBytes
+	);
 }
 
 void Refresh_SetTextureDataYUV(
 	Refresh_Device *device,
-    Refresh_CommandBuffer* commandBuffer,
+	Refresh_CommandBuffer* commandBuffer,
 	Refresh_Texture *y,
 	Refresh_Texture *u,
 	Refresh_Texture *v,
@@ -361,37 +361,37 @@ void Refresh_SetTextureDataYUV(
 	void* data,
 	uint32_t dataLength
 ) {
-    NULL_RETURN(device);
-    device->SetTextureDataYUV(
-        device->driverData,
-        commandBuffer,
-        y,
-        u,
-        v,
-        yWidth,
-        yHeight,
-        uvWidth,
-        uvHeight,
-        data,
-        dataLength
-    );
+	NULL_RETURN(device);
+	device->SetTextureDataYUV(
+		device->driverData,
+		commandBuffer,
+		y,
+		u,
+		v,
+		yWidth,
+		yHeight,
+		uvWidth,
+		uvHeight,
+		data,
+		dataLength
+	);
 }
 
 void Refresh_CopyTextureToTexture(
-    Refresh_Device *device,
+	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
 	Refresh_TextureSlice *sourceTextureSlice,
 	Refresh_TextureSlice *destinationTextureSlice,
 	Refresh_Filter filter
 ) {
-    NULL_RETURN(device);
-    device->CopyTextureToTexture(
-        device->driverData,
-        commandBuffer,
-        sourceTextureSlice,
-        destinationTextureSlice,
-        filter
-    );
+	NULL_RETURN(device);
+	device->CopyTextureToTexture(
+		device->driverData,
+		commandBuffer,
+		sourceTextureSlice,
+		destinationTextureSlice,
+		filter
+	);
 }
 
 void Refresh_CopyTextureToBuffer(
@@ -400,122 +400,122 @@ void Refresh_CopyTextureToBuffer(
 	Refresh_TextureSlice *textureSlice,
 	Refresh_Buffer *buffer
 ) {
-    NULL_RETURN(device);
-    device->CopyTextureToBuffer(
-        device->driverData,
-        commandBuffer,
-        textureSlice,
-        buffer
-    );
+	NULL_RETURN(device);
+	device->CopyTextureToBuffer(
+		device->driverData,
+		commandBuffer,
+		textureSlice,
+		buffer
+	);
 }
 
 void Refresh_SetBufferData(
 	Refresh_Device *device,
-    Refresh_CommandBuffer *commandBuffer,
+	Refresh_CommandBuffer *commandBuffer,
 	Refresh_Buffer *buffer,
 	uint32_t offsetInBytes,
 	void* data,
 	uint32_t dataLength
 ) {
-    NULL_RETURN(device);
-    device->SetBufferData(
-        device->driverData,
-        commandBuffer,
-        buffer,
-        offsetInBytes,
-        data,
-        dataLength
-    );
+	NULL_RETURN(device);
+	device->SetBufferData(
+		device->driverData,
+		commandBuffer,
+		buffer,
+		offsetInBytes,
+		data,
+		dataLength
+	);
 }
 
 uint32_t Refresh_PushVertexShaderUniforms(
 	Refresh_Device *device,
-    Refresh_CommandBuffer *commandBuffer,
+	Refresh_CommandBuffer *commandBuffer,
 	void *data,
 	uint32_t dataLengthInBytes
 ) {
-    if (device == NULL) { return 0; }
-    return device->PushVertexShaderUniforms(
-        device->driverData,
-        commandBuffer,
-        data,
-        dataLengthInBytes
-    );
+	if (device == NULL) { return 0; }
+	return device->PushVertexShaderUniforms(
+		device->driverData,
+		commandBuffer,
+		data,
+		dataLengthInBytes
+	);
 }
 
 uint32_t Refresh_PushFragmentShaderUniforms(
 	Refresh_Device *device,
-    Refresh_CommandBuffer *commandBuffer,
+	Refresh_CommandBuffer *commandBuffer,
 	void *data,
 	uint32_t dataLengthInBytes
 ) {
-    if (device == NULL) { return 0; }
-    return device->PushFragmentShaderUniforms(
-        device->driverData,
-        commandBuffer,
-        data,
-        dataLengthInBytes
-    );
+	if (device == NULL) { return 0; }
+	return device->PushFragmentShaderUniforms(
+		device->driverData,
+		commandBuffer,
+		data,
+		dataLengthInBytes
+	);
 }
 
 uint32_t Refresh_PushComputeShaderUniforms(
-    Refresh_Device *device,
-    Refresh_CommandBuffer *commandBuffer,
-    void *data,
-    uint32_t dataLengthInBytes
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer,
+	void *data,
+	uint32_t dataLengthInBytes
 ) {
-    if (device == NULL) { return 0; }
-    return device->PushComputeShaderUniforms(
-        device->driverData,
-        commandBuffer,
-        data,
-        dataLengthInBytes
-    );
+	if (device == NULL) { return 0; }
+	return device->PushComputeShaderUniforms(
+		device->driverData,
+		commandBuffer,
+		data,
+		dataLengthInBytes
+	);
 }
 
 void Refresh_BindVertexSamplers(
 	Refresh_Device *device,
-    Refresh_CommandBuffer *commandBuffer,
+	Refresh_CommandBuffer *commandBuffer,
 	Refresh_Texture **pTextures,
 	Refresh_Sampler **pSamplers
 ) {
-    NULL_RETURN(device);
-    device->BindVertexSamplers(
-        device->driverData,
-        commandBuffer,
-        pTextures,
-        pSamplers
-    );
+	NULL_RETURN(device);
+	device->BindVertexSamplers(
+		device->driverData,
+		commandBuffer,
+		pTextures,
+		pSamplers
+	);
 }
 
 void Refresh_BindFragmentSamplers(
 	Refresh_Device *device,
-    Refresh_CommandBuffer *commandBuffer,
+	Refresh_CommandBuffer *commandBuffer,
 	Refresh_Texture **pTextures,
 	Refresh_Sampler **pSamplers
 ) {
-    NULL_RETURN(device);
-    device->BindFragmentSamplers(
-        device->driverData,
-        commandBuffer,
-        pTextures,
-        pSamplers
-    );
+	NULL_RETURN(device);
+	device->BindFragmentSamplers(
+		device->driverData,
+		commandBuffer,
+		pTextures,
+		pSamplers
+	);
 }
 
 void Refresh_GetBufferData(
-    Refresh_Device *device,
-    Refresh_Buffer *buffer,
-    void *data,
-    uint32_t dataLengthInBytes
+	Refresh_Device *device,
+	Refresh_Buffer *buffer,
+	void *data,
+	uint32_t dataLengthInBytes
 ) {
-    NULL_RETURN(device);
-    device->GetBufferData(
-        device->driverData,
-        buffer,
-        data,
-        dataLengthInBytes
-    );
+	NULL_RETURN(device);
+	device->GetBufferData(
+		device->driverData,
+		buffer,
+		data,
+		dataLengthInBytes
+	);
 }
 
 void Refresh_QueueDestroyTexture(
@@ -523,12 +523,12 @@ void Refresh_QueueDestroyTexture(
 	Refresh_CommandBuffer *commandBuffer,
 	Refresh_Texture *texture
 ) {
-    NULL_RETURN(device);
-    device->QueueDestroyTexture(
-        device->driverData,
+	NULL_RETURN(device);
+	device->QueueDestroyTexture(
+		device->driverData,
 		commandBuffer,
-        texture
-    );
+		texture
+	);
 }
 
 void Refresh_QueueDestroySampler(
@@ -536,12 +536,12 @@ void Refresh_QueueDestroySampler(
 	Refresh_CommandBuffer *commandBuffer,
 	Refresh_Sampler *sampler
 ) {
-    NULL_RETURN(device);
-    device->QueueDestroySampler(
-        device->driverData,
+	NULL_RETURN(device);
+	device->QueueDestroySampler(
+		device->driverData,
 		commandBuffer,
-        sampler
-    );
+		sampler
+	);
 }
 
 void Refresh_QueueDestroyBuffer(
@@ -549,12 +549,12 @@ void Refresh_QueueDestroyBuffer(
 	Refresh_CommandBuffer *commandBuffer,
 	Refresh_Buffer *buffer
 ) {
-    NULL_RETURN(device);
-    device->QueueDestroyBuffer(
-        device->driverData,
+	NULL_RETURN(device);
+	device->QueueDestroyBuffer(
+		device->driverData,
 		commandBuffer,
-        buffer
-    );
+		buffer
+	);
 }
 
 void Refresh_QueueDestroyRenderTarget(
@@ -562,12 +562,12 @@ void Refresh_QueueDestroyRenderTarget(
 	Refresh_CommandBuffer *commandBuffer,
 	Refresh_RenderTarget *renderTarget
 ) {
-    NULL_RETURN(device);
-    device->QueueDestroyRenderTarget(
-        device->driverData,
+	NULL_RETURN(device);
+	device->QueueDestroyRenderTarget(
+		device->driverData,
 		commandBuffer,
-        renderTarget
-    );
+		renderTarget
+	);
 }
 
 void Refresh_QueueDestroyShaderModule(
@@ -575,12 +575,12 @@ void Refresh_QueueDestroyShaderModule(
 	Refresh_CommandBuffer *commandBuffer,
 	Refresh_ShaderModule *shaderModule
 ) {
-    NULL_RETURN(device);
-    device->QueueDestroyShaderModule(
-        device->driverData,
+	NULL_RETURN(device);
+	device->QueueDestroyShaderModule(
+		device->driverData,
 		commandBuffer,
-        shaderModule
-    );
+		shaderModule
+	);
 }
 
 void Refresh_QueueDestroyComputePipeline(
@@ -588,12 +588,12 @@ void Refresh_QueueDestroyComputePipeline(
 	Refresh_CommandBuffer *commandBuffer,
 	Refresh_ComputePipeline *computePipeline
 ) {
-    NULL_RETURN(device);
-    device->QueueDestroyComputePipeline(
-        device->driverData,
+	NULL_RETURN(device);
+	device->QueueDestroyComputePipeline(
+		device->driverData,
 		commandBuffer,
-        computePipeline
-    );
+		computePipeline
+	);
 }
 
 void Refresh_QueueDestroyGraphicsPipeline(
@@ -601,12 +601,12 @@ void Refresh_QueueDestroyGraphicsPipeline(
 	Refresh_CommandBuffer *commandBuffer,
 	Refresh_GraphicsPipeline *graphicsPipeline
 ) {
-    NULL_RETURN(device);
-    device->QueueDestroyGraphicsPipeline(
-        device->driverData,
+	NULL_RETURN(device);
+	device->QueueDestroyGraphicsPipeline(
+		device->driverData,
 		commandBuffer,
-        graphicsPipeline
-    );
+		graphicsPipeline
+	);
 }
 
 void Refresh_BeginRenderPass(
@@ -617,166 +617,166 @@ void Refresh_BeginRenderPass(
 	uint32_t colorAttachmentCount,
 	Refresh_DepthStencilAttachmentInfo *depthStencilAttachmentInfo
 ) {
-    NULL_RETURN(device);
-    device->BeginRenderPass(
-        device->driverData,
-        commandBuffer,
-        renderArea,
-        colorAttachmentInfos,
-        colorAttachmentCount,
-        depthStencilAttachmentInfo
-    );
+	NULL_RETURN(device);
+	device->BeginRenderPass(
+		device->driverData,
+		commandBuffer,
+		renderArea,
+		colorAttachmentInfos,
+		colorAttachmentCount,
+		depthStencilAttachmentInfo
+	);
 }
 
 void Refresh_EndRenderPass(
 	Refresh_Device *device,
-    Refresh_CommandBuffer *commandBuffer
+	Refresh_CommandBuffer *commandBuffer
 ) {
-    NULL_RETURN(device);
-    device->EndRenderPass(
-        device->driverData,
-        commandBuffer
-    );
+	NULL_RETURN(device);
+	device->EndRenderPass(
+		device->driverData,
+		commandBuffer
+	);
 }
 
 void Refresh_BindGraphicsPipeline(
 	Refresh_Device *device,
-    Refresh_CommandBuffer *commandBuffer,
+	Refresh_CommandBuffer *commandBuffer,
 	Refresh_GraphicsPipeline *graphicsPipeline
 ) {
-    NULL_RETURN(device);
-    device->BindGraphicsPipeline(
-        device->driverData,
-        commandBuffer,
-        graphicsPipeline
-    );
+	NULL_RETURN(device);
+	device->BindGraphicsPipeline(
+		device->driverData,
+		commandBuffer,
+		graphicsPipeline
+	);
 }
 
 void Refresh_BindVertexBuffers(
 	Refresh_Device *device,
-    Refresh_CommandBuffer *commandBuffer,
+	Refresh_CommandBuffer *commandBuffer,
 	uint32_t firstBinding,
 	uint32_t bindingCount,
 	Refresh_Buffer **pBuffers,
 	uint64_t *pOffsets
 ) {
-    NULL_RETURN(device);
-    device->BindVertexBuffers(
-        device->driverData,
-        commandBuffer,
-        firstBinding,
-        bindingCount,
-        pBuffers,
-        pOffsets
-    );
+	NULL_RETURN(device);
+	device->BindVertexBuffers(
+		device->driverData,
+		commandBuffer,
+		firstBinding,
+		bindingCount,
+		pBuffers,
+		pOffsets
+	);
 }
 
 void Refresh_BindIndexBuffer(
-    Refresh_Device *device,
-    Refresh_CommandBuffer *commandBuffer,
-    Refresh_Buffer *buffer,
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_Buffer *buffer,
 	uint64_t offset,
 	Refresh_IndexElementSize indexElementSize
 ) {
-    NULL_RETURN(device);
-    device->BindIndexBuffer(
-        device->driverData,
-        commandBuffer,
-        buffer,
-        offset,
-        indexElementSize
-    );
+	NULL_RETURN(device);
+	device->BindIndexBuffer(
+		device->driverData,
+		commandBuffer,
+		buffer,
+		offset,
+		indexElementSize
+	);
 }
 
 void Refresh_BindComputePipeline(
-    Refresh_Device *device,
-    Refresh_CommandBuffer *commandBuffer,
-    Refresh_ComputePipeline *computePipeline
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_ComputePipeline *computePipeline
 ) {
-    NULL_RETURN(device);
-    device->BindComputePipeline(
-        device->driverData,
-        commandBuffer,
-        computePipeline
-    );
+	NULL_RETURN(device);
+	device->BindComputePipeline(
+		device->driverData,
+		commandBuffer,
+		computePipeline
+	);
 }
 
 void Refresh_BindComputeBuffers(
-    Refresh_Device *device,
-    Refresh_CommandBuffer *commandBuffer,
-    Refresh_Buffer **pBuffers
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_Buffer **pBuffers
 ) {
-    NULL_RETURN(device);
-    device->BindComputeBuffers(
-        device->driverData,
-        commandBuffer,
-        pBuffers
-    );
+	NULL_RETURN(device);
+	device->BindComputeBuffers(
+		device->driverData,
+		commandBuffer,
+		pBuffers
+	);
 }
 
 void Refresh_BindComputeTextures(
-    Refresh_Device *device,
-    Refresh_CommandBuffer *commandBuffer,
-    Refresh_Texture **pTextures
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_Texture **pTextures
 ) {
-    NULL_RETURN(device);
-    device->BindComputeTextures(
-        device->driverData,
-        commandBuffer,
-        pTextures
-    );
+	NULL_RETURN(device);
+	device->BindComputeTextures(
+		device->driverData,
+		commandBuffer,
+		pTextures
+	);
 }
 
 Refresh_CommandBuffer* Refresh_AcquireCommandBuffer(
-    Refresh_Device *device,
-    uint8_t fixed
+	Refresh_Device *device,
+	uint8_t fixed
 ) {
-    NULL_RETURN_NULL(device);
-    return device->AcquireCommandBuffer(
-        device->driverData,
-        fixed
-    );
+	NULL_RETURN_NULL(device);
+	return device->AcquireCommandBuffer(
+		device->driverData,
+		fixed
+	);
 }
 
 void Refresh_QueuePresent(
-    Refresh_Device *device,
-    Refresh_CommandBuffer *commandBuffer,
-    Refresh_TextureSlice* textureSlice,
-    Refresh_Rect *destinationRectangle,
-    Refresh_Filter filter,
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_TextureSlice* textureSlice,
+	Refresh_Rect *destinationRectangle,
+	Refresh_Filter filter,
 	void *windowHandle
 ) {
-    NULL_RETURN(device);
-    device->QueuePresent(
-        device->driverData,
-        commandBuffer,
-        textureSlice,
-        destinationRectangle,
-        filter,
+	NULL_RETURN(device);
+	device->QueuePresent(
+		device->driverData,
+		commandBuffer,
+		textureSlice,
+		destinationRectangle,
+		filter,
 		windowHandle
-    );
+	);
 }
 
 void Refresh_Submit(
-    Refresh_Device *device,
+	Refresh_Device *device,
 	uint32_t commandBufferCount,
 	Refresh_CommandBuffer **pCommandBuffers
 ) {
-    NULL_RETURN(device);
-    device->Submit(
-        device->driverData,
-        commandBufferCount,
-        pCommandBuffers
-    );
+	NULL_RETURN(device);
+	device->Submit(
+		device->driverData,
+		commandBufferCount,
+		pCommandBuffers
+	);
 }
 
 void Refresh_Wait(
-    Refresh_Device *device
+	Refresh_Device *device
 ) {
-    NULL_RETURN(device);
-    device->Wait(
-        device->driverData
-    );
+	NULL_RETURN(device);
+	device->Wait(
+		device->driverData
+	);
 }
 
 /* vim: set noexpandtab shiftwidth=8 tabstop=8: */

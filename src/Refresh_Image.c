@@ -89,53 +89,53 @@
 static void *
 SDL_SIMDRealloc(void *mem, const size_t len)
 {
-    const size_t alignment = SDL_SIMDGetAlignment();
-    const size_t padding = alignment - (len % alignment);
-    const size_t padded = (padding != alignment) ? (len + padding) : len;
-    Uint8 *retval = (Uint8*) mem;
-    void *oldmem = mem;
-    size_t memdiff, ptrdiff;
-    Uint8 *ptr;
+	const size_t alignment = SDL_SIMDGetAlignment();
+	const size_t padding = alignment - (len % alignment);
+	const size_t padded = (padding != alignment) ? (len + padding) : len;
+	Uint8 *retval = (Uint8*) mem;
+	void *oldmem = mem;
+	size_t memdiff, ptrdiff;
+	Uint8 *ptr;
 
-    if (mem) {
-        void **realptr = (void **) mem;
-        realptr--;
-        mem = *(((void **) mem) - 1);
+	if (mem) {
+		void **realptr = (void **) mem;
+		realptr--;
+		mem = *(((void **) mem) - 1);
 
-        /* Check the delta between the real pointer and user pointer */
-        memdiff = ((size_t) oldmem) - ((size_t) mem);
-    }
+		/* Check the delta between the real pointer and user pointer */
+		memdiff = ((size_t) oldmem) - ((size_t) mem);
+	}
 
-    ptr = (Uint8 *) SDL_realloc(mem, padded + alignment + sizeof (void *));
+	ptr = (Uint8 *) SDL_realloc(mem, padded + alignment + sizeof (void *));
 
-    if (ptr == mem) {
-        return retval; /* Pointer didn't change, nothing to do */
-    }
-    if (ptr == NULL) {
-        return NULL; /* Out of memory, bail! */
-    }
+	if (ptr == mem) {
+		return retval; /* Pointer didn't change, nothing to do */
+	}
+	if (ptr == NULL) {
+		return NULL; /* Out of memory, bail! */
+	}
 
-    /* Store the actual malloc pointer right before our aligned pointer. */
-    retval = ptr + sizeof (void *);
-    retval += alignment - (((size_t) retval) % alignment);
+	/* Store the actual malloc pointer right before our aligned pointer. */
+	retval = ptr + sizeof (void *);
+	retval += alignment - (((size_t) retval) % alignment);
 
-    /* Make sure the delta is the same! */
-    if (mem) {
-        ptrdiff = ((size_t) retval) - ((size_t) ptr);
-        if (memdiff != ptrdiff) { /* Delta has changed, copy to new offset! */
-            oldmem = (void*) (((size_t) ptr) + memdiff);
+	/* Make sure the delta is the same! */
+	if (mem) {
+		ptrdiff = ((size_t) retval) - ((size_t) ptr);
+		if (memdiff != ptrdiff) { /* Delta has changed, copy to new offset! */
+			oldmem = (void*) (((size_t) ptr) + memdiff);
 
-            /* Even though the data past the old `len` is undefined, this is the
-             * only length value we have, and it guarantees that we copy all the
-             * previous memory anyhow.
-             */
-            SDL_memmove(retval, oldmem, len);
-        }
-    }
+			/* Even though the data past the old `len` is undefined, this is the
+			 * only length value we have, and it guarantees that we copy all the
+			 * previous memory anyhow.
+			 */
+			SDL_memmove(retval, oldmem, len);
+		}
+	}
 
-    /* Actually store the malloc pointer, finally. */
-    *(((void **) retval) - 1) = ptr;
-    return retval;
+	/* Actually store the malloc pointer, finally. */
+	*(((void **) retval) - 1) = ptr;
+	return retval;
 }
 #endif
 
@@ -190,28 +190,28 @@ static unsigned char* dgibson_stbi_zlib_compress(
 /* Image Read API */
 
 uint8_t* Refresh_Image_Load(
-    char const *filename,
+	char const *filename,
 	int32_t *w,
 	int32_t *h,
-    int32_t *numChannels
+	int32_t *numChannels
 ) {
-    return stbi_load(filename, w, h, numChannels, STBI_rgb_alpha);
+	return stbi_load(filename, w, h, numChannels, STBI_rgb_alpha);
 }
 
 void Refresh_Image_Free(uint8_t *mem)
 {
-    stbi_image_free(mem);
+	stbi_image_free(mem);
 }
 
 /* Image Write API */
 
 void Refresh_Image_SavePNG(
-    const char *filename,
-    int32_t w,
-    int32_t h,
+	const char *filename,
+	int32_t w,
+	int32_t h,
 	uint8_t *data
 ) {
-    stbi_write_png(filename, w, h, 4, data, w * 4);
+	stbi_write_png(filename, w, h, 4, data, w * 4);
 }
 
 /* vim: set noexpandtab shiftwidth=8 tabstop=8: */

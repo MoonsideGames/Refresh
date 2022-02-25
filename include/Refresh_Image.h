@@ -54,10 +54,10 @@ extern "C" {
  * Be sure to free the memory with Refresh_Image_Free after use!
  */
 REFRESHAPI uint8_t* Refresh_Image_Load(
-    char const *filename,
+	char const *filename,
 	int32_t *w,
 	int32_t *h,
-    int32_t *numChannels
+	int32_t *numChannels
 );
 
 /* Frees memory returned by Refresh_Image_Load. (Do NOT free the memory yourself!)
@@ -76,9 +76,9 @@ REFRESHAPI void Refresh_Image_Free(uint8_t *mem);
  * data:	    The raw RGBA8 image data.
  */
 REFRESHAPI void Refresh_Image_SavePNG(
-    char const *filename,
-    int32_t w,
-    int32_t h,
+	char const *filename,
+	int32_t w,
+	int32_t h,
 	uint8_t *data
 );
 

@@ -151,7 +151,7 @@ static inline int32_t BytesPerImage(
 #define MAX_VERTEXTEXTURE_SAMPLERS	4
 #define MAX_TOTAL_SAMPLERS		(MAX_TEXTURE_SAMPLERS + MAX_VERTEXTEXTURE_SAMPLERS)
 
-#define MAX_BUFFER_BINDINGS	        16
+#define MAX_BUFFER_BINDINGS			16
 
 #define MAX_COLOR_TARGET_BINDINGS	4
 
@@ -168,309 +168,309 @@ struct Refresh_Device
 	/* Drawing */
 
 	void (*Clear)(
-        Refresh_Renderer *driverData,
-        Refresh_CommandBuffer *commandBuffer,
-        Refresh_Rect *clearRect,
-        Refresh_ClearOptions options,
-        Refresh_Vec4 *colors,
-        uint32_t colorCount,
-        Refresh_DepthStencilValue depthStencil
+		Refresh_Renderer *driverData,
+		Refresh_CommandBuffer *commandBuffer,
+		Refresh_Rect *clearRect,
+		Refresh_ClearOptions options,
+		Refresh_Vec4 *colors,
+		uint32_t colorCount,
+		Refresh_DepthStencilValue depthStencil
 	);
 
 	void (*DrawInstancedPrimitives)(
-        Refresh_Renderer *driverData,
-        Refresh_CommandBuffer *commandBuffer,
-        uint32_t baseVertex,
-        uint32_t startIndex,
-        uint32_t primitiveCount,
-        uint32_t instanceCount,
-        uint32_t vertexParamOffset,
-        uint32_t fragmentParamOffset
+		Refresh_Renderer *driverData,
+		Refresh_CommandBuffer *commandBuffer,
+		uint32_t baseVertex,
+		uint32_t startIndex,
+		uint32_t primitiveCount,
+		uint32_t instanceCount,
+		uint32_t vertexParamOffset,
+		uint32_t fragmentParamOffset
 	);
 
 	void (*DrawIndexedPrimitives)(
-        Refresh_Renderer *driverData,
-        Refresh_CommandBuffer *commandBuffer,
-        uint32_t baseVertex,
-        uint32_t startIndex,
-        uint32_t primitiveCount,
-        uint32_t vertexParamOffset,
-        uint32_t fragmentParamOffset
+		Refresh_Renderer *driverData,
+		Refresh_CommandBuffer *commandBuffer,
+		uint32_t baseVertex,
+		uint32_t startIndex,
+		uint32_t primitiveCount,
+		uint32_t vertexParamOffset,
+		uint32_t fragmentParamOffset
 	);
 
 	void (*DrawPrimitives)(
-	    Refresh_Renderer *driverData,
-        Refresh_CommandBuffer *commandBuffer,
-        uint32_t vertexStart,
-        uint32_t primitiveCount,
-        uint32_t vertexParamOffset,
-        uint32_t fragmentParamOffset
+		Refresh_Renderer *driverData,
+		Refresh_CommandBuffer *commandBuffer,
+		uint32_t vertexStart,
+		uint32_t primitiveCount,
+		uint32_t vertexParamOffset,
+		uint32_t fragmentParamOffset
 	);
 
-    void (*DispatchCompute)(
-        Refresh_Renderer *device,
-        Refresh_CommandBuffer *commandBuffer,
-        uint32_t groupCountX,
-        uint32_t groupCountY,
-        uint32_t groupCountZ,
-        uint32_t computeParamOffset
-    );
-
-    /* State Creation */
-
-    Refresh_ComputePipeline* (*CreateComputePipeline)(
-        Refresh_Renderer *driverData,
-        Refresh_ComputePipelineCreateInfo *pipelineCreateInfo
-    );
-
-    Refresh_GraphicsPipeline* (*CreateGraphicsPipeline)(
-        Refresh_Renderer *driverData,
-        Refresh_GraphicsPipelineCreateInfo *pipelineCreateInfo
-    );
-
-    Refresh_Sampler* (*CreateSampler)(
-        Refresh_Renderer *driverData,
-	    Refresh_SamplerStateCreateInfo *samplerStateCreateInfo
-    );
-
-    Refresh_ShaderModule* (*CreateShaderModule)(
-        Refresh_Renderer *driverData,
-	    Refresh_ShaderModuleCreateInfo *shaderModuleCreateInfo
-    );
-
-    Refresh_Texture* (*CreateTexture)(
-        Refresh_Renderer *driverData,
-        Refresh_TextureCreateInfo *textureCreateInfo
-    );
-
-    Refresh_RenderTarget* (*CreateRenderTarget)(
-        Refresh_Renderer *driverData,
-        Refresh_TextureSlice *textureSlice,
-        Refresh_SampleCount multisampleCount
-    );
-
-    Refresh_Buffer* (*CreateBuffer)(
-        Refresh_Renderer *driverData,
-        Refresh_BufferUsageFlags usageFlags,
-        uint32_t sizeInBytes
-    );
-
-    /* Setters */
-
-    void(*SetTextureData)(
-        Refresh_Renderer *driverData,
-        Refresh_CommandBuffer *commandBuffer,
-        Refresh_TextureSlice *textureSlice,
-        void *data,
-        uint32_t dataLengthInBytes
-    );
-
-    void(*SetTextureDataYUV)(
-        Refresh_Renderer *driverData,
-        Refresh_CommandBuffer* commandBuffer,
-        Refresh_Texture *y,
-        Refresh_Texture *u,
-        Refresh_Texture *v,
-        uint32_t yWidth,
-        uint32_t yHeight,
-        uint32_t uvWidth,
-        uint32_t uvHeight,
-        void* data,
-        uint32_t dataLength
-    );
-
-    void(*CopyTextureToTexture)(
-        Refresh_Renderer *driverData,
-        Refresh_CommandBuffer *commandBuffer,
-        Refresh_TextureSlice *sourceTextureSlice,
-        Refresh_TextureSlice *destinationTextureSlice,
-        Refresh_Filter filter
-    );
-
-    void(*CopyTextureToBuffer)(
-        Refresh_Renderer *driverData,
-        Refresh_CommandBuffer *commandBuffer,
-        Refresh_TextureSlice *textureSlice,
-        Refresh_Buffer *buffer
-    );
-
-    void(*SetBufferData)(
-        Refresh_Renderer *driverData,
-        Refresh_CommandBuffer *commandBuffer,
-        Refresh_Buffer *buffer,
-        uint32_t offsetInBytes,
-        void* data,
-        uint32_t dataLength
-    );
-
-    uint32_t(*PushVertexShaderUniforms)(
-        Refresh_Renderer *driverData,
-        Refresh_CommandBuffer *commandBuffer,
-        void *data,
-        uint32_t dataLengthInBytes
-    );
-
-    uint32_t(*PushFragmentShaderUniforms)(
-        Refresh_Renderer *driverData,
-        Refresh_CommandBuffer *commandBuffer,
-        void *data,
-        uint32_t dataLengthInBytes
-    );
-
-    uint32_t (*PushComputeShaderUniforms)(
-        Refresh_Renderer *driverData,
-        Refresh_CommandBuffer *commandBuffer,
-        void *data,
-        uint32_t dataLengthInBytes
-    );
-
-    void(*BindVertexSamplers)(
-        Refresh_Renderer *driverData,
-        Refresh_CommandBuffer *commandBuffer,
-        Refresh_Texture **pTextures,
-        Refresh_Sampler **pSamplers
-    );
-
-    void(*BindFragmentSamplers)(
-        Refresh_Renderer *driverData,
-        Refresh_CommandBuffer *commandBuffer,
-        Refresh_Texture **pTextures,
-        Refresh_Sampler **pSamplers
-    );
-
-    /* Getters */
-
-    void(*GetBufferData)(
-        Refresh_Renderer *driverData,
-        Refresh_Buffer *buffer,
-        void *data,
-        uint32_t dataLengthInBytes
-    );
-
-    /* Disposal */
-
-    void(*QueueDestroyTexture)(
-        Refresh_Renderer *driverData,
+	void (*DispatchCompute)(
+		Refresh_Renderer *device,
 		Refresh_CommandBuffer *commandBuffer,
-        Refresh_Texture *texture
-    );
+		uint32_t groupCountX,
+		uint32_t groupCountY,
+		uint32_t groupCountZ,
+		uint32_t computeParamOffset
+	);
 
-    void(*QueueDestroySampler)(
-        Refresh_Renderer *driverData,
+	/* State Creation */
+
+	Refresh_ComputePipeline* (*CreateComputePipeline)(
+		Refresh_Renderer *driverData,
+		Refresh_ComputePipelineCreateInfo *pipelineCreateInfo
+	);
+
+	Refresh_GraphicsPipeline* (*CreateGraphicsPipeline)(
+		Refresh_Renderer *driverData,
+		Refresh_GraphicsPipelineCreateInfo *pipelineCreateInfo
+	);
+
+	Refresh_Sampler* (*CreateSampler)(
+		Refresh_Renderer *driverData,
+		Refresh_SamplerStateCreateInfo *samplerStateCreateInfo
+	);
+
+	Refresh_ShaderModule* (*CreateShaderModule)(
+		Refresh_Renderer *driverData,
+		Refresh_ShaderModuleCreateInfo *shaderModuleCreateInfo
+	);
+
+	Refresh_Texture* (*CreateTexture)(
+		Refresh_Renderer *driverData,
+		Refresh_TextureCreateInfo *textureCreateInfo
+	);
+
+	Refresh_RenderTarget* (*CreateRenderTarget)(
+		Refresh_Renderer *driverData,
+		Refresh_TextureSlice *textureSlice,
+		Refresh_SampleCount multisampleCount
+	);
+
+	Refresh_Buffer* (*CreateBuffer)(
+		Refresh_Renderer *driverData,
+		Refresh_BufferUsageFlags usageFlags,
+		uint32_t sizeInBytes
+	);
+
+	/* Setters */
+
+	void(*SetTextureData)(
+		Refresh_Renderer *driverData,
 		Refresh_CommandBuffer *commandBuffer,
-        Refresh_Sampler *sampler
-    );
+		Refresh_TextureSlice *textureSlice,
+		void *data,
+		uint32_t dataLengthInBytes
+	);
 
-    void(*QueueDestroyBuffer)(
-        Refresh_Renderer *driverData,
+	void(*SetTextureDataYUV)(
+		Refresh_Renderer *driverData,
+		Refresh_CommandBuffer* commandBuffer,
+		Refresh_Texture *y,
+		Refresh_Texture *u,
+		Refresh_Texture *v,
+		uint32_t yWidth,
+		uint32_t yHeight,
+		uint32_t uvWidth,
+		uint32_t uvHeight,
+		void* data,
+		uint32_t dataLength
+	);
+
+	void(*CopyTextureToTexture)(
+		Refresh_Renderer *driverData,
 		Refresh_CommandBuffer *commandBuffer,
-        Refresh_Buffer *buffer
-    );
+		Refresh_TextureSlice *sourceTextureSlice,
+		Refresh_TextureSlice *destinationTextureSlice,
+		Refresh_Filter filter
+	);
 
-    void(*QueueDestroyRenderTarget)(
-        Refresh_Renderer *driverData,
+	void(*CopyTextureToBuffer)(
+		Refresh_Renderer *driverData,
 		Refresh_CommandBuffer *commandBuffer,
-	    Refresh_RenderTarget *renderTarget
-    );
+		Refresh_TextureSlice *textureSlice,
+		Refresh_Buffer *buffer
+	);
 
-    void(*QueueDestroyShaderModule)(
-        Refresh_Renderer *driverData,
+	void(*SetBufferData)(
+		Refresh_Renderer *driverData,
 		Refresh_CommandBuffer *commandBuffer,
-        Refresh_ShaderModule *shaderModule
-    );
+		Refresh_Buffer *buffer,
+		uint32_t offsetInBytes,
+		void* data,
+		uint32_t dataLength
+	);
 
-    void(*QueueDestroyComputePipeline)(
-        Refresh_Renderer *driverData,
+	uint32_t(*PushVertexShaderUniforms)(
+		Refresh_Renderer *driverData,
 		Refresh_CommandBuffer *commandBuffer,
-        Refresh_ComputePipeline *computePipeline
-    );
+		void *data,
+		uint32_t dataLengthInBytes
+	);
 
-    void(*QueueDestroyGraphicsPipeline)(
-        Refresh_Renderer *driverData,
+	uint32_t(*PushFragmentShaderUniforms)(
+		Refresh_Renderer *driverData,
 		Refresh_CommandBuffer *commandBuffer,
-        Refresh_GraphicsPipeline *graphicsPipeline
-    );
+		void *data,
+		uint32_t dataLengthInBytes
+	);
 
-    /* Graphics State */
+	uint32_t (*PushComputeShaderUniforms)(
+		Refresh_Renderer *driverData,
+		Refresh_CommandBuffer *commandBuffer,
+		void *data,
+		uint32_t dataLengthInBytes
+	);
 
-    void(*BeginRenderPass)(
-        Refresh_Renderer *driverData,
+	void(*BindVertexSamplers)(
+		Refresh_Renderer *driverData,
+		Refresh_CommandBuffer *commandBuffer,
+		Refresh_Texture **pTextures,
+		Refresh_Sampler **pSamplers
+	);
+
+	void(*BindFragmentSamplers)(
+		Refresh_Renderer *driverData,
+		Refresh_CommandBuffer *commandBuffer,
+		Refresh_Texture **pTextures,
+		Refresh_Sampler **pSamplers
+	);
+
+	/* Getters */
+
+	void(*GetBufferData)(
+		Refresh_Renderer *driverData,
+		Refresh_Buffer *buffer,
+		void *data,
+		uint32_t dataLengthInBytes
+	);
+
+	/* Disposal */
+
+	void(*QueueDestroyTexture)(
+		Refresh_Renderer *driverData,
+		Refresh_CommandBuffer *commandBuffer,
+		Refresh_Texture *texture
+	);
+
+	void(*QueueDestroySampler)(
+		Refresh_Renderer *driverData,
+		Refresh_CommandBuffer *commandBuffer,
+		Refresh_Sampler *sampler
+	);
+
+	void(*QueueDestroyBuffer)(
+		Refresh_Renderer *driverData,
+		Refresh_CommandBuffer *commandBuffer,
+		Refresh_Buffer *buffer
+	);
+
+	void(*QueueDestroyRenderTarget)(
+		Refresh_Renderer *driverData,
+		Refresh_CommandBuffer *commandBuffer,
+		Refresh_RenderTarget *renderTarget
+	);
+
+	void(*QueueDestroyShaderModule)(
+		Refresh_Renderer *driverData,
+		Refresh_CommandBuffer *commandBuffer,
+		Refresh_ShaderModule *shaderModule
+	);
+
+	void(*QueueDestroyComputePipeline)(
+		Refresh_Renderer *driverData,
+		Refresh_CommandBuffer *commandBuffer,
+		Refresh_ComputePipeline *computePipeline
+	);
+
+	void(*QueueDestroyGraphicsPipeline)(
+		Refresh_Renderer *driverData,
+		Refresh_CommandBuffer *commandBuffer,
+		Refresh_GraphicsPipeline *graphicsPipeline
+	);
+
+	/* Graphics State */
+
+	void(*BeginRenderPass)(
+		Refresh_Renderer *driverData,
 		Refresh_CommandBuffer *commandBuffer,
 		Refresh_Rect *renderArea,
 		Refresh_ColorAttachmentInfo *colorAttachmentInfos,
 		uint32_t colorAttachmentCount,
 		Refresh_DepthStencilAttachmentInfo *depthStencilAttachmentInfo
-    );
+	);
 
-    void(*EndRenderPass)(
-        Refresh_Renderer *driverData,
-        Refresh_CommandBuffer *commandBuffer
-    );
+	void(*EndRenderPass)(
+		Refresh_Renderer *driverData,
+		Refresh_CommandBuffer *commandBuffer
+	);
 
-    void(*BindGraphicsPipeline)(
-        Refresh_Renderer *driverData,
-        Refresh_CommandBuffer *commandBuffer,
-        Refresh_GraphicsPipeline *graphicsPipeline
-    );
+	void(*BindGraphicsPipeline)(
+		Refresh_Renderer *driverData,
+		Refresh_CommandBuffer *commandBuffer,
+		Refresh_GraphicsPipeline *graphicsPipeline
+	);
 
-    void(*BindVertexBuffers)(
-        Refresh_Renderer *driverData,
-        Refresh_CommandBuffer *commandBuffer,
-        uint32_t firstBinding,
-        uint32_t bindingCount,
-        Refresh_Buffer **pBuffers,
-        uint64_t *pOffsets
-    );
+	void(*BindVertexBuffers)(
+		Refresh_Renderer *driverData,
+		Refresh_CommandBuffer *commandBuffer,
+		uint32_t firstBinding,
+		uint32_t bindingCount,
+		Refresh_Buffer **pBuffers,
+		uint64_t *pOffsets
+	);
 
-    void(*BindIndexBuffer)(
-        Refresh_Renderer *driverData,
-        Refresh_CommandBuffer *commandBuffer,
-        Refresh_Buffer *buffer,
-        uint64_t offset,
-        Refresh_IndexElementSize indexElementSize
-    );
+	void(*BindIndexBuffer)(
+		Refresh_Renderer *driverData,
+		Refresh_CommandBuffer *commandBuffer,
+		Refresh_Buffer *buffer,
+		uint64_t offset,
+		Refresh_IndexElementSize indexElementSize
+	);
 
-    void(*BindComputePipeline)(
-        Refresh_Renderer *driverData,
-        Refresh_CommandBuffer *commandBuffer,
-        Refresh_ComputePipeline *computePipeline
-    );
+	void(*BindComputePipeline)(
+		Refresh_Renderer *driverData,
+		Refresh_CommandBuffer *commandBuffer,
+		Refresh_ComputePipeline *computePipeline
+	);
 
-    void(*BindComputeBuffers)(
-        Refresh_Renderer *driverData,
-        Refresh_CommandBuffer *commandBuffer,
-        Refresh_Buffer **pBuffers
-    );
+	void(*BindComputeBuffers)(
+		Refresh_Renderer *driverData,
+		Refresh_CommandBuffer *commandBuffer,
+		Refresh_Buffer **pBuffers
+	);
 
-    void(*BindComputeTextures)(
-        Refresh_Renderer *driverData,
-        Refresh_CommandBuffer *commandBuffer,
-        Refresh_Texture **pTextures
-    );
+	void(*BindComputeTextures)(
+		Refresh_Renderer *driverData,
+		Refresh_CommandBuffer *commandBuffer,
+		Refresh_Texture **pTextures
+	);
 
-    Refresh_CommandBuffer* (*AcquireCommandBuffer)(
-        Refresh_Renderer *driverData,
-        uint8_t fixed
-    );
+	Refresh_CommandBuffer* (*AcquireCommandBuffer)(
+		Refresh_Renderer *driverData,
+		uint8_t fixed
+	);
 
-    void(*QueuePresent)(
-        Refresh_Renderer *driverData,
-        Refresh_CommandBuffer *commandBuffer,
-        Refresh_TextureSlice *textureSlice,
-        Refresh_Rect *destinationRectangle,
-        Refresh_Filter filter,
+	void(*QueuePresent)(
+		Refresh_Renderer *driverData,
+		Refresh_CommandBuffer *commandBuffer,
+		Refresh_TextureSlice *textureSlice,
+		Refresh_Rect *destinationRectangle,
+		Refresh_Filter filter,
 		void *windowHandle
-    );
+	);
 
-    void(*Submit)(
-        Refresh_Renderer *driverData,
-        uint32_t commandBufferCount,
-        Refresh_CommandBuffer **pCommandBuffers
-    );
+	void(*Submit)(
+		Refresh_Renderer *driverData,
+		uint32_t commandBufferCount,
+		Refresh_CommandBuffer **pCommandBuffers
+	);
 
-    void(*Wait)(
-        Refresh_Renderer *driverData
-    );
+	void(*Wait)(
+		Refresh_Renderer *driverData
+	);
 
 	/* Opaque pointer for the Driver */
 	Refresh_Renderer *driverData;
@@ -484,51 +484,51 @@ struct Refresh_Device
 	ASSIGN_DRIVER_FUNC(DrawIndexedPrimitives, name) \
 	ASSIGN_DRIVER_FUNC(DrawInstancedPrimitives, name) \
 	ASSIGN_DRIVER_FUNC(DrawPrimitives, name) \
-    ASSIGN_DRIVER_FUNC(DispatchCompute, name) \
-    ASSIGN_DRIVER_FUNC(CreateComputePipeline, name) \
-    ASSIGN_DRIVER_FUNC(CreateGraphicsPipeline, name) \
-    ASSIGN_DRIVER_FUNC(CreateSampler, name) \
-    ASSIGN_DRIVER_FUNC(CreateShaderModule, name) \
-    ASSIGN_DRIVER_FUNC(CreateTexture, name) \
-    ASSIGN_DRIVER_FUNC(CreateRenderTarget, name) \
-    ASSIGN_DRIVER_FUNC(CreateBuffer, name) \
-    ASSIGN_DRIVER_FUNC(SetTextureData, name) \
-    ASSIGN_DRIVER_FUNC(SetTextureDataYUV, name) \
-    ASSIGN_DRIVER_FUNC(CopyTextureToTexture, name) \
-    ASSIGN_DRIVER_FUNC(CopyTextureToBuffer, name) \
-    ASSIGN_DRIVER_FUNC(SetBufferData, name) \
-    ASSIGN_DRIVER_FUNC(PushVertexShaderUniforms, name) \
-    ASSIGN_DRIVER_FUNC(PushFragmentShaderUniforms, name) \
-    ASSIGN_DRIVER_FUNC(PushComputeShaderUniforms, name) \
-    ASSIGN_DRIVER_FUNC(BindVertexSamplers, name) \
-    ASSIGN_DRIVER_FUNC(BindFragmentSamplers, name) \
-    ASSIGN_DRIVER_FUNC(GetBufferData, name) \
-    ASSIGN_DRIVER_FUNC(QueueDestroyTexture, name) \
-    ASSIGN_DRIVER_FUNC(QueueDestroySampler, name) \
-    ASSIGN_DRIVER_FUNC(QueueDestroyBuffer, name) \
-    ASSIGN_DRIVER_FUNC(QueueDestroyRenderTarget, name) \
-    ASSIGN_DRIVER_FUNC(QueueDestroyShaderModule, name) \
-    ASSIGN_DRIVER_FUNC(QueueDestroyComputePipeline, name) \
-    ASSIGN_DRIVER_FUNC(QueueDestroyGraphicsPipeline, name) \
-    ASSIGN_DRIVER_FUNC(BeginRenderPass, name) \
-    ASSIGN_DRIVER_FUNC(EndRenderPass, name) \
-    ASSIGN_DRIVER_FUNC(BindGraphicsPipeline, name) \
-    ASSIGN_DRIVER_FUNC(BindVertexBuffers, name) \
-    ASSIGN_DRIVER_FUNC(BindIndexBuffer, name) \
-    ASSIGN_DRIVER_FUNC(BindComputePipeline, name) \
-    ASSIGN_DRIVER_FUNC(BindComputeBuffers, name) \
-    ASSIGN_DRIVER_FUNC(BindComputeTextures, name) \
-    ASSIGN_DRIVER_FUNC(AcquireCommandBuffer, name) \
-    ASSIGN_DRIVER_FUNC(QueuePresent, name) \
-    ASSIGN_DRIVER_FUNC(Submit, name) \
-    ASSIGN_DRIVER_FUNC(Wait, name)
+	ASSIGN_DRIVER_FUNC(DispatchCompute, name) \
+	ASSIGN_DRIVER_FUNC(CreateComputePipeline, name) \
+	ASSIGN_DRIVER_FUNC(CreateGraphicsPipeline, name) \
+	ASSIGN_DRIVER_FUNC(CreateSampler, name) \
+	ASSIGN_DRIVER_FUNC(CreateShaderModule, name) \
+	ASSIGN_DRIVER_FUNC(CreateTexture, name) \
+	ASSIGN_DRIVER_FUNC(CreateRenderTarget, name) \
+	ASSIGN_DRIVER_FUNC(CreateBuffer, name) \
+	ASSIGN_DRIVER_FUNC(SetTextureData, name) \
+	ASSIGN_DRIVER_FUNC(SetTextureDataYUV, name) \
+	ASSIGN_DRIVER_FUNC(CopyTextureToTexture, name) \
+	ASSIGN_DRIVER_FUNC(CopyTextureToBuffer, name) \
+	ASSIGN_DRIVER_FUNC(SetBufferData, name) \
+	ASSIGN_DRIVER_FUNC(PushVertexShaderUniforms, name) \
+	ASSIGN_DRIVER_FUNC(PushFragmentShaderUniforms, name) \
+	ASSIGN_DRIVER_FUNC(PushComputeShaderUniforms, name) \
+	ASSIGN_DRIVER_FUNC(BindVertexSamplers, name) \
+	ASSIGN_DRIVER_FUNC(BindFragmentSamplers, name) \
+	ASSIGN_DRIVER_FUNC(GetBufferData, name) \
+	ASSIGN_DRIVER_FUNC(QueueDestroyTexture, name) \
+	ASSIGN_DRIVER_FUNC(QueueDestroySampler, name) \
+	ASSIGN_DRIVER_FUNC(QueueDestroyBuffer, name) \
+	ASSIGN_DRIVER_FUNC(QueueDestroyRenderTarget, name) \
+	ASSIGN_DRIVER_FUNC(QueueDestroyShaderModule, name) \
+	ASSIGN_DRIVER_FUNC(QueueDestroyComputePipeline, name) \
+	ASSIGN_DRIVER_FUNC(QueueDestroyGraphicsPipeline, name) \
+	ASSIGN_DRIVER_FUNC(BeginRenderPass, name) \
+	ASSIGN_DRIVER_FUNC(EndRenderPass, name) \
+	ASSIGN_DRIVER_FUNC(BindGraphicsPipeline, name) \
+	ASSIGN_DRIVER_FUNC(BindVertexBuffers, name) \
+	ASSIGN_DRIVER_FUNC(BindIndexBuffer, name) \
+	ASSIGN_DRIVER_FUNC(BindComputePipeline, name) \
+	ASSIGN_DRIVER_FUNC(BindComputeBuffers, name) \
+	ASSIGN_DRIVER_FUNC(BindComputeTextures, name) \
+	ASSIGN_DRIVER_FUNC(AcquireCommandBuffer, name) \
+	ASSIGN_DRIVER_FUNC(QueuePresent, name) \
+	ASSIGN_DRIVER_FUNC(Submit, name) \
+	ASSIGN_DRIVER_FUNC(Wait, name)
 
 typedef struct Refresh_Driver
 {
 	const char *Name;
 	Refresh_Device* (*CreateDevice)(
 		Refresh_PresentationParameters *presentationParameters,
-        uint8_t debugMode
+		uint8_t debugMode
 	);
 } Refresh_Driver;
 
