@@ -5127,7 +5127,7 @@ static Refresh_GraphicsPipeline* VULKAN_CreateGraphicsPipeline(
 	VkPipelineColorBlendStateCreateInfo colorBlendStateCreateInfo;
 	VkPipelineColorBlendAttachmentState *colorBlendAttachmentStates = SDL_stack_alloc(
 		VkPipelineColorBlendAttachmentState,
-		pipelineCreateInfo->colorBlendState.blendStateCount
+		pipelineCreateInfo->attachmentInfo.colorAttachmentCount
 	);
 
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
@@ -5344,30 +5344,32 @@ static Refresh_GraphicsPipeline* VULKAN_CreateGraphicsPipeline(
 
 	/* Color Blend */
 
-	for (i = 0; i < pipelineCreateInfo->colorBlendState.blendStateCount; i += 1)
+	for (i = 0; i < pipelineCreateInfo->attachmentInfo.colorAttachmentCount; i += 1)
 	{
+		Refresh_ColorAttachmentBlendState blendState = pipelineCreateInfo->attachmentInfo.colorAttachmentDescriptions[i].blendState;
+
 		colorBlendAttachmentStates[i].blendEnable =
-			pipelineCreateInfo->colorBlendState.blendStates[i].blendEnable;
+			blendState.blendEnable;
 		colorBlendAttachmentStates[i].srcColorBlendFactor = RefreshToVK_BlendFactor[
-			pipelineCreateInfo->colorBlendState.blendStates[i].srcColorBlendFactor
+			blendState.srcColorBlendFactor
 		];
 		colorBlendAttachmentStates[i].dstColorBlendFactor = RefreshToVK_BlendFactor[
-			pipelineCreateInfo->colorBlendState.blendStates[i].dstColorBlendFactor
+			blendState.dstColorBlendFactor
 		];
 		colorBlendAttachmentStates[i].colorBlendOp = RefreshToVK_BlendOp[
-			pipelineCreateInfo->colorBlendState.blendStates[i].colorBlendOp
+			blendState.colorBlendOp
 		];
 		colorBlendAttachmentStates[i].srcAlphaBlendFactor = RefreshToVK_BlendFactor[
-			pipelineCreateInfo->colorBlendState.blendStates[i].srcAlphaBlendFactor
+			blendState.srcAlphaBlendFactor
 		];
 		colorBlendAttachmentStates[i].dstAlphaBlendFactor = RefreshToVK_BlendFactor[
-			pipelineCreateInfo->colorBlendState.blendStates[i].dstAlphaBlendFactor
+			blendState.dstAlphaBlendFactor
 		];
 		colorBlendAttachmentStates[i].alphaBlendOp = RefreshToVK_BlendOp[
-			pipelineCreateInfo->colorBlendState.blendStates[i].alphaBlendOp
+			blendState.alphaBlendOp
 		];
 		colorBlendAttachmentStates[i].colorWriteMask =
-			pipelineCreateInfo->colorBlendState.blendStates[i].colorWriteMask;
+			blendState.colorWriteMask;
 	}
 
 	colorBlendStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
@@ -5379,7 +5381,7 @@ static Refresh_GraphicsPipeline* VULKAN_CreateGraphicsPipeline(
 		pipelineCreateInfo->colorBlendState.logicOp
 	];
 	colorBlendStateCreateInfo.attachmentCount =
-		pipelineCreateInfo->colorBlendState.blendStateCount;
+		pipelineCreateInfo->attachmentInfo.colorAttachmentCount;
 	colorBlendStateCreateInfo.pAttachments =
 		colorBlendAttachmentStates;
 	colorBlendStateCreateInfo.blendConstants[0] =

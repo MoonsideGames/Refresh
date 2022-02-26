@@ -447,7 +447,7 @@ typedef struct Refresh_StencilOpState
 	uint32_t reference;
 } Refresh_StencilOpState;
 
-typedef struct Refresh_ColorTargetBlendState
+typedef struct Refresh_ColorAttachmentBlendState
 {
 	uint8_t blendEnable;
 	Refresh_BlendFactor srcColorBlendFactor;
@@ -457,7 +457,7 @@ typedef struct Refresh_ColorTargetBlendState
 	Refresh_BlendFactor dstAlphaBlendFactor;
 	Refresh_BlendOp alphaBlendOp;
 	Refresh_ColorComponentFlags colorWriteMask;
-} Refresh_ColorTargetBlendState;
+} Refresh_ColorAttachmentBlendState;
 
 typedef struct Refresh_ComputePipelineLayoutCreateInfo
 {
@@ -538,14 +538,12 @@ typedef struct Refresh_DepthStencilState
 	float maxDepthBounds;
 } Refresh_DepthStencilState;
 
-typedef struct Refresh_ColorBlendState
+typedef struct Refresh_PipelineColorBlendState
 {
 	uint8_t logicOpEnable;
 	Refresh_LogicOp logicOp;
-	const Refresh_ColorTargetBlendState *blendStates;
-	uint32_t blendStateCount;
 	float blendConstants[4];
-} Refresh_ColorBlendState;
+} Refresh_PipelineColorBlendState;
 
 typedef struct Refresh_ComputePipelineCreateInfo
 {
@@ -557,11 +555,12 @@ typedef struct Refresh_ColorAttachmentDescription
 {
 	Refresh_TextureFormat format;
 	Refresh_SampleCount sampleCount;
+	Refresh_ColorAttachmentBlendState blendState;
 } Refresh_ColorAttachmentDescription;
 
 typedef struct Refresh_GraphicsPipelineAttachmentInfo
 {
-	const Refresh_ColorAttachmentDescription *colorAttachmentDescriptions;
+	Refresh_ColorAttachmentDescription *colorAttachmentDescriptions;
 	uint32_t colorAttachmentCount;
 	uint8_t hasDepthStencilAttachment;
 	Refresh_TextureFormat depthStencilFormat;
@@ -577,7 +576,7 @@ typedef struct Refresh_GraphicsPipelineCreateInfo
 	Refresh_RasterizerState rasterizerState;
 	Refresh_MultisampleState multisampleState;
 	Refresh_DepthStencilState depthStencilState;
-	Refresh_ColorBlendState colorBlendState;
+	Refresh_PipelineColorBlendState colorBlendState;
 	Refresh_GraphicsPipelineLayoutCreateInfo pipelineLayoutCreateInfo;
 	Refresh_GraphicsPipelineAttachmentInfo attachmentInfo;
 } Refresh_GraphicsPipelineCreateInfo;
