@@ -9624,11 +9624,11 @@ static Refresh_Device* VULKAN_CreateDevice(
 	);
 	Refresh_LogWarn(
 		"\n"
-		"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n"
+		"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n"
 		"! Refresh Vulkan is still in development!	!\n"
-		"! The API is unstable and subject to change!\n"
-		"! You have been warned!					!\n"
-		"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+		"! The API is unstable and subject to change	!\n"
+		"! You have been warned!			!\n"
+		"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
 	);
 
 	if (!VULKAN_INTERNAL_CreateLogicalDevice(
