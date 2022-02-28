@@ -726,6 +726,27 @@ typedef struct QueueFamilyIndices
 	uint32_t transferFamily;
 } QueueFamilyIndices;
 
+typedef struct VulkanTexture
+{
+	VulkanMemoryAllocation *allocation;
+	VkDeviceSize offset;
+	VkDeviceSize memorySize;
+
+	VkImage image;
+	VkImageView view;
+	VkExtent2D dimensions;
+
+	uint8_t is3D;
+	uint8_t isCube;
+
+	uint32_t depth;
+	uint32_t layerCount;
+	uint32_t levelCount;
+	VkFormat format;
+	VulkanResourceAccessType resourceAccessType;
+	VkImageUsageFlags usageFlags;
+} VulkanTexture;
+
 typedef struct VulkanSwapchainData
 {
 	/* Window surface */
@@ -741,9 +762,7 @@ typedef struct VulkanSwapchainData
 
 	/* Swapchain images */
 	VkExtent2D extent;
-	VkImage *images;
-	VkImageView *views;
-	VulkanResourceAccessType *resourceAccessTypes;
+	VulkanTexture *textures;
 	uint32_t imageCount;
 
 	/* Synchronization primitives */
@@ -792,28 +811,6 @@ typedef struct VulkanComputePipeline
 	VulkanComputePipelineLayout *pipelineLayout;
 	VkDeviceSize uniformBlockSize; /* permanently set in Create function */
 } VulkanComputePipeline;
-
-typedef struct VulkanTexture
-{
-	VulkanMemoryAllocation *allocation;
-	VkDeviceSize offset;
-	VkDeviceSize memorySize;
-
-	VkImage image;
-	VkImageView view;
-	VkExtent2D dimensions;
-
-	uint8_t is3D;
-	uint8_t isCube;
-
-	uint32_t depth;
-	uint32_t layerCount;
-	uint32_t levelCount;
-	VkFormat format;
-	VulkanResourceAccessType resourceAccessType;
-	uint32_t queueFamilyIndex;
-	VkImageUsageFlags usageFlags;
-} VulkanTexture;
 
 typedef struct VulkanRenderTarget
 {
@@ -2730,14 +2727,12 @@ static void VULKAN_INTERNAL_DestroySwapchain(
 	{
 		renderer->vkDestroyImageView(
 			renderer->logicalDevice,
-			swapchainData->views[i],
+			swapchainData->textures[i].view,
 			NULL
 		);
 	}
 
-	SDL_free(swapchainData->images);
-	SDL_free(swapchainData->views);
-	SDL_free(swapchainData->resourceAccessTypes);
+	SDL_free(swapchainData->textures);
 
 	renderer->vkDestroySwapchainKHR(
 		renderer->logicalDevice,
@@ -3745,6 +3740,7 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 	VkResult vulkanResult;
 	VulkanSwapchainData *swapchainData;
 	VkSwapchainCreateInfoKHR swapchainCreateInfo;
+	VkImage *swapchainImages;
 	VkImageViewCreateInfo imageViewCreateInfo;
 	VkSemaphoreCreateInfo semaphoreCreateInfo;
 	SwapChainSupportDetails swapchainSupportDetails;
@@ -3992,10 +3988,11 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 		NULL
 	);
 
-	swapchainData->images = (VkImage*) SDL_malloc(
-		sizeof(VkImage) * swapchainData->imageCount
+	swapchainData->textures = SDL_malloc(
+		sizeof(VulkanTexture) * swapchainData->imageCount
 	);
-	if (!swapchainData->images)
+
+	if (!swapchainData->textures)
 	{
 		SDL_OutOfMemory();
 		renderer->vkDestroySurfaceKHR(
@@ -4007,44 +4004,13 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 		return CREATE_SWAPCHAIN_FAIL;
 	}
 
-	swapchainData->views = (VkImageView*) SDL_malloc(
-		sizeof(VkImageView) * swapchainData->imageCount
-	);
-	if (!swapchainData->views)
-	{
-		SDL_OutOfMemory();
-		renderer->vkDestroySurfaceKHR(
-			renderer->instance,
-			swapchainData->surface,
-			NULL
-		);
-		SDL_free(swapchainData->images);
-		SDL_free(swapchainData);
-		return CREATE_SWAPCHAIN_FAIL;
-	}
-
-	swapchainData->resourceAccessTypes = (VulkanResourceAccessType*) SDL_malloc(
-		sizeof(VulkanResourceAccessType) * swapchainData->imageCount
-	);
-	if (!swapchainData->resourceAccessTypes)
-	{
-		SDL_OutOfMemory();
-		renderer->vkDestroySurfaceKHR(
-			renderer->instance,
-			swapchainData->surface,
-			NULL
-		);
-		SDL_free(swapchainData->images);
-		SDL_free(swapchainData->views);
-		SDL_free(swapchainData);
-		return CREATE_SWAPCHAIN_FAIL;
-	}
+	swapchainImages = SDL_stack_alloc(VkImage, swapchainData->imageCount);
 
 	renderer->vkGetSwapchainImagesKHR(
 		renderer->logicalDevice,
 		swapchainData->swapchain,
 		&swapchainData->imageCount,
-		swapchainData->images
+		swapchainImages
 	);
 
 	imageViewCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -4061,13 +4027,15 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 
 	for (i = 0; i < swapchainData->imageCount; i += 1)
 	{
-		imageViewCreateInfo.image = swapchainData->images[i];
+		swapchainData->textures[i].image = swapchainImages[i];
+
+		imageViewCreateInfo.image = swapchainImages[i];
 
 		vulkanResult = renderer->vkCreateImageView(
 			renderer->logicalDevice,
 			&imageViewCreateInfo,
 			NULL,
-			&swapchainData->views[i]
+			&swapchainData->textures[i].view
 		);
 
 		if (vulkanResult != VK_SUCCESS)
@@ -4077,16 +4045,32 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 				swapchainData->surface,
 				NULL
 			);
-			SDL_free(swapchainData->images);
-			SDL_free(swapchainData->views);
-			SDL_free(swapchainData->resourceAccessTypes);
+			SDL_stack_free(swapchainImages);
+			SDL_free(swapchainData->textures);
 			SDL_free(swapchainData);
 			LogVulkanResultAsError("vkCreateImageView", vulkanResult);
 			return CREATE_SWAPCHAIN_FAIL;
 		}
 
-		swapchainData->resourceAccessTypes[i] = RESOURCE_ACCESS_NONE;
+		swapchainData->textures[i].resourceAccessType = RESOURCE_ACCESS_NONE;
+
+		/* Swapchain memory is managed by the driver */
+		swapchainData->textures[i].allocation = NULL;
+		swapchainData->textures[i].offset = 0;
+		swapchainData->textures[i].memorySize = 0;
+
+		swapchainData->textures[i].dimensions = swapchainData->extent;
+		swapchainData->textures[i].format = swapchainData->swapchainFormat;
+		swapchainData->textures[i].is3D = 0;
+		swapchainData->textures[i].isCube = 0;
+		swapchainData->textures[i].layerCount = 1;
+		swapchainData->textures[i].levelCount = 1;
+		swapchainData->textures[i].usageFlags =
+			VK_IMAGE_USAGE_TRANSFER_DST_BIT |
+			VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 	}
+
+	SDL_stack_free(swapchainImages);
 
 	semaphoreCreateInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
 	semaphoreCreateInfo.pNext = NULL;
@@ -5890,7 +5874,6 @@ static VulkanTexture* VULKAN_INTERNAL_CreateTexture(
 	texture->levelCount = levelCount;
 	texture->layerCount = layerCount;
 	texture->resourceAccessType = RESOURCE_ACCESS_NONE;
-	texture->queueFamilyIndex = renderer->queueFamilyIndices.graphicsFamily;
 	texture->usageFlags = imageUsageFlags;
 
 	return texture;
@@ -6228,15 +6211,16 @@ static void VULKAN_SetTextureData(
 		dataLengthInBytes
 	);
 
+	/* TODO: is it worth it to only transition the specific subresource? */
 	VULKAN_INTERNAL_ImageMemoryBarrier(
 		renderer,
 		vulkanCommandBuffer->commandBuffer,
 		RESOURCE_ACCESS_TRANSFER_WRITE,
 		VK_IMAGE_ASPECT_COLOR_BIT,
-		textureSlice->layer,
-		1,
-		textureSlice->level,
-		1,
+		0,
+		vulkanTexture->layerCount,
+		0,
+		vulkanTexture->levelCount,
 		0,
 		vulkanTexture->image,
 		&vulkanTexture->resourceAccessType
@@ -6269,15 +6253,16 @@ static void VULKAN_SetTextureData(
 
 	if (vulkanTexture->usageFlags & VK_IMAGE_USAGE_SAMPLED_BIT)
 	{
+		/* TODO: is it worth it to only transition the specific subresource? */
 		VULKAN_INTERNAL_ImageMemoryBarrier(
 			renderer,
 			vulkanCommandBuffer->commandBuffer,
 			RESOURCE_ACCESS_ANY_SHADER_READ_SAMPLED_IMAGE,
 			VK_IMAGE_ASPECT_COLOR_BIT,
-			textureSlice->layer,
-			1,
-			textureSlice->level,
-			1,
+			0,
+			vulkanTexture->layerCount,
+			0,
+			vulkanTexture->levelCount,
 			0,
 			vulkanTexture->image,
 			&vulkanTexture->resourceAccessType
@@ -6476,36 +6461,30 @@ static void VULKAN_SetTextureDataYUV(
 static void VULKAN_INTERNAL_BlitImage(
 	VulkanRenderer *renderer,
 	VkCommandBuffer commandBuffer,
-	Refresh_Rect *sourceRectangle,
-	uint32_t sourceDepth,
-	uint32_t sourceLayer,
-	uint32_t sourceLevel,
-	VkImage sourceImage,
-	VulkanResourceAccessType *currentSourceAccessType,
-	VulkanResourceAccessType nextSourceAccessType,
-	Refresh_Rect *destinationRectangle,
-	uint32_t destinationDepth,
-	uint32_t destinationLayer,
-	uint32_t destinationLevel,
-	VkImage destinationImage,
-	VulkanResourceAccessType *currentDestinationAccessType,
-	VulkanResourceAccessType nextDestinationAccessType,
+	Refresh_TextureSlice *sourceTextureSlice,
+	Refresh_TextureSlice *destinationTextureSlice,
+	VulkanResourceAccessType newDestinationAccessType,
 	VkFilter filter
 ) {
 	VkImageBlit blit;
+	VulkanTexture *sourceTexture = (VulkanTexture*) sourceTextureSlice->texture;
+	VulkanTexture *destinationTexture = (VulkanTexture*) destinationTextureSlice->texture;
 
+	VulkanResourceAccessType originalSourceAccessType = sourceTexture->resourceAccessType;
+
+	/* TODO: is it worth it to only transition the specific subresource? */
 	VULKAN_INTERNAL_ImageMemoryBarrier(
 		renderer,
 		commandBuffer,
 		RESOURCE_ACCESS_TRANSFER_READ,
 		VK_IMAGE_ASPECT_COLOR_BIT,
-		sourceLayer,
-		1,
-		sourceLevel,
-		1,
 		0,
-		sourceImage,
-		currentSourceAccessType
+		sourceTexture->layerCount,
+		0,
+		sourceTexture->levelCount,
+		0,
+		sourceTexture->image,
+		&sourceTexture->resourceAccessType
 	);
 
 	VULKAN_INTERNAL_ImageMemoryBarrier(
@@ -6513,76 +6492,77 @@ static void VULKAN_INTERNAL_BlitImage(
 		commandBuffer,
 		RESOURCE_ACCESS_TRANSFER_WRITE,
 		VK_IMAGE_ASPECT_COLOR_BIT,
-		destinationLayer,
-		1,
-		destinationLevel,
-		1,
 		0,
-		destinationImage,
-		currentDestinationAccessType
+		destinationTexture->layerCount,
+		0,
+		destinationTexture->levelCount,
+		0,
+		destinationTexture->image,
+		&destinationTexture->resourceAccessType
 	);
 
-	blit.srcOffsets[0].x = sourceRectangle->x;
-	blit.srcOffsets[0].y = sourceRectangle->y;
-	blit.srcOffsets[0].z = sourceDepth;
-	blit.srcOffsets[1].x = sourceRectangle->x + sourceRectangle->w;
-	blit.srcOffsets[1].y = sourceRectangle->y + sourceRectangle->h;
+	blit.srcOffsets[0].x = sourceTextureSlice->rectangle.x;
+	blit.srcOffsets[0].y = sourceTextureSlice->rectangle.y;
+	blit.srcOffsets[0].z = sourceTextureSlice->depth;
+	blit.srcOffsets[1].x = sourceTextureSlice->rectangle.x + sourceTextureSlice->rectangle.w;
+	blit.srcOffsets[1].y = sourceTextureSlice->rectangle.y + sourceTextureSlice->rectangle.h;
 	blit.srcOffsets[1].z = 1;
 
-	blit.srcSubresource.mipLevel = sourceLevel;
-	blit.srcSubresource.baseArrayLayer = sourceLayer;
+	blit.srcSubresource.mipLevel = sourceTextureSlice->level;
+	blit.srcSubresource.baseArrayLayer = sourceTextureSlice->layer;
 	blit.srcSubresource.layerCount = 1;
 	blit.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 
-	blit.dstOffsets[0].x = destinationRectangle->x;
-	blit.dstOffsets[0].y = destinationRectangle->y;
-	blit.dstOffsets[0].z = destinationDepth;
-	blit.dstOffsets[1].x = destinationRectangle->x + destinationRectangle->w;
-	blit.dstOffsets[1].y = destinationRectangle->y + destinationRectangle->h;
+	blit.dstOffsets[0].x = destinationTextureSlice->rectangle.x;
+	blit.dstOffsets[0].y = destinationTextureSlice->rectangle.y;
+	blit.dstOffsets[0].z = destinationTextureSlice->depth;
+	blit.dstOffsets[1].x = destinationTextureSlice->rectangle.x + destinationTextureSlice->rectangle.w;
+	blit.dstOffsets[1].y = destinationTextureSlice->rectangle.y + destinationTextureSlice->rectangle.h;
 	blit.dstOffsets[1].z = 1;
 
-	blit.dstSubresource.mipLevel = destinationLevel;
-	blit.dstSubresource.baseArrayLayer = destinationLayer;
+	blit.dstSubresource.mipLevel = sourceTextureSlice->level;
+	blit.dstSubresource.baseArrayLayer = sourceTextureSlice->layer;
 	blit.dstSubresource.layerCount = 1;
 	blit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 
 	renderer->vkCmdBlitImage(
 		commandBuffer,
-		sourceImage,
+		sourceTexture->image,
 		VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-		destinationImage,
+		destinationTexture->image,
 		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 		1,
 		&blit,
 		filter
 	);
 
+	/* TODO: is it worth it to only transition the specific subresource? */
 	VULKAN_INTERNAL_ImageMemoryBarrier(
 		renderer,
 		commandBuffer,
-		nextSourceAccessType,
+		originalSourceAccessType,
 		VK_IMAGE_ASPECT_COLOR_BIT,
-		sourceLayer,
-		1,
-		sourceLevel,
-		1,
 		0,
-		sourceImage,
-		currentSourceAccessType
+		sourceTexture->layerCount,
+		0,
+		sourceTexture->levelCount,
+		0,
+		sourceTexture->image,
+		&sourceTexture->resourceAccessType
 	);
 
 	VULKAN_INTERNAL_ImageMemoryBarrier(
 		renderer,
 		commandBuffer,
-		nextDestinationAccessType,
+		newDestinationAccessType,
 		VK_IMAGE_ASPECT_COLOR_BIT,
-		destinationLayer,
-		1,
-		destinationLevel,
-		1,
 		0,
-		destinationImage,
-		currentDestinationAccessType
+		destinationTexture->layerCount,
+		0,
+		destinationTexture->levelCount,
+		0,
+		destinationTexture->image,
+		&destinationTexture->resourceAccessType
 	);
 }
 
@@ -6595,25 +6575,13 @@ REFRESHAPI void VULKAN_CopyTextureToTexture(
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*)driverData;
 	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
-	VulkanTexture *sourceTexture = (VulkanTexture*) sourceTextureSlice->texture;
 	VulkanTexture *destinationTexture = (VulkanTexture*) destinationTextureSlice->texture;
 
 	VULKAN_INTERNAL_BlitImage(
 		renderer,
 		vulkanCommandBuffer->commandBuffer,
-		&sourceTextureSlice->rectangle,
-		sourceTextureSlice->depth,
-		sourceTextureSlice->layer,
-		sourceTextureSlice->level,
-		sourceTexture->image,
-		&sourceTexture->resourceAccessType,
-		sourceTexture->resourceAccessType,
-		&destinationTextureSlice->rectangle,
-		destinationTextureSlice->depth,
-		destinationTextureSlice->layer,
-		destinationTextureSlice->level,
-		destinationTexture->image,
-		&destinationTexture->resourceAccessType,
+		sourceTextureSlice,
+		destinationTextureSlice,
 		destinationTexture->resourceAccessType,
 		RefreshToVK_Filter[filter]
 	);
@@ -8275,7 +8243,7 @@ static void VULKAN_QueuePresent(
 
 	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
 	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
-	VulkanTexture* vulkanTexture = (VulkanTexture*) textureSlice->texture;
+	Refresh_TextureSlice destinationTextureSlice;
 	VulkanSwapchainData *swapchainData = NULL;
 	CreateSwapchainResult createSwapchainResult = 0;
 	uint8_t validSwapchainExists = 1;
@@ -8339,22 +8307,17 @@ static void VULKAN_QueuePresent(
 
 			/* Blit! */
 
+			destinationTextureSlice.depth = 0;
+			destinationTextureSlice.layer = 0;
+			destinationTextureSlice.level = 0;
+			destinationTextureSlice.rectangle = dstRect;
+			destinationTextureSlice.texture = (Refresh_Texture*) &swapchainData->textures[swapchainImageIndex];
+
 			VULKAN_INTERNAL_BlitImage(
 				renderer,
 				vulkanCommandBuffer->commandBuffer,
-				&textureSlice->rectangle,
-				textureSlice->depth,
-				textureSlice->layer,
-				textureSlice->level,
-				vulkanTexture->image,
-				&vulkanTexture->resourceAccessType,
-				vulkanTexture->resourceAccessType,
-				&dstRect,
-				0,
-				0,
-				0,
-				swapchainData->images[swapchainImageIndex],
-				&swapchainData->resourceAccessTypes[swapchainImageIndex],
+				textureSlice,
+				&destinationTextureSlice,
 				RESOURCE_ACCESS_PRESENT,
 				RefreshToVK_Filter[filter]
 			);
