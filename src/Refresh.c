@@ -1,4 +1,4 @@
-/* Refresh - XNA-inspired 3D Graphics Library with modern capabilities
+﻿/* Refresh - XNA-inspired 3D Graphics Library with modern capabilities
  *
  * Copyright (c) 2020 Evan Hemsley
  *
@@ -252,12 +252,12 @@ void Refresh_DispatchCompute(
 
 Refresh_ComputePipeline* Refresh_CreateComputePipeline(
 	Refresh_Device *device,
-	Refresh_ComputePipelineCreateInfo *pipelineCreateInfo
+	Refresh_ComputeShaderInfo *computeShaderInfo
 ) {
 	NULL_RETURN_NULL(device);
 	return device->CreateComputePipeline(
 		device->driverData,
-		pipelineCreateInfo
+		computeShaderInfo
 	);
 }
 

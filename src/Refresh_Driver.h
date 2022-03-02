@@ -1,4 +1,4 @@
-/* Refresh - XNA-inspired 3D Graphics Library with modern capabilities
+﻿/* Refresh - XNA-inspired 3D Graphics Library with modern capabilities
  *
  * Copyright (c) 2020 Evan Hemsley
  *
@@ -221,7 +221,7 @@ struct Refresh_Device
 
 	Refresh_ComputePipeline* (*CreateComputePipeline)(
 		Refresh_Renderer *driverData,
-		Refresh_ComputePipelineCreateInfo *pipelineCreateInfo
+		Refresh_ComputeShaderInfo *computeShaderInfo
 	);
 
 	Refresh_GraphicsPipeline* (*CreateGraphicsPipeline)(

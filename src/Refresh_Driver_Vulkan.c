@@ -5664,13 +5664,13 @@ static Refresh_GraphicsPipeline* VULKAN_CreateGraphicsPipeline(
 	shaderStageCreateInfos[0].pNext = NULL;
 	shaderStageCreateInfos[0].flags = 0;
 	shaderStageCreateInfos[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
-	shaderStageCreateInfos[0].module = (VkShaderModule) pipelineCreateInfo->vertexShaderState.shaderModule;
-	shaderStageCreateInfos[0].pName = pipelineCreateInfo->vertexShaderState.entryPointName;
+	shaderStageCreateInfos[0].module = (VkShaderModule) pipelineCreateInfo->vertexShaderInfo.shaderModule;
+	shaderStageCreateInfos[0].pName = pipelineCreateInfo->vertexShaderInfo.entryPointName;
 	shaderStageCreateInfos[0].pSpecializationInfo = NULL;
 
 	graphicsPipeline->vertexUniformBlockSize =
 		VULKAN_INTERNAL_NextHighestAlignment(
-			pipelineCreateInfo->vertexShaderState.uniformBufferSize,
+			pipelineCreateInfo->vertexShaderInfo.uniformBufferSize,
 			renderer->minUBOAlignment
 		);
 
@@ -5678,13 +5678,13 @@ static Refresh_GraphicsPipeline* VULKAN_CreateGraphicsPipeline(
 	shaderStageCreateInfos[1].pNext = NULL;
 	shaderStageCreateInfos[1].flags = 0;
 	shaderStageCreateInfos[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-	shaderStageCreateInfos[1].module = (VkShaderModule) pipelineCreateInfo->fragmentShaderState.shaderModule;
-	shaderStageCreateInfos[1].pName = pipelineCreateInfo->fragmentShaderState.entryPointName;
+	shaderStageCreateInfos[1].module = (VkShaderModule) pipelineCreateInfo->fragmentShaderInfo.shaderModule;
+	shaderStageCreateInfos[1].pName = pipelineCreateInfo->fragmentShaderInfo.entryPointName;
 	shaderStageCreateInfos[1].pSpecializationInfo = NULL;
 
 	graphicsPipeline->fragmentUniformBlockSize =
 		VULKAN_INTERNAL_NextHighestAlignment(
-			pipelineCreateInfo->fragmentShaderState.uniformBufferSize,
+			pipelineCreateInfo->fragmentShaderInfo.uniformBufferSize,
 			renderer->minUBOAlignment
 		);
 
@@ -5915,8 +5915,8 @@ static Refresh_GraphicsPipeline* VULKAN_CreateGraphicsPipeline(
 
 	graphicsPipeline->pipelineLayout = VULKAN_INTERNAL_FetchGraphicsPipelineLayout(
 		renderer,
-		pipelineCreateInfo->vertexShaderState.samplerBindingCount,
-		pipelineCreateInfo->fragmentShaderState.samplerBindingCount
+		pipelineCreateInfo->vertexShaderInfo.samplerBindingCount,
+		pipelineCreateInfo->fragmentShaderInfo.samplerBindingCount
 	);
 
 	/* Pipeline */
@@ -6083,7 +6083,7 @@ static VulkanComputePipelineLayout* VULKAN_INTERNAL_FetchComputePipelineLayout(
 
 static Refresh_ComputePipeline* VULKAN_CreateComputePipeline(
 	Refresh_Renderer *driverData,
-	Refresh_ComputePipelineCreateInfo *pipelineCreateInfo
+	Refresh_ComputeShaderInfo *computeShaderInfo
 ) {
 	VkComputePipelineCreateInfo computePipelineCreateInfo;
 	VkPipelineShaderStageCreateInfo pipelineShaderStageCreateInfo;
@@ -6095,14 +6095,14 @@ static Refresh_ComputePipeline* VULKAN_CreateComputePipeline(
 	pipelineShaderStageCreateInfo.pNext = NULL;
 	pipelineShaderStageCreateInfo.flags = 0;
 	pipelineShaderStageCreateInfo.stage = VK_SHADER_STAGE_COMPUTE_BIT;
-	pipelineShaderStageCreateInfo.module = (VkShaderModule) pipelineCreateInfo->computeShaderState.shaderModule;
-	pipelineShaderStageCreateInfo.pName = pipelineCreateInfo->computeShaderState.entryPointName;
+	pipelineShaderStageCreateInfo.module = (VkShaderModule)computeShaderInfo->shaderModule;
+	pipelineShaderStageCreateInfo.pName = computeShaderInfo->entryPointName;
 	pipelineShaderStageCreateInfo.pSpecializationInfo = NULL;
 
 	vulkanComputePipeline->pipelineLayout = VULKAN_INTERNAL_FetchComputePipelineLayout(
 		renderer,
-		pipelineCreateInfo->pipelineLayoutCreateInfo.bufferBindingCount,
-		pipelineCreateInfo->pipelineLayoutCreateInfo.imageBindingCount
+		computeShaderInfo->bufferBindingCount,
+		computeShaderInfo->imageBindingCount
 	);
 
 	computePipelineCreateInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
@@ -6125,7 +6125,7 @@ static Refresh_ComputePipeline* VULKAN_CreateComputePipeline(
 
 	vulkanComputePipeline->uniformBlockSize =
 		VULKAN_INTERNAL_NextHighestAlignment(
-			pipelineCreateInfo->computeShaderState.uniformBufferSize,
+			computeShaderInfo->uniformBufferSize,
 			renderer->minUBOAlignment
 		);
 

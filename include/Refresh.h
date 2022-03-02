@@ -460,13 +460,22 @@ typedef struct Refresh_TextureCreateInfo
 
 /* Pipeline state structures */
 
-typedef struct Refresh_ShaderStageState
+typedef struct Refresh_GraphicsShaderInfo
 {
 	Refresh_ShaderModule *shaderModule;
 	const char* entryPointName;
 	uint64_t uniformBufferSize;
 	uint32_t samplerBindingCount;
-} Refresh_ShaderStageState;
+} Refresh_GraphicsShaderInfo;
+
+typedef struct Refresh_ComputeShaderInfo
+{
+	Refresh_ShaderModule* shaderModule;
+	const char* entryPointName;
+	uint64_t uniformBufferSize;
+	uint32_t bufferBindingCount;
+	uint32_t imageBindingCount;
+} Refresh_ComputeShaderInfo;
 
 typedef struct Refresh_ViewportState
 {
@@ -508,12 +517,6 @@ typedef struct Refresh_DepthStencilState
 	float maxDepthBounds;
 } Refresh_DepthStencilState;
 
-typedef struct Refresh_ComputePipelineCreateInfo
-{
-	Refresh_ShaderStageState computeShaderState;
-	Refresh_ComputePipelineLayoutCreateInfo pipelineLayoutCreateInfo;
-} Refresh_ComputePipelineCreateInfo;
-
 typedef struct Refresh_ColorAttachmentDescription
 {
 	Refresh_TextureFormat format;
@@ -531,8 +534,8 @@ typedef struct Refresh_GraphicsPipelineAttachmentInfo
 
 typedef struct Refresh_GraphicsPipelineCreateInfo
 {
-	Refresh_ShaderStageState vertexShaderState;
-	Refresh_ShaderStageState fragmentShaderState;
+	Refresh_GraphicsShaderInfo vertexShaderInfo;
+	Refresh_GraphicsShaderInfo fragmentShaderInfo;
 	Refresh_VertexInputState vertexInputState;
 	Refresh_PrimitiveType primitiveType;
 	Refresh_ViewportState viewportState;
@@ -771,7 +774,7 @@ REFRESHAPI void Refresh_DispatchCompute(
 /* Returns an allocated ComputePipeline* object. */
 REFRESHAPI Refresh_ComputePipeline* Refresh_CreateComputePipeline(
 	Refresh_Device *device,
-	Refresh_ComputePipelineCreateInfo *pipelineCreateInfo
+	Refresh_ComputeShaderInfo *computeShaderInfo
 );
 
 /* Returns an allocated GraphicsPipeline* object. */
