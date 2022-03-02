@@ -282,12 +282,6 @@ typedef enum Refresh_ColorComponentFlagBits
 
 typedef uint32_t Refresh_ColorComponentFlags;
 
-typedef enum Refresh_ShaderStageType
-{
-	REFRESH_SHADERSTAGE_VERTEX,
-	REFRESH_SHADERSTAGE_FRAGMENT
-} Refresh_ShaderStageType;
-
 typedef enum Refresh_Filter
 {
 	REFRESH_FILTER_NEAREST,
