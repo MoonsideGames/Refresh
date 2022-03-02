@@ -1,4 +1,4 @@
-/* Refresh - XNA-inspired 3D Graphics Library with modern capabilities
+﻿/* Refresh - XNA-inspired 3D Graphics Library with modern capabilities
  *
  * Copyright (c) 2020 Evan Hemsley
  *
@@ -8628,12 +8628,12 @@ static Refresh_Texture* VULKAN_AcquireSwapchainTexture(
 
 			vulkanCommandBuffer->signalSemaphores[vulkanCommandBuffer->signalSemaphoreCount] = swapchainData->renderFinishedSemaphore;
 			vulkanCommandBuffer->signalSemaphoreCount += 1;
-		}
-	}
 
-	if (!validSwapchainExists || acquireResult == VK_SUBOPTIMAL_KHR)
-	{
-		swapchainData->needsRecreate = 1;
+			if (acquireResult == VK_SUBOPTIMAL_KHR)
+			{
+				swapchainData->needsRecreate = 1;
+			}
+		}
 	}
 
 	return (Refresh_Texture*) swapchainTexture;
