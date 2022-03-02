@@ -567,56 +567,6 @@ typedef struct Refresh_DepthStencilAttachmentInfo
 	Refresh_StoreOp stencilStoreOp;
 } Refresh_DepthStencilAttachmentInfo;
 
-/* Interop Structs */
-
-typedef enum Refresh_SysRendererType
-{
-	REFRESH_RENDERER_TYPE_VULKAN
-} Refresh_SysRendererType;
-
-typedef struct Refresh_SysRenderer
-{
-	Refresh_SysRendererType rendererType;
-
-	union
-	{
-#if REFRESH_DRIVER_VULKAN
-		struct
-		{
-			void* instance;
-			void* physicalDevice;
-			void* logicalDevice;
-			uint32_t queueFamilyIndex;
-		} vulkan;
-#endif /* REFRESH_DRIVER_VULKAN */
-		uint8_t filler[64];
-	} renderer;
-} Refresh_SysRenderer;
-
-typedef struct Refresh_TextureHandles
-{
-	Refresh_SysRendererType rendererType;
-
-	union
-	{
-#if REFRESH_DRIVER_VULKAN
-
-#if defined(__LP64__) || defined(_WIN64) || defined(__x86_64__) || defined(_M_X64) || defined(__ia64) || defined (_M_IA64) || defined(__aarch64__) || defined(__powerpc64__)
-#define REFRESH_VULKAN_HANDLE_TYPE void*
-#else
-#define REFRESH_VULKAN_HANDLE_TYPE uint64_t
-#endif
-
-		struct
-		{
-			REFRESH_VULKAN_HANDLE_TYPE image;	/* VkImage */
-			REFRESH_VULKAN_HANDLE_TYPE view;	/* VkImageView */
-		} vulkan;
-#endif /* REFRESH_DRIVER_VULKAN */
-		uint8_t filler[64];
-	} texture;
-} Refresh_TextureHandles;
-
 /* Version API */
 
 #define REFRESH_ABI_VERSION	 0
@@ -655,8 +605,7 @@ REFRESHAPI void Refresh_HookLogFunctions(
 
 /* Create a rendering context for use on the calling thread.
  *
- * presentationParameters:
- * 		If the windowHandle is NULL, Refresh will run in headless mode.
+ * presentationParameters: A window handle and presentation mode.
  * debugMode: Enable debug mode properties.
  */
 REFRESHAPI Refresh_Device* Refresh_CreateDevice(
