@@ -3864,11 +3864,9 @@ static uint8_t VULKAN_INTERNAL_ChooseSwapPresentMode(
 			if (availablePresentModes[i] == m) \
 			{ \
 				*outputPresentMode = m; \
-				Refresh_LogInfo("Using " #m "!"); \
 				return 1; \
 			} \
 		} \
-		Refresh_LogInfo(#m " unsupported.");
 
 	uint32_t i;
 	if (desiredPresentInterval == REFRESH_PRESENTMODE_IMMEDIATE)
@@ -3898,7 +3896,6 @@ static uint8_t VULKAN_INTERNAL_ChooseSwapPresentMode(
 
 	#undef CHECK_MODE
 
-	Refresh_LogInfo("Fall back to VK_PRESENT_MODE_FIFO_KHR.");
 	*outputPresentMode = VK_PRESENT_MODE_FIFO_KHR;
 	return 1;
 }
@@ -3972,7 +3969,6 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 		swapchainSupportDetails.formatsLength,
 		&swapchainData->surfaceFormat
 	)) {
-		Refresh_LogWarn("RGBA8 swapchain unsupported, falling back to BGRA8 with swizzle");
 		swapchainData->swapchainFormat = VK_FORMAT_B8G8R8A8_UNORM;
 		swapchainData->swapchainSwizzle.r = VK_COMPONENT_SWIZZLE_B;
 		swapchainData->swapchainSwizzle.g = VK_COMPONENT_SWIZZLE_G;
@@ -4039,8 +4035,6 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 		drawableHeight < swapchainSupportDetails.capabilities.minImageExtent.height ||
 		drawableHeight > swapchainSupportDetails.capabilities.maxImageExtent.height	)
 	{
-		Refresh_LogWarn("Drawable size not possible for this VkSurface!");
-
 		if (	swapchainSupportDetails.capabilities.currentExtent.width == 0 ||
 			swapchainSupportDetails.capabilities.currentExtent.height == 0)
 		{
@@ -4063,7 +4057,6 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 
 		if (swapchainSupportDetails.capabilities.currentExtent.width != UINT32_MAX)
 		{
-			Refresh_LogWarn("Falling back to an acceptable swapchain extent.");
 			drawableWidth = VULKAN_INTERNAL_clamp(
 				drawableWidth,
 				swapchainSupportDetails.capabilities.minImageExtent.width,
@@ -8543,12 +8536,10 @@ static Refresh_Texture* VULKAN_AcquireSwapchainTexture(
 
 		if (createSwapchainResult == CREATE_SWAPCHAIN_FAIL)
 		{
-			Refresh_LogError("Failed to create swapchain for window handle: %p", windowHandle);
 			validSwapchainExists = 0;
 		}
 		else if (createSwapchainResult == CREATE_SWAPCHAIN_SURFACE_ZERO)
 		{
-			Refresh_LogInfo("Surface for window handle: %p is size zero, cancelling present", windowHandle);
 			validSwapchainExists = 0;
 		}
 		else
@@ -9950,7 +9941,7 @@ static Refresh_Device* VULKAN_CreateDevice(
 
 	if (VULKAN_INTERNAL_CreateSwapchain(renderer, presentationParameters->deviceWindowHandle) != CREATE_SWAPCHAIN_SUCCESS)
 	{
-		Refresh_LogError("Failed to create swap chain");
+		Refresh_LogError("Failed to create swapchain");
 		return NULL;
 	}
 
