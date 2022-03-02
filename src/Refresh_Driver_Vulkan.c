@@ -5894,30 +5894,29 @@ static Refresh_GraphicsPipeline* VULKAN_CreateGraphicsPipeline(
 	colorBlendStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
 	colorBlendStateCreateInfo.pNext = NULL;
 	colorBlendStateCreateInfo.flags = 0;
-	colorBlendStateCreateInfo.logicOpEnable =
-		pipelineCreateInfo->colorBlendState.logicOpEnable;
-	colorBlendStateCreateInfo.logicOp = RefreshToVK_LogicOp[
-		pipelineCreateInfo->colorBlendState.logicOp
-	];
 	colorBlendStateCreateInfo.attachmentCount =
 		pipelineCreateInfo->attachmentInfo.colorAttachmentCount;
 	colorBlendStateCreateInfo.pAttachments =
 		colorBlendAttachmentStates;
 	colorBlendStateCreateInfo.blendConstants[0] =
-		pipelineCreateInfo->colorBlendState.blendConstants[0];
+		pipelineCreateInfo->blendConstants[0];
 	colorBlendStateCreateInfo.blendConstants[1] =
-		pipelineCreateInfo->colorBlendState.blendConstants[1];
+		pipelineCreateInfo->blendConstants[1];
 	colorBlendStateCreateInfo.blendConstants[2] =
-		pipelineCreateInfo->colorBlendState.blendConstants[2];
+		pipelineCreateInfo->blendConstants[2];
 	colorBlendStateCreateInfo.blendConstants[3] =
-		pipelineCreateInfo->colorBlendState.blendConstants[3];
+		pipelineCreateInfo->blendConstants[3];
+
+	/* We don't support LogicOp, so this is easy. */
+	colorBlendStateCreateInfo.logicOpEnable = VK_FALSE;
+	colorBlendStateCreateInfo.logicOp = 0;
 
 	/* Pipeline Layout */
 
 	graphicsPipeline->pipelineLayout = VULKAN_INTERNAL_FetchGraphicsPipelineLayout(
 		renderer,
-		pipelineCreateInfo->pipelineLayoutCreateInfo.vertexSamplerBindingCount,
-		pipelineCreateInfo->pipelineLayoutCreateInfo.fragmentSamplerBindingCount
+		pipelineCreateInfo->vertexShaderState.samplerBindingCount,
+		pipelineCreateInfo->fragmentShaderState.samplerBindingCount
 	);
 
 	/* Pipeline */

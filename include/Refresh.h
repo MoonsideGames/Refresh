@@ -1,4 +1,4 @@
-/* Refresh - XNA-inspired 3D Graphics Library with modern capabilities
+﻿/* Refresh - XNA-inspired 3D Graphics Library with modern capabilities
  *
  * Copyright (c) 2020 Evan Hemsley
  *
@@ -202,16 +202,14 @@ typedef enum Refresh_VertexInputRate
 typedef enum Refresh_FillMode
 {
 	REFRESH_FILLMODE_FILL,
-	REFRESH_FILLMODE_LINE,
-	REFRESH_FILLMODE_POINT
+	REFRESH_FILLMODE_LINE
 } Refresh_FillMode;
 
 typedef enum Refresh_CullMode
 {
 	REFRESH_CULLMODE_NONE,
 	REFRESH_CULLMODE_FRONT,
-	REFRESH_CULLMODE_BACK,
-	REFRESH_CULLMODE_FRONT_AND_BACK
+	REFRESH_CULLMODE_BACK
 } Refresh_CullMode;
 
 typedef enum Refresh_FrontFace
@@ -253,47 +251,25 @@ typedef enum Refresh_BlendOp
 	REFRESH_BLENDOP_MAX
 } Refresh_BlendOp;
 
-typedef enum Refresh_LogicOp
-{
-	REFRESH_LOGICOP_CLEAR = 0,
-	REFRESH_LOGICOP_AND = 1,
-	REFRESH_LOGICOP_AND_REVERSE = 2,
-	REFRESH_LOGICOP_COPY = 3,
-	REFRESH_LOGICOP_AND_INVERTED = 4,
-	REFRESH_LOGICOP_NO_OP = 5,
-	REFRESH_LOGICOP_XOR = 6,
-	REFRESH_LOGICOP_OR = 7,
-	REFRESH_LOGICOP_NOR = 8,
-	REFRESH_LOGICOP_EQUIVALENT = 9,
-	REFRESH_LOGICOP_INVERT = 10,
-	REFRESH_LOGICOP_OR_REVERSE = 11,
-	REFRESH_LOGICOP_COPY_INVERTED = 12,
-	REFRESH_LOGICOP_OR_INVERTED = 13,
-	REFRESH_LOGICOP_NAND = 14,
-	REFRESH_LOGICOP_SET = 15
-} Refresh_LogicOp;
-
 typedef enum Refresh_BlendFactor
 {
-	REFRESH_BLENDFACTOR_ZERO = 0,
-	REFRESH_BLENDFACTOR_ONE = 1,
-	REFRESH_BLENDFACTOR_SRC_COLOR = 2,
-	REFRESH_BLENDFACTOR_ONE_MINUS_SRC_COLOR = 3,
-	REFRESH_BLENDFACTOR_DST_COLOR = 4,
-	REFRESH_BLENDFACTOR_ONE_MINUS_DST_COLOR = 5,
-	REFRESH_BLENDFACTOR_SRC_ALPHA = 6,
-	REFRESH_BLENDFACTOR_ONE_MINUS_SRC_ALPHA = 7,
-	REFRESH_BLENDFACTOR_DST_ALPHA = 8,
-	REFRESH_BLENDFACTOR_ONE_MINUS_DST_ALPHA = 9,
-	REFRESH_BLENDFACTOR_CONSTANT_COLOR = 10,
-	REFRESH_BLENDFACTOR_ONE_MINUS_CONSTANT_COLOR = 11,
-	REFRESH_BLENDFACTOR_CONSTANT_ALPHA = 12,
-	REFRESH_BLENDFACTOR_ONE_MINUS_CONSTANT_ALPHA = 13,
-	REFRESH_BLENDFACTOR_SRC_ALPHA_SATURATE = 14,
-	REFRESH_BLENDFACTOR_SRC1_COLOR = 15,
-	REFRESH_BLENDFACTOR_ONE_MINUS_SRC1_COLOR = 16,
-	REFRESH_BLENDFACTOR_SRC1_ALPHA = 17,
-	REFRESH_BLENDFACTOR_ONE_MINUS_SRC1_ALPHA = 18
+	REFRESH_BLENDFACTOR_ZERO,
+	REFRESH_BLENDFACTOR_ONE,
+	REFRESH_BLENDFACTOR_SRC_COLOR,
+	REFRESH_BLENDFACTOR_ONE_MINUS_SRC_COLOR,
+	REFRESH_BLENDFACTOR_DST_COLOR,
+	REFRESH_BLENDFACTOR_ONE_MINUS_DST_COLOR,
+	REFRESH_BLENDFACTOR_SRC_ALPHA,
+	REFRESH_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
+	REFRESH_BLENDFACTOR_DST_ALPHA,
+	REFRESH_BLENDFACTOR_ONE_MINUS_DST_ALPHA,
+	REFRESH_BLENDFACTOR_CONSTANT_COLOR,
+	REFRESH_BLENDFACTOR_ONE_MINUS_CONSTANT_COLOR,
+	REFRESH_BLENDFACTOR_SRC_ALPHA_SATURATE,
+	REFRESH_BLENDFACTOR_SRC1_COLOR,
+	REFRESH_BLENDFACTOR_ONE_MINUS_SRC1_COLOR,
+	REFRESH_BLENDFACTOR_SRC1_ALPHA,
+	REFRESH_BLENDFACTOR_ONE_MINUS_SRC1_ALPHA
 } Refresh_BlendFactor;
 
 typedef enum Refresh_ColorComponentFlagBits
@@ -315,8 +291,7 @@ typedef enum Refresh_ShaderStageType
 typedef enum Refresh_Filter
 {
 	REFRESH_FILTER_NEAREST,
-	REFRESH_FILTER_LINEAR,
-	REFRESH_FILTER_CUBIC
+	REFRESH_FILTER_LINEAR
 } Refresh_Filter;
 
 typedef enum Refresh_SamplerMipmapMode
@@ -336,12 +311,12 @@ typedef enum Refresh_SamplerAddressMode
 /* FIXME: we should probably make a library-level decision about color types */
 typedef enum Refresh_BorderColor
 {
-	REFRESH_BORDERCOLOR_FLOAT_TRANSPARENT_BLACK = 0,
-	REFRESH_BORDERCOLOR_INT_TRANSPARENT_BLACK = 1,
-	REFRESH_BORDERCOLOR_FLOAT_OPAQUE_BLACK = 2,
-	REFRESH_BORDERCOLOR_INT_OPAQUE_BLACK = 3,
-	REFRESH_BORDERCOLOR_FLOAT_OPAQUE_WHITE = 4,
-	REFRESH_BORDERCOLOR_INT_OPAQUE_WHITE = 5
+	REFRESH_BORDERCOLOR_FLOAT_TRANSPARENT_BLACK,
+	REFRESH_BORDERCOLOR_INT_TRANSPARENT_BLACK,
+	REFRESH_BORDERCOLOR_FLOAT_OPAQUE_BLACK,
+	REFRESH_BORDERCOLOR_INT_OPAQUE_BLACK,
+	REFRESH_BORDERCOLOR_FLOAT_OPAQUE_WHITE,
+	REFRESH_BORDERCOLOR_INT_OPAQUE_WHITE
 } Refresh_BorderColor;
 
 /* Structures */
@@ -465,12 +440,6 @@ typedef struct Refresh_ComputePipelineLayoutCreateInfo
 	uint32_t imageBindingCount;
 } Refresh_ComputePipelineLayoutCreateInfo;
 
-typedef struct Refresh_GraphicsPipelineLayoutCreateInfo
-{
-	uint32_t vertexSamplerBindingCount;
-	uint32_t fragmentSamplerBindingCount;
-} Refresh_GraphicsPipelineLayoutCreateInfo;
-
 typedef struct Refresh_ShaderModuleCreateInfo
 {
 	size_t codeSize;
@@ -496,6 +465,7 @@ typedef struct Refresh_ShaderStageState
 	Refresh_ShaderModule *shaderModule;
 	const char* entryPointName;
 	uint64_t uniformBufferSize;
+	uint32_t samplerBindingCount;
 } Refresh_ShaderStageState;
 
 typedef struct Refresh_ViewportState
@@ -538,13 +508,6 @@ typedef struct Refresh_DepthStencilState
 	float maxDepthBounds;
 } Refresh_DepthStencilState;
 
-typedef struct Refresh_PipelineColorBlendState
-{
-	uint8_t logicOpEnable;
-	Refresh_LogicOp logicOp;
-	float blendConstants[4];
-} Refresh_PipelineColorBlendState;
-
 typedef struct Refresh_ComputePipelineCreateInfo
 {
 	Refresh_ShaderStageState computeShaderState;
@@ -576,9 +539,8 @@ typedef struct Refresh_GraphicsPipelineCreateInfo
 	Refresh_RasterizerState rasterizerState;
 	Refresh_MultisampleState multisampleState;
 	Refresh_DepthStencilState depthStencilState;
-	Refresh_PipelineColorBlendState colorBlendState;
-	Refresh_GraphicsPipelineLayoutCreateInfo pipelineLayoutCreateInfo;
 	Refresh_GraphicsPipelineAttachmentInfo attachmentInfo;
+	float blendConstants[4];
 } Refresh_GraphicsPipelineCreateInfo;
 
 /* Render pass structures */
