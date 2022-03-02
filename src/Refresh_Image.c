@@ -209,9 +209,32 @@ void Refresh_Image_SavePNG(
 	const char *filename,
 	int32_t w,
 	int32_t h,
+	uint8_t bgra,
 	uint8_t *data
 ) {
-	stbi_write_png(filename, w, h, 4, data, w * 4);
+	uint32_t i;
+	uint8_t *bgraData;
+
+	if (bgra)
+	{
+		bgraData = SDL_malloc(w * h * 4);
+
+		for (i = 0; i < w * h * 4; i += 4)
+		{
+			bgraData[i]     = data[i + 2];
+			bgraData[i + 1] = data[i + 1];
+			bgraData[i + 2] = data[i];
+			bgraData[i + 3] = data[i + 3];
+		}
+
+		stbi_write_png(filename, w, h, 4, bgraData, w * 4);
+
+		SDL_free(bgraData);
+	}
+	else
+	{
+		stbi_write_png(filename, w, h, 4, data, w * 4);
+	}
 }
 
 /* vim: set noexpandtab shiftwidth=8 tabstop=8: */

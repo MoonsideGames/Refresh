@@ -305,19 +305,6 @@ Refresh_Texture* Refresh_CreateTexture(
 	);
 }
 
-Refresh_RenderTarget* Refresh_CreateRenderTarget(
-	Refresh_Device *device,
-	Refresh_TextureSlice *textureSlice,
-	Refresh_SampleCount multisampleCount
-) {
-	NULL_RETURN_NULL(device);
-	return device->CreateRenderTarget(
-		device->driverData,
-		textureSlice,
-		multisampleCount
-	);
-}
-
 Refresh_Buffer* Refresh_CreateBuffer(
 	Refresh_Device *device,
 	Refresh_BufferUsageFlags usageFlags,
@@ -557,19 +544,6 @@ void Refresh_QueueDestroyBuffer(
 	);
 }
 
-void Refresh_QueueDestroyRenderTarget(
-	Refresh_Device *device,
-	Refresh_CommandBuffer *commandBuffer,
-	Refresh_RenderTarget *renderTarget
-) {
-	NULL_RETURN(device);
-	device->QueueDestroyRenderTarget(
-		device->driverData,
-		commandBuffer,
-		renderTarget
-	);
-}
-
 void Refresh_QueueDestroyShaderModule(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
@@ -738,21 +712,26 @@ Refresh_CommandBuffer* Refresh_AcquireCommandBuffer(
 	);
 }
 
-void Refresh_QueuePresent(
+Refresh_Texture* Refresh_AcquireSwapchainTexture(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
-	Refresh_TextureSlice* textureSlice,
-	Refresh_Rect *destinationRectangle,
-	Refresh_Filter filter,
 	void *windowHandle
 ) {
-	NULL_RETURN(device);
-	device->QueuePresent(
+	NULL_RETURN_NULL(device);
+	return device->AcquireSwapchainTexture(
 		device->driverData,
 		commandBuffer,
-		textureSlice,
-		destinationRectangle,
-		filter,
+		windowHandle
+	);
+}
+
+Refresh_TextureFormat Refresh_GetSwapchainFormat(
+	Refresh_Device *device,
+	void *windowHandle
+) {
+	if (device == NULL) { return 0; }
+	return device->GetSwapchainFormat(
+		device->driverData,
 		windowHandle
 	);
 }

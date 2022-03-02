@@ -154,6 +154,7 @@ static inline int32_t BytesPerImage(
 #define MAX_BUFFER_BINDINGS			16
 
 #define MAX_COLOR_TARGET_BINDINGS	4
+#define MAX_PRESENT_COUNT			16
 
 /* Refresh_Device Definition */
 
@@ -241,12 +242,6 @@ struct Refresh_Device
 	Refresh_Texture* (*CreateTexture)(
 		Refresh_Renderer *driverData,
 		Refresh_TextureCreateInfo *textureCreateInfo
-	);
-
-	Refresh_RenderTarget* (*CreateRenderTarget)(
-		Refresh_Renderer *driverData,
-		Refresh_TextureSlice *textureSlice,
-		Refresh_SampleCount multisampleCount
 	);
 
 	Refresh_Buffer* (*CreateBuffer)(
@@ -367,12 +362,6 @@ struct Refresh_Device
 		Refresh_Buffer *buffer
 	);
 
-	void(*QueueDestroyRenderTarget)(
-		Refresh_Renderer *driverData,
-		Refresh_CommandBuffer *commandBuffer,
-		Refresh_RenderTarget *renderTarget
-	);
-
 	void(*QueueDestroyShaderModule)(
 		Refresh_Renderer *driverData,
 		Refresh_CommandBuffer *commandBuffer,
@@ -453,12 +442,14 @@ struct Refresh_Device
 		uint8_t fixed
 	);
 
-	void(*QueuePresent)(
+	Refresh_Texture* (*AcquireSwapchainTexture)(
 		Refresh_Renderer *driverData,
 		Refresh_CommandBuffer *commandBuffer,
-		Refresh_TextureSlice *textureSlice,
-		Refresh_Rect *destinationRectangle,
-		Refresh_Filter filter,
+		void *windowHandle
+	);
+
+	Refresh_TextureFormat (*GetSwapchainFormat)(
+		Refresh_Renderer *driverData,
 		void *windowHandle
 	);
 
@@ -490,7 +481,6 @@ struct Refresh_Device
 	ASSIGN_DRIVER_FUNC(CreateSampler, name) \
 	ASSIGN_DRIVER_FUNC(CreateShaderModule, name) \
 	ASSIGN_DRIVER_FUNC(CreateTexture, name) \
-	ASSIGN_DRIVER_FUNC(CreateRenderTarget, name) \
 	ASSIGN_DRIVER_FUNC(CreateBuffer, name) \
 	ASSIGN_DRIVER_FUNC(SetTextureData, name) \
 	ASSIGN_DRIVER_FUNC(SetTextureDataYUV, name) \
@@ -506,7 +496,6 @@ struct Refresh_Device
 	ASSIGN_DRIVER_FUNC(QueueDestroyTexture, name) \
 	ASSIGN_DRIVER_FUNC(QueueDestroySampler, name) \
 	ASSIGN_DRIVER_FUNC(QueueDestroyBuffer, name) \
-	ASSIGN_DRIVER_FUNC(QueueDestroyRenderTarget, name) \
 	ASSIGN_DRIVER_FUNC(QueueDestroyShaderModule, name) \
 	ASSIGN_DRIVER_FUNC(QueueDestroyComputePipeline, name) \
 	ASSIGN_DRIVER_FUNC(QueueDestroyGraphicsPipeline, name) \
@@ -519,7 +508,8 @@ struct Refresh_Device
 	ASSIGN_DRIVER_FUNC(BindComputeBuffers, name) \
 	ASSIGN_DRIVER_FUNC(BindComputeTextures, name) \
 	ASSIGN_DRIVER_FUNC(AcquireCommandBuffer, name) \
-	ASSIGN_DRIVER_FUNC(QueuePresent, name) \
+	ASSIGN_DRIVER_FUNC(AcquireSwapchainTexture, name) \
+	ASSIGN_DRIVER_FUNC(GetSwapchainFormat, name) \
 	ASSIGN_DRIVER_FUNC(Submit, name) \
 	ASSIGN_DRIVER_FUNC(Wait, name)
 

@@ -68,17 +68,19 @@ REFRESHAPI void Refresh_Image_Free(uint8_t *mem);
 
 /* Image Write API */
 
-/* Encodes RGBA8 image data into PNG data.
+/* Encodes 32-bit color data into PNG data.
  *
  * filename:    The filename that the image will be written to.
  * w:	        The width of the PNG data.
  * h:	        The height of the PNG data.
- * data:	    The raw RGBA8 image data.
+ * bgra:		Whether the data is in BGRA8 format. Otherwise will assume RBGA8.
+ * data:	    The raw color data.
  */
 REFRESHAPI void Refresh_Image_SavePNG(
 	char const *filename,
 	int32_t w,
 	int32_t h,
+	uint8_t bgra,
 	uint8_t *data
 );
 

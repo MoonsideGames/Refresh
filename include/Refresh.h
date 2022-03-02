@@ -58,7 +58,6 @@ typedef struct Refresh_Device Refresh_Device;
 typedef struct Refresh_Buffer Refresh_Buffer;
 typedef struct Refresh_Texture Refresh_Texture;
 typedef struct Refresh_Sampler Refresh_Sampler;
-typedef struct Refresh_RenderTarget Refresh_RenderTarget;
 typedef struct Refresh_ShaderModule Refresh_ShaderModule;
 typedef struct Refresh_ComputePipeline Refresh_ComputePipeline;
 typedef struct Refresh_GraphicsPipeline Refresh_GraphicsPipeline;
@@ -113,6 +112,7 @@ typedef enum Refresh_TextureFormat
 {
 	/* Color Formats */
 	REFRESH_TEXTUREFORMAT_R8G8B8A8,
+	REFRESH_TEXTUREFORMAT_B8G8R8A8,
 	REFRESH_TEXTUREFORMAT_R5G6B5,
 	REFRESH_TEXTUREFORMAT_A1R5G5B5,
 	REFRESH_TEXTUREFORMAT_B4G4R4A4,
@@ -585,7 +585,11 @@ typedef struct Refresh_GraphicsPipelineCreateInfo
 
 typedef struct Refresh_ColorAttachmentInfo
 {
-	Refresh_RenderTarget *pRenderTarget;
+	Refresh_Texture *texture; /* We can't use TextureSlice because render passes take a single rectangle. */
+	uint32_t depth;
+	uint32_t layer;
+	uint32_t level;
+	Refresh_SampleCount sampleCount;
 	Refresh_Vec4 clearColor; /* Can be ignored by RenderPass */
 	Refresh_LoadOp loadOp;
 	Refresh_StoreOp storeOp;
@@ -593,8 +597,11 @@ typedef struct Refresh_ColorAttachmentInfo
 
 typedef struct Refresh_DepthStencilAttachmentInfo
 {
-	Refresh_RenderTarget *pDepthStencilTarget;
-	Refresh_DepthStencilValue depthStencilValue; /* Can be ignored by RenderPass */
+	Refresh_Texture *texture; /* We can't use TextureSlice because render passes take a single rectangle. */
+	uint32_t depth;
+	uint32_t layer;
+	uint32_t level;
+	Refresh_DepthStencilValue depthStencilClearValue; /* Can be ignored by RenderPass */
 	Refresh_LoadOp loadOp;
 	Refresh_StoreOp storeOp;
 	Refresh_LoadOp stencilLoadOp;
@@ -831,17 +838,6 @@ REFRESHAPI Refresh_Texture* Refresh_CreateTexture(
 	Refresh_TextureCreateInfo *textureCreateInfo
 );
 
-/* Creates a color target.
- *
- * textureSlice: 		The texture slice that the color target will resolve to.
- * multisampleCount:	The MSAA value for the color target.
- */
-REFRESHAPI Refresh_RenderTarget* Refresh_CreateRenderTarget(
-	Refresh_Device *device,
-	Refresh_TextureSlice *textureSlice,
-	Refresh_SampleCount multisampleCount
-);
-
 /* Creates a buffer.
  *
  * usageFlags:	Specifies how the buffer will be used.
@@ -1053,19 +1049,6 @@ REFRESHAPI void Refresh_QueueDestroyBuffer(
 	Refresh_Buffer *buffer
 );
 
-/* Sends a color target to be destroyed by the renderer. Note that we call it
- * "QueueDestroy" because it may not be immediately destroyed by the renderer if
- * this is not called from the main thread (for example, if a garbage collector
- * deletes the resource instead of the programmer).
- *
- * renderTarget: The Refresh_ColorTarget to be destroyed.
- */
-REFRESHAPI void Refresh_QueueDestroyRenderTarget(
-	Refresh_Device *device,
-	Refresh_CommandBuffer *commandBuffer,
-	Refresh_RenderTarget *renderTarget
-);
-
 /* Sends a shader module to be destroyed by the renderer. Note that we call it
  * "QueueDestroy" because it may not be immediately destroyed by the renderer if
  * this is not called from the main thread (for example, if a garbage collector
@@ -1244,23 +1227,24 @@ REFRESHAPI Refresh_CommandBuffer* Refresh_AcquireCommandBuffer(
 	uint8_t fixed
 );
 
-/* Queues an image to be presented to a window.
- * The image will be presented upon the next Refresh_Submit call.
+/* Acquires a texture to use for presentation.
+ * May return NULL under certain conditions.
+ * If NULL, the user must ensure to not present.
+ * Once a swapchain texture is acquired,
+ * it will automatically be presented on command buffer submission.
  *
  * NOTE:
- *		It is an error to call this function in headless mode.
- *
- * textureSlice:			The texture slice to present.
- * destinationRectangle:	The region of the window to update. Can be NULL.
- * filter:					The filter to use if scaling is required.
- * windowHandle:			The window to present to.
+ * 	It is not recommended to hold a reference to this texture long term.
  */
-REFRESHAPI void Refresh_QueuePresent(
+REFRESHAPI Refresh_Texture* Refresh_AcquireSwapchainTexture(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
-	Refresh_TextureSlice *textureSlice,
-	Refresh_Rect *destinationRectangle,
-	Refresh_Filter filter,
+	void *windowHandle
+);
+
+/* Returns the format of the swapchain for the given window. */
+REFRESHAPI Refresh_TextureFormat Refresh_GetSwapchainFormat(
+	Refresh_Device *device,
 	void *windowHandle
 );
 
@@ -1271,7 +1255,7 @@ REFRESHAPI void Refresh_Submit(
 	Refresh_CommandBuffer **pCommandBuffers
 );
 
-/* Waits for the previous submission to complete. */
+/* Waits for all submissions to complete. */
 REFRESHAPI void Refresh_Wait(
 	Refresh_Device *device
 );
