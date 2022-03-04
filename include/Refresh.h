@@ -485,14 +485,6 @@ typedef struct Refresh_ComputeShaderInfo
 	uint32_t imageBindingCount;
 } Refresh_ComputeShaderInfo;
 
-typedef struct Refresh_ViewportState
-{
-	const Refresh_Viewport *viewports;
-	uint32_t viewportCount;
-	const Refresh_Rect *scissors;
-	uint32_t scissorCount;
-} Refresh_ViewportState;
-
 typedef struct Refresh_RasterizerState
 {
 	uint8_t depthClampEnable;
@@ -546,7 +538,6 @@ typedef struct Refresh_GraphicsPipelineCreateInfo
 	Refresh_GraphicsShaderInfo fragmentShaderInfo;
 	Refresh_VertexInputState vertexInputState;
 	Refresh_PrimitiveType primitiveType;
-	Refresh_ViewportState viewportState;
 	Refresh_RasterizerState rasterizerState;
 	Refresh_MultisampleState multisampleState;
 	Refresh_DepthStencilState depthStencilState;
@@ -991,6 +982,7 @@ REFRESHAPI void Refresh_QueueDestroyGraphicsPipeline(
 /* Graphics State */
 
 /* Begins a render pass.
+ * This will also set a default viewport and scissor state.
  *
  * renderArea:
  * 		The area affected by the render pass.
@@ -1022,6 +1014,20 @@ REFRESHAPI void Refresh_BindGraphicsPipeline(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
 	Refresh_GraphicsPipeline *graphicsPipeline
+);
+
+/* Sets the current viewport state. */
+REFRESHAPI void Refresh_SetViewportState(
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_Viewport *viewport
+);
+
+/* Sets the current scissor state. */
+REFRESHAPI void Refresh_SetScissorState(
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_Rect *scissor
 );
 
 /* Binds vertex buffers for use with subsequent draw calls. */

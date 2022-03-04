@@ -1495,6 +1495,9 @@ typedef struct VulkanCommandBuffer
 	uint32_t boundDescriptorSetDataCount;
 	uint32_t boundDescriptorSetDataCapacity;
 
+	VkViewport currentViewport;
+	VkRect2D currentScissor;
+
 	/* Track used resources */
 
 	VulkanBuffer **usedBuffers;
@@ -5763,8 +5766,6 @@ static Refresh_GraphicsPipeline* VULKAN_CreateGraphicsPipeline(
 	VkPipelineInputAssemblyStateCreateInfo inputAssemblyStateCreateInfo;
 
 	VkPipelineViewportStateCreateInfo viewportStateCreateInfo;
-	VkViewport *viewports = SDL_stack_alloc(VkViewport, pipelineCreateInfo->viewportState.viewportCount);
-	VkRect2D *scissors = SDL_stack_alloc(VkRect2D, pipelineCreateInfo->viewportState.scissorCount);
 
 	VkPipelineRasterizationStateCreateInfo rasterizationStateCreateInfo;
 
@@ -5780,6 +5781,13 @@ static Refresh_GraphicsPipeline* VULKAN_CreateGraphicsPipeline(
 		pipelineCreateInfo->attachmentInfo.colorAttachmentCount
 	);
 
+	static const VkDynamicState dynamicStates[] =
+	{
+		VK_DYNAMIC_STATE_VIEWPORT,
+		VK_DYNAMIC_STATE_SCISSOR
+	};
+	VkPipelineDynamicStateCreateInfo dynamicStateCreateInfo;
+
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 
 	/* Create a "compatible" render pass */
@@ -5788,6 +5796,14 @@ static Refresh_GraphicsPipeline* VULKAN_CreateGraphicsPipeline(
 		renderer,
 		pipelineCreateInfo->attachmentInfo
 	);
+
+	/* Dynamic state */
+
+	dynamicStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+	dynamicStateCreateInfo.pNext = NULL;
+	dynamicStateCreateInfo.flags = 0;
+	dynamicStateCreateInfo.dynamicStateCount = SDL_arraysize(dynamicStates);
+	dynamicStateCreateInfo.pDynamicStates = dynamicStates;
 
 	/* Shader stages */
 
@@ -5868,31 +5884,15 @@ static Refresh_GraphicsPipeline* VULKAN_CreateGraphicsPipeline(
 
 	/* Viewport */
 
-	for (i = 0; i < pipelineCreateInfo->viewportState.viewportCount; i += 1)
-	{
-		viewports[i].x = pipelineCreateInfo->viewportState.viewports[i].x;
-		viewports[i].y = pipelineCreateInfo->viewportState.viewports[i].y;
-		viewports[i].width = pipelineCreateInfo->viewportState.viewports[i].w;
-		viewports[i].height = pipelineCreateInfo->viewportState.viewports[i].h;
-		viewports[i].minDepth = pipelineCreateInfo->viewportState.viewports[i].minDepth;
-		viewports[i].maxDepth = pipelineCreateInfo->viewportState.viewports[i].maxDepth;
-	}
-
-	for (i = 0; i < pipelineCreateInfo->viewportState.scissorCount; i += 1)
-	{
-		scissors[i].offset.x = pipelineCreateInfo->viewportState.scissors[i].x;
-		scissors[i].offset.y = pipelineCreateInfo->viewportState.scissors[i].y;
-		scissors[i].extent.width = pipelineCreateInfo->viewportState.scissors[i].w;
-		scissors[i].extent.height = pipelineCreateInfo->viewportState.scissors[i].h;
-	}
+	/* NOTE: viewport and scissor are dynamic, and must be set using the command buffer */
 
 	viewportStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
 	viewportStateCreateInfo.pNext = NULL;
 	viewportStateCreateInfo.flags = 0;
-	viewportStateCreateInfo.viewportCount = pipelineCreateInfo->viewportState.viewportCount;
-	viewportStateCreateInfo.pViewports = viewports;
-	viewportStateCreateInfo.scissorCount = pipelineCreateInfo->viewportState.scissorCount;
-	viewportStateCreateInfo.pScissors = scissors;
+	viewportStateCreateInfo.viewportCount = 1;
+	viewportStateCreateInfo.pViewports = NULL;
+	viewportStateCreateInfo.scissorCount = 1;
+	viewportStateCreateInfo.pScissors = NULL;
 
 	/* Rasterization */
 
@@ -6071,7 +6071,7 @@ static Refresh_GraphicsPipeline* VULKAN_CreateGraphicsPipeline(
 	vkPipelineCreateInfo.pMultisampleState = &multisampleStateCreateInfo;
 	vkPipelineCreateInfo.pDepthStencilState = &depthStencilStateCreateInfo;
 	vkPipelineCreateInfo.pColorBlendState = &colorBlendStateCreateInfo;
-	vkPipelineCreateInfo.pDynamicState = VK_NULL_HANDLE;
+	vkPipelineCreateInfo.pDynamicState = &dynamicStateCreateInfo;
 	vkPipelineCreateInfo.layout = graphicsPipeline->pipelineLayout->pipelineLayout;
 	vkPipelineCreateInfo.renderPass = transientRenderPass;
 	vkPipelineCreateInfo.subpass = 0;
@@ -7786,7 +7786,9 @@ static VkFramebuffer VULKAN_INTERNAL_FetchFramebuffer(
 	VkRenderPass renderPass,
 	Refresh_ColorAttachmentInfo *colorAttachmentInfos,
 	uint32_t colorAttachmentCount,
-	Refresh_DepthStencilAttachmentInfo *depthStencilAttachmentInfo
+	Refresh_DepthStencilAttachmentInfo *depthStencilAttachmentInfo,
+	uint32_t width,
+	uint32_t height
 ) {
 	VkFramebuffer framebuffer;
 	VkFramebufferCreateInfo framebufferInfo;
@@ -7794,10 +7796,7 @@ static VkFramebuffer VULKAN_INTERNAL_FetchFramebuffer(
 	VkImageView imageViewAttachments[2 * MAX_COLOR_TARGET_BINDINGS + 1];
 	FramebufferHash hash;
 	VulkanRenderTarget *renderTarget;
-	VulkanTexture *texture;
 	uint32_t attachmentCount = 0;
-	uint32_t maxWidth = 0;
-	uint32_t maxHeight = 0;
 	uint32_t i;
 
 	SDL_LockMutex(renderer->framebufferFetchLock);
@@ -7821,8 +7820,6 @@ static VkFramebuffer VULKAN_INTERNAL_FetchFramebuffer(
 			colorAttachmentInfos[i].sampleCount
 		);
 
-		texture = (VulkanTexture*) colorAttachmentInfos[i].texture;
-
 		hash.colorAttachmentViews[i] = (
 			renderTarget->view
 		);
@@ -7832,16 +7829,6 @@ static VkFramebuffer VULKAN_INTERNAL_FetchFramebuffer(
 			hash.colorMultiSampleAttachmentViews[i] = (
 				renderTarget->multisampleTexture->view
 			);
-		}
-
-		if (texture->dimensions.width > maxWidth)
-		{
-			maxWidth = texture->dimensions.width;
-		}
-
-		if (texture->dimensions.height > maxHeight)
-		{
-			maxHeight = texture->dimensions.height;
 		}
 	}
 
@@ -7860,20 +7847,10 @@ static VkFramebuffer VULKAN_INTERNAL_FetchFramebuffer(
 			REFRESH_SAMPLECOUNT_1
 		);
 		hash.depthStencilAttachmentView = renderTarget->view;
-
-		if (texture->dimensions.width > maxWidth)
-		{
-			maxWidth = texture->dimensions.width;
-		}
-
-		if (texture->dimensions.height > maxHeight)
-		{
-			maxHeight = texture->dimensions.height;
-		}
 	}
 
-	hash.width = maxWidth;
-	hash.height = maxHeight;
+	hash.width = width;
+	hash.height = height;
 
 	framebuffer = FramebufferHashArray_Fetch(
 		&renderer->framebufferHashArray,
@@ -7964,6 +7941,84 @@ static VkFramebuffer VULKAN_INTERNAL_FetchFramebuffer(
 	return framebuffer;
 }
 
+static void VULKAN_INTERNAL_SetCurrentViewport(
+	VulkanCommandBuffer *commandBuffer,
+	Refresh_Viewport *viewport
+) {
+	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
+
+	vulkanCommandBuffer->currentViewport.x = viewport->x;
+	vulkanCommandBuffer->currentViewport.y = viewport->y;
+	vulkanCommandBuffer->currentViewport.width = viewport->w;
+	vulkanCommandBuffer->currentViewport.height = viewport->h;
+	vulkanCommandBuffer->currentViewport.minDepth = viewport->minDepth;
+	vulkanCommandBuffer->currentViewport.maxDepth = viewport->maxDepth;
+}
+
+static void VULKAN_SetViewportState(
+	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_Viewport *viewport
+) {
+	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
+	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
+
+	if (!vulkanCommandBuffer->renderPassInProgress)
+	{
+		Refresh_LogError("Illegal to set viewport state outside of a render pass!");
+		return;
+	}
+
+	VULKAN_INTERNAL_SetCurrentViewport(
+		vulkanCommandBuffer,
+		viewport
+	);
+
+	renderer->vkCmdSetViewport(
+		vulkanCommandBuffer->commandBuffer,
+		0,
+		1,
+		&vulkanCommandBuffer->currentViewport
+	);
+}
+
+static void VULKAN_INTERNAL_SetCurrentScissor(
+	VulkanCommandBuffer *vulkanCommandBuffer,
+	Refresh_Rect *scissor
+) {
+	vulkanCommandBuffer->currentScissor.offset.x = scissor->x;
+	vulkanCommandBuffer->currentScissor.offset.y = scissor->y;
+	vulkanCommandBuffer->currentScissor.extent.width = scissor->w;
+	vulkanCommandBuffer->currentScissor.extent.height = scissor->h;
+}
+
+static void VULKAN_SetScissorState(
+	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_Rect *scissor
+) {
+	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
+	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
+
+	if (!vulkanCommandBuffer->renderPassInProgress)
+	{
+		Refresh_LogError("Illegal to set scissor state outside of a render pass!");
+		return;
+	}
+
+	VULKAN_INTERNAL_SetCurrentScissor(
+		vulkanCommandBuffer,
+		scissor
+	);
+
+	renderer->vkCmdSetScissor(
+		vulkanCommandBuffer->commandBuffer,
+		0,
+		1,
+		&vulkanCommandBuffer->currentScissor
+	);
+}
+
 static void VULKAN_BeginRenderPass(
 	Refresh_Renderer *driverData,
 	Refresh_CommandBuffer *commandBuffer,
@@ -7982,12 +8037,48 @@ static void VULKAN_BeginRenderPass(
 	uint32_t clearCount = colorAttachmentCount;
 	uint32_t i;
 	VkImageAspectFlags depthAspectFlags;
+	Refresh_Viewport defaultViewport;
+	Refresh_Rect defaultScissor;
+	uint32_t framebufferWidth = UINT32_MAX;
+	uint32_t framebufferHeight = UINT32_MAX;
 
 	if (colorAttachmentCount == 0 && depthStencilAttachmentInfo == NULL)
 	{
 		Refresh_LogError("Render pass must have at least one render target!");
 		return;
 	}
+
+	/* The framebuffer cannot be larger than the smallest attachment. */
+
+	for (i = 0; i < colorAttachmentCount; i += 1)
+	{
+		texture = (VulkanTexture*) colorAttachmentInfos[i].texture;
+
+		if (texture->dimensions.width < framebufferWidth)
+		{
+			framebufferWidth = texture->dimensions.width;
+		}
+
+		if (texture->dimensions.height < framebufferHeight)
+		{
+			framebufferHeight = texture->dimensions.height;
+		}
+	}
+
+	if (depthStencilAttachmentInfo != NULL)
+	{
+		if (texture->dimensions.width < framebufferWidth)
+		{
+			framebufferWidth = texture->dimensions.width;
+		}
+
+		if (texture->dimensions.height < framebufferHeight)
+		{
+			framebufferHeight = texture->dimensions.height;
+		}
+	}
+
+	/* Fetch required render objects */
 
 	renderPass = VULKAN_INTERNAL_FetchRenderPass(
 		renderer,
@@ -8001,7 +8092,9 @@ static void VULKAN_BeginRenderPass(
 		renderPass,
 		colorAttachmentInfos,
 		colorAttachmentCount,
-		depthStencilAttachmentInfo
+		depthStencilAttachmentInfo,
+		framebufferWidth,
+		framebufferHeight
 	);
 
 	/* Layout transitions */
@@ -8103,6 +8196,30 @@ static void VULKAN_BeginRenderPass(
 			(VulkanTexture*) colorAttachmentInfos[i].texture;
 	}
 	vulkanCommandBuffer->renderPassColorTargetCount = colorAttachmentCount;
+
+	/* Set sensible default viewport state */
+
+	defaultViewport.x = 0;
+	defaultViewport.y = 0;
+	defaultViewport.w = framebufferWidth;
+	defaultViewport.h = framebufferHeight;
+	defaultViewport.minDepth = 0;
+	defaultViewport.maxDepth = 1;
+
+	VULKAN_INTERNAL_SetCurrentViewport(
+		vulkanCommandBuffer,
+		&defaultViewport
+	);
+
+	defaultScissor.x = 0;
+	defaultScissor.y = 0;
+	defaultScissor.w = framebufferWidth;
+	defaultScissor.h = framebufferHeight;
+
+	VULKAN_INTERNAL_SetCurrentScissor(
+		vulkanCommandBuffer,
+		&defaultScissor
+	);
 }
 
 static void VULKAN_EndRenderPass(
@@ -8175,6 +8292,12 @@ static void VULKAN_BindGraphicsPipeline(
 	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
 	VulkanGraphicsPipeline* pipeline = (VulkanGraphicsPipeline*) graphicsPipeline;
 
+	if (!vulkanCommandBuffer->renderPassInProgress)
+	{
+		Refresh_LogError("Illegal to bind a graphics pipeline outside of a render pass!");
+		return;
+	}
+
 	if (	vulkanCommandBuffer->vertexUniformBuffer != renderer->dummyVertexUniformBuffer &&
 		vulkanCommandBuffer->vertexUniformBuffer != NULL
 	) {
@@ -8239,6 +8362,20 @@ static void VULKAN_BindGraphicsPipeline(
 	vulkanCommandBuffer->currentGraphicsPipeline = pipeline;
 
 	VULKAN_INTERNAL_TrackGraphicsPipeline(renderer, vulkanCommandBuffer, pipeline);
+
+	renderer->vkCmdSetViewport(
+		vulkanCommandBuffer->commandBuffer,
+		0,
+		1,
+		&vulkanCommandBuffer->currentViewport
+	);
+
+	renderer->vkCmdSetScissor(
+		vulkanCommandBuffer->commandBuffer,
+		0,
+		1,
+		&vulkanCommandBuffer->currentScissor
+	);
 }
 
 static void VULKAN_BindVertexBuffers(

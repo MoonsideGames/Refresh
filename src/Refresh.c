@@ -601,6 +601,32 @@ void Refresh_EndRenderPass(
 	);
 }
 
+void Refresh_SetViewportState(
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_Viewport *viewport
+) {
+	NULL_RETURN(device)
+	device->SetViewportState(
+		device->driverData,
+		commandBuffer,
+		viewport
+	);
+}
+
+void Refresh_SetScissorState(
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_Rect *scissor
+) {
+	NULL_RETURN(device)
+	device->SetScissorState(
+		device->driverData,
+		commandBuffer,
+		scissor
+	);
+}
+
 void Refresh_BindGraphicsPipeline(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,

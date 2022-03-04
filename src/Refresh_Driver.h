@@ -390,6 +390,18 @@ struct Refresh_Device
 		Refresh_CommandBuffer *commandBuffer
 	);
 
+	void(*SetViewportState)(
+		Refresh_Renderer *driverData,
+		Refresh_CommandBuffer *commandBuffer,
+		Refresh_Viewport *viewport
+	);
+
+	void(*SetScissorState)(
+		Refresh_Renderer *driverData,
+		Refresh_CommandBuffer *commandBuffer,
+		Refresh_Rect *scissor
+	);
+
 	void(*BindGraphicsPipeline)(
 		Refresh_Renderer *driverData,
 		Refresh_CommandBuffer *commandBuffer,
@@ -495,6 +507,8 @@ struct Refresh_Device
 	ASSIGN_DRIVER_FUNC(QueueDestroyGraphicsPipeline, name) \
 	ASSIGN_DRIVER_FUNC(BeginRenderPass, name) \
 	ASSIGN_DRIVER_FUNC(EndRenderPass, name) \
+	ASSIGN_DRIVER_FUNC(SetViewportState, name) \
+	ASSIGN_DRIVER_FUNC(SetScissorState, name) \
 	ASSIGN_DRIVER_FUNC(BindGraphicsPipeline, name) \
 	ASSIGN_DRIVER_FUNC(BindVertexBuffers, name) \
 	ASSIGN_DRIVER_FUNC(BindIndexBuffer, name) \
