@@ -6236,7 +6236,7 @@ static Refresh_ComputePipeline* VULKAN_CreateComputePipeline(
 	pipelineShaderStageCreateInfo.pNext = NULL;
 	pipelineShaderStageCreateInfo.flags = 0;
 	pipelineShaderStageCreateInfo.stage = VK_SHADER_STAGE_COMPUTE_BIT;
-	pipelineShaderStageCreateInfo.module = (VkShaderModule)computeShaderInfo->shaderModule;
+	pipelineShaderStageCreateInfo.module = vulkanComputePipeline->computeShaderModule->shaderModule;
 	pipelineShaderStageCreateInfo.pName = computeShaderInfo->entryPointName;
 	pipelineShaderStageCreateInfo.pSpecializationInfo = NULL;
 
