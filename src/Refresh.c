@@ -507,78 +507,66 @@ void Refresh_GetBufferData(
 
 void Refresh_QueueDestroyTexture(
 	Refresh_Device *device,
-	Refresh_CommandBuffer *commandBuffer,
 	Refresh_Texture *texture
 ) {
 	NULL_RETURN(device);
 	device->QueueDestroyTexture(
 		device->driverData,
-		commandBuffer,
 		texture
 	);
 }
 
 void Refresh_QueueDestroySampler(
 	Refresh_Device *device,
-	Refresh_CommandBuffer *commandBuffer,
 	Refresh_Sampler *sampler
 ) {
 	NULL_RETURN(device);
 	device->QueueDestroySampler(
 		device->driverData,
-		commandBuffer,
 		sampler
 	);
 }
 
 void Refresh_QueueDestroyBuffer(
 	Refresh_Device *device,
-	Refresh_CommandBuffer *commandBuffer,
 	Refresh_Buffer *buffer
 ) {
 	NULL_RETURN(device);
 	device->QueueDestroyBuffer(
 		device->driverData,
-		commandBuffer,
 		buffer
 	);
 }
 
 void Refresh_QueueDestroyShaderModule(
 	Refresh_Device *device,
-	Refresh_CommandBuffer *commandBuffer,
 	Refresh_ShaderModule *shaderModule
 ) {
 	NULL_RETURN(device);
 	device->QueueDestroyShaderModule(
 		device->driverData,
-		commandBuffer,
 		shaderModule
 	);
 }
 
 void Refresh_QueueDestroyComputePipeline(
 	Refresh_Device *device,
-	Refresh_CommandBuffer *commandBuffer,
 	Refresh_ComputePipeline *computePipeline
 ) {
 	NULL_RETURN(device);
 	device->QueueDestroyComputePipeline(
 		device->driverData,
-		commandBuffer,
 		computePipeline
 	);
 }
 
 void Refresh_QueueDestroyGraphicsPipeline(
 	Refresh_Device *device,
-	Refresh_CommandBuffer *commandBuffer,
 	Refresh_GraphicsPipeline *graphicsPipeline
 ) {
 	NULL_RETURN(device);
 	device->QueueDestroyGraphicsPipeline(
 		device->driverData,
-		commandBuffer,
 		graphicsPipeline
 	);
 }

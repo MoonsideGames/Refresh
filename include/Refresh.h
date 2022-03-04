@@ -925,7 +925,6 @@ REFRESHAPI void Refresh_GetBufferData(
  */
 REFRESHAPI void Refresh_QueueDestroyTexture(
 	Refresh_Device *device,
-	Refresh_CommandBuffer *commandBuffer,
 	Refresh_Texture *texture
 );
 
@@ -938,7 +937,6 @@ REFRESHAPI void Refresh_QueueDestroyTexture(
  */
 REFRESHAPI void Refresh_QueueDestroySampler(
 	Refresh_Device *device,
-	Refresh_CommandBuffer *commandBuffer,
 	Refresh_Sampler *sampler
 );
 
@@ -951,7 +949,6 @@ REFRESHAPI void Refresh_QueueDestroySampler(
  */
 REFRESHAPI void Refresh_QueueDestroyBuffer(
 	Refresh_Device *device,
-	Refresh_CommandBuffer *commandBuffer,
 	Refresh_Buffer *buffer
 );
 
@@ -964,7 +961,6 @@ REFRESHAPI void Refresh_QueueDestroyBuffer(
  */
 REFRESHAPI void Refresh_QueueDestroyShaderModule(
 	Refresh_Device *device,
-	Refresh_CommandBuffer *commandBuffer,
 	Refresh_ShaderModule *shaderModule
 );
 
@@ -977,7 +973,6 @@ REFRESHAPI void Refresh_QueueDestroyShaderModule(
  */
 REFRESHAPI void Refresh_QueueDestroyComputePipeline(
 	Refresh_Device *device,
-	Refresh_CommandBuffer *commandBuffer,
 	Refresh_ComputePipeline *computePipeline
 );
 
@@ -990,7 +985,6 @@ REFRESHAPI void Refresh_QueueDestroyComputePipeline(
  */
 REFRESHAPI void Refresh_QueueDestroyGraphicsPipeline(
 	Refresh_Device *device,
-	Refresh_CommandBuffer *commandBuffer,
 	Refresh_GraphicsPipeline *graphicsPipeline
 );
 
