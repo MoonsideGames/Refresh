@@ -6090,8 +6090,6 @@ static Refresh_GraphicsPipeline* VULKAN_CreateGraphicsPipeline(
 
 	SDL_stack_free(vertexInputBindingDescriptions);
 	SDL_stack_free(vertexInputAttributeDescriptions);
-	SDL_stack_free(viewports);
-	SDL_stack_free(scissors);
 	SDL_stack_free(colorBlendAttachmentStates);
 
 	renderer->vkDestroyRenderPass(
