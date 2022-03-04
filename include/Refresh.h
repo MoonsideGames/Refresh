@@ -1017,14 +1017,14 @@ REFRESHAPI void Refresh_BindGraphicsPipeline(
 );
 
 /* Sets the current viewport state. */
-REFRESHAPI void Refresh_SetViewportState(
+REFRESHAPI void Refresh_SetViewport(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
 	Refresh_Viewport *viewport
 );
 
 /* Sets the current scissor state. */
-REFRESHAPI void Refresh_SetScissorState(
+REFRESHAPI void Refresh_SetScissor(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
 	Refresh_Rect *scissor

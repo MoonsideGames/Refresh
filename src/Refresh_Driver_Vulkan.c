@@ -7953,7 +7953,7 @@ static void VULKAN_INTERNAL_SetCurrentViewport(
 	vulkanCommandBuffer->currentViewport.maxDepth = viewport->maxDepth;
 }
 
-static void VULKAN_SetViewportState(
+static void VULKAN_SetViewport(
 	Refresh_Renderer *driverData,
 	Refresh_CommandBuffer *commandBuffer,
 	Refresh_Viewport *viewport
@@ -7990,7 +7990,7 @@ static void VULKAN_INTERNAL_SetCurrentScissor(
 	vulkanCommandBuffer->currentScissor.extent.height = scissor->h;
 }
 
-static void VULKAN_SetScissorState(
+static void VULKAN_SetScissor(
 	Refresh_Renderer *driverData,
 	Refresh_CommandBuffer *commandBuffer,
 	Refresh_Rect *scissor
