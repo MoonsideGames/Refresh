@@ -52,6 +52,20 @@
 extern "C" {
 #endif /* __cplusplus */
 
+/* Version API */
+
+#define REFRESH_MAJOR_VERSION   1
+#define REFRESH_MINOR_VERSION	0
+#define REFRESH_PATCH_VERSION	0
+
+#define REFRESH_COMPILED_VERSION ( \
+	(REFRESH_MAJOR_VERSION * 100 * 100) + \
+	(REFRESH_MINOR_VERSION * 100) + \
+	(REFRESH_PATCH_VERSION) \
+)
+
+REFRESHAPI uint32_t Refresh_LinkedVersion(void);
+
 /* Type Declarations */
 
 typedef struct Refresh_Device Refresh_Device;
@@ -566,20 +580,6 @@ typedef struct Refresh_DepthStencilAttachmentInfo
 	Refresh_LoadOp stencilLoadOp;
 	Refresh_StoreOp stencilStoreOp;
 } Refresh_DepthStencilAttachmentInfo;
-
-/* Version API */
-
-#define REFRESH_MAJOR_VERSION   1
-#define REFRESH_MINOR_VERSION	0
-#define REFRESH_PATCH_VERSION	0
-
-#define REFRESH_COMPILED_VERSION ( \
-	(REFRESH_MAJOR_VERSION * 100 * 100) + \
-	(REFRESH_MINOR_VERSION * 100) + \
-	(REFRESH_PATCH_VERSION) \
-)
-
-REFRESHAPI uint32_t Refresh_LinkedVersion(void);
 
 /* Functions */
 
