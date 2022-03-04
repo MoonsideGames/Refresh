@@ -2939,6 +2939,9 @@ static void VULKAN_INTERNAL_DestroyCommandPool(
 		SDL_free(commandBuffer->boundDescriptorSetDatas);
 		SDL_free(commandBuffer->usedBuffers);
 		SDL_free(commandBuffer->usedTextures);
+		SDL_free(commandBuffer->usedSamplers);
+		SDL_free(commandBuffer->usedGraphicsPipelines);
+		SDL_free(commandBuffer->usedComputePipelines);
 
 		SDL_free(commandBuffer);
 	}
