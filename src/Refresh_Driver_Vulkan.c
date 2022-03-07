@@ -169,13 +169,6 @@ typedef enum VulkanResourceAccessType
 	RESOURCE_ACCESS_TYPES_COUNT
 } VulkanResourceAccessType;
 
-typedef enum CreateSwapchainResult
-{
-	CREATE_SWAPCHAIN_FAIL,
-	CREATE_SWAPCHAIN_SUCCESS,
-	CREATE_SWAPCHAIN_SURFACE_ZERO,
-} CreateSwapchainResult;
-
 /* Conversions */
 
 static const uint8_t DEVICE_PRIORITY[] =
@@ -751,6 +744,12 @@ typedef struct VulkanRenderTarget
 	VkSampleCountFlags multisampleCount;
 } VulkanRenderTarget;
 
+typedef struct VulkanFramebuffer
+{
+	VkFramebuffer framebuffer;
+	SDL_atomic_t referenceCount;
+} VulkanFramebuffer;
+
 typedef struct VulkanSwapchainData
 {
 	/* Window surface */
@@ -768,9 +767,6 @@ typedef struct VulkanSwapchainData
 	VkExtent2D extent;
 	VulkanTexture *textures;
 	uint32_t imageCount;
-
-	/* Recreate flag */
-	uint8_t needsRecreate;
 
 	/* Synchronization primitives */
 	VkSemaphore imageAvailableSemaphore;
@@ -1051,7 +1047,7 @@ typedef struct FramebufferHash
 typedef struct FramebufferHashMap
 {
 	FramebufferHash key;
-	VkFramebuffer value;
+	VulkanFramebuffer *value;
 } FramebufferHashMap;
 
 typedef struct FramebufferHashArray
@@ -1103,7 +1099,7 @@ static inline uint8_t FramebufferHash_Compare(
 	return 1;
 }
 
-static inline VkFramebuffer FramebufferHashArray_Fetch(
+static inline VulkanFramebuffer* FramebufferHashArray_Fetch(
 	FramebufferHashArray *arr,
 	FramebufferHash *key
 ) {
@@ -1124,7 +1120,7 @@ static inline VkFramebuffer FramebufferHashArray_Fetch(
 static inline void FramebufferHashArray_Insert(
 	FramebufferHashArray *arr,
 	FramebufferHash key,
-	VkFramebuffer value
+	VulkanFramebuffer *value
 ) {
 	FramebufferHashMap map;
 	map.key = key;
@@ -1520,6 +1516,10 @@ typedef struct VulkanCommandBuffer
 	uint32_t usedComputePipelineCount;
 	uint32_t usedComputePipelineCapacity;
 
+	VulkanFramebuffer **usedFramebuffers;
+	uint32_t usedFramebufferCount;
+	uint32_t usedFramebufferCapacity;
+
 	/* Shader modules have references tracked by pipelines */
 
 	VkFence inFlightFence;
@@ -1696,6 +1696,10 @@ typedef struct VulkanRenderer
 	VulkanShaderModule **shaderModulesToDestroy;
 	uint32_t shaderModulesToDestroyCount;
 	uint32_t shaderModulesToDestroyCapacity;
+
+	VulkanFramebuffer **framebuffersToDestroy;
+	uint32_t framebuffersToDestroyCount;
+	uint32_t framebuffersToDestroyCapacity;
 
 	SDL_mutex *allocatorLock;
 	SDL_mutex *disposeLock;
@@ -2719,9 +2723,56 @@ static void VULKAN_INTERNAL_TrackComputePipeline(
 	)
 }
 
+static void VULKAN_INTERNAL_TrackFramebuffer(
+	VulkanRenderer *renderer,
+	VulkanCommandBuffer *commandBuffer,
+	VulkanFramebuffer *framebuffer
+) {
+	TRACK_RESOURCE(
+		framebuffer,
+		VulkanFramebuffer*,
+		usedFramebuffers,
+		usedFramebufferCount,
+		usedFramebufferCapacity
+	);
+}
+
 #undef TRACK_RESOURCE
 
 /* Resource Disposal */
+
+static void VULKAN_INTERNAL_QueueDestroyFramebuffer(
+	VulkanRenderer *renderer,
+	VulkanFramebuffer *framebuffer
+) {
+	SDL_LockMutex(renderer->disposeLock);
+
+	EXPAND_ARRAY_IF_NEEDED(
+		renderer->framebuffersToDestroy,
+		VulkanFramebuffer*,
+		renderer->framebuffersToDestroyCount + 1,
+		renderer->framebuffersToDestroyCapacity,
+		renderer->framebuffersToDestroyCapacity * 2
+	)
+
+	renderer->framebuffersToDestroy[renderer->framebuffersToDestroyCount] = framebuffer;
+	renderer->framebuffersToDestroyCount += 1;
+
+	SDL_UnlockMutex(renderer->disposeLock);
+}
+
+static void VULKAN_INTERNAL_DestroyFramebuffer(
+	VulkanRenderer *renderer,
+	VulkanFramebuffer *framebuffer
+) {
+	renderer->vkDestroyFramebuffer(
+		renderer->logicalDevice,
+		framebuffer->framebuffer,
+		NULL
+	);
+
+	SDL_free(framebuffer);
+}
 
 static void VULKAN_INTERNAL_RemoveFramebuffersContainingView(
 	VulkanRenderer *renderer,
@@ -2740,10 +2791,9 @@ static void VULKAN_INTERNAL_RemoveFramebuffersContainingView(
 		{
 			if (hash->colorAttachmentViews[i] == view)
 			{
-				renderer->vkDestroyFramebuffer(
-					renderer->logicalDevice,
-					renderer->framebufferHashArray.elements[i].value,
-					NULL
+				VULKAN_INTERNAL_QueueDestroyFramebuffer(
+					renderer,
+					renderer->framebufferHashArray.elements[i].value
 				);
 
 				FramebufferHashArray_Remove(
@@ -2945,6 +2995,7 @@ static void VULKAN_INTERNAL_DestroyCommandPool(
 		SDL_free(commandBuffer->usedSamplers);
 		SDL_free(commandBuffer->usedGraphicsPipelines);
 		SDL_free(commandBuffer->usedComputePipelines);
+		SDL_free(commandBuffer->usedFramebuffers);
 
 		SDL_free(commandBuffer);
 	}
@@ -4037,7 +4088,7 @@ static uint8_t VULKAN_INTERNAL_ChooseSwapPresentMode(
 	return 1;
 }
 
-static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
+static uint8_t VULKAN_INTERNAL_CreateSwapchain(
 	VulkanRenderer *renderer,
 	void *windowHandle
 ) {
@@ -4066,7 +4117,7 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 			"SDL_Vulkan_CreateSurface failed: %s",
 			SDL_GetError()
 		);
-		return CREATE_SWAPCHAIN_FAIL;
+		return 0;
 	}
 
 	if (!VULKAN_INTERNAL_QuerySwapChainSupport(
@@ -4091,7 +4142,7 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 		}
 		SDL_free(swapchainData);
 		Refresh_LogError("Device does not support swap chain creation");
-		return CREATE_SWAPCHAIN_FAIL;
+		return 0;
 	}
 
 	swapchainData->swapchainFormat = VK_FORMAT_R8G8B8A8_UNORM;
@@ -4133,7 +4184,7 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 			}
 			SDL_free(swapchainData);
 			Refresh_LogError("Device does not support swap chain format");
-			return CREATE_SWAPCHAIN_FAIL;
+			return 0;
 		}
 	}
 
@@ -4158,7 +4209,7 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 		}
 		SDL_free(swapchainData);
 		Refresh_LogError("Device does not support swap chain present mode");
-		return CREATE_SWAPCHAIN_FAIL;
+		return 0;
 	}
 
 	SDL_Vulkan_GetDrawableSize(
@@ -4189,7 +4240,8 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 				SDL_free(swapchainSupportDetails.presentModes);
 			}
 			SDL_free(swapchainData);
-			return CREATE_SWAPCHAIN_SURFACE_ZERO;
+			/* Not an error, just Windows minimize behavior! */
+			return 0;
 		}
 
 		if (swapchainSupportDetails.capabilities.currentExtent.width != UINT32_MAX)
@@ -4222,7 +4274,7 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 			}
 			SDL_free(swapchainData);
 			Refresh_LogError("No fallback swapchain size available!");
-			return CREATE_SWAPCHAIN_FAIL;
+			return 0;
 		}
 	}
 
@@ -4295,7 +4347,7 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 		);
 		SDL_free(swapchainData);
 		LogVulkanResultAsError("vkCreateSwapchainKHR", vulkanResult);
-		return CREATE_SWAPCHAIN_FAIL;
+		return 0;
 	}
 
 	renderer->vkGetSwapchainImagesKHR(
@@ -4318,7 +4370,7 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 			NULL
 		);
 		SDL_free(swapchainData);
-		return CREATE_SWAPCHAIN_FAIL;
+		return 0;
 	}
 
 	swapchainImages = SDL_stack_alloc(VkImage, swapchainData->imageCount);
@@ -4366,7 +4418,7 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 			SDL_free(swapchainData->textures);
 			SDL_free(swapchainData);
 			LogVulkanResultAsError("vkCreateImageView", vulkanResult);
-			return CREATE_SWAPCHAIN_FAIL;
+			return 0;
 		}
 
 		swapchainData->textures[i].resourceAccessType = RESOURCE_ACCESS_NONE;
@@ -4408,8 +4460,6 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 		&swapchainData->renderFinishedSemaphore
 	);
 
-	swapchainData->needsRecreate = 0;
-
 	SDL_SetWindowData(windowHandle, WINDOW_SWAPCHAIN_DATA, swapchainData);
 
 	if (renderer->swapchainDataCount >= renderer->swapchainDataCapacity)
@@ -4424,26 +4474,16 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 	renderer->swapchainDatas[renderer->swapchainDataCount] = swapchainData;
 	renderer->swapchainDataCount += 1;
 
-	return CREATE_SWAPCHAIN_SUCCESS;
+	return 1;
 }
 
 static void VULKAN_INTERNAL_RecreateSwapchain(
 	VulkanRenderer* renderer,
 	void *windowHandle
 ) {
-	CreateSwapchainResult createSwapchainResult;
-
-	VULKAN_Wait((Refresh_Renderer*)renderer);
-
+	VULKAN_Wait((Refresh_Renderer*) renderer);
 	VULKAN_INTERNAL_DestroySwapchain(renderer, windowHandle);
-	createSwapchainResult = VULKAN_INTERNAL_CreateSwapchain(renderer, windowHandle);
-
-	if (createSwapchainResult == CREATE_SWAPCHAIN_FAIL)
-	{
-		return;
-	}
-
-	VULKAN_Wait((Refresh_Renderer*)renderer);
+	VULKAN_INTERNAL_CreateSwapchain(renderer, windowHandle);
 }
 
 /* Command Buffers */
@@ -4513,6 +4553,15 @@ static void VULKAN_DestroyDevice(
 	ComputePipelineLayoutHashArray computePipelineLayoutHashArray;
 	VulkanMemorySubAllocator *allocator;
 	int32_t i, j, k;
+
+	VULKAN_Wait(device->driverData);
+
+	for (i = renderer->swapchainDataCount - 1; i >= 0; i -= 1)
+	{
+		VULKAN_INTERNAL_DestroySwapchain(renderer, renderer->swapchainDatas[i]->windowHandle);
+	}
+
+	SDL_free(renderer->swapchainDatas);
 
 	VULKAN_Wait(device->driverData);
 
@@ -4675,19 +4724,11 @@ static void VULKAN_DestroyDevice(
 	VULKAN_INTERNAL_DestroyUniformBufferPool(renderer, renderer->fragmentUniformBufferPool);
 	VULKAN_INTERNAL_DestroyUniformBufferPool(renderer, renderer->computeUniformBufferPool);
 
-	for (i = renderer->swapchainDataCount - 1; i >= 0; i -= 1)
-	{
-		VULKAN_INTERNAL_DestroySwapchain(renderer, renderer->swapchainDatas[i]->windowHandle);
-	}
-
-	SDL_free(renderer->swapchainDatas);
-
 	for (i = 0; i < renderer->framebufferHashArray.count; i += 1)
 	{
-		renderer->vkDestroyFramebuffer(
-			renderer->logicalDevice,
-			renderer->framebufferHashArray.elements[i].value,
-			NULL
+		VULKAN_INTERNAL_DestroyFramebuffer(
+			renderer,
+			renderer->framebufferHashArray.elements[i].value
 		);
 	}
 
@@ -7779,7 +7820,7 @@ static VkRenderPass VULKAN_INTERNAL_FetchRenderPass(
 	return renderPass;
 }
 
-static VkFramebuffer VULKAN_INTERNAL_FetchFramebuffer(
+static VulkanFramebuffer* VULKAN_INTERNAL_FetchFramebuffer(
 	VulkanRenderer *renderer,
 	VkRenderPass renderPass,
 	Refresh_ColorAttachmentInfo *colorAttachmentInfos,
@@ -7788,7 +7829,7 @@ static VkFramebuffer VULKAN_INTERNAL_FetchFramebuffer(
 	uint32_t width,
 	uint32_t height
 ) {
-	VkFramebuffer framebuffer;
+	VulkanFramebuffer *vulkanFramebuffer;
 	VkFramebufferCreateInfo framebufferInfo;
 	VkResult result;
 	VkImageView imageViewAttachments[2 * MAX_COLOR_TARGET_BINDINGS + 1];
@@ -7850,16 +7891,20 @@ static VkFramebuffer VULKAN_INTERNAL_FetchFramebuffer(
 	hash.width = width;
 	hash.height = height;
 
-	framebuffer = FramebufferHashArray_Fetch(
+	vulkanFramebuffer = FramebufferHashArray_Fetch(
 		&renderer->framebufferHashArray,
 		&hash
 	);
 
-	if (framebuffer != VK_NULL_HANDLE)
+	if (vulkanFramebuffer != NULL)
 	{
 		SDL_UnlockMutex(renderer->framebufferFetchLock);
-		return framebuffer;
+		return vulkanFramebuffer;
 	}
+
+	vulkanFramebuffer = SDL_malloc(sizeof(VulkanFramebuffer));
+
+	SDL_AtomicSet(&vulkanFramebuffer->referenceCount, 0);
 
 	/* Create a new framebuffer */
 
@@ -7918,7 +7963,7 @@ static VkFramebuffer VULKAN_INTERNAL_FetchFramebuffer(
 		renderer->logicalDevice,
 		&framebufferInfo,
 		NULL,
-		&framebuffer
+		&vulkanFramebuffer->framebuffer
 	);
 
 	if (result == VK_SUCCESS)
@@ -7926,17 +7971,18 @@ static VkFramebuffer VULKAN_INTERNAL_FetchFramebuffer(
 		FramebufferHashArray_Insert(
 			&renderer->framebufferHashArray,
 			hash,
-			framebuffer
+			vulkanFramebuffer
 		);
 	}
 	else
 	{
 		LogVulkanResultAsError("vkCreateFramebuffer", result);
-		framebuffer = VK_NULL_HANDLE;
+		SDL_free(vulkanFramebuffer);
+		vulkanFramebuffer = NULL;
 	}
 
 	SDL_UnlockMutex(renderer->framebufferFetchLock);
-	return framebuffer;
+	return vulkanFramebuffer;
 }
 
 static void VULKAN_INTERNAL_SetCurrentViewport(
@@ -8028,7 +8074,7 @@ static void VULKAN_BeginRenderPass(
 	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
 	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
 	VkRenderPass renderPass;
-	VkFramebuffer framebuffer;
+	VulkanFramebuffer *framebuffer;
 
 	VulkanTexture *texture;
 	VkClearValue *clearValues;
@@ -8094,6 +8140,8 @@ static void VULKAN_BeginRenderPass(
 		framebufferWidth,
 		framebufferHeight
 	);
+
+	VULKAN_INTERNAL_TrackFramebuffer(renderer, vulkanCommandBuffer, framebuffer);
 
 	/* Layout transitions */
 
@@ -8169,14 +8217,25 @@ static void VULKAN_BeginRenderPass(
 	VkRenderPassBeginInfo renderPassBeginInfo;
 	renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
 	renderPassBeginInfo.pNext = NULL;
-	renderPassBeginInfo.renderPass = (VkRenderPass) renderPass;
-	renderPassBeginInfo.framebuffer = framebuffer;
-	renderPassBeginInfo.renderArea.extent.width = renderArea->w;
-	renderPassBeginInfo.renderArea.extent.height = renderArea->h;
-	renderPassBeginInfo.renderArea.offset.x = renderArea->x;
-	renderPassBeginInfo.renderArea.offset.y = renderArea->y;
+	renderPassBeginInfo.renderPass = renderPass;
+	renderPassBeginInfo.framebuffer = framebuffer->framebuffer;
 	renderPassBeginInfo.pClearValues = clearValues;
 	renderPassBeginInfo.clearValueCount = clearCount;
+
+	if (renderArea != NULL)
+	{
+		renderPassBeginInfo.renderArea.extent.width = renderArea->w;
+		renderPassBeginInfo.renderArea.extent.height = renderArea->h;
+		renderPassBeginInfo.renderArea.offset.x = renderArea->x;
+		renderPassBeginInfo.renderArea.offset.y = renderArea->y;
+	}
+	else
+	{
+		renderPassBeginInfo.renderArea.extent.width = framebufferWidth;
+		renderPassBeginInfo.renderArea.extent.height = framebufferHeight;
+		renderPassBeginInfo.renderArea.offset.x = 0;
+		renderPassBeginInfo.renderArea.offset.y = 0;
+	}
 
 	renderer->vkCmdBeginRenderPass(
 		vulkanCommandBuffer->commandBuffer,
@@ -8715,6 +8774,12 @@ static void VULKAN_INTERNAL_AllocateCommandBuffers(
 			commandBuffer->usedComputePipelineCapacity * sizeof(VulkanComputePipeline*)
 		);
 
+		commandBuffer->usedFramebufferCapacity = 4;
+		commandBuffer->usedFramebufferCount = 0;
+		commandBuffer->usedFramebuffers = SDL_malloc(
+			commandBuffer->usedFramebufferCapacity * sizeof(VulkanFramebuffer*)
+		);
+
 		vulkanCommandPool->inactiveCommandBuffers[
 			vulkanCommandPool->inactiveCommandBufferCount
 		] = commandBuffer;
@@ -8867,6 +8932,25 @@ static Refresh_CommandBuffer* VULKAN_AcquireCommandBuffer(
 	return (Refresh_CommandBuffer*) commandBuffer;
 }
 
+static VulkanSwapchainData* VULKAN_INTERNAL_FetchSwapchainData(
+	VulkanRenderer *renderer,
+	void *windowHandle
+) {
+	VulkanSwapchainData *swapchainData = NULL;
+
+	swapchainData = (VulkanSwapchainData*) SDL_GetWindowData(windowHandle, WINDOW_SWAPCHAIN_DATA);
+
+	if (swapchainData == NULL)
+	{
+		if (VULKAN_INTERNAL_CreateSwapchain(renderer, windowHandle))
+		{
+			swapchainData = (VulkanSwapchainData*) SDL_GetWindowData(windowHandle, WINDOW_SWAPCHAIN_DATA);
+		}
+	}
+
+	return swapchainData;
+}
+
 static Refresh_Texture* VULKAN_AcquireSwapchainTexture(
 	Refresh_Renderer *driverData,
 	Refresh_CommandBuffer *commandBuffer,
@@ -8875,35 +8959,39 @@ static Refresh_Texture* VULKAN_AcquireSwapchainTexture(
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
 	uint32_t swapchainImageIndex;
-	VulkanSwapchainData *swapchainData = NULL;
-	CreateSwapchainResult createSwapchainResult = 0;
-	uint8_t validSwapchainExists = 1;
+	VulkanSwapchainData *swapchainData;
 	VkResult acquireResult = VK_SUCCESS;
 	VulkanTexture *swapchainTexture = NULL;
 	VulkanPresentData *presentData;
 
-	swapchainData = (VulkanSwapchainData*) SDL_GetWindowData(windowHandle, WINDOW_SWAPCHAIN_DATA);
+	swapchainData = VULKAN_INTERNAL_FetchSwapchainData(renderer, windowHandle);
 
 	if (swapchainData == NULL)
 	{
-		createSwapchainResult = VULKAN_INTERNAL_CreateSwapchain(renderer, windowHandle);
-
-		if (createSwapchainResult == CREATE_SWAPCHAIN_FAIL)
-		{
-			validSwapchainExists = 0;
-		}
-		else if (createSwapchainResult == CREATE_SWAPCHAIN_SURFACE_ZERO)
-		{
-			validSwapchainExists = 0;
-		}
-		else
-		{
-			swapchainData = (VulkanSwapchainData*) SDL_GetWindowData(windowHandle, WINDOW_SWAPCHAIN_DATA);
-		}
+		return NULL;
 	}
 
-	if (validSwapchainExists)
+	acquireResult = renderer->vkAcquireNextImageKHR(
+		renderer->logicalDevice,
+		swapchainData->swapchain,
+		UINT64_MAX,
+		swapchainData->imageAvailableSemaphore,
+		VK_NULL_HANDLE,
+		&swapchainImageIndex
+	);
+
+	/* Swapchain is suboptimal, let's try to recreate */
+	if (acquireResult == VK_SUBOPTIMAL_KHR)
 	{
+		VULKAN_INTERNAL_RecreateSwapchain(renderer, windowHandle);
+
+		swapchainData = VULKAN_INTERNAL_FetchSwapchainData(renderer, windowHandle);
+
+		if (swapchainData == NULL)
+		{
+			return NULL;
+		}
+
 		acquireResult = renderer->vkAcquireNextImageKHR(
 			renderer->logicalDevice,
 			swapchainData->swapchain,
@@ -8913,73 +9001,70 @@ static Refresh_Texture* VULKAN_AcquireSwapchainTexture(
 			&swapchainImageIndex
 		);
 
-		if (acquireResult == VK_SUCCESS || acquireResult == VK_SUBOPTIMAL_KHR)
+		if (acquireResult != VK_SUCCESS)
 		{
-			swapchainTexture = &swapchainData->textures[swapchainImageIndex];
-
-			VULKAN_INTERNAL_ImageMemoryBarrier(
-				renderer,
-				vulkanCommandBuffer->commandBuffer,
-				RESOURCE_ACCESS_COLOR_ATTACHMENT_WRITE,
-				VK_IMAGE_ASPECT_COLOR_BIT,
-				0,
-				1,
-				0,
-				1,
-				0,
-				swapchainTexture->image,
-				&swapchainTexture->resourceAccessType
-			);
-
-			/* Set up present struct */
-
-			if (vulkanCommandBuffer->presentDataCount == vulkanCommandBuffer->presentDataCapacity)
-			{
-				vulkanCommandBuffer->presentDataCapacity += 1;
-				vulkanCommandBuffer->presentDatas = SDL_realloc(
-					vulkanCommandBuffer->presentDatas,
-					vulkanCommandBuffer->presentDataCapacity * sizeof(VkPresentInfoKHR)
-				);
-			}
-
-			presentData = &vulkanCommandBuffer->presentDatas[vulkanCommandBuffer->presentDataCount];
-			vulkanCommandBuffer->presentDataCount += 1;
-
-			presentData->swapchainData = swapchainData;
-			presentData->swapchainImageIndex = swapchainImageIndex;
-
-			/* Set up present semaphores */
-
-			if (vulkanCommandBuffer->waitSemaphoreCount == vulkanCommandBuffer->waitSemaphoreCapacity)
-			{
-				vulkanCommandBuffer->waitSemaphoreCapacity += 1;
-				vulkanCommandBuffer->waitSemaphores = SDL_realloc(
-					vulkanCommandBuffer->waitSemaphores,
-					vulkanCommandBuffer->waitSemaphoreCapacity * sizeof(VkSemaphore)
-				);
-			}
-
-			vulkanCommandBuffer->waitSemaphores[vulkanCommandBuffer->waitSemaphoreCount] = swapchainData->imageAvailableSemaphore;
-			vulkanCommandBuffer->waitSemaphoreCount += 1;
-
-			if (vulkanCommandBuffer->signalSemaphoreCount == vulkanCommandBuffer->signalSemaphoreCapacity)
-			{
-				vulkanCommandBuffer->signalSemaphoreCapacity += 1;
-				vulkanCommandBuffer->signalSemaphores = SDL_realloc(
-					vulkanCommandBuffer->signalSemaphores,
-					vulkanCommandBuffer->signalSemaphoreCapacity * sizeof(VkSemaphore)
-				);
-			}
-
-			vulkanCommandBuffer->signalSemaphores[vulkanCommandBuffer->signalSemaphoreCount] = swapchainData->renderFinishedSemaphore;
-			vulkanCommandBuffer->signalSemaphoreCount += 1;
-
-			if (acquireResult == VK_SUBOPTIMAL_KHR)
-			{
-				swapchainData->needsRecreate = 1;
-			}
+			return NULL;
 		}
 	}
+
+	swapchainTexture = &swapchainData->textures[swapchainImageIndex];
+
+	VULKAN_INTERNAL_ImageMemoryBarrier(
+		renderer,
+		vulkanCommandBuffer->commandBuffer,
+		RESOURCE_ACCESS_COLOR_ATTACHMENT_WRITE,
+		VK_IMAGE_ASPECT_COLOR_BIT,
+		0,
+		1,
+		0,
+		1,
+		0,
+		swapchainTexture->image,
+		&swapchainTexture->resourceAccessType
+	);
+
+	/* Set up present struct */
+
+	if (vulkanCommandBuffer->presentDataCount == vulkanCommandBuffer->presentDataCapacity)
+	{
+		vulkanCommandBuffer->presentDataCapacity += 1;
+		vulkanCommandBuffer->presentDatas = SDL_realloc(
+			vulkanCommandBuffer->presentDatas,
+			vulkanCommandBuffer->presentDataCapacity * sizeof(VkPresentInfoKHR)
+		);
+	}
+
+	presentData = &vulkanCommandBuffer->presentDatas[vulkanCommandBuffer->presentDataCount];
+	vulkanCommandBuffer->presentDataCount += 1;
+
+	presentData->swapchainData = swapchainData;
+	presentData->swapchainImageIndex = swapchainImageIndex;
+
+	/* Set up present semaphores */
+
+	if (vulkanCommandBuffer->waitSemaphoreCount == vulkanCommandBuffer->waitSemaphoreCapacity)
+	{
+		vulkanCommandBuffer->waitSemaphoreCapacity += 1;
+		vulkanCommandBuffer->waitSemaphores = SDL_realloc(
+			vulkanCommandBuffer->waitSemaphores,
+			vulkanCommandBuffer->waitSemaphoreCapacity * sizeof(VkSemaphore)
+		);
+	}
+
+	vulkanCommandBuffer->waitSemaphores[vulkanCommandBuffer->waitSemaphoreCount] = swapchainData->imageAvailableSemaphore;
+	vulkanCommandBuffer->waitSemaphoreCount += 1;
+
+	if (vulkanCommandBuffer->signalSemaphoreCount == vulkanCommandBuffer->signalSemaphoreCapacity)
+	{
+		vulkanCommandBuffer->signalSemaphoreCapacity += 1;
+		vulkanCommandBuffer->signalSemaphores = SDL_realloc(
+			vulkanCommandBuffer->signalSemaphores,
+			vulkanCommandBuffer->signalSemaphoreCapacity * sizeof(VkSemaphore)
+		);
+	}
+
+	vulkanCommandBuffer->signalSemaphores[vulkanCommandBuffer->signalSemaphoreCount] = swapchainData->renderFinishedSemaphore;
+	vulkanCommandBuffer->signalSemaphoreCount += 1;
 
 	return (Refresh_Texture*) swapchainTexture;
 }
@@ -9104,6 +9189,20 @@ static void VULKAN_INTERNAL_PerformPendingDestroys(
 		}
 	}
 
+	for (i = renderer->framebuffersToDestroyCount - 1; i >= 0; i -= 1)
+	{
+		if (SDL_AtomicGet(&renderer->framebuffersToDestroy[i]->referenceCount) == 0)
+		{
+			VULKAN_INTERNAL_DestroyFramebuffer(
+				renderer,
+				renderer->framebuffersToDestroy[i]
+			);
+
+			renderer->framebuffersToDestroy[i] = renderer->framebuffersToDestroy[renderer->framebuffersToDestroyCount - 1];
+			renderer->framebuffersToDestroyCount -= 1;
+		}
+	}
+
 	SDL_UnlockMutex(renderer->disposeLock);
 }
 
@@ -9216,6 +9315,12 @@ static void VULKAN_INTERNAL_CleanCommandBuffer(
 		SDL_AtomicDecRef(&commandBuffer->usedComputePipelines[i]->referenceCount);
 	}
 	commandBuffer->usedComputePipelineCount = 0;
+
+	for (i = 0; i < commandBuffer->usedFramebufferCount; i += 1)
+	{
+		SDL_AtomicDecRef(&commandBuffer->usedFramebuffers[i]->referenceCount);
+	}
+	commandBuffer->usedFramebufferCount = 0;
 
 	/* Return command buffer to pool */
 
@@ -9378,7 +9483,7 @@ static void VULKAN_Submit(
 				&presentInfo
 			);
 
-			if (presentResult != VK_SUCCESS || presentData->swapchainData->needsRecreate)
+			if (presentResult != VK_SUCCESS)
 			{
 				VULKAN_INTERNAL_RecreateSwapchain(renderer, presentData->swapchainData->windowHandle);
 			}
@@ -10239,7 +10344,7 @@ static Refresh_Device* VULKAN_CreateDevice(
 		renderer->swapchainDataCapacity * sizeof(VulkanSwapchainData*)
 	);
 
-	if (VULKAN_INTERNAL_CreateSwapchain(renderer, presentationParameters->deviceWindowHandle) != CREATE_SWAPCHAIN_SUCCESS)
+	if (!VULKAN_INTERNAL_CreateSwapchain(renderer, presentationParameters->deviceWindowHandle))
 	{
 		Refresh_LogError("Failed to create swapchain");
 		return NULL;
@@ -10622,6 +10727,13 @@ static Refresh_Device* VULKAN_CreateDevice(
 	renderer->shaderModulesToDestroy = SDL_malloc(
 		sizeof(VulkanShaderModule*) *
 		renderer->shaderModulesToDestroyCapacity
+	);
+
+	renderer->framebuffersToDestroyCapacity = 16;
+	renderer->framebuffersToDestroyCount = 0;
+	renderer->framebuffersToDestroy = SDL_malloc(
+		sizeof(VulkanFramebuffer*) *
+		renderer->framebuffersToDestroyCapacity
 	);
 
 	return result;

@@ -988,6 +988,7 @@ REFRESHAPI void Refresh_QueueDestroyGraphicsPipeline(
  * 		The area affected by the render pass.
  * 		All load, store and resolve operations are restricted
  * 		to the given rectangle.
+ * 		If NULL, a sensible default will be chosen.
  * colorAttachmentInfos:
  * 		A pointer to an array of Refresh_ColorAttachmentInfo structures
  * 		that contains render targets and clear values. May be NULL.
