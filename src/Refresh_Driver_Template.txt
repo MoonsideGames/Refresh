@@ -37,6 +37,7 @@
 static TEMPLATE_SURFACE_FORMAT_TYPE RefreshToTEMPLATE_SurfaceFormat[] =
 {
 	0,	/* R8G8B8A8 */
+	0,	/* B8G8R8A8 */
 	0,	/* R5G6B5 */
 	0,	/* A1R5G5B5 */
 	0,	/* B4G4R4A4 */
@@ -96,7 +97,6 @@ static TEMPLATE_POLYGON_MODE_TYPE RefreshToTEMPLATE_PolygonMode[] =
 {
 	0,	/* FILL */
 	0,	/* LINE */
-	0	/* POINT */
 };
 
 static TEMPLATE_CULL_MODE_TYPE RefreshToTEMPLATE_CullMode[] =
@@ -104,7 +104,6 @@ static TEMPLATE_CULL_MODE_TYPE RefreshToTEMPLATE_CullMode[] =
 	0,	/* NONE */
 	0,	/* FRONT */
 	0,	/* BACK */
-	0	/* FRONT_AND_BACK */
 };
 
 static TEMPLATE_FRONT_FACE_TYPE RefreshToTEMPLATE_FrontFace[] =
@@ -127,8 +126,6 @@ static TEMPLATE_BLEND_FACTOR_TYPE RefreshToTEMPLATE_BlendFactor[] =
 	0,	/* ONE_MINUS_DST_ALPHA */
 	0,	/* CONSTANT_COLOR */
 	0,	/* ONE_MINUS_CONSTANT_COLOR */
-	0,	/* CONSTANT_ALPHA */
-	0,	/* ONE_MINUS_CONSTANT_ALPHA */
 	0,	/* SRC_ALPHA_SATURATE */
 	0,	/* SRC1_COLOR */
 	0,	/* ONE_MINUS_SRC1_COLOR */
@@ -143,26 +140,6 @@ static TEMPLATE_BLEND_OP_TYPE RefreshToTEMPLATE_BlendOp[] =
 	0,	/* REVERSE_SUBTRACT */
 	0,	/* MIN */
 	0	/* MAX */
-};
-
-static TEMPLATE_LOGIC_OP_TYPE RefreshToTEMPLATE_LogicOp[] =
-{
-	0,	/* CLEAR */
-	0,	/* AND */
-	0,	/* AND_REVERSE */
-	0,	/* COPY */
-	0,	/* AND_INVERTED */
-	0,	/* NO_OP */
-	0,	/* XOR */
-	0,	/* OR */
-	0,	/* NOR */
-	0,	/* EQUIVALENT */
-	0,	/* INVERT */
-	0,	/* OR_REVERSE */
-	0,	/* COPY_INVERTED */
-	0,	/* OR_INVERTED */
-	0,	/* NAND */
-	0	/* SET */
 };
 
 static TEMPLATE_COMPARE_OP_TYPE RefreshToTEMPLATE_CompareOp[] =
@@ -223,7 +200,6 @@ static TEMPLATE_FILTER_TYPE RefreshToTEMPLATE_Filter[] =
 {
 	0,	/* NEAREST */
 	0,	/* LINEAR */
-	0	/* CUBIC */
 };
 
 static TEMPLATE_SAMPLER_MIPMAP_MODE_TYPE RefreshToTEMPLATE_SamplerMipmapMode[] =
@@ -324,7 +300,7 @@ static void TEMPLATE_DispatchCompute(
 
 static Refresh_ComputePipeline* TEMPLATE_CreateComputePipeline(
 	Refresh_Renderer *driverData,
-	Refresh_ComputePipelineCreateInfo *pipelineCreateInfo
+	Refresh_ComputeShaderInfo *computeShaderInfo
 ) {
 	NOT_IMPLEMENTED
 }
@@ -353,14 +329,6 @@ static Refresh_ShaderModule* TEMPLATE_CreateShaderModule(
 static Refresh_Texture* TEMPLATE_CreateTexture(
 	Refresh_Renderer *driverData,
 	Refresh_TextureCreateInfo *textureCreateInfo
-) {
-	NOT_IMPLEMENTED
-}
-
-static Refresh_RenderTarget* TEMPLATE_CreateRenderTarget(
-	Refresh_Renderer *driverData,
-	Refresh_TextureSlice *textureSlice,
-	Refresh_SampleCount multisampleCount
 ) {
 	NOT_IMPLEMENTED
 }
@@ -491,7 +459,6 @@ static void TEMPLATE_GetBufferData(
 
 static void TEMPLATE_QueueDestroyTexture(
 	Refresh_Renderer *driverData,
-	Refresh_CommandBuffer *commandBuffer,
 	Refresh_Texture *texture
 ) {
 	NOT_IMPLEMENTED
@@ -499,7 +466,6 @@ static void TEMPLATE_QueueDestroyTexture(
 
 static void TEMPLATE_QueueDestroySampler(
 	Refresh_Renderer *driverData,
-	Refresh_CommandBuffer *commandBuffer,
 	Refresh_Sampler *sampler
 ) {
 	NOT_IMPLEMENTED
@@ -507,33 +473,20 @@ static void TEMPLATE_QueueDestroySampler(
 
 static void TEMPLATE_QueueDestroyBuffer(
 	Refresh_Renderer *driverData,
-	Refresh_CommandBuffer *commandBuffer,
 	Refresh_Buffer *buffer
-) {
-	NOT_IMPLEMENTED
-}
-
-static void TEMPLATE_QueueDestroyRenderTarget(
-	Refresh_Renderer *driverData,
-	Refresh_CommandBuffer *commandBuffer,
-	Refresh_RenderTarget *renderTarget
 ) {
 	NOT_IMPLEMENTED
 }
 
 static void TEMPLATE_QueueDestroyShaderModule(
 	Refresh_Renderer *driverData,
-	Refresh_CommandBuffer *commandBuffer,
-
 	Refresh_ShaderModule *shaderModule
 ) {
 	NOT_IMPLEMENTED
 }
 
-
 static void TEMPLATE_QueueDestroyComputePipeline(
 	Refresh_Renderer *driverData,
-	Refresh_CommandBuffer *commandBuffer,
 	Refresh_ComputePipeline *computePipeline
 ) {
 	NOT_IMPLEMENTED
@@ -541,7 +494,6 @@ static void TEMPLATE_QueueDestroyComputePipeline(
 
 static void TEMPLATE_QueueDestroyGraphicsPipeline(
 	Refresh_Renderer *driverData,
-	Refresh_CommandBuffer *commandBuffer,
 	Refresh_GraphicsPipeline *graphicsPipeline
 ) {
 	NOT_IMPLEMENTED
@@ -571,6 +523,22 @@ static void TEMPLATE_BindGraphicsPipeline(
 	Refresh_Renderer *driverData,
 	Refresh_CommandBuffer *commandBuffer,
 	Refresh_GraphicsPipeline *graphicsPipeline
+) {
+	NOT_IMPLEMENTED
+}
+
+static void TEMPLATE_SetViewport(
+	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_Viewport *viewport
+) {
+	NOT_IMPLEMENTED
+}
+
+static void TEMPLATE_SetScissor(
+	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_Rect *scissor
 ) {
 	NOT_IMPLEMENTED
 }
@@ -627,12 +595,16 @@ static Refresh_CommandBuffer* TEMPLATE_AcquireCommandBuffer(
 	NOT_IMPLEMENTED
 }
 
-static void TEMPLATE_QueuePresent(
+Refresh_Texture* TEMPLATE_AcquireSwapchainTexture(
 	Refresh_Renderer *driverData,
 	Refresh_CommandBuffer *commandBuffer,
-	Refresh_TextureSlice *textureSlice,
-	Refresh_Rect *destinationRectangle,
-	Refresh_Filter filter,
+	void *windowHandle
+) {
+	NOT_IMPLEMENTED
+}
+
+Refresh_TextureFormat TEMPLATE_GetSwapchainFormat(
+	Refresh_Renderer *driverData,
 	void *windowHandle
 ) {
 	NOT_IMPLEMENTED
