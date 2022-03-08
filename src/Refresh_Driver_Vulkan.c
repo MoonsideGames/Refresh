@@ -8980,8 +8980,8 @@ static Refresh_Texture* VULKAN_AcquireSwapchainTexture(
 		&swapchainImageIndex
 	);
 
-	/* Swapchain is suboptimal, let's try to recreate */
-	if (acquireResult == VK_SUBOPTIMAL_KHR)
+	/* Swapchain is invalid, let's try to recreate */
+	if (acquireResult != VK_SUCCESS && acquireResult != VK_SUBOPTIMAL_KHR)
 	{
 		VULKAN_INTERNAL_RecreateSwapchain(renderer, windowHandle);
 
@@ -9367,6 +9367,8 @@ static void VULKAN_Wait(
 	VkResult result;
 	int32_t i;
 
+	SDL_LockMutex(renderer->submitLock);
+
 	for (i = renderer->submittedCommandBufferCount - 1; i >= 0; i -= 1)
 	{
 		commandBuffer = renderer->submittedCommandBuffers[i];
@@ -9388,6 +9390,8 @@ static void VULKAN_Wait(
 	}
 
 	VULKAN_INTERNAL_PerformPendingDestroys(renderer);
+
+	SDL_UnlockMutex(renderer->submitLock);
 }
 
 static void VULKAN_Submit(
@@ -9463,6 +9467,25 @@ static void VULKAN_Submit(
 			LogVulkanResultAsError("vkQueueSubmit", vulkanResult);
 		}
 
+		/* Mark command buffers as submitted */
+
+		if (renderer->submittedCommandBufferCount + commandBufferCount >= renderer->submittedCommandBufferCapacity)
+		{
+			renderer->submittedCommandBufferCapacity = renderer->submittedCommandBufferCount + commandBufferCount;
+
+			renderer->submittedCommandBuffers = SDL_realloc(
+				renderer->submittedCommandBuffers,
+				sizeof(VulkanCommandBuffer*) * renderer->submittedCommandBufferCapacity
+			);
+		}
+
+		for (i = 0; i < commandBufferCount; i += 1)
+		{
+			((VulkanCommandBuffer*)pCommandBuffers[i])->submitted = 1;
+			renderer->submittedCommandBuffers[renderer->submittedCommandBufferCount] = (VulkanCommandBuffer*) pCommandBuffers[i];
+			renderer->submittedCommandBufferCount += 1;
+		}
+
 		/* Present, if applicable */
 
 		for (j = 0; j < currentCommandBuffer->presentDataCount; j += 1)
@@ -9488,25 +9511,6 @@ static void VULKAN_Submit(
 				VULKAN_INTERNAL_RecreateSwapchain(renderer, presentData->swapchainData->windowHandle);
 			}
 		}
-	}
-
-	/* Mark command buffers as submitted */
-
-	if (renderer->submittedCommandBufferCount + commandBufferCount >= renderer->submittedCommandBufferCapacity)
-	{
-		renderer->submittedCommandBufferCapacity = renderer->submittedCommandBufferCount + commandBufferCount;
-
-		renderer->submittedCommandBuffers = SDL_realloc(
-			renderer->submittedCommandBuffers,
-			sizeof(VulkanCommandBuffer*) * renderer->submittedCommandBufferCapacity
-		);
-	}
-
-	for (i = 0; i < commandBufferCount; i += 1)
-	{
-		((VulkanCommandBuffer*)pCommandBuffers[i])->submitted = 1;
-		renderer->submittedCommandBuffers[renderer->submittedCommandBufferCount] = (VulkanCommandBuffer*) pCommandBuffers[i];
-		renderer->submittedCommandBufferCount += 1;
 	}
 
 	/* Check if we can perform any cleanups */
