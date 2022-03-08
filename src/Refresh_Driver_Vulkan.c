@@ -9001,7 +9001,7 @@ static Refresh_Texture* VULKAN_AcquireSwapchainTexture(
 			&swapchainImageIndex
 		);
 
-		if (acquireResult != VK_SUCCESS)
+		if (acquireResult != VK_SUCCESS && acquireResult != VK_SUBOPTIMAL_KHR)
 		{
 			return NULL;
 		}
