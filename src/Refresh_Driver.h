@@ -168,16 +168,6 @@ struct Refresh_Device
 
 	/* Drawing */
 
-	void (*Clear)(
-		Refresh_Renderer *driverData,
-		Refresh_CommandBuffer *commandBuffer,
-		Refresh_Rect *clearRect,
-		Refresh_ClearOptions options,
-		Refresh_Vec4 *colors,
-		uint32_t colorCount,
-		Refresh_DepthStencilValue depthStencil
-	);
-
 	void (*DrawInstancedPrimitives)(
 		Refresh_Renderer *driverData,
 		Refresh_CommandBuffer *commandBuffer,
@@ -451,7 +441,9 @@ struct Refresh_Device
 	Refresh_Texture* (*AcquireSwapchainTexture)(
 		Refresh_Renderer *driverData,
 		Refresh_CommandBuffer *commandBuffer,
-		void *windowHandle
+		void *windowHandle,
+		uint32_t *pWidth,
+		uint32_t *pHeight
 	);
 
 	Refresh_TextureFormat (*GetSwapchainFormat)(
@@ -477,7 +469,6 @@ struct Refresh_Device
 	result->func = name##_##func;
 #define ASSIGN_DRIVER(name) \
 	ASSIGN_DRIVER_FUNC(DestroyDevice, name) \
-	ASSIGN_DRIVER_FUNC(Clear, name) \
 	ASSIGN_DRIVER_FUNC(DrawIndexedPrimitives, name) \
 	ASSIGN_DRIVER_FUNC(DrawInstancedPrimitives, name) \
 	ASSIGN_DRIVER_FUNC(DrawPrimitives, name) \

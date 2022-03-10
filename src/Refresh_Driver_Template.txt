@@ -236,18 +236,6 @@ static void TEMPLATE_DestroyDevice(
 
 /* Drawing */
 
-static void TEMPLATE_Clear(
-	Refresh_Renderer *driverData,
-	Refresh_CommandBuffer *commandBuffer,
-	Refresh_Rect *clearRect,
-	Refresh_ClearOptions options,
-	Refresh_Vec4 *colors,
-	uint32_t colorCount,
-	Refresh_DepthStencilValue depthStencil
-) {
-	NOT_IMPLEMENTED
-}
-
 static void TEMPLATE_DrawInstancedPrimitives(
 	Refresh_Renderer *driverData,
 	Refresh_CommandBuffer *commandBuffer,
@@ -598,7 +586,9 @@ static Refresh_CommandBuffer* TEMPLATE_AcquireCommandBuffer(
 Refresh_Texture* TEMPLATE_AcquireSwapchainTexture(
 	Refresh_Renderer *driverData,
 	Refresh_CommandBuffer *commandBuffer,
-	void *windowHandle
+	void *windowHandle,
+	uint32_t *pWidth,
+	uint32_t *pHeight
 ) {
 	NOT_IMPLEMENTED
 }

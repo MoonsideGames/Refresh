@@ -147,27 +147,6 @@ void Refresh_DestroyDevice(Refresh_Device *device)
 	device->DestroyDevice(device);
 }
 
-void Refresh_Clear(
-	Refresh_Device *device,
-	Refresh_CommandBuffer *commandBuffer,
-	Refresh_Rect *clearRect,
-	Refresh_ClearOptions options,
-	Refresh_Vec4 *colors,
-	uint32_t colorCount,
-	Refresh_DepthStencilValue depthStencil
-) {
-	NULL_RETURN(device);
-	device->Clear(
-		device->driverData,
-		commandBuffer,
-		clearRect,
-		options,
-		colors,
-		colorCount,
-		depthStencil
-	);
-}
-
 void Refresh_DrawIndexedPrimitives(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
@@ -729,13 +708,17 @@ Refresh_CommandBuffer* Refresh_AcquireCommandBuffer(
 Refresh_Texture* Refresh_AcquireSwapchainTexture(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
-	void *windowHandle
+	void *windowHandle,
+	uint32_t *pWidth,
+	uint32_t *pHeight
 ) {
 	NULL_RETURN_NULL(device);
 	return device->AcquireSwapchainTexture(
 		device->driverData,
 		commandBuffer,
-		windowHandle
+		windowHandle,
+		pWidth,
+		pHeight
 	);
 }
 

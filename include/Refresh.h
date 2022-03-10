@@ -107,15 +107,6 @@ typedef enum Refresh_StoreOp
 	REFRESH_STOREOP_DONT_CARE
 } Refresh_StoreOp;
 
-typedef enum Refresh_ClearOptionsBits
-{
-	REFRESH_CLEAROPTIONS_COLOR   = 0x00000001,
-	REFRESH_CLEAROPTIONS_DEPTH   = 0x00000002,
-	REFRESH_CLEAROPTIONS_STENCIL = 0x00000004,
-} Refresh_ClearOptionsBits;
-
-typedef uint32_t Refresh_ClearOptions;
-
 typedef enum Refresh_IndexElementSize
 {
 	REFRESH_INDEXELEMENTSIZE_16BIT,
@@ -606,30 +597,6 @@ REFRESHAPI Refresh_Device* Refresh_CreateDevice(
 REFRESHAPI void Refresh_DestroyDevice(Refresh_Device *device);
 
 /* Drawing */
-
-/* Clears the targets of the currently bound framebuffer.
- * If fewer colors are passed than the number of color targets in the
- * framebuffer, this function will clear the first n color targets.
- *
- * NOTE:
- * 		It is generally recommended to clear in BeginRenderPass
- * 		rather than by calling this function unless necessary.
- *
- * clearRect:	 Area to clear.
- * options:		 Bitflags to specify color/depth/stencil buffers for clearing.
- * colors:		 An array of color values for the cleared color buffers.
- * colorCount:	 The number of colors in the above array.
- * depthStencil: Depth and stencil values for the cleared depth stencil buffer.
- */
-REFRESHAPI void Refresh_Clear(
-	Refresh_Device *device,
-	Refresh_CommandBuffer *commandBuffer,
-	Refresh_Rect *clearRect,
-	Refresh_ClearOptions options,
-	Refresh_Vec4 *colors,
-	uint32_t colorCount,
-	Refresh_DepthStencilValue depthStencil
-);
 
 /* Draws data from vertex/index buffers with instancing enabled.
  *
@@ -1136,17 +1103,22 @@ REFRESHAPI Refresh_CommandBuffer* Refresh_AcquireCommandBuffer(
 
 /* Acquires a texture to use for presentation.
  * May return NULL under certain conditions.
- * If NULL, the user must ensure to not present.
+ * If NULL, the user must ensure to not use the texture.
  * Once a swapchain texture is acquired,
  * it will automatically be presented on command buffer submission.
  *
  * NOTE:
  * 	It is not recommended to hold a reference to this texture long term.
+ *
+ * pWidth: A pointer to a uint32 that will be filled with the texture width.
+ * pHeight: A pointer to a uint32 that will be filled with the texture height.
  */
 REFRESHAPI Refresh_Texture* Refresh_AcquireSwapchainTexture(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
-	void *windowHandle
+	void *windowHandle,
+	uint32_t *pWidth,
+	uint32_t *pHeight
 );
 
 /* Returns the format of the swapchain for the given window. */

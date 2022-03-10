@@ -4798,117 +4798,6 @@ static void VULKAN_DestroyDevice(
 	SDL_free(device);
 }
 
-static void VULKAN_Clear(
-	Refresh_Renderer *driverData,
-	Refresh_CommandBuffer *commandBuffer,
-	Refresh_Rect *clearRect,
-	Refresh_ClearOptions options,
-	Refresh_Vec4 *colors,
-	uint32_t colorCount,
-	Refresh_DepthStencilValue depthStencil
-) {
-	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
-	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
-
-	uint32_t attachmentCount, i;
-	VkClearAttachment clearAttachments[MAX_COLOR_TARGET_BINDINGS + 1];
-	VkClearRect vulkanClearRect;
-	VkClearValue clearValues[4];
-
-	uint8_t shouldClearColor = options & REFRESH_CLEAROPTIONS_COLOR;
-	uint8_t shouldClearDepth = options & REFRESH_CLEAROPTIONS_DEPTH;
-	uint8_t shouldClearStencil = options & REFRESH_CLEAROPTIONS_STENCIL;
-
-	uint8_t shouldClearDepthStencil = (
-		(shouldClearDepth || shouldClearStencil)
-	);
-
-	if (!shouldClearColor && !shouldClearDepthStencil)
-	{
-		return;
-	}
-
-	vulkanClearRect.baseArrayLayer = 0;
-	vulkanClearRect.layerCount = 1;
-	vulkanClearRect.rect.offset.x = clearRect->x;
-	vulkanClearRect.rect.offset.y = clearRect->y;
-	vulkanClearRect.rect.extent.width = clearRect->w;
-	vulkanClearRect.rect.extent.height = clearRect->h;
-
-	attachmentCount = 0;
-
-	if (shouldClearColor)
-	{
-		for (i = 0; i < colorCount; i += 1)
-		{
-			clearValues[i].color.float32[0] = colors[i].x;
-			clearValues[i].color.float32[1] = colors[i].y;
-			clearValues[i].color.float32[2] = colors[i].z;
-			clearValues[i].color.float32[3] = colors[i].w;
-		}
-
-		for (i = 0; i < colorCount; i += 1)
-		{
-			clearAttachments[attachmentCount].aspectMask =
-				VK_IMAGE_ASPECT_COLOR_BIT;
-			clearAttachments[attachmentCount].colorAttachment =
-				attachmentCount;
-			clearAttachments[attachmentCount].clearValue =
-				clearValues[attachmentCount];
-			attachmentCount += 1;
-
-			/* Do NOT clear the multisample image here!
-			 * Vulkan treats them both as the same color attachment.
-			 * Vulkan is a very good and not confusing at all API.
-			 */
-		}
-	}
-
-	if (shouldClearDepthStencil)
-	{
-		clearAttachments[attachmentCount].aspectMask = 0;
-		clearAttachments[attachmentCount].colorAttachment = 0;
-
-		if (shouldClearDepth)
-		{
-			if (depthStencil.depth < 0.0f)
-			{
-				depthStencil.depth = 0.0f;
-			}
-			else if (depthStencil.depth > 1.0f)
-			{
-				depthStencil.depth = 1.0f;
-			}
-			clearAttachments[attachmentCount].aspectMask |= VK_IMAGE_ASPECT_DEPTH_BIT;
-			clearAttachments[attachmentCount].clearValue.depthStencil.depth = depthStencil.depth;
-		}
-		else
-		{
-			clearAttachments[attachmentCount].clearValue.depthStencil.depth = 0.0f;
-		}
-
-		if (shouldClearStencil)
-		{
-			clearAttachments[attachmentCount].aspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
-			clearAttachments[attachmentCount].clearValue.depthStencil.stencil = depthStencil.stencil;
-		}
-		else
-		{
-			clearAttachments[attachmentCount].clearValue.depthStencil.stencil = 0;
-		}
-
-		attachmentCount += 1;
-	}
-
-	renderer->vkCmdClearAttachments(
-		vulkanCommandBuffer->commandBuffer,
-		attachmentCount,
-		clearAttachments,
-		1,
-		&vulkanClearRect
-	);
-}
-
 static void VULKAN_DrawInstancedPrimitives(
 	Refresh_Renderer *driverData,
 	Refresh_CommandBuffer *commandBuffer,
@@ -8954,7 +8843,9 @@ static VulkanSwapchainData* VULKAN_INTERNAL_FetchSwapchainData(
 static Refresh_Texture* VULKAN_AcquireSwapchainTexture(
 	Refresh_Renderer *driverData,
 	Refresh_CommandBuffer *commandBuffer,
-	void *windowHandle
+	void *windowHandle,
+	uint32_t *pWidth,
+	uint32_t *pHeight
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
@@ -9065,6 +8956,9 @@ static Refresh_Texture* VULKAN_AcquireSwapchainTexture(
 
 	vulkanCommandBuffer->signalSemaphores[vulkanCommandBuffer->signalSemaphoreCount] = swapchainData->renderFinishedSemaphore;
 	vulkanCommandBuffer->signalSemaphoreCount += 1;
+
+	*pWidth = swapchainData->extent.width;
+	*pHeight = swapchainData->extent.height;
 
 	return (Refresh_Texture*) swapchainTexture;
 }
