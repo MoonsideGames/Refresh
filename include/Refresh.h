@@ -55,7 +55,7 @@ extern "C" {
 /* Version API */
 
 #define REFRESH_MAJOR_VERSION   1
-#define REFRESH_MINOR_VERSION	3
+#define REFRESH_MINOR_VERSION	4
 #define REFRESH_PATCH_VERSION	0
 
 #define REFRESH_COMPILED_VERSION ( \
