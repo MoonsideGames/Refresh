@@ -486,7 +486,6 @@ typedef struct Refresh_RasterizerState
 	float depthBiasConstantFactor;
 	float depthBiasClamp;
 	float depthBiasSlopeFactor;
-	float lineWidth;
 } Refresh_RasterizerState;
 
 typedef struct Refresh_MultisampleState

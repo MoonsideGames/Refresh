@@ -5848,8 +5848,7 @@ static Refresh_GraphicsPipeline* VULKAN_CreateGraphicsPipeline(
 		pipelineCreateInfo->rasterizerState.depthBiasClamp;
 	rasterizationStateCreateInfo.depthBiasSlopeFactor =
 		pipelineCreateInfo->rasterizerState.depthBiasSlopeFactor;
-	rasterizationStateCreateInfo.lineWidth =
-		pipelineCreateInfo->rasterizerState.lineWidth;
+	rasterizationStateCreateInfo.lineWidth = 1.0f;
 
 	/* Multisample */
 
