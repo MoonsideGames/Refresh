@@ -210,7 +210,8 @@ static VkFormat RefreshToVK_SurfaceFormat[] =
 
 static VkFormat RefreshToVK_VertexFormat[] =
 {
-	VK_FORMAT_R32_SFLOAT,		/* SINGLE */
+	VK_FORMAT_R32_UINT,			/* UINT */
+	VK_FORMAT_R32_SFLOAT,		/* FLOAT */
 	VK_FORMAT_R32G32_SFLOAT,	/* VECTOR2 */
 	VK_FORMAT_R32G32B32_SFLOAT,	/* VECTOR3 */
 	VK_FORMAT_R32G32B32A32_SFLOAT,	/* VECTOR4 */
