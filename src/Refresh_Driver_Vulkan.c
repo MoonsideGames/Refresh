@@ -190,6 +190,7 @@ static VkFormat RefreshToVK_SurfaceFormat[] =
 	VK_FORMAT_BC1_RGBA_UNORM_BLOCK,		/* BC1 */
 	VK_FORMAT_BC2_UNORM_BLOCK,		/* BC3 */
 	VK_FORMAT_BC3_UNORM_BLOCK,		/* BC5 */
+	VK_FORMAT_BC7_UNORM_BLOCK,		/* BC7 */
 	VK_FORMAT_R8G8_SNORM,			/* R8G8_SNORM */
 	VK_FORMAT_R8G8B8A8_SNORM,		/* R8G8B8A8_SNORM */
 	VK_FORMAT_A2R10G10B10_UNORM_PACK32,	/* A2R10G10B10 */
@@ -1817,6 +1818,7 @@ static inline uint32_t VULKAN_INTERNAL_BytesPerPixel(VkFormat format)
 		case VK_FORMAT_R32G32B32A32_SFLOAT:
 		case VK_FORMAT_BC2_UNORM_BLOCK:
 		case VK_FORMAT_BC3_UNORM_BLOCK:
+		case VK_FORMAT_BC7_UNORM_BLOCK:
 			return 16;
 
 		case VK_FORMAT_R8G8B8A8_UNORM:
@@ -1857,6 +1859,40 @@ static inline uint32_t VULKAN_INTERNAL_BytesPerPixel(VkFormat format)
 	}
 }
 
+static inline uint32_t VULKAN_INTERNAL_GetTextureBlockSize(
+	VkFormat format
+) {
+	switch (format)
+	{
+	case VK_FORMAT_BC1_RGBA_UNORM_BLOCK:
+	case VK_FORMAT_BC2_UNORM_BLOCK:
+	case VK_FORMAT_BC3_UNORM_BLOCK:
+	case VK_FORMAT_BC7_UNORM_BLOCK:
+		return 4;
+	case VK_FORMAT_R8G8B8A8_UNORM:
+	case VK_FORMAT_B8G8R8A8_UNORM:
+	case VK_FORMAT_R5G6B5_UNORM_PACK16:
+	case VK_FORMAT_A1R5G5B5_UNORM_PACK16:
+	case VK_FORMAT_B4G4R4A4_UNORM_PACK16:
+	case VK_FORMAT_R8G8_SNORM:
+	case VK_FORMAT_R8G8B8A8_SNORM:
+	case VK_FORMAT_A2R10G10B10_UNORM_PACK32:
+	case VK_FORMAT_R16G16_UNORM:
+	case VK_FORMAT_R16G16B16A16_UNORM:
+	case VK_FORMAT_R8_UNORM:
+	case VK_FORMAT_R32_SFLOAT:
+	case VK_FORMAT_R32G32_SFLOAT:
+	case VK_FORMAT_R32G32B32A32_SFLOAT:
+	case VK_FORMAT_R16_SFLOAT:
+	case VK_FORMAT_R16G16_SFLOAT:
+	case VK_FORMAT_R16G16B16A16_SFLOAT:
+		return 1;
+	default:
+		Refresh_LogError("Unrecognized texture format!");
+		return 0;
+	}
+}
+
 static inline VkDeviceSize VULKAN_INTERNAL_BytesPerImage(
 	uint32_t width,
 	uint32_t height,
@@ -1864,12 +1900,12 @@ static inline VkDeviceSize VULKAN_INTERNAL_BytesPerImage(
 ) {
 	uint32_t blocksPerRow = width;
 	uint32_t blocksPerColumn = height;
+	uint32_t blockSize = VULKAN_INTERNAL_GetTextureBlockSize(format);
 
-	if (format == VK_FORMAT_BC1_RGBA_UNORM_BLOCK ||
-		format == VK_FORMAT_BC3_UNORM_BLOCK ||
-		format == VK_FORMAT_BC5_UNORM_BLOCK)
+	if (blockSize > 1)
 	{
-		blocksPerRow = (width + 3) / 4;
+		blocksPerRow = (width + blockSize - 1) / blockSize;
+		blocksPerColumn = (height + blockSize - 1) / blockSize;
 	}
 
 	return blocksPerRow * blocksPerColumn * VULKAN_INTERNAL_BytesPerPixel(format);
@@ -6507,6 +6543,9 @@ static void VULKAN_SetTextureData(
 	VulkanTransferBuffer *transferBuffer;
 	VkBufferImageCopy imageCopy;
 	uint8_t *stagingBufferPointer;
+	uint32_t blockSize = VULKAN_INTERNAL_GetTextureBlockSize(vulkanTexture->format);
+	uint32_t bufferRowLength;
+	uint32_t bufferImageHeight;
 
 	if (vulkanCommandBuffer->renderPassInProgress)
 	{
@@ -6555,6 +6594,9 @@ static void VULKAN_SetTextureData(
 		&vulkanTexture->resourceAccessType
 	);
 
+	bufferRowLength = SDL_max(blockSize, textureSlice->rectangle.w);
+	bufferImageHeight = SDL_max(blockSize, textureSlice->rectangle.h);
+
 	imageCopy.imageExtent.width = textureSlice->rectangle.w;
 	imageCopy.imageExtent.height = textureSlice->rectangle.h;
 	imageCopy.imageExtent.depth = 1;
@@ -6566,8 +6608,8 @@ static void VULKAN_SetTextureData(
 	imageCopy.imageSubresource.layerCount = 1;
 	imageCopy.imageSubresource.mipLevel = textureSlice->level;
 	imageCopy.bufferOffset = transferBuffer->offset;
-	imageCopy.bufferRowLength = 0;
-	imageCopy.bufferImageHeight = 0;
+	imageCopy.bufferRowLength = bufferRowLength;
+	imageCopy.bufferImageHeight = bufferImageHeight;
 
 	renderer->vkCmdCopyBufferToImage(
 		vulkanCommandBuffer->commandBuffer,

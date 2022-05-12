@@ -51,6 +51,7 @@ static inline uint32_t Texture_GetFormatSize(
 			return 8;
 		case REFRESH_TEXTUREFORMAT_BC2:
 		case REFRESH_TEXTUREFORMAT_BC3:
+		case REFRESH_TEXTUREFORMAT_BC7:
 			return 16;
 		case REFRESH_TEXTUREFORMAT_R8:
 			return 1;
@@ -117,7 +118,8 @@ static inline uint32_t BytesPerRow(
 
 	if (	format == REFRESH_TEXTUREFORMAT_BC1 ||
 		format == REFRESH_TEXTUREFORMAT_BC2 ||
-		format == REFRESH_TEXTUREFORMAT_BC3	)
+		format == REFRESH_TEXTUREFORMAT_BC3 ||
+		format == REFRESH_TEXTUREFORMAT_BC7	)
 	{
 		blocksPerRow = (width + 3) / 4;
 	}
@@ -135,7 +137,8 @@ static inline int32_t BytesPerImage(
 
 	if (	format == REFRESH_TEXTUREFORMAT_BC1 ||
 		format == REFRESH_TEXTUREFORMAT_BC2 ||
-		format == REFRESH_TEXTUREFORMAT_BC3	)
+		format == REFRESH_TEXTUREFORMAT_BC3 ||
+		format == REFRESH_TEXTUREFORMAT_BC7	)
 	{
 		blocksPerRow = (width + 3) / 4;
 		blocksPerColumn = (height + 3) / 4;
