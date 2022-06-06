@@ -913,6 +913,7 @@ static inline void DescriptorSetLayoutHashTable_Insert(
 
 typedef struct RenderPassColorTargetDescription
 {
+	VkFormat format;
 	Refresh_Vec4 clearColor;
 	Refresh_LoadOp loadOp;
 	Refresh_StoreOp storeOp;
@@ -920,6 +921,7 @@ typedef struct RenderPassColorTargetDescription
 
 typedef struct RenderPassDepthStencilTargetDescription
 {
+	VkFormat format;
 	Refresh_LoadOp loadOp;
 	Refresh_StoreOp storeOp;
 	Refresh_LoadOp stencilLoadOp;
@@ -959,6 +961,11 @@ static inline uint8_t RenderPassHash_Compare(
 
 	for (i = 0; i < a->colorAttachmentCount; i += 1)
 	{
+		if (a->colorTargetDescriptions[i].format != b->colorTargetDescriptions[i].format)
+		{
+			return 0;
+		}
+
 		if (	a->colorTargetDescriptions[i].clearColor.x != b->colorTargetDescriptions[i].clearColor.x ||
 			a->colorTargetDescriptions[i].clearColor.y != b->colorTargetDescriptions[i].clearColor.y ||
 			a->colorTargetDescriptions[i].clearColor.z != b->colorTargetDescriptions[i].clearColor.z ||
@@ -976,6 +983,11 @@ static inline uint8_t RenderPassHash_Compare(
 		{
 			return 0;
 		}
+	}
+
+	if (a->depthStencilTargetDescription.format != b->depthStencilTargetDescription.format)
+	{
+		return 0;
 	}
 
 	if (a->depthStencilTargetDescription.loadOp != b->depthStencilTargetDescription.loadOp)
@@ -7698,6 +7710,7 @@ static VkRenderPass VULKAN_INTERNAL_FetchRenderPass(
 
 	for (i = 0; i < colorAttachmentCount; i += 1)
 	{
+		hash.colorTargetDescriptions[i].format = ((VulkanTexture*) colorAttachmentInfos[i].texture)->format;
 		hash.colorTargetDescriptions[i].clearColor = colorAttachmentInfos[i].clearColor;
 		hash.colorTargetDescriptions[i].loadOp = colorAttachmentInfos[i].loadOp;
 		hash.colorTargetDescriptions[i].storeOp = colorAttachmentInfos[i].storeOp;
@@ -7707,6 +7720,7 @@ static VkRenderPass VULKAN_INTERNAL_FetchRenderPass(
 
 	if (depthStencilAttachmentInfo == NULL)
 	{
+		hash.depthStencilTargetDescription.format = 0;
 		hash.depthStencilTargetDescription.loadOp = REFRESH_LOADOP_DONT_CARE;
 		hash.depthStencilTargetDescription.storeOp = REFRESH_STOREOP_DONT_CARE;
 		hash.depthStencilTargetDescription.stencilLoadOp = REFRESH_LOADOP_DONT_CARE;
@@ -7714,6 +7728,7 @@ static VkRenderPass VULKAN_INTERNAL_FetchRenderPass(
 	}
 	else
 	{
+		hash.depthStencilTargetDescription.format = ((VulkanTexture*) depthStencilAttachmentInfo->texture)->format;
 		hash.depthStencilTargetDescription.loadOp = depthStencilAttachmentInfo->loadOp;
 		hash.depthStencilTargetDescription.storeOp = depthStencilAttachmentInfo->storeOp;
 		hash.depthStencilTargetDescription.stencilLoadOp = depthStencilAttachmentInfo->stencilLoadOp;
