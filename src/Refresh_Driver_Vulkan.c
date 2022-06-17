@@ -8105,6 +8105,8 @@ static void VULKAN_BeginRenderPass(
 
 	if (depthStencilAttachmentInfo != NULL)
 	{
+		texture = (VulkanTexture*) depthStencilAttachmentInfo->texture;
+
 		if (texture->dimensions.width < framebufferWidth)
 		{
 			framebufferWidth = texture->dimensions.width;
