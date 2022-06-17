@@ -1687,6 +1687,10 @@ typedef struct VulkanRenderer
 
 	VkDeviceSize minUBOAlignment;
 
+	/* Some drivers don't support D16 for some reason. Fun! */
+	VkFormat D16Format;
+	VkFormat D16S8Format;
+
 	VulkanTexture **texturesToDestroy;
 	uint32_t texturesToDestroyCount;
 	uint32_t texturesToDestroyCapacity;
@@ -1794,6 +1798,40 @@ static inline void LogVulkanResultAsWarn(
 }
 
 /* Utility */
+
+static inline VkFormat RefreshToVK_DepthFormat(
+	VulkanRenderer* renderer,
+	Refresh_TextureFormat format
+) {
+	switch (format)
+	{
+		case REFRESH_TEXTUREFORMAT_D16_UNORM:
+			return renderer->D16Format;
+		case REFRESH_TEXTUREFORMAT_D16_UNORM_S8_UINT:
+			return renderer->D16S8Format;
+		case REFRESH_TEXTUREFORMAT_D32_SFLOAT:
+			return VK_FORMAT_D32_SFLOAT;
+		case REFRESH_TEXTUREFORMAT_D32_SFLOAT_S8_UINT:
+			return VK_FORMAT_D32_SFLOAT_S8_UINT;
+		default:
+			return VK_FORMAT_UNDEFINED;
+	}
+}
+
+static inline uint8_t IsRefreshDepthFormat(Refresh_TextureFormat format)
+{
+	switch (format)
+	{
+		case REFRESH_TEXTUREFORMAT_D16_UNORM:
+		case REFRESH_TEXTUREFORMAT_D32_SFLOAT:
+		case REFRESH_TEXTUREFORMAT_D16_UNORM_S8_UINT:
+		case REFRESH_TEXTUREFORMAT_D32_SFLOAT_S8_UINT:
+			return 1;
+
+		default:
+			return 0;
+	}
+}
 
 static inline uint8_t IsDepthFormat(VkFormat format)
 {
@@ -5662,9 +5700,10 @@ static VkRenderPass VULKAN_INTERNAL_CreateTransientRenderPass(
 	if (attachmentInfo.hasDepthStencilAttachment)
 	{
 		attachmentDescriptions[attachmentDescriptionCount].flags = 0;
-		attachmentDescriptions[attachmentDescriptionCount].format = RefreshToVK_SurfaceFormat[
+		attachmentDescriptions[attachmentDescriptionCount].format = RefreshToVK_DepthFormat(
+			renderer,
 			attachmentInfo.depthStencilFormat
-		];
+		);
 		attachmentDescriptions[attachmentDescriptionCount].samples =
 			VK_SAMPLE_COUNT_1_BIT; /* FIXME: do these take multisamples? */
 		attachmentDescriptions[attachmentDescriptionCount].loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
@@ -6361,7 +6400,16 @@ static Refresh_Texture* VULKAN_CreateTexture(
 		VK_IMAGE_USAGE_TRANSFER_SRC_BIT
 	);
 	VkImageAspectFlags imageAspectFlags;
-	VkFormat format = RefreshToVK_SurfaceFormat[textureCreateInfo->format];
+	VkFormat format;
+
+	if (IsRefreshDepthFormat(textureCreateInfo->format))
+	{
+		format = RefreshToVK_DepthFormat(renderer, textureCreateInfo->format);
+	}
+	else
+	{
+		format = RefreshToVK_SurfaceFormat[textureCreateInfo->format];
+	}
 
 	if (textureCreateInfo->usageFlags & REFRESH_TEXTUREUSAGE_SAMPLER_BIT)
 	{
@@ -10189,6 +10237,9 @@ static Refresh_Device* VULKAN_CreateDevice(
 	VkDescriptorPoolSize poolSizes[4];
 	VkDescriptorSetAllocateInfo descriptorAllocateInfo;
 
+	/* Variables: Image Format Detection */
+	VkImageFormatProperties imageFormatProperties;
+
 	VULKAN_INTERNAL_LoadEntryPoints(renderer);
 
 	renderer->presentMode = presentationParameters->presentMode;
@@ -10628,11 +10679,52 @@ static Refresh_Device* VULKAN_CreateDevice(
 	renderer->renderTargetHashArray.capacity = 0;
 
 	/* Initialize transfer buffer pool */
+
 	renderer->transferBufferPool.lock = SDL_CreateMutex();
 
 	renderer->transferBufferPool.availableBufferCapacity = 4;
 	renderer->transferBufferPool.availableBufferCount = 0;
 	renderer->transferBufferPool.availableBuffers = SDL_malloc(renderer->transferBufferPool.availableBufferCapacity * sizeof(VulkanTransferBuffer*));
+
+	/* Some drivers don't support D16, so we have to fall back to D32. */
+
+	vulkanResult = renderer->vkGetPhysicalDeviceImageFormatProperties(
+		renderer->physicalDevice,
+		VK_FORMAT_D16_UNORM,
+		VK_IMAGE_TYPE_2D,
+		VK_IMAGE_TILING_OPTIMAL,
+		VK_IMAGE_ASPECT_DEPTH_BIT,
+		0,
+		&imageFormatProperties
+	);
+
+	if (vulkanResult == VK_ERROR_FORMAT_NOT_SUPPORTED)
+	{
+		renderer->D16Format = VK_FORMAT_D32_SFLOAT;
+	}
+	else
+	{
+		renderer->D16Format = VK_FORMAT_D16_UNORM;
+	}
+
+	vulkanResult = renderer->vkGetPhysicalDeviceImageFormatProperties(
+		renderer->physicalDevice,
+		VK_FORMAT_D16_UNORM_S8_UINT,
+		VK_IMAGE_TYPE_2D,
+		VK_IMAGE_TILING_OPTIMAL,
+		VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT,
+		0,
+		&imageFormatProperties
+	);
+
+	if (vulkanResult == VK_ERROR_FORMAT_NOT_SUPPORTED)
+	{
+		renderer->D16S8Format = VK_FORMAT_D32_SFLOAT_S8_UINT;
+	}
+	else
+	{
+		renderer->D16S8Format = VK_FORMAT_D16_UNORM_S8_UINT;
+	}
 
 	/* Deferred destroy storage */
 
