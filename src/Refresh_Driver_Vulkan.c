@@ -9470,9 +9470,9 @@ static void VULKAN_Submit(
 
 		/* Mark command buffers as submitted */
 
-		if (renderer->submittedCommandBufferCount + commandBufferCount >= renderer->submittedCommandBufferCapacity)
+		if (renderer->submittedCommandBufferCount + 1 >= renderer->submittedCommandBufferCapacity)
 		{
-			renderer->submittedCommandBufferCapacity = renderer->submittedCommandBufferCount + commandBufferCount;
+			renderer->submittedCommandBufferCapacity = renderer->submittedCommandBufferCount + 1;
 
 			renderer->submittedCommandBuffers = SDL_realloc(
 				renderer->submittedCommandBuffers,
@@ -9480,12 +9480,9 @@ static void VULKAN_Submit(
 			);
 		}
 
-		for (i = 0; i < commandBufferCount; i += 1)
-		{
-			((VulkanCommandBuffer*)pCommandBuffers[i])->submitted = 1;
-			renderer->submittedCommandBuffers[renderer->submittedCommandBufferCount] = (VulkanCommandBuffer*) pCommandBuffers[i];
-			renderer->submittedCommandBufferCount += 1;
-		}
+		((VulkanCommandBuffer*)pCommandBuffers[i])->submitted = 1;
+		renderer->submittedCommandBuffers[renderer->submittedCommandBufferCount] = (VulkanCommandBuffer*) pCommandBuffers[i];
+		renderer->submittedCommandBufferCount += 1;
 
 		/* Present, if applicable */
 
