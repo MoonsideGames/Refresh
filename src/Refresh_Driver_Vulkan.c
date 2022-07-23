@@ -6960,8 +6960,8 @@ static void VULKAN_INTERNAL_BlitImage(
 	blit.dstOffsets[1].y = destinationTextureSlice->rectangle.y + destinationTextureSlice->rectangle.h;
 	blit.dstOffsets[1].z = 1;
 
-	blit.dstSubresource.mipLevel = sourceTextureSlice->level;
-	blit.dstSubresource.baseArrayLayer = sourceTextureSlice->layer;
+	blit.dstSubresource.mipLevel = destinationTextureSlice->level;
+	blit.dstSubresource.baseArrayLayer = destinationTextureSlice->layer;
 	blit.dstSubresource.layerCount = 1;
 	blit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 
