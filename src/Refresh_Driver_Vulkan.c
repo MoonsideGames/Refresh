@@ -6794,6 +6794,24 @@ static void VULKAN_SetTextureDataYUV(
 		&imageCopy
 	);
 
+	if (tex->usageFlags & VK_IMAGE_USAGE_SAMPLED_BIT)
+	{
+		/* TODO: is it worth it to only transition the specific subresource? */
+		VULKAN_INTERNAL_ImageMemoryBarrier(
+			renderer,
+			vulkanCommandBuffer->commandBuffer,
+			RESOURCE_ACCESS_ANY_SHADER_READ_SAMPLED_IMAGE,
+			VK_IMAGE_ASPECT_COLOR_BIT,
+			0,
+			tex->layerCount,
+			0,
+			tex->levelCount,
+			0,
+			tex->image,
+			&tex->resourceAccessType
+		);
+	}
+
 	VULKAN_INTERNAL_TrackTexture(renderer, vulkanCommandBuffer, tex);
 
 	/* These apply to both U and V */
@@ -6838,6 +6856,24 @@ static void VULKAN_SetTextureDataYUV(
 		&imageCopy
 	);
 
+	if (tex->usageFlags & VK_IMAGE_USAGE_SAMPLED_BIT)
+	{
+		/* TODO: is it worth it to only transition the specific subresource? */
+		VULKAN_INTERNAL_ImageMemoryBarrier(
+			renderer,
+			vulkanCommandBuffer->commandBuffer,
+			RESOURCE_ACCESS_ANY_SHADER_READ_SAMPLED_IMAGE,
+			VK_IMAGE_ASPECT_COLOR_BIT,
+			0,
+			tex->layerCount,
+			0,
+			tex->levelCount,
+			0,
+			tex->image,
+			&tex->resourceAccessType
+		);
+	}
+
 	VULKAN_INTERNAL_TrackTexture(renderer, vulkanCommandBuffer, tex);
 
 	/* V */
@@ -6877,11 +6913,9 @@ static void VULKAN_SetTextureDataYUV(
 
 	transferBuffer->offset += yDataLength + uvDataLength;
 
-	VULKAN_INTERNAL_TrackTexture(renderer, vulkanCommandBuffer, tex);
-
-	/* FIXME: don't we have to do this for every image? */
 	if (tex->usageFlags & VK_IMAGE_USAGE_SAMPLED_BIT)
 	{
+		/* TODO: is it worth it to only transition the specific subresource? */
 		VULKAN_INTERNAL_ImageMemoryBarrier(
 			renderer,
 			vulkanCommandBuffer->commandBuffer,
@@ -6896,6 +6930,8 @@ static void VULKAN_SetTextureDataYUV(
 			&tex->resourceAccessType
 		);
 	}
+
+	VULKAN_INTERNAL_TrackTexture(renderer, vulkanCommandBuffer, tex);
 }
 
 static void VULKAN_INTERNAL_BlitImage(
