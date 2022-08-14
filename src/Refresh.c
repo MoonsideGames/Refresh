@@ -34,7 +34,12 @@
 /* Drivers */
 
 static const Refresh_Driver *drivers[] = {
+#ifdef REFRESH_DRIVER_VULKAN
 	&VulkanDriver,
+#endif
+#ifdef REFRESH_DRIVER_PS5
+	&PS5Driver,
+#endif
 	NULL
 };
 

@@ -36,9 +36,15 @@
 
 /* Logging */
 
-extern void Refresh_LogInfo(const char *fmt, ...);
-extern void Refresh_LogWarn(const char *fmt, ...);
-extern void Refresh_LogError(const char *fmt, ...);
+#ifdef __cplusplus
+extern "C" {
+#endif
+void Refresh_LogInfo(const char *fmt, ...);
+void Refresh_LogWarn(const char *fmt, ...);
+void Refresh_LogError(const char *fmt, ...);
+#ifdef __cplusplus
+}
+#endif
 
 /* Internal Helper Utilities */
 
@@ -525,6 +531,7 @@ typedef struct Refresh_Driver
 } Refresh_Driver;
 
 extern Refresh_Driver VulkanDriver;
+extern Refresh_Driver PS5Driver;
 
 #endif /* REFRESH_DRIVER_H */
 
