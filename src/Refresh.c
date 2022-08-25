@@ -215,6 +215,29 @@ void Refresh_DrawPrimitives(
 	);
 }
 
+void Refresh_DrawPrimitivesIndirect(
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_Buffer *buffer,
+	uint32_t offsetInBytes,
+	uint32_t drawCount,
+	uint32_t stride,
+	uint32_t vertexParamOffset,
+	uint32_t fragmentParamOffset
+) {
+	NULL_RETURN(device);
+	device->DrawPrimitivesIndirect(
+		device->driverData,
+		commandBuffer,
+		buffer,
+		offsetInBytes,
+		drawCount,
+		stride,
+		vertexParamOffset,
+		fragmentParamOffset
+	);
+}
+
 void Refresh_DispatchCompute(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,

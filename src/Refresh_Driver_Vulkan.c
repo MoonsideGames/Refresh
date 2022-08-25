@@ -134,6 +134,7 @@ typedef enum VulkanResourceAccessType
 	RESOURCE_ACCESS_NONE, /* For initialization */
 	RESOURCE_ACCESS_INDEX_BUFFER,
 	RESOURCE_ACCESS_VERTEX_BUFFER,
+	RESOURCE_ACCESS_INDIRECT_BUFFER,
 	RESOURCE_ACCESS_VERTEX_SHADER_READ_UNIFORM_BUFFER,
 	RESOURCE_ACCESS_VERTEX_SHADER_READ_SAMPLED_IMAGE,
 	RESOURCE_ACCESS_FRAGMENT_SHADER_READ_UNIFORM_BUFFER,
@@ -162,7 +163,9 @@ typedef enum VulkanResourceAccessType
 	/* Read-Writes */
 	RESOURCE_ACCESS_COLOR_ATTACHMENT_READ_WRITE,
 	RESOURCE_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_WRITE,
-	RESOURCE_ACCESS_MEMORY_TRANSFER_READ_WRITE,
+	RESOURCE_ACCESS_COMPUTE_SHADER_STORAGE_IMAGE_READ_WRITE,
+	RESOURCE_ACCESS_COMPUTE_SHADER_BUFFER_READ_WRITE,
+	RESOURCE_ACCESS_TRANSFER_READ_WRITE,
 	RESOURCE_ACCESS_GENERAL,
 
 	/* Count */
@@ -450,7 +453,14 @@ static const VulkanResourceAccessInfo AccessMap[RESOURCE_ACCESS_TYPES_COUNT] =
 	/* RESOURCE_ACCESS_VERTEX_BUFFER */
 	{
 		VK_PIPELINE_STAGE_VERTEX_INPUT_BIT,
-		VK_ACCESS_INDEX_READ_BIT,
+		VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT,
+		VK_IMAGE_LAYOUT_UNDEFINED
+	},
+
+	/* RESOURCE_ACCESS_INDIRECT_BUFFER */
+	{
+		VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT,
+		VK_ACCESS_INDIRECT_COMMAND_READ_BIT,
 		VK_IMAGE_LAYOUT_UNDEFINED
 	},
 
@@ -621,7 +631,21 @@ static const VulkanResourceAccessInfo AccessMap[RESOURCE_ACCESS_TYPES_COUNT] =
 		VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
 	},
 
-	/* RESOURCE_ACCESS_MEMORY_TRANSFER_READ_WRITE */
+	/* RESOURCE_ACCESS_COMPUTE_SHADER_STORAGE_IMAGE_READ_WRITE */
+	{
+		VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+		VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+		VK_IMAGE_LAYOUT_GENERAL
+	},
+
+	/* RESOURCE_ACCESS_COMPUTE_SHADER_BUFFER_READ_WRITE */
+	{
+		VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+		VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+		VK_IMAGE_LAYOUT_UNDEFINED
+	},
+
+	/* RESOURCE_ACCESS_TRANSFER_READ_WRITE */
 	{
 		VK_PIPELINE_STAGE_TRANSFER_BIT,
 		VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT,
@@ -735,6 +759,8 @@ typedef struct VulkanTexture
 	VkFormat format;
 	VulkanResourceAccessType resourceAccessType;
 	VkImageUsageFlags usageFlags;
+
+	VkImageAspectFlags aspectFlags;
 
 	SDL_atomic_t referenceCount;
 } VulkanTexture;
@@ -1504,6 +1530,18 @@ typedef struct VulkanCommandBuffer
 	DescriptorSetData *boundDescriptorSetDatas;
 	uint32_t boundDescriptorSetDataCount;
 	uint32_t boundDescriptorSetDataCapacity;
+
+	/* Keep track of compute resources for memory barriers */
+
+	VulkanBuffer **boundComputeBuffers;
+	uint32_t boundComputeBufferCount;
+	uint32_t boundComputeBufferCapacity;
+
+	VulkanTexture **boundComputeTextures;
+	uint32_t boundComputeTextureCount;
+	uint32_t boundComputeTextureCapacity;
+
+	/* Viewport/scissor state */
 
 	VkViewport currentViewport;
 	VkRect2D currentScissor;
@@ -4524,6 +4562,7 @@ static uint8_t VULKAN_INTERNAL_CreateSwapchain(
 		swapchainData->textures[i].usageFlags =
 			VK_IMAGE_USAGE_TRANSFER_DST_BIT |
 			VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+		swapchainData->textures[i].aspectFlags = VK_IMAGE_ASPECT_COLOR_BIT;
 		swapchainData->textures[i].resourceAccessType = RESOURCE_ACCESS_NONE;
 	}
 
@@ -4999,6 +5038,52 @@ static void VULKAN_DrawPrimitives(
 	);
 }
 
+static void VULKAN_DrawPrimitivesIndirect(
+	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_Buffer *buffer,
+	uint32_t offsetInBytes,
+	uint32_t drawCount,
+	uint32_t stride,
+	uint32_t vertexParamOffset,
+	uint32_t fragmentParamOffset
+) {
+	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
+	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
+	VulkanBuffer *vulkanBuffer = (VulkanBuffer*) buffer;
+	VkDescriptorSet descriptorSets[4];
+	uint32_t dynamicOffsets[2];
+
+	descriptorSets[0] = vulkanCommandBuffer->vertexSamplerDescriptorSet;
+	descriptorSets[1] = vulkanCommandBuffer->fragmentSamplerDescriptorSet;
+	descriptorSets[2] = vulkanCommandBuffer->vertexUniformBuffer->descriptorSet;
+	descriptorSets[3] = vulkanCommandBuffer->fragmentUniformBuffer->descriptorSet;
+
+	dynamicOffsets[0] = vertexParamOffset;
+	dynamicOffsets[1] = fragmentParamOffset;
+
+	renderer->vkCmdBindDescriptorSets(
+		vulkanCommandBuffer->commandBuffer,
+		VK_PIPELINE_BIND_POINT_GRAPHICS,
+		vulkanCommandBuffer->currentGraphicsPipeline->pipelineLayout->pipelineLayout,
+		0,
+		4,
+		descriptorSets,
+		2,
+		dynamicOffsets
+	);
+
+	renderer->vkCmdDrawIndirect(
+		vulkanCommandBuffer->commandBuffer,
+		vulkanBuffer->buffer,
+		offsetInBytes,
+		drawCount,
+		stride
+	);
+
+	VULKAN_INTERNAL_TrackBuffer(renderer, vulkanCommandBuffer, vulkanBuffer);
+}
+
 static void VULKAN_DispatchCompute(
 	Refresh_Renderer *driverData,
 	Refresh_CommandBuffer *commandBuffer,
@@ -5010,8 +5095,11 @@ static void VULKAN_DispatchCompute(
 	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
 	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
 	VulkanComputePipeline *computePipeline = vulkanCommandBuffer->currentComputePipeline;
-
 	VkDescriptorSet descriptorSets[3];
+	VulkanResourceAccessType resourceAccessType = RESOURCE_ACCESS_NONE;
+	VulkanBuffer *currentComputeBuffer;
+	VulkanTexture *currentComputeTexture;
+	uint32_t i;
 
 	descriptorSets[0] = vulkanCommandBuffer->bufferDescriptorSet;
 	descriptorSets[1] = vulkanCommandBuffer->imageDescriptorSet;
@@ -5034,6 +5122,64 @@ static void VULKAN_DispatchCompute(
 		groupCountY,
 		groupCountZ
 	);
+
+	/* Re-transition buffers after dispatch */
+	for (i = 0; i < vulkanCommandBuffer->boundComputeBufferCount; i += 1)
+	{
+		currentComputeBuffer = vulkanCommandBuffer->boundComputeBuffers[i];
+
+		if (currentComputeBuffer->usage & VK_BUFFER_USAGE_VERTEX_BUFFER_BIT)
+		{
+			resourceAccessType = RESOURCE_ACCESS_VERTEX_BUFFER;
+		}
+		else if (currentComputeBuffer->usage & VK_BUFFER_USAGE_INDEX_BUFFER_BIT)
+		{
+			resourceAccessType = RESOURCE_ACCESS_INDEX_BUFFER;
+		}
+		else if (currentComputeBuffer->usage & VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT)
+		{
+			resourceAccessType = RESOURCE_ACCESS_INDIRECT_BUFFER;
+		}
+
+		if (resourceAccessType != RESOURCE_ACCESS_NONE)
+		{
+			VULKAN_INTERNAL_BufferMemoryBarrier(
+				renderer,
+				vulkanCommandBuffer->commandBuffer,
+				resourceAccessType,
+				currentComputeBuffer
+			);
+		}
+	}
+
+	vulkanCommandBuffer->boundComputeBufferCount = 0;
+
+	/* Re-transition sampler images after dispatch */
+	for (i = 0; i < vulkanCommandBuffer->boundComputeTextureCount; i += 1)
+	{
+		currentComputeTexture = vulkanCommandBuffer->boundComputeTextures[i];
+
+		if (currentComputeTexture->usageFlags & VK_IMAGE_USAGE_SAMPLED_BIT)
+		{
+			resourceAccessType = RESOURCE_ACCESS_ANY_SHADER_READ_SAMPLED_IMAGE;
+
+			VULKAN_INTERNAL_ImageMemoryBarrier(
+				renderer,
+				vulkanCommandBuffer->commandBuffer,
+				resourceAccessType,
+				currentComputeTexture->aspectFlags,
+				0,
+				currentComputeTexture->layerCount,
+				0,
+				currentComputeTexture->levelCount,
+				0,
+				currentComputeTexture->image,
+				&currentComputeTexture->resourceAccessType
+			);
+		}
+	}
+
+	vulkanCommandBuffer->boundComputeTextureCount = 0;
 }
 
 static VulkanTexture* VULKAN_INTERNAL_CreateTexture(
@@ -5220,6 +5366,7 @@ static VulkanTexture* VULKAN_INTERNAL_CreateTexture(
 	texture->layerCount = layerCount;
 	texture->resourceAccessType = RESOURCE_ACCESS_NONE;
 	texture->usageFlags = imageUsageFlags;
+	texture->aspectFlags = aspectMask;
 
 	SDL_AtomicSet(&texture->referenceCount, 0);
 
@@ -5257,7 +5404,6 @@ static VulkanRenderTarget* VULKAN_INTERNAL_CreateRenderTarget(
 	{
 		aspectFlags |= VK_IMAGE_ASPECT_COLOR_BIT;
 	}
-
 
 	/* create resolve target for multisample */
 	if (multisampleCount > REFRESH_SAMPLECOUNT_1)
@@ -6426,6 +6572,11 @@ static Refresh_Texture* VULKAN_CreateTexture(
 		imageUsageFlags |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
 	}
 
+	if (textureCreateInfo->usageFlags & REFRESH_TEXTUREUSAGE_COMPUTE_BIT)
+	{
+		imageUsageFlags |= VK_IMAGE_USAGE_STORAGE_BIT;
+	}
+
 	if (IsDepthFormat(format))
 	{
 		imageAspectFlags = VK_IMAGE_ASPECT_DEPTH_BIT;
@@ -6461,29 +6612,43 @@ static Refresh_Buffer* VULKAN_CreateBuffer(
 	uint32_t sizeInBytes
 ) {
 	VulkanBuffer* buffer;
-
+	VulkanResourceAccessType resourceAccessType;
 	VkBufferUsageFlags vulkanUsageFlags =
 		VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+
+	if (usageFlags == 0)
+	{
+		resourceAccessType = RESOURCE_ACCESS_TRANSFER_READ_WRITE;
+	}
 
 	if (usageFlags & REFRESH_BUFFERUSAGE_VERTEX_BIT)
 	{
 		vulkanUsageFlags |= VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+		resourceAccessType = RESOURCE_ACCESS_VERTEX_BUFFER;
 	}
 
 	if (usageFlags & REFRESH_BUFFERUSAGE_INDEX_BIT)
 	{
 		vulkanUsageFlags |= VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+		resourceAccessType = RESOURCE_ACCESS_INDEX_BUFFER;
 	}
 
 	if (usageFlags & REFRESH_BUFFERUSAGE_COMPUTE_BIT)
 	{
 		vulkanUsageFlags |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+		resourceAccessType = RESOURCE_ACCESS_COMPUTE_SHADER_BUFFER_READ_WRITE;
+	}
+
+	if (usageFlags & REFRESH_BUFFERUSAGE_INDIRECT_BIT)
+	{
+		vulkanUsageFlags |= VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
+		resourceAccessType = RESOURCE_ACCESS_INDIRECT_BUFFER;
 	}
 
 	buffer = VULKAN_INTERNAL_CreateBuffer(
 		(VulkanRenderer*)driverData,
 		sizeInBytes,
-		RESOURCE_ACCESS_MEMORY_TRANSFER_READ_WRITE,
+		resourceAccessType,
 		vulkanUsageFlags
 	);
 
@@ -6565,7 +6730,7 @@ static VulkanTransferBuffer* VULKAN_INTERNAL_AcquireTransferBuffer(
 	transferBuffer->buffer = VULKAN_INTERNAL_CreateBuffer(
 		renderer,
 		size,
-		RESOURCE_ACCESS_MEMORY_TRANSFER_READ_WRITE,
+		RESOURCE_ACCESS_TRANSFER_READ_WRITE,
 		VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT
 	);
 
@@ -8355,7 +8520,23 @@ static void VULKAN_EndRenderPass(
 				renderer,
 				vulkanCommandBuffer->commandBuffer,
 				RESOURCE_ACCESS_ANY_SHADER_READ_SAMPLED_IMAGE,
-				VK_IMAGE_ASPECT_COLOR_BIT,
+				currentTexture->aspectFlags,
+				0,
+				currentTexture->layerCount,
+				0,
+				currentTexture->levelCount,
+				0,
+				currentTexture->image,
+				&currentTexture->resourceAccessType
+			);
+		}
+		else if (currentTexture->usageFlags & VK_IMAGE_USAGE_STORAGE_BIT)
+		{
+			VULKAN_INTERNAL_ImageMemoryBarrier(
+				renderer,
+				vulkanCommandBuffer->commandBuffer,
+				RESOURCE_ACCESS_COMPUTE_SHADER_STORAGE_IMAGE_READ_WRITE,
+				currentTexture->aspectFlags,
 				0,
 				currentTexture->layerCount,
 				0,
@@ -8548,8 +8729,6 @@ static void VULKAN_BindComputePipeline(
 			vulkanCommandBuffer->computeUniformBuffer
 		);
 	}
-	vulkanCommandBuffer->computeUniformBuffer = NULL;
-
 	renderer->vkCmdBindPipeline(
 		vulkanCommandBuffer->commandBuffer,
 		VK_PIPELINE_BIND_POINT_COMPUTE,
@@ -8558,7 +8737,11 @@ static void VULKAN_BindComputePipeline(
 
 	vulkanCommandBuffer->currentComputePipeline = vulkanComputePipeline;
 
-	if (vulkanComputePipeline->uniformBlockSize != 0)
+	if (vulkanComputePipeline->uniformBlockSize == 0)
+	{
+		vulkanCommandBuffer->computeUniformBuffer = renderer->dummyComputeUniformBuffer;
+	}
+	else
 	{
 		vulkanCommandBuffer->computeUniformBuffer = VULKAN_INTERNAL_AcquireUniformBufferFromPool(
 			renderer,
@@ -8599,7 +8782,7 @@ static void VULKAN_BindComputeBuffers(
 		VULKAN_INTERNAL_BufferMemoryBarrier(
 			renderer,
 			vulkanCommandBuffer->commandBuffer,
-			RESOURCE_ACCESS_COMPUTE_SHADER_READ_OTHER,
+			RESOURCE_ACCESS_COMPUTE_SHADER_BUFFER_READ_WRITE,
 			currentVulkanBuffer
 		);
 
@@ -8614,6 +8797,18 @@ static void VULKAN_BindComputeBuffers(
 			NULL,
 			descriptorBufferInfos
 		);
+
+	if (vulkanCommandBuffer->boundComputeBufferCount == vulkanCommandBuffer->boundComputeBufferCapacity)
+	{
+		vulkanCommandBuffer->boundComputeBufferCapacity *= 2;
+		vulkanCommandBuffer->boundComputeBuffers = SDL_realloc(
+			vulkanCommandBuffer->boundComputeBuffers,
+			vulkanCommandBuffer->boundComputeBufferCapacity * sizeof(VulkanBuffer*)
+		);
+	}
+
+	vulkanCommandBuffer->boundComputeBuffers[vulkanCommandBuffer->boundComputeBufferCount] = currentVulkanBuffer;
+	vulkanCommandBuffer->boundComputeBufferCount += 1;
 }
 
 static void VULKAN_BindComputeTextures(
@@ -8639,12 +8834,12 @@ static void VULKAN_BindComputeTextures(
 		currentTexture = (VulkanTexture*) pTextures[i];
 		descriptorImageInfos[i].imageView = currentTexture->view;
 		descriptorImageInfos[i].sampler = VK_NULL_HANDLE;
-		descriptorImageInfos[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		descriptorImageInfos[i].imageLayout = VK_IMAGE_LAYOUT_GENERAL;
 
 		VULKAN_INTERNAL_ImageMemoryBarrier(
 			renderer,
 			vulkanCommandBuffer->commandBuffer,
-			RESOURCE_ACCESS_COMPUTE_SHADER_READ_SAMPLED_IMAGE_OR_UNIFORM_TEXEL_BUFFER,
+			RESOURCE_ACCESS_COMPUTE_SHADER_STORAGE_IMAGE_READ_WRITE,
 			VK_IMAGE_ASPECT_COLOR_BIT,
 			0,
 			currentTexture->layerCount,
@@ -8656,6 +8851,18 @@ static void VULKAN_BindComputeTextures(
 		);
 
 		VULKAN_INTERNAL_TrackTexture(renderer, vulkanCommandBuffer, currentTexture);
+
+		if (vulkanCommandBuffer->boundComputeTextureCount == vulkanCommandBuffer->boundComputeTextureCapacity)
+		{
+			vulkanCommandBuffer->boundComputeTextureCapacity *= 2;
+			vulkanCommandBuffer->boundComputeTextures = SDL_realloc(
+				vulkanCommandBuffer->boundComputeTextures,
+				vulkanCommandBuffer->boundComputeTextureCapacity * sizeof(VulkanTexture *)
+			);
+		}
+
+		vulkanCommandBuffer->boundComputeTextures[i] = currentTexture;
+		vulkanCommandBuffer->boundComputeTextureCount += 1;
 	}
 
 	vulkanCommandBuffer->imageDescriptorSet =
@@ -8772,6 +8979,20 @@ static void VULKAN_INTERNAL_AllocateCommandBuffers(
 		commandBuffer->boundDescriptorSetDataCount = 0;
 		commandBuffer->boundDescriptorSetDatas = SDL_malloc(
 			commandBuffer->boundDescriptorSetDataCapacity * sizeof(DescriptorSetData)
+		);
+
+		/* Bound compute resource tracking */
+
+		commandBuffer->boundComputeBufferCapacity = 16;
+		commandBuffer->boundComputeBufferCount = 0;
+		commandBuffer->boundComputeBuffers = SDL_malloc(
+			commandBuffer->boundComputeBufferCapacity * sizeof(VulkanBuffer*)
+		);
+
+		commandBuffer->boundComputeTextureCapacity = 16;
+		commandBuffer->boundComputeTextureCount = 0;
+		commandBuffer->boundComputeTextures = SDL_malloc(
+			commandBuffer->boundComputeTextureCapacity * sizeof(VulkanTexture*)
 		);
 
 		/* Resource tracking */

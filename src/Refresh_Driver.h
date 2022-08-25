@@ -207,6 +207,17 @@ struct Refresh_Device
 		uint32_t fragmentParamOffset
 	);
 
+	void (*DrawPrimitivesIndirect)(
+		Refresh_Renderer *driverData,
+		Refresh_CommandBuffer *commandBuffer,
+		Refresh_Buffer *buffer,
+		uint32_t offsetInBytes,
+		uint32_t drawCount,
+		uint32_t stride,
+		uint32_t vertexParamOffset,
+		uint32_t fragmentParamOffset
+	);
+
 	void (*DispatchCompute)(
 		Refresh_Renderer *device,
 		Refresh_CommandBuffer *commandBuffer,
@@ -481,6 +492,7 @@ struct Refresh_Device
 	ASSIGN_DRIVER_FUNC(DrawIndexedPrimitives, name) \
 	ASSIGN_DRIVER_FUNC(DrawInstancedPrimitives, name) \
 	ASSIGN_DRIVER_FUNC(DrawPrimitives, name) \
+	ASSIGN_DRIVER_FUNC(DrawPrimitivesIndirect, name) \
 	ASSIGN_DRIVER_FUNC(DispatchCompute, name) \
 	ASSIGN_DRIVER_FUNC(CreateComputePipeline, name) \
 	ASSIGN_DRIVER_FUNC(CreateGraphicsPipeline, name) \
