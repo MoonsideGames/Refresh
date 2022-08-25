@@ -1509,6 +1509,7 @@ typedef struct VulkanCommandBuffer
 
 	VulkanTexture *renderPassColorTargetTextures[MAX_COLOR_TARGET_BINDINGS];
 	uint32_t renderPassColorTargetCount;
+	VulkanTexture *renderPassDepthTexture; /* can be NULL */
 
 	VulkanUniformBuffer *vertexUniformBuffer;
 	VulkanUniformBuffer *fragmentUniformBuffer;
@@ -8389,6 +8390,8 @@ static void VULKAN_BeginRenderPass(
 		);
 
 		clearCount += 1;
+
+		VULKAN_INTERNAL_TrackTexture(renderer, vulkanCommandBuffer, texture);
 	}
 
 	/* Set clear values */
@@ -8450,6 +8453,11 @@ static void VULKAN_BeginRenderPass(
 			(VulkanTexture*) colorAttachmentInfos[i].texture;
 	}
 	vulkanCommandBuffer->renderPassColorTargetCount = colorAttachmentCount;
+
+	if (depthStencilAttachmentInfo != NULL)
+	{
+		vulkanCommandBuffer->renderPassDepthTexture = (VulkanTexture*) depthStencilAttachmentInfo->texture;
+	}
 
 	/* Set sensible default viewport state */
 
@@ -8548,6 +8556,29 @@ static void VULKAN_EndRenderPass(
 		}
 	}
 	vulkanCommandBuffer->renderPassColorTargetCount = 0;
+
+	if (vulkanCommandBuffer->renderPassDepthTexture != NULL)
+	{
+		currentTexture = vulkanCommandBuffer->renderPassDepthTexture;
+
+		if (currentTexture->usageFlags & VK_IMAGE_USAGE_SAMPLED_BIT)
+		{
+			VULKAN_INTERNAL_ImageMemoryBarrier(
+				renderer,
+				vulkanCommandBuffer->commandBuffer,
+				RESOURCE_ACCESS_ANY_SHADER_READ_SAMPLED_IMAGE,
+				currentTexture->aspectFlags,
+				0,
+				currentTexture->layerCount,
+				0,
+				currentTexture->levelCount,
+				0,
+				currentTexture->image,
+				&currentTexture->resourceAccessType
+			);
+		}
+	}
+	vulkanCommandBuffer->renderPassDepthTexture = NULL;
 
 	vulkanCommandBuffer->currentGraphicsPipeline = NULL;
 	vulkanCommandBuffer->renderPassInProgress = 0;
@@ -8936,6 +8967,8 @@ static void VULKAN_INTERNAL_AllocateCommandBuffers(
 		{
 			LogVulkanResultAsError("vkCreateFence", vulkanResult);
 		}
+
+		commandBuffer->renderPassDepthTexture = NULL;
 
 		/* Presentation tracking */
 
