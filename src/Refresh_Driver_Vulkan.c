@@ -2156,22 +2156,22 @@ static uint8_t VULKAN_INTERNAL_FindMemoryType(
 	uint32_t typeFilter,
 	VkMemoryPropertyFlags requiredProperties,
 	VkMemoryPropertyFlags ignoredProperties,
-	uint32_t *result
+	uint32_t *memoryTypeIndex
 ) {
 	uint32_t i;
 
-	for (i = 0; i < renderer->memoryProperties.memoryTypeCount; i += 1)
+	for (i = *memoryTypeIndex; i < renderer->memoryProperties.memoryTypeCount; i += 1)
 	{
 		if (	(typeFilter & (1 << i)) &&
 			(renderer->memoryProperties.memoryTypes[i].propertyFlags & requiredProperties) == requiredProperties &&
 			(renderer->memoryProperties.memoryTypes[i].propertyFlags & ignoredProperties) == 0	)
 		{
-			*result = i;
+			*memoryTypeIndex = i;
 			return 1;
 		}
 	}
 
-	Refresh_LogError("Failed to find memory properties %X, required %X, ignored %X", requiredProperties, ignoredProperties, typeFilter);
+	Refresh_LogError("Failed to find memory properties %X, required %X, ignored %X", typeFilter, requiredProperties, ignoredProperties);
 	return 0;
 }
 
@@ -2513,7 +2513,7 @@ static uint8_t VULKAN_INTERNAL_FindAvailableBufferMemory(
 	VkDeviceSize *pOffset,
 	VkDeviceSize *pSize
 ) {
-	uint32_t memoryTypeIndex;
+	uint32_t memoryTypeIndex = 0;
 	VkMemoryDedicatedRequirementsKHR dedicatedRequirements =
 	{
 		VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS_KHR,
@@ -2524,28 +2524,37 @@ static uint8_t VULKAN_INTERNAL_FindAvailableBufferMemory(
 		VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2_KHR,
 		&dedicatedRequirements
 	};
+	uint8_t findResult = 0;
 
-	if (!VULKAN_INTERNAL_FindBufferMemoryRequirements(
+	while (VULKAN_INTERNAL_FindBufferMemoryRequirements(
 		renderer,
 		buffer,
 		&memoryRequirements,
 		&memoryTypeIndex
 	)) {
-		Refresh_LogError("Failed to acquire buffer memory requirements!");
-		return 0;
+		findResult = VULKAN_INTERNAL_FindAvailableMemory(
+			renderer,
+			memoryTypeIndex,
+			&memoryRequirements,
+			&dedicatedRequirements,
+			buffer,
+			VK_NULL_HANDLE,
+			pMemoryAllocation,
+			pOffset,
+			pSize
+		);
+
+		if (findResult == 1)
+		{
+			break;
+		}
+		else
+		{
+			memoryTypeIndex += 1;
+		}
 	}
 
-	return VULKAN_INTERNAL_FindAvailableMemory(
-		renderer,
-		memoryTypeIndex,
-		&memoryRequirements,
-		&dedicatedRequirements,
-		buffer,
-		VK_NULL_HANDLE,
-		pMemoryAllocation,
-		pOffset,
-		pSize
-	);
+	return findResult;
 }
 
 static uint8_t VULKAN_INTERNAL_FindAvailableTextureMemory(
@@ -2556,7 +2565,7 @@ static uint8_t VULKAN_INTERNAL_FindAvailableTextureMemory(
 	VkDeviceSize *pOffset,
 	VkDeviceSize *pSize
 ) {
-	uint32_t memoryTypeIndex;
+	uint32_t memoryTypeIndex = 0;
 	VkMemoryPropertyFlags requiredMemoryPropertyFlags;
 	VkMemoryPropertyFlags ignoredMemoryPropertyFlags;
 	VkMemoryDedicatedRequirementsKHR dedicatedRequirements =
@@ -2569,6 +2578,7 @@ static uint8_t VULKAN_INTERNAL_FindAvailableTextureMemory(
 		VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2_KHR,
 		&dedicatedRequirements
 	};
+	uint8_t findResult = 0;
 
 	if (cpuAllocation)
 	{
@@ -2581,7 +2591,7 @@ static uint8_t VULKAN_INTERNAL_FindAvailableTextureMemory(
 		ignoredMemoryPropertyFlags = 0;
 	}
 
-	if (!VULKAN_INTERNAL_FindImageMemoryRequirements(
+	while (VULKAN_INTERNAL_FindImageMemoryRequirements(
 		renderer,
 		image,
 		requiredMemoryPropertyFlags,
@@ -2589,21 +2599,29 @@ static uint8_t VULKAN_INTERNAL_FindAvailableTextureMemory(
 		&memoryRequirements,
 		&memoryTypeIndex
 	)) {
-		Refresh_LogError("Failed to acquire image memory requirements!");
-		return 0;
+		findResult = VULKAN_INTERNAL_FindAvailableMemory(
+			renderer,
+			memoryTypeIndex,
+			&memoryRequirements,
+			&dedicatedRequirements,
+			VK_NULL_HANDLE,
+			image,
+			pMemoryAllocation,
+			pOffset,
+			pSize
+		);
+
+		if (findResult == 1)
+		{
+			break;
+		}
+		else
+		{
+			memoryTypeIndex += 1;
+		}
 	}
 
-	return VULKAN_INTERNAL_FindAvailableMemory(
-		renderer,
-		memoryTypeIndex,
-		&memoryRequirements,
-		&dedicatedRequirements,
-		VK_NULL_HANDLE,
-		image,
-		pMemoryAllocation,
-		pOffset,
-		pSize
-	);
+	return findResult;
 }
 
 /* Memory Barriers */
