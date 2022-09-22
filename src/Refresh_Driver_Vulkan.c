@@ -7255,13 +7255,23 @@ REFRESHAPI void VULKAN_CopyTextureToTexture(
 	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
 	VulkanTexture *sourceTexture = (VulkanTexture*) sourceTextureSlice->texture;
 	VulkanTexture *destinationTexture = (VulkanTexture*) destinationTextureSlice->texture;
+	VulkanResourceAccessType destinationAccessType = destinationTexture->resourceAccessType;
+
+	if (destinationTexture->usageFlags & VK_IMAGE_USAGE_SAMPLED_BIT)
+	{
+		destinationAccessType = RESOURCE_ACCESS_ANY_SHADER_READ_SAMPLED_IMAGE;
+	}
+	else if (destinationTexture->usageFlags & VK_IMAGE_USAGE_STORAGE_BIT)
+	{
+		destinationAccessType = RESOURCE_ACCESS_COMPUTE_SHADER_STORAGE_IMAGE_READ_WRITE;
+	}
 
 	VULKAN_INTERNAL_BlitImage(
 		renderer,
 		vulkanCommandBuffer->commandBuffer,
 		sourceTextureSlice,
 		destinationTextureSlice,
-		destinationTexture->resourceAccessType,
+		destinationAccessType,
 		RefreshToVK_Filter[filter]
 	);
 
@@ -8386,7 +8396,7 @@ static void VULKAN_BeginRenderPass(
 		VULKAN_INTERNAL_ImageMemoryBarrier(
 			renderer,
 			vulkanCommandBuffer->commandBuffer,
-			RESOURCE_ACCESS_COLOR_ATTACHMENT_READ_WRITE,
+			RESOURCE_ACCESS_COLOR_ATTACHMENT_WRITE,
 			VK_IMAGE_ASPECT_COLOR_BIT,
 			0,
 			texture->layerCount,
@@ -8414,7 +8424,7 @@ static void VULKAN_BeginRenderPass(
 		VULKAN_INTERNAL_ImageMemoryBarrier(
 			renderer,
 			vulkanCommandBuffer->commandBuffer,
-			RESOURCE_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_WRITE,
+			RESOURCE_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE,
 			depthAspectFlags,
 			0,
 			texture->layerCount,
