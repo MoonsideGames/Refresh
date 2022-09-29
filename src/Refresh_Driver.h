@@ -459,6 +459,17 @@ struct Refresh_Device
 		Refresh_Texture **pTextures
 	);
 
+	uint8_t (*ClaimWindow)(
+		Refresh_Renderer *driverData,
+		void *windowHandle,
+		Refresh_PresentMode presentMode
+	);
+
+	void(*UnclaimWindow)(
+		Refresh_Renderer *driverData,
+		void *windowHandle
+	);
+
 	Refresh_CommandBuffer* (*AcquireCommandBuffer)(
 		Refresh_Renderer *driverData,
 		uint8_t fixed
@@ -475,6 +486,12 @@ struct Refresh_Device
 	Refresh_TextureFormat (*GetSwapchainFormat)(
 		Refresh_Renderer *driverData,
 		void *windowHandle
+	);
+
+	void (*SetSwapchainPresentMode)(
+		Refresh_Renderer *driverData,
+		void *windowHandle,
+		Refresh_PresentMode presentMode
 	);
 
 	void(*Submit)(
@@ -533,17 +550,20 @@ struct Refresh_Device
 	ASSIGN_DRIVER_FUNC(BindComputePipeline, name) \
 	ASSIGN_DRIVER_FUNC(BindComputeBuffers, name) \
 	ASSIGN_DRIVER_FUNC(BindComputeTextures, name) \
+	ASSIGN_DRIVER_FUNC(ClaimWindow, name) \
+	ASSIGN_DRIVER_FUNC(UnclaimWindow, name) \
 	ASSIGN_DRIVER_FUNC(AcquireCommandBuffer, name) \
 	ASSIGN_DRIVER_FUNC(AcquireSwapchainTexture, name) \
 	ASSIGN_DRIVER_FUNC(GetSwapchainFormat, name) \
+	ASSIGN_DRIVER_FUNC(SetSwapchainPresentMode, name) \
 	ASSIGN_DRIVER_FUNC(Submit, name) \
 	ASSIGN_DRIVER_FUNC(Wait, name)
 
 typedef struct Refresh_Driver
 {
 	const char *Name;
+	uint8_t (*PrepareDriver)(uint32_t *flags);
 	Refresh_Device* (*CreateDevice)(
-		Refresh_PresentationParameters *presentationParameters,
 		uint8_t debugMode
 	);
 } Refresh_Driver;

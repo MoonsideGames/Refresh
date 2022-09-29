@@ -332,6 +332,14 @@ typedef enum Refresh_BorderColor
 	REFRESH_BORDERCOLOR_INT_OPAQUE_WHITE
 } Refresh_BorderColor;
 
+typedef enum Refresh_Backend
+{
+	REFRESH_BACKEND_DONTCARE,
+	REFRESH_BACKEND_VULKAN,
+	REFRESH_BACKEND_PS5,
+	REFRESH_BACKEND_INVALID
+} Refresh_Backend;
+
 /* Structures */
 
 typedef struct Refresh_DepthStencilValue
@@ -374,12 +382,6 @@ typedef struct Refresh_TextureSlice
 	uint32_t layer; /* 0 unless cube */
 	uint32_t level;
 } Refresh_TextureSlice;
-
-typedef struct Refresh_PresentationParameters
-{
-	void* deviceWindowHandle;
-	Refresh_PresentMode presentMode;
-} Refresh_PresentationParameters;
 
 /* State structures */
 
@@ -594,15 +596,29 @@ REFRESHAPI void Refresh_HookLogFunctions(
 	Refresh_LogFunc error
 );
 
+/* Backend selection */
+
+/* Select the graphics API backend that Refresh should use.
+ *
+ * Note that Refresh is not required to select your preferred backend
+ * if it detects an incompatibility.
+ *
+ * Returns the backend that will actually be used, and fills in a window flag bitmask.
+ * This bitmask should be used to create all windows that the device claims.
+ *
+ * preferredBackend: The preferred backend that Refresh should select.
+ * flags: A pointer to a bitflag value that will be filled in with required SDL_WindowFlags masks.
+ */
+REFRESHAPI Refresh_Backend Refresh_SelectBackend(Refresh_Backend preferredBackend, uint32_t *flags);
+
 /* Device */
 
 /* Create a rendering context for use on the calling thread.
+ * You MUST have called Refresh_SelectDriver prior to calling this function.
  *
- * presentationParameters: A window handle and presentation mode.
  * debugMode: Enable debug mode properties.
  */
 REFRESHAPI Refresh_Device* Refresh_CreateDevice(
-	Refresh_PresentationParameters *presentationParameters,
 	uint8_t debugMode
 );
 
@@ -1115,6 +1131,41 @@ REFRESHAPI void Refresh_BindComputeTextures(
 
 /* Submission/Presentation */
 
+/* Claims a window, creating a swapchain structure for it.
+ * This function MUST be called before any swapchain functions
+ * are called using the window.
+ *
+ * Returns 0 on swapchain creation failure.
+ */
+REFRESHAPI uint8_t Refresh_ClaimWindow(
+	Refresh_Device *device,
+	void *windowHandle,
+	Refresh_PresentMode presentMode
+);
+
+/* Unclaims a window, destroying the swapchain structure for it.
+ * It is good practice to call this when a window is closed to
+ * prevent memory bloat, but windows are automatically unclaimed
+ * by DestroyDevice.
+ */
+REFRESHAPI void Refresh_UnclaimWindow(
+	Refresh_Device *device,
+	void *windowHandle
+);
+
+/* Changes the present mode of the swapchain for the given window. */
+REFRESHAPI void Refresh_SetSwapchainPresentMode(
+	Refresh_Device *device,
+	void *windowHandle,
+	Refresh_PresentMode presentMode
+);
+
+/* Returns the format of the swapchain for the given window. */
+REFRESHAPI Refresh_TextureFormat Refresh_GetSwapchainFormat(
+	Refresh_Device *device,
+	void *windowHandle
+);
+
 /* Returns an allocated Refresh_CommandBuffer* object.
  * This command buffer is managed by the implementation and
  * should NOT be freed by the user.
@@ -1152,12 +1203,6 @@ REFRESHAPI Refresh_Texture* Refresh_AcquireSwapchainTexture(
 	void *windowHandle,
 	uint32_t *pWidth,
 	uint32_t *pHeight
-);
-
-/* Returns the format of the swapchain for the given window. */
-REFRESHAPI Refresh_TextureFormat Refresh_GetSwapchainFormat(
-	Refresh_Device *device,
-	void *windowHandle
 );
 
 /* Submits all of the enqueued commands. */

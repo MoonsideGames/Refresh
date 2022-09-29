@@ -33,7 +33,8 @@
 
 /* Drivers */
 
-static const Refresh_Driver *drivers[] = {
+static const Refresh_Driver *backends[] = {
+	NULL,
 #ifdef REFRESH_DRIVER_VULKAN
 	&VulkanDriver,
 #endif
@@ -129,19 +130,54 @@ uint32_t Refresh_LinkedVersion(void)
 
 /* Driver Functions */
 
-static int32_t selectedDriver = 0;
+static Refresh_Backend selectedBackend = REFRESH_BACKEND_INVALID;
+
+Refresh_Backend Refresh_SelectBackend(Refresh_Backend preferredBackend, uint32_t *flags)
+{
+	uint32_t backendIndex, i;
+
+	if (preferredBackend != REFRESH_BACKEND_DONTCARE)
+	{
+		/* Try to force it! */
+		backendIndex = preferredBackend;
+
+		if (backends[backendIndex]->PrepareDriver(flags))
+		{
+			selectedBackend = preferredBackend;
+			return selectedBackend;
+		}
+	}
+
+	/* Iterate until we find an appropriate backend. */
+
+	for (i = 1; backends[i] != NULL; i += 1)
+	{
+		if (i != preferredBackend && backends[i]->PrepareDriver(flags))
+		{
+			selectedBackend = i;
+			return i;
+		}
+	}
+
+	if (backends[i] == NULL)
+	{
+		Refresh_LogError("No supported Refresh backend found!");
+	}
+
+	selectedBackend = REFRESH_BACKEND_INVALID;
+	return REFRESH_BACKEND_INVALID;
+}
 
 Refresh_Device* Refresh_CreateDevice(
-	Refresh_PresentationParameters *presentationParameters,
 	uint8_t debugMode
 ) {
-	if (selectedDriver < 0)
+	if (selectedBackend == REFRESH_BACKEND_INVALID)
 	{
+		Refresh_LogError("Invalid backend selection. Did you call Refresh_SelectBackend?");
 		return NULL;
 	}
 
-	return drivers[selectedDriver]->CreateDevice(
-		presentationParameters,
+	return backends[selectedBackend]->CreateDevice(
 		debugMode
 	);
 }
@@ -722,6 +758,30 @@ void Refresh_BindComputeTextures(
 	);
 }
 
+uint8_t Refresh_ClaimWindow(
+	Refresh_Device *device,
+	void *windowHandle,
+	Refresh_PresentMode presentMode
+) {
+	if (device == NULL) { return 0; }
+	return device->ClaimWindow(
+		device->driverData,
+		windowHandle,
+		presentMode
+	);
+}
+
+void Refresh_UnclaimWindow(
+	Refresh_Device *device,
+	void *windowHandle
+) {
+	NULL_RETURN(device);
+	device->UnclaimWindow(
+		device->driverData,
+		windowHandle
+	);
+}
+
 Refresh_CommandBuffer* Refresh_AcquireCommandBuffer(
 	Refresh_Device *device,
 	uint8_t fixed
@@ -758,6 +818,19 @@ Refresh_TextureFormat Refresh_GetSwapchainFormat(
 	return device->GetSwapchainFormat(
 		device->driverData,
 		windowHandle
+	);
+}
+
+void Refresh_SetSwapchainPresentMode(
+	Refresh_Device *device,
+	void *windowHandle,
+	Refresh_PresentMode presentMode
+) {
+	NULL_RETURN(device);
+	device->SetSwapchainPresentMode(
+		device->driverData,
+		windowHandle,
+		presentMode
 	);
 }
 

@@ -1691,8 +1691,6 @@ typedef struct VulkanRenderer
 	VkQueue computeQueue;
 	VkQueue transferQueue;
 
-	Refresh_PresentMode presentMode;
-
 	VulkanCommandBuffer **submittedCommandBuffers;
 	uint32_t submittedCommandBufferCount;
 	uint32_t submittedCommandBufferCapacity;
@@ -4252,7 +4250,8 @@ static uint8_t VULKAN_INTERNAL_ChooseSwapPresentMode(
 
 static uint8_t VULKAN_INTERNAL_CreateSwapchain(
 	VulkanRenderer *renderer,
-	void *windowHandle
+	void *windowHandle,
+	Refresh_PresentMode presentMode
 ) {
 	VkResult vulkanResult;
 	VulkanSwapchainData *swapchainData;
@@ -4351,7 +4350,7 @@ static uint8_t VULKAN_INTERNAL_CreateSwapchain(
 	}
 
 	if (!VULKAN_INTERNAL_ChooseSwapPresentMode(
-		renderer->presentMode,
+		presentMode,
 		swapchainSupportDetails.presentModes,
 		swapchainSupportDetails.presentModesLength,
 		&swapchainData->presentMode
@@ -4642,11 +4641,12 @@ static uint8_t VULKAN_INTERNAL_CreateSwapchain(
 
 static void VULKAN_INTERNAL_RecreateSwapchain(
 	VulkanRenderer* renderer,
-	void *windowHandle
+	void *windowHandle,
+	Refresh_PresentMode presentMode
 ) {
 	VULKAN_Wait((Refresh_Renderer*) renderer);
 	VULKAN_INTERNAL_DestroySwapchain(renderer, windowHandle);
-	VULKAN_INTERNAL_CreateSwapchain(renderer, windowHandle);
+	VULKAN_INTERNAL_CreateSwapchain(renderer, windowHandle, presentMode);
 }
 
 /* Command Buffers */
@@ -9265,22 +9265,39 @@ static Refresh_CommandBuffer* VULKAN_AcquireCommandBuffer(
 }
 
 static VulkanSwapchainData* VULKAN_INTERNAL_FetchSwapchainData(
-	VulkanRenderer *renderer,
 	void *windowHandle
 ) {
-	VulkanSwapchainData *swapchainData = NULL;
+	return (VulkanSwapchainData*) SDL_GetWindowData(windowHandle, WINDOW_SWAPCHAIN_DATA);
+}
 
-	swapchainData = (VulkanSwapchainData*) SDL_GetWindowData(windowHandle, WINDOW_SWAPCHAIN_DATA);
+static uint8_t VULKAN_ClaimWindow(
+	Refresh_Renderer *driverData,
+	void *windowHandle,
+	Refresh_PresentMode presentMode
+) {
+	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	VulkanSwapchainData *swapchainData = VULKAN_INTERNAL_FetchSwapchainData(windowHandle);
 
 	if (swapchainData == NULL)
 	{
-		if (VULKAN_INTERNAL_CreateSwapchain(renderer, windowHandle))
-		{
-			swapchainData = (VulkanSwapchainData*) SDL_GetWindowData(windowHandle, WINDOW_SWAPCHAIN_DATA);
-		}
+		return VULKAN_INTERNAL_CreateSwapchain(renderer, windowHandle, presentMode);
 	}
+	else
+	{
+		Refresh_LogWarn("Window already claimed!");
+		return 0;
+	}
+}
 
-	return swapchainData;
+static void VULKAN_UnclaimWindow(
+	Refresh_Renderer *driverData,
+	void *windowHandle
+) {
+	VULKAN_Wait(driverData);
+	VULKAN_INTERNAL_DestroySwapchain(
+		(VulkanRenderer*) driverData,
+		windowHandle
+	);
 }
 
 static Refresh_Texture* VULKAN_AcquireSwapchainTexture(
@@ -9298,10 +9315,11 @@ static Refresh_Texture* VULKAN_AcquireSwapchainTexture(
 	VulkanTexture *swapchainTexture = NULL;
 	VulkanPresentData *presentData;
 
-	swapchainData = VULKAN_INTERNAL_FetchSwapchainData(renderer, windowHandle);
+	swapchainData = VULKAN_INTERNAL_FetchSwapchainData(windowHandle);
 
 	if (swapchainData == NULL)
 	{
+		Refresh_LogError("Cannot acquire swapchain texture, window has not been claimed!");
 		return NULL;
 	}
 
@@ -9317,12 +9335,15 @@ static Refresh_Texture* VULKAN_AcquireSwapchainTexture(
 	/* Swapchain is invalid, let's try to recreate */
 	if (acquireResult != VK_SUCCESS && acquireResult != VK_SUBOPTIMAL_KHR)
 	{
-		VULKAN_INTERNAL_RecreateSwapchain(renderer, windowHandle);
+		swapchainData = VULKAN_INTERNAL_FetchSwapchainData(windowHandle);
 
-		swapchainData = VULKAN_INTERNAL_FetchSwapchainData(renderer, windowHandle);
+		VULKAN_INTERNAL_RecreateSwapchain(renderer, windowHandle, swapchainData->presentMode);
+
+		swapchainData = VULKAN_INTERNAL_FetchSwapchainData(windowHandle);
 
 		if (swapchainData == NULL)
 		{
+			Refresh_LogWarn("Failed to recreate swapchain!");
 			return NULL;
 		}
 
@@ -9431,6 +9452,26 @@ static Refresh_TextureFormat VULKAN_GetSwapchainFormat(
 		Refresh_LogWarn("Unrecognized swapchain format!");
 		return 0;
 	}
+}
+
+static void VULKAN_SetSwapchainPresentMode(
+	Refresh_Renderer *driverData,
+	void *windowHandle,
+	Refresh_PresentMode presentMode
+) {
+	VulkanSwapchainData *swapchainData = (VulkanSwapchainData*) SDL_GetWindowData(windowHandle, WINDOW_SWAPCHAIN_DATA);
+
+	if (swapchainData == NULL)
+	{
+		Refresh_LogWarn("Cannot set present mode, window has not been claimed!");
+		return;
+	}
+
+	VULKAN_INTERNAL_RecreateSwapchain(
+		(VulkanRenderer *)driverData,
+		windowHandle,
+		presentMode
+	);
 }
 
 /* Submission structure */
@@ -9842,7 +9883,11 @@ static void VULKAN_Submit(
 
 			if (presentResult != VK_SUCCESS)
 			{
-				VULKAN_INTERNAL_RecreateSwapchain(renderer, presentData->swapchainData->windowHandle);
+				VULKAN_INTERNAL_RecreateSwapchain(
+					renderer,
+					presentData->swapchainData->windowHandle,
+					presentData->swapchainData->presentMode
+				);
 			}
 		}
 	}
@@ -10285,9 +10330,7 @@ static void VULKAN_INTERNAL_GetPhysicalDeviceProperties(
 
 static uint8_t VULKAN_INTERNAL_DeterminePhysicalDevice(
 	VulkanRenderer *renderer,
-	VkSurfaceKHR surface,
-	const char **deviceExtensionNames,
-	uint32_t deviceExtensionCount
+	VkSurfaceKHR surface
 ) {
 	VkResult vulkanResult;
 	VkPhysicalDevice *physicalDevices;
@@ -10513,9 +10556,8 @@ static uint8_t VULKAN_INTERNAL_CreateLogicalDevice(
 	return 1;
 }
 
-static void VULKAN_INTERNAL_LoadEntryPoints(
-	VulkanRenderer *renderer
-) {
+static void VULKAN_INTERNAL_LoadEntryPoints()
+{
 	/* Load Vulkan entry points */
 	if (SDL_Vulkan_LoadLibrary(NULL) < 0)
 	{
@@ -10546,12 +10588,96 @@ static void VULKAN_INTERNAL_LoadEntryPoints(
 	#include "Refresh_Driver_Vulkan_vkfuncs.h"
 }
 
+static uint8_t VULKAN_INTERNAL_PrepareVulkan(
+	VulkanRenderer *renderer
+) {
+	SDL_Window *dummyWindowHandle;
+	VkSurfaceKHR surface;
+
+	VULKAN_INTERNAL_LoadEntryPoints();
+
+	dummyWindowHandle = SDL_CreateWindow(
+		"Refresh Vulkan",
+		0, 0,
+		128, 128,
+		SDL_WINDOW_VULKAN | SDL_WINDOW_HIDDEN
+	);
+
+	if (dummyWindowHandle == NULL)
+	{
+		Refresh_LogWarn("Vulkan: Could not create dummy window");
+		return 0;
+	}
+
+	if (!VULKAN_INTERNAL_CreateInstance(renderer, dummyWindowHandle))
+	{
+		SDL_DestroyWindow(dummyWindowHandle);
+		SDL_free(renderer);
+		Refresh_LogWarn("Vulkan: Could not create Vulkan instance");
+		return 0;
+	}
+
+	if (!SDL_Vulkan_CreateSurface(
+		(SDL_Window*) dummyWindowHandle,
+		renderer->instance,
+		&surface
+	)) {
+		SDL_DestroyWindow(dummyWindowHandle);
+		SDL_free(renderer);
+		Refresh_LogWarn(
+			"SDL_Vulkan_CreateSurface failed: %s",
+			SDL_GetError()
+		);
+		return 0;
+	}
+
+	#define VULKAN_INSTANCE_FUNCTION(ext, ret, func, params) \
+		renderer->func = (vkfntype_##func) vkGetInstanceProcAddr(renderer->instance, #func);
+	#include "Refresh_Driver_Vulkan_vkfuncs.h"
+
+	if (!VULKAN_INTERNAL_DeterminePhysicalDevice(renderer, surface))
+	{
+		return 0;
+	}
+
+	renderer->vkDestroySurfaceKHR(
+		renderer->instance,
+		surface,
+		NULL
+	);
+	SDL_DestroyWindow(dummyWindowHandle);
+
+	return 1;
+}
+
+static uint8_t VULKAN_PrepareDriver(uint32_t *flags)
+{
+	/* Set up dummy VulkanRenderer */
+	VulkanRenderer *renderer = (VulkanRenderer*) SDL_malloc(sizeof(VulkanRenderer));
+	uint8_t result;
+
+	SDL_memset(renderer, '\0', sizeof(VulkanRenderer));
+
+	result = VULKAN_INTERNAL_PrepareVulkan(renderer);
+
+	if (!result)
+	{
+		Refresh_LogWarn("Vulkan: Failed to determine a suitable physical device");
+	}
+	else
+	{
+		*flags = SDL_WINDOW_VULKAN;
+	}
+
+	renderer->vkDestroyInstance(renderer->instance, NULL);
+	SDL_free(renderer);
+	return result;
+}
+
 static Refresh_Device* VULKAN_CreateDevice(
-	Refresh_PresentationParameters *presentationParameters,
 	uint8_t debugMode
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) SDL_malloc(sizeof(VulkanRenderer));
-	VkSurfaceKHR surface;
 
 	Refresh_Device *result;
 	VkResult vulkanResult;
@@ -10576,65 +10702,13 @@ static Refresh_Device* VULKAN_CreateDevice(
 	/* Variables: Image Format Detection */
 	VkImageFormatProperties imageFormatProperties;
 
-	VULKAN_INTERNAL_LoadEntryPoints(renderer);
-
-	renderer->presentMode = presentationParameters->presentMode;
 	renderer->debugMode = debugMode;
 
-	/* Create the VkInstance */
-	if (!VULKAN_INTERNAL_CreateInstance(renderer, presentationParameters->deviceWindowHandle))
+	if (!VULKAN_INTERNAL_PrepareVulkan(renderer))
 	{
-		Refresh_LogError("Error creating vulkan instance");
+		Refresh_LogError("Failed to initialize Vulkan!");
 		return NULL;
 	}
-
-	/*
-	 * Create the WSI vkSurface
-	 */
-
-	if (!SDL_Vulkan_CreateSurface(
-		(SDL_Window*)presentationParameters->deviceWindowHandle,
-		renderer->instance,
-		&surface
-	)) {
-		Refresh_LogError(
-			"SDL_Vulkan_CreateSurface failed: %s",
-			SDL_GetError()
-		);
-		return NULL;
-	}
-
-	/*
-	 * Get vkInstance entry points
-	 */
-
-	#define VULKAN_INSTANCE_FUNCTION(ext, ret, func, params) \
-			renderer->func = (vkfntype_##func) vkGetInstanceProcAddr(renderer->instance, #func);
-	#include "Refresh_Driver_Vulkan_vkfuncs.h"
-
-	/*
-	* Choose/Create vkDevice
-	*/
-
-	if (SDL_strcmp(SDL_GetPlatform(), "Stadia") != 0)
-	{
-		deviceExtensionCount -= 1;
-	}
-	if (!VULKAN_INTERNAL_DeterminePhysicalDevice(
-		renderer,
-		surface,
-		deviceExtensionNames,
-		deviceExtensionCount
-	)) {
-		Refresh_LogError("Failed to determine a suitable physical device");
-		return NULL;
-	}
-
-	renderer->vkDestroySurfaceKHR(
-		renderer->instance,
-		surface,
-		NULL
-	);
 
 	Refresh_LogInfo("Refresh Driver: Vulkan");
 	Refresh_LogInfo(
@@ -10677,7 +10751,7 @@ static Refresh_Device* VULKAN_CreateDevice(
 	result->driverData = (Refresh_Renderer*) renderer;
 
 	/*
-	 * Create initial swapchain
+	 * Create initial swapchain array
 	 */
 
 	renderer->swapchainDataCapacity = 1;
@@ -10685,12 +10759,6 @@ static Refresh_Device* VULKAN_CreateDevice(
 	renderer->swapchainDatas = SDL_malloc(
 		renderer->swapchainDataCapacity * sizeof(VulkanSwapchainData*)
 	);
-
-	if (!VULKAN_INTERNAL_CreateSwapchain(renderer, presentationParameters->deviceWindowHandle))
-	{
-		Refresh_LogError("Failed to create swapchain");
-		return NULL;
-	}
 
 	/* Threading */
 
@@ -11124,6 +11192,7 @@ static Refresh_Device* VULKAN_CreateDevice(
 
 Refresh_Driver VulkanDriver = {
 	"Vulkan",
+	VULKAN_PrepareDriver,
 	VULKAN_CreateDevice
 };
 
