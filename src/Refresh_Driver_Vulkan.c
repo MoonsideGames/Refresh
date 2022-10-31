@@ -4306,6 +4306,27 @@ static uint8_t VULKAN_INTERNAL_CreateSwapchain(
 		return 0;
 	}
 
+	if (	swapchainSupportDetails.capabilities.currentExtent.width == 0 ||
+		swapchainSupportDetails.capabilities.currentExtent.height == 0)
+	{
+		/* Not an error, just minimize behavior! */
+		renderer->vkDestroySurfaceKHR(
+			renderer->instance,
+			swapchainData->surface,
+			NULL
+		);
+		if (swapchainSupportDetails.formatsLength > 0)
+		{
+			SDL_free(swapchainSupportDetails.formats);
+		}
+		if (swapchainSupportDetails.presentModesLength > 0)
+		{
+			SDL_free(swapchainSupportDetails.presentModes);
+		}
+		SDL_free(swapchainData);
+		return 0;
+	}
+
 	swapchainData->swapchainFormat = VK_FORMAT_R8G8B8A8_UNORM;
 	swapchainData->swapchainSwizzle.r = VK_COMPONENT_SWIZZLE_IDENTITY;
 	swapchainData->swapchainSwizzle.g = VK_COMPONENT_SWIZZLE_IDENTITY;
@@ -4384,27 +4405,6 @@ static uint8_t VULKAN_INTERNAL_CreateSwapchain(
 		drawableHeight < swapchainSupportDetails.capabilities.minImageExtent.height ||
 		drawableHeight > swapchainSupportDetails.capabilities.maxImageExtent.height	)
 	{
-		if (	swapchainSupportDetails.capabilities.currentExtent.width == 0 ||
-			swapchainSupportDetails.capabilities.currentExtent.height == 0)
-		{
-			renderer->vkDestroySurfaceKHR(
-				renderer->instance,
-				swapchainData->surface,
-				NULL
-			);
-			if (swapchainSupportDetails.formatsLength > 0)
-			{
-				SDL_free(swapchainSupportDetails.formats);
-			}
-			if (swapchainSupportDetails.presentModesLength > 0)
-			{
-				SDL_free(swapchainSupportDetails.presentModes);
-			}
-			SDL_free(swapchainData);
-			/* Not an error, just Windows minimize behavior! */
-			return 0;
-		}
-
 		if (swapchainSupportDetails.capabilities.currentExtent.width != UINT32_MAX)
 		{
 			drawableWidth = VULKAN_INTERNAL_clamp(
