@@ -77,7 +77,7 @@ static uint32_t deviceExtensionCount = SDL_arraysize(deviceExtensionNames);
 #define UBO_BUFFER_SIZE 16000 			/* 16KB */
 #define DESCRIPTOR_POOL_STARTING_SIZE 128
 #define DESCRIPTOR_SET_DEACTIVATE_FRAMES 10
-#define WINDOW_SWAPCHAIN_DATA "Refresh_VulkanSwapchain"
+#define WINDOW_DATA "Refresh_VulkanWindowData"
 
 #define IDENTITY_SWIZZLE 		\
 {					\
@@ -789,7 +789,6 @@ typedef struct VulkanSwapchainData
 	/* Window surface */
 	VkSurfaceKHR surface;
 	VkSurfaceFormatKHR surfaceFormat;
-	void *windowHandle;
 
 	/* Swapchain for window surface */
 	VkSwapchainKHR swapchain;
@@ -807,6 +806,13 @@ typedef struct VulkanSwapchainData
 	VkSemaphore renderFinishedSemaphore;
 } VulkanSwapchainData;
 
+typedef struct WindowData
+{
+	void *windowHandle;
+	VkPresentModeKHR preferredPresentMode;
+	VulkanSwapchainData *swapchainData;
+} WindowData;
+
 typedef struct SwapChainSupportDetails
 {
 	VkSurfaceCapabilitiesKHR capabilities;
@@ -818,7 +824,7 @@ typedef struct SwapChainSupportDetails
 
 typedef struct VulkanPresentData
 {
-	VulkanSwapchainData *swapchainData;
+	WindowData *windowData;
 	uint32_t swapchainImageIndex;
 } VulkanPresentData;
 
@@ -1681,9 +1687,9 @@ typedef struct VulkanRenderer
 	VulkanMemoryAllocator *memoryAllocator;
 	VkPhysicalDeviceMemoryProperties memoryProperties;
 
-	VulkanSwapchainData **swapchainDatas;
-	uint32_t swapchainDataCount;
-	uint32_t swapchainDataCapacity;
+	WindowData **claimedWindows;
+	uint32_t claimedWindowCount;
+	uint32_t claimedWindowCapacity;
 
 	QueueFamilyIndices queueFamilyIndices;
 	VkQueue graphicsQueue;
@@ -1780,6 +1786,7 @@ typedef struct VulkanRenderer
 /* Forward declarations */
 
 static void VULKAN_INTERNAL_BeginCommandBuffer(VulkanRenderer *renderer, VulkanCommandBuffer *commandBuffer);
+static void VULKAN_UnclaimWindow(Refresh_Renderer *driverData, void *windowHandle);
 static void VULKAN_Wait(Refresh_Renderer *driverData);
 static void VULKAN_Submit(Refresh_Renderer *driverData, uint32_t commandBufferCount, Refresh_CommandBuffer **pCommandBuffers);
 static void VULKAN_INTERNAL_DestroyRenderTarget(VulkanRenderer *renderer, VulkanRenderTarget *renderTarget);
@@ -3223,12 +3230,17 @@ static void VULKAN_INTERNAL_DestroySampler(
 
 static void VULKAN_INTERNAL_DestroySwapchain(
 	VulkanRenderer* renderer,
-	void *windowHandle
+	WindowData *windowData
 ) {
 	uint32_t i;
 	VulkanSwapchainData *swapchainData;
 
-	swapchainData = (VulkanSwapchainData*) SDL_GetWindowData(windowHandle, WINDOW_SWAPCHAIN_DATA);
+	if (windowData == NULL)
+	{
+		return;
+	}
+
+	swapchainData = windowData->swapchainData;
 
 	if (swapchainData == NULL)
 	{
@@ -3275,17 +3287,7 @@ static void VULKAN_INTERNAL_DestroySwapchain(
 		NULL
 	);
 
-	for (i = 0; i < renderer->swapchainDataCount; i += 1)
-	{
-		if (windowHandle == renderer->swapchainDatas[i]->windowHandle)
-		{
-			renderer->swapchainDatas[i] = renderer->swapchainDatas[renderer->swapchainDataCount - 1];
-			renderer->swapchainDataCount -= 1;
-			break;
-		}
-	}
-
-	SDL_SetWindowData(windowHandle, WINDOW_SWAPCHAIN_DATA, NULL);
+	windowData->swapchainData = NULL;
 	SDL_free(swapchainData);
 }
 
@@ -4250,8 +4252,7 @@ static uint8_t VULKAN_INTERNAL_ChooseSwapPresentMode(
 
 static uint8_t VULKAN_INTERNAL_CreateSwapchain(
 	VulkanRenderer *renderer,
-	void *windowHandle,
-	Refresh_PresentMode presentMode
+	WindowData *windowData
 ) {
 	VkResult vulkanResult;
 	VulkanSwapchainData *swapchainData;
@@ -4264,12 +4265,11 @@ static uint8_t VULKAN_INTERNAL_CreateSwapchain(
 	uint32_t i;
 
 	swapchainData = SDL_malloc(sizeof(VulkanSwapchainData));
-	swapchainData->windowHandle = windowHandle;
 
 	/* Each swapchain must have its own surface. */
 
 	if (!SDL_Vulkan_CreateSurface(
-		(SDL_Window*) windowHandle,
+		(SDL_Window*) windowData->windowHandle,
 		renderer->instance,
 		&swapchainData->surface
 	)) {
@@ -4371,7 +4371,7 @@ static uint8_t VULKAN_INTERNAL_CreateSwapchain(
 	}
 
 	if (!VULKAN_INTERNAL_ChooseSwapPresentMode(
-		presentMode,
+		windowData->preferredPresentMode,
 		swapchainSupportDetails.presentModes,
 		swapchainSupportDetails.presentModesLength,
 		&swapchainData->presentMode
@@ -4395,7 +4395,7 @@ static uint8_t VULKAN_INTERNAL_CreateSwapchain(
 	}
 
 	SDL_Vulkan_GetDrawableSize(
-		(SDL_Window*) windowHandle,
+		(SDL_Window*) windowData->windowHandle,
 		&drawableWidth,
 		&drawableHeight
 	);
@@ -4622,31 +4622,17 @@ static uint8_t VULKAN_INTERNAL_CreateSwapchain(
 		&swapchainData->renderFinishedSemaphore
 	);
 
-	SDL_SetWindowData(windowHandle, WINDOW_SWAPCHAIN_DATA, swapchainData);
-
-	if (renderer->swapchainDataCount >= renderer->swapchainDataCapacity)
-	{
-		renderer->swapchainDataCapacity *= 2;
-		renderer->swapchainDatas = SDL_realloc(
-			renderer->swapchainDatas,
-			renderer->swapchainDataCapacity * sizeof(VulkanSwapchainData*)
-		);
-	}
-
-	renderer->swapchainDatas[renderer->swapchainDataCount] = swapchainData;
-	renderer->swapchainDataCount += 1;
-
+	windowData->swapchainData = swapchainData;
 	return 1;
 }
 
 static void VULKAN_INTERNAL_RecreateSwapchain(
 	VulkanRenderer* renderer,
-	void *windowHandle,
-	Refresh_PresentMode presentMode
+	WindowData *windowData
 ) {
 	VULKAN_Wait((Refresh_Renderer*) renderer);
-	VULKAN_INTERNAL_DestroySwapchain(renderer, windowHandle);
-	VULKAN_INTERNAL_CreateSwapchain(renderer, windowHandle, presentMode);
+	VULKAN_INTERNAL_DestroySwapchain(renderer, windowData);
+	VULKAN_INTERNAL_CreateSwapchain(renderer, windowData);
 }
 
 /* Command Buffers */
@@ -4719,12 +4705,12 @@ static void VULKAN_DestroyDevice(
 
 	VULKAN_Wait(device->driverData);
 
-	for (i = renderer->swapchainDataCount - 1; i >= 0; i -= 1)
+	for (i = renderer->claimedWindowCount - 1; i >= 0; i -= 1)
 	{
-		VULKAN_INTERNAL_DestroySwapchain(renderer, renderer->swapchainDatas[i]->windowHandle);
+		VULKAN_UnclaimWindow(device->driverData, renderer->claimedWindows[i]->windowHandle);
 	}
 
-	SDL_free(renderer->swapchainDatas);
+	SDL_free(renderer->claimedWindows);
 
 	VULKAN_Wait(device->driverData);
 
@@ -9264,10 +9250,10 @@ static Refresh_CommandBuffer* VULKAN_AcquireCommandBuffer(
 	return (Refresh_CommandBuffer*) commandBuffer;
 }
 
-static VulkanSwapchainData* VULKAN_INTERNAL_FetchSwapchainData(
+static WindowData* VULKAN_INTERNAL_FetchWindowData(
 	void *windowHandle
 ) {
-	return (VulkanSwapchainData*) SDL_GetWindowData(windowHandle, WINDOW_SWAPCHAIN_DATA);
+	return (WindowData*) SDL_GetWindowData(windowHandle, WINDOW_DATA);
 }
 
 static uint8_t VULKAN_ClaimWindow(
@@ -9276,11 +9262,38 @@ static uint8_t VULKAN_ClaimWindow(
 	Refresh_PresentMode presentMode
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
-	VulkanSwapchainData *swapchainData = VULKAN_INTERNAL_FetchSwapchainData(windowHandle);
+	WindowData *windowData = VULKAN_INTERNAL_FetchWindowData(windowHandle);
 
-	if (swapchainData == NULL)
+	if (windowData == NULL)
 	{
-		return VULKAN_INTERNAL_CreateSwapchain(renderer, windowHandle, presentMode);
+		windowData = SDL_malloc(sizeof(WindowData));
+		windowData->windowHandle = windowHandle;
+		windowData->preferredPresentMode = presentMode;
+
+		if (VULKAN_INTERNAL_CreateSwapchain(renderer, windowData))
+		{
+			SDL_SetWindowData((SDL_Window*) windowHandle, WINDOW_DATA, windowData);
+
+			if (renderer->claimedWindowCount >= renderer->claimedWindowCapacity)
+			{
+				renderer->claimedWindowCapacity *= 2;
+				renderer->claimedWindows = SDL_realloc(
+					renderer->claimedWindows,
+					renderer->claimedWindowCapacity * sizeof(WindowData*)
+				);
+			}
+
+			renderer->claimedWindows[renderer->claimedWindowCount] = windowData;
+			renderer->claimedWindowCount += 1;
+
+			return 1;
+		}
+		else
+		{
+			Refresh_LogError("Could not create swapchain, failed to claim window!");
+			SDL_free(windowData);
+			return 0;
+		}
 	}
 	else
 	{
@@ -9293,11 +9306,36 @@ static void VULKAN_UnclaimWindow(
 	Refresh_Renderer *driverData,
 	void *windowHandle
 ) {
-	VULKAN_Wait(driverData);
-	VULKAN_INTERNAL_DestroySwapchain(
-		(VulkanRenderer*) driverData,
-		windowHandle
-	);
+	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	WindowData *windowData = VULKAN_INTERNAL_FetchWindowData(windowHandle);
+	uint32_t i;
+
+	if (windowData == NULL)
+	{
+		return;
+	}
+
+	if (windowData->swapchainData != NULL)
+	{
+		VULKAN_Wait(driverData);
+		VULKAN_INTERNAL_DestroySwapchain(
+			(VulkanRenderer*) driverData,
+			windowData
+		);
+	}
+
+	for (i = 0; i < renderer->claimedWindowCount; i += 1)
+	{
+		if (renderer->claimedWindows[i]->windowHandle == windowHandle)
+		{
+			renderer->claimedWindows[i] = renderer->claimedWindows[renderer->claimedWindowCount - 1];
+			renderer->claimedWindowCount -= 1;
+			break;
+		}
+	}
+
+	SDL_free(windowData);
+	SDL_SetWindowData((SDL_Window*) windowHandle, WINDOW_DATA, NULL);
 }
 
 static Refresh_Texture* VULKAN_AcquireSwapchainTexture(
@@ -9310,17 +9348,40 @@ static Refresh_Texture* VULKAN_AcquireSwapchainTexture(
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
 	uint32_t swapchainImageIndex;
+	WindowData *windowData;
 	VulkanSwapchainData *swapchainData;
 	VkResult acquireResult = VK_SUCCESS;
 	VulkanTexture *swapchainTexture = NULL;
 	VulkanPresentData *presentData;
 
-	swapchainData = VULKAN_INTERNAL_FetchSwapchainData(windowHandle);
+	windowData = VULKAN_INTERNAL_FetchWindowData(windowHandle);
 
-	if (swapchainData == NULL)
+	if (windowData == NULL)
 	{
 		Refresh_LogError("Cannot acquire swapchain texture, window has not been claimed!");
 		return NULL;
+	}
+
+	swapchainData = windowData->swapchainData;
+
+	/* Window is claimed but swapchain is invalid! */
+	if (swapchainData == NULL)
+	{
+		if (SDL_GetWindowFlags(windowHandle) & SDL_WINDOW_MINIMIZED)
+		{
+			/* Window is minimized, don't bother */
+			return NULL;
+		}
+
+		/* Let's try to recreate */
+		VULKAN_INTERNAL_RecreateSwapchain(renderer, windowData);
+		swapchainData = windowData->swapchainData;
+
+		if (swapchainData == NULL)
+		{
+			Refresh_LogWarn("Failed to recreate swapchain!");
+			return NULL;
+		}
 	}
 
 	acquireResult = renderer->vkAcquireNextImageKHR(
@@ -9332,14 +9393,11 @@ static Refresh_Texture* VULKAN_AcquireSwapchainTexture(
 		&swapchainImageIndex
 	);
 
-	/* Swapchain is invalid, let's try to recreate */
+	/* Acquisition is invalid, let's try to recreate */
 	if (acquireResult != VK_SUCCESS && acquireResult != VK_SUBOPTIMAL_KHR)
 	{
-		swapchainData = VULKAN_INTERNAL_FetchSwapchainData(windowHandle);
-
-		VULKAN_INTERNAL_RecreateSwapchain(renderer, windowHandle, swapchainData->presentMode);
-
-		swapchainData = VULKAN_INTERNAL_FetchSwapchainData(windowHandle);
+		VULKAN_INTERNAL_RecreateSwapchain(renderer, windowData);
+		swapchainData = windowData->swapchainData;
 
 		if (swapchainData == NULL)
 		{
@@ -9358,6 +9416,7 @@ static Refresh_Texture* VULKAN_AcquireSwapchainTexture(
 
 		if (acquireResult != VK_SUCCESS && acquireResult != VK_SUBOPTIMAL_KHR)
 		{
+			Refresh_LogWarn("Failed to acquire swapchain texture!");
 			return NULL;
 		}
 	}
@@ -9392,7 +9451,7 @@ static Refresh_Texture* VULKAN_AcquireSwapchainTexture(
 	presentData = &vulkanCommandBuffer->presentDatas[vulkanCommandBuffer->presentDataCount];
 	vulkanCommandBuffer->presentDataCount += 1;
 
-	presentData->swapchainData = swapchainData;
+	presentData->windowData = windowData;
 	presentData->swapchainImageIndex = swapchainImageIndex;
 
 	/* Set up present semaphores */
@@ -9431,19 +9490,25 @@ static Refresh_TextureFormat VULKAN_GetSwapchainFormat(
 	Refresh_Renderer *driverData,
 	void *windowHandle
 ) {
-	VulkanSwapchainData *swapchainData = (VulkanSwapchainData*) SDL_GetWindowData(windowHandle, WINDOW_SWAPCHAIN_DATA);
+	WindowData *windowData = VULKAN_INTERNAL_FetchWindowData(windowHandle);
 
-	if (swapchainData == NULL)
+	if (windowData == NULL)
 	{
-		Refresh_LogWarn("No swapchain for this window!");
+		Refresh_LogWarn("Cannot get swapchain format, window has not been claimed!");
 		return 0;
 	}
 
-	if (swapchainData->swapchainFormat == VK_FORMAT_R8G8B8A8_UNORM)
+	if (windowData->swapchainData == NULL)
+	{
+		Refresh_LogWarn("Cannot get swapchain format, swapchain is currently invalid!");
+		return 0;
+	}
+
+	if (windowData->swapchainData->swapchainFormat == VK_FORMAT_R8G8B8A8_UNORM)
 	{
 		return REFRESH_TEXTUREFORMAT_R8G8B8A8;
 	}
-	else if (swapchainData->swapchainFormat == VK_FORMAT_B8G8R8A8_UNORM)
+	else if (windowData->swapchainData->swapchainFormat == VK_FORMAT_B8G8R8A8_UNORM)
 	{
 		return REFRESH_TEXTUREFORMAT_B8G8R8A8;
 	}
@@ -9459,9 +9524,9 @@ static void VULKAN_SetSwapchainPresentMode(
 	void *windowHandle,
 	Refresh_PresentMode presentMode
 ) {
-	VulkanSwapchainData *swapchainData = (VulkanSwapchainData*) SDL_GetWindowData(windowHandle, WINDOW_SWAPCHAIN_DATA);
+	WindowData *windowData = VULKAN_INTERNAL_FetchWindowData(windowHandle);
 
-	if (swapchainData == NULL)
+	if (windowData == NULL)
 	{
 		Refresh_LogWarn("Cannot set present mode, window has not been claimed!");
 		return;
@@ -9469,8 +9534,7 @@ static void VULKAN_SetSwapchainPresentMode(
 
 	VULKAN_INTERNAL_RecreateSwapchain(
 		(VulkanRenderer *)driverData,
-		windowHandle,
-		presentMode
+		windowData
 	);
 }
 
@@ -9815,8 +9879,8 @@ static void VULKAN_Submit(
 				0,
 				1,
 				0,
-				currentCommandBuffer->presentDatas[j].swapchainData->textures[swapchainImageIndex].image,
-				&currentCommandBuffer->presentDatas[j].swapchainData->textures[swapchainImageIndex].resourceAccessType
+				currentCommandBuffer->presentDatas[j].windowData->swapchainData->textures[swapchainImageIndex].image,
+				&currentCommandBuffer->presentDatas[j].windowData->swapchainData->textures[swapchainImageIndex].resourceAccessType
 			);
 		}
 
@@ -9869,9 +9933,9 @@ static void VULKAN_Submit(
 
 			presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
 			presentInfo.pNext = NULL;
-			presentInfo.pWaitSemaphores = &presentData->swapchainData->renderFinishedSemaphore;
+			presentInfo.pWaitSemaphores = &presentData->windowData->swapchainData->renderFinishedSemaphore;
 			presentInfo.waitSemaphoreCount = 1;
-			presentInfo.pSwapchains = &presentData->swapchainData->swapchain;
+			presentInfo.pSwapchains = &presentData->windowData->swapchainData->swapchain;
 			presentInfo.swapchainCount = 1;
 			presentInfo.pImageIndices = &presentData->swapchainImageIndex;
 			presentInfo.pResults = NULL;
@@ -9885,8 +9949,7 @@ static void VULKAN_Submit(
 			{
 				VULKAN_INTERNAL_RecreateSwapchain(
 					renderer,
-					presentData->swapchainData->windowHandle,
-					presentData->swapchainData->presentMode
+					presentData->windowData
 				);
 			}
 		}
@@ -10754,10 +10817,10 @@ static Refresh_Device* VULKAN_CreateDevice(
 	 * Create initial swapchain array
 	 */
 
-	renderer->swapchainDataCapacity = 1;
-	renderer->swapchainDataCount = 0;
-	renderer->swapchainDatas = SDL_malloc(
-		renderer->swapchainDataCapacity * sizeof(VulkanSwapchainData*)
+	renderer->claimedWindowCapacity = 1;
+	renderer->claimedWindowCount = 0;
+	renderer->claimedWindows = SDL_malloc(
+		renderer->claimedWindowCapacity * sizeof(WindowData*)
 	);
 
 	/* Threading */
