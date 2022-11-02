@@ -10549,6 +10549,7 @@ static uint8_t VULKAN_INTERNAL_CreateLogicalDevice(
 	deviceFeatures.occlusionQueryPrecise = VK_TRUE;
 	deviceFeatures.fillModeNonSolid = VK_TRUE;
 	deviceFeatures.depthClamp = VK_TRUE;
+	deviceFeatures.samplerAnisotropy = VK_TRUE;
 
 	/* creating the logical device */
 
