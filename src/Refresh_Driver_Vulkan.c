@@ -5446,7 +5446,7 @@ static VulkanRenderTarget* VULKAN_INTERNAL_CreateRenderTarget(
 				VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT
 			);
 
-		renderTarget->multisampleCount = multisampleCount;
+		renderTarget->multisampleCount = RefreshToVK_SampleCount[multisampleCount];
 	}
 
 	/* create framebuffer compatible views for RenderTarget */
@@ -5540,6 +5540,7 @@ static VulkanRenderTarget* VULKAN_INTERNAL_FetchRenderTarget(
 
 static VkRenderPass VULKAN_INTERNAL_CreateRenderPass(
 	VulkanRenderer *renderer,
+	VulkanCommandBuffer *commandBuffer,
 	Refresh_ColorAttachmentInfo *colorAttachmentInfos,
 	uint32_t colorAttachmentCount,
 	Refresh_DepthStencilAttachmentInfo *depthStencilAttachmentInfo
@@ -5574,6 +5575,23 @@ static VkRenderPass VULKAN_INTERNAL_CreateRenderPass(
 			colorAttachmentInfos[i].level,
 			colorAttachmentInfos[i].sampleCount
 		);
+
+		if (renderTarget->multisampleTexture != NULL)
+		{
+			VULKAN_INTERNAL_ImageMemoryBarrier(
+				renderer,
+				commandBuffer->commandBuffer,
+				RESOURCE_ACCESS_COLOR_ATTACHMENT_WRITE,
+				VK_IMAGE_ASPECT_COLOR_BIT,
+				0,
+				renderTarget->multisampleTexture->layerCount,
+				0,
+				renderTarget->multisampleTexture->levelCount,
+				0,
+				renderTarget->multisampleTexture->image,
+				&renderTarget->multisampleTexture->resourceAccessType
+			);
+		}
 
 		if (renderTarget->multisampleCount > VK_SAMPLE_COUNT_1_BIT)
 		{
@@ -5810,7 +5828,9 @@ static VkRenderPass VULKAN_INTERNAL_CreateTransientRenderPass(
 			attachmentDescriptions[attachmentDescriptionCount].format = RefreshToVK_SurfaceFormat[
 				attachmentDescription.format
 			];
-			attachmentDescriptions[attachmentDescriptionCount].samples = VK_SAMPLE_COUNT_1_BIT;
+			attachmentDescriptions[attachmentDescriptionCount].samples = RefreshToVK_SampleCount[
+				attachmentDescription.sampleCount
+			];
 			attachmentDescriptions[attachmentDescriptionCount].loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 			attachmentDescriptions[attachmentDescriptionCount].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
 			attachmentDescriptions[attachmentDescriptionCount].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
@@ -7980,6 +8000,7 @@ static void VULKAN_QueueDestroyGraphicsPipeline(
 
 static VkRenderPass VULKAN_INTERNAL_FetchRenderPass(
 	VulkanRenderer *renderer,
+	VulkanCommandBuffer *commandBuffer,
 	Refresh_ColorAttachmentInfo *colorAttachmentInfos,
 	uint32_t colorAttachmentCount,
 	Refresh_DepthStencilAttachmentInfo *depthStencilAttachmentInfo
@@ -8030,6 +8051,7 @@ static VkRenderPass VULKAN_INTERNAL_FetchRenderPass(
 
 	renderPass = VULKAN_INTERNAL_CreateRenderPass(
 		renderer,
+		commandBuffer,
 		colorAttachmentInfos,
 		colorAttachmentCount,
 		depthStencilAttachmentInfo
@@ -8307,6 +8329,7 @@ static void VULKAN_BeginRenderPass(
 	VulkanTexture *texture;
 	VkClearValue *clearValues;
 	uint32_t clearCount = colorAttachmentCount;
+	uint32_t multisampleAttachmentCount = 0;
 	uint32_t i;
 	VkImageAspectFlags depthAspectFlags;
 	Refresh_Viewport defaultViewport;
@@ -8356,6 +8379,7 @@ static void VULKAN_BeginRenderPass(
 
 	renderPass = VULKAN_INTERNAL_FetchRenderPass(
 		renderer,
+		vulkanCommandBuffer,
 		colorAttachmentInfos,
 		colorAttachmentCount,
 		depthStencilAttachmentInfo
@@ -8392,6 +8416,12 @@ static void VULKAN_BeginRenderPass(
 			texture->image,
 			&texture->resourceAccessType
 		);
+
+		if (colorAttachmentInfos[i].sampleCount > 1)
+		{
+			clearCount += 1;
+			multisampleAttachmentCount += 1;
+		}
 
 		VULKAN_INTERNAL_TrackTexture(renderer, vulkanCommandBuffer, texture);
 	}
@@ -8430,12 +8460,21 @@ static void VULKAN_BeginRenderPass(
 
 	clearValues = SDL_stack_alloc(VkClearValue, clearCount);
 
-	for (i = 0; i < colorAttachmentCount; i += 1)
+	for (i = 0; i < colorAttachmentCount + multisampleAttachmentCount; i += 1)
 	{
 		clearValues[i].color.float32[0] = colorAttachmentInfos[i].clearColor.x;
 		clearValues[i].color.float32[1] = colorAttachmentInfos[i].clearColor.y;
 		clearValues[i].color.float32[2] = colorAttachmentInfos[i].clearColor.z;
 		clearValues[i].color.float32[3] = colorAttachmentInfos[i].clearColor.w;
+
+		if (colorAttachmentInfos[i].sampleCount > 0)
+		{
+			i += 1;
+			clearValues[i].color.float32[0] = colorAttachmentInfos[i].clearColor.x;
+			clearValues[i].color.float32[1] = colorAttachmentInfos[i].clearColor.y;
+			clearValues[i].color.float32[2] = colorAttachmentInfos[i].clearColor.z;
+			clearValues[i].color.float32[3] = colorAttachmentInfos[i].clearColor.w;
+		}
 	}
 
 	if (depthStencilAttachmentInfo != NULL)
