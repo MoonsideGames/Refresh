@@ -395,7 +395,6 @@ struct Refresh_Device
 	void(*BeginRenderPass)(
 		Refresh_Renderer *driverData,
 		Refresh_CommandBuffer *commandBuffer,
-		Refresh_Rect *renderArea,
 		Refresh_ColorAttachmentInfo *colorAttachmentInfos,
 		uint32_t colorAttachmentCount,
 		Refresh_DepthStencilAttachmentInfo *depthStencilAttachmentInfo

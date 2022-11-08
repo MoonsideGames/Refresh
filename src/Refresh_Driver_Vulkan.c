@@ -971,6 +971,7 @@ typedef struct RenderPassHash
 	RenderPassColorTargetDescription colorTargetDescriptions[MAX_COLOR_TARGET_BINDINGS];
 	uint32_t colorAttachmentCount;
 	RenderPassDepthStencilTargetDescription depthStencilTargetDescription;
+	Refresh_SampleCount colorAttachmentSampleCount;
 } RenderPassHash;
 
 typedef struct RenderPassHashMap
@@ -993,6 +994,11 @@ static inline uint8_t RenderPassHash_Compare(
 	uint32_t i;
 
 	if (a->colorAttachmentCount != b->colorAttachmentCount)
+	{
+		return 0;
+	}
+
+	if (a->colorAttachmentSampleCount != b->colorAttachmentSampleCount)
 	{
 		return 0;
 	}
@@ -2021,6 +2027,29 @@ static inline VkDeviceSize VULKAN_INTERNAL_BytesPerImage(
 	}
 
 	return blocksPerRow * blocksPerColumn * VULKAN_INTERNAL_BytesPerPixel(format);
+}
+
+static inline Refresh_SampleCount VULKAN_INTERNAL_GetMaxMultiSampleCount(
+	VulkanRenderer *renderer,
+	Refresh_SampleCount multiSampleCount
+) {
+	VkSampleCountFlags flags = renderer->physicalDeviceProperties.properties.limits.framebufferColorSampleCounts;
+	Refresh_SampleCount maxSupported = REFRESH_SAMPLECOUNT_1;
+
+	if (flags & VK_SAMPLE_COUNT_8_BIT)
+	{
+		maxSupported = REFRESH_SAMPLECOUNT_8;
+	}
+	else if (flags & VK_SAMPLE_COUNT_4_BIT)
+	{
+		maxSupported = REFRESH_SAMPLECOUNT_4;
+	}
+	else if (flags & VK_SAMPLE_COUNT_2_BIT)
+	{
+		maxSupported = REFRESH_SAMPLECOUNT_2;
+	}
+
+	return SDL_min(multiSampleCount, maxSupported);
 }
 
 /* Memory Management */
@@ -5431,6 +5460,12 @@ static VulkanRenderTarget* VULKAN_INTERNAL_CreateRenderTarget(
 	/* create resolve target for multisample */
 	if (multisampleCount > REFRESH_SAMPLECOUNT_1)
 	{
+		/* Find a compatible sample count to use */
+		multisampleCount = VULKAN_INTERNAL_GetMaxMultiSampleCount(
+			renderer,
+			multisampleCount
+		);
+
 		renderTarget->multisampleTexture =
 			VULKAN_INTERNAL_CreateTexture(
 				renderer,
@@ -5576,8 +5611,12 @@ static VkRenderPass VULKAN_INTERNAL_CreateRenderPass(
 			colorAttachmentInfos[i].sampleCount
 		);
 
-		if (renderTarget->multisampleTexture != NULL)
+		if (renderTarget->multisampleCount > VK_SAMPLE_COUNT_1_BIT)
 		{
+			multisampling = 1;
+
+			/* Transition the multisample attachment */
+
 			VULKAN_INTERNAL_ImageMemoryBarrier(
 				renderer,
 				commandBuffer->commandBuffer,
@@ -5591,11 +5630,6 @@ static VkRenderPass VULKAN_INTERNAL_CreateRenderPass(
 				renderTarget->multisampleTexture->image,
 				&renderTarget->multisampleTexture->resourceAccessType
 			);
-		}
-
-		if (renderTarget->multisampleCount > VK_SAMPLE_COUNT_1_BIT)
-		{
-			multisampling = 1;
 
 			/* Resolve attachment and multisample attachment */
 
@@ -5606,9 +5640,8 @@ static VkRenderPass VULKAN_INTERNAL_CreateRenderPass(
 			attachmentDescriptions[attachmentDescriptionCount].loadOp = RefreshToVK_LoadOp[
 				colorAttachmentInfos[i].loadOp
 			];
-			attachmentDescriptions[attachmentDescriptionCount].storeOp = RefreshToVK_StoreOp[
-				colorAttachmentInfos[i].storeOp
-			];
+			attachmentDescriptions[attachmentDescriptionCount].storeOp =
+				VK_ATTACHMENT_STORE_OP_STORE; /* Always store the resolve texture */
 			attachmentDescriptions[attachmentDescriptionCount].stencilLoadOp =
 				VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 			attachmentDescriptions[attachmentDescriptionCount].stencilStoreOp =
@@ -5661,9 +5694,8 @@ static VkRenderPass VULKAN_INTERNAL_CreateRenderPass(
 			attachmentDescriptions[attachmentDescriptionCount].loadOp = RefreshToVK_LoadOp[
 				colorAttachmentInfos[i].loadOp
 			];
-			attachmentDescriptions[attachmentDescriptionCount].storeOp = RefreshToVK_StoreOp[
-				colorAttachmentInfos[i].storeOp
-			];
+			attachmentDescriptions[attachmentDescriptionCount].storeOp =
+				VK_ATTACHMENT_STORE_OP_STORE; /* Always store non-MSAA textures */
 			attachmentDescriptions[attachmentDescriptionCount].stencilLoadOp =
 				VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 			attachmentDescriptions[attachmentDescriptionCount].stencilStoreOp =
@@ -5778,7 +5810,8 @@ static VkRenderPass VULKAN_INTERNAL_CreateRenderPass(
 
 static VkRenderPass VULKAN_INTERNAL_CreateTransientRenderPass(
 	VulkanRenderer *renderer,
-	Refresh_GraphicsPipelineAttachmentInfo attachmentInfo
+	Refresh_GraphicsPipelineAttachmentInfo attachmentInfo,
+	Refresh_SampleCount sampleCount
 ) {
 	VkAttachmentDescription attachmentDescriptions[2 * MAX_COLOR_TARGET_BINDINGS + 1];
 	VkAttachmentReference colorAttachmentReferences[MAX_COLOR_TARGET_BINDINGS];
@@ -5800,7 +5833,7 @@ static VkRenderPass VULKAN_INTERNAL_CreateTransientRenderPass(
 	{
 		attachmentDescription = attachmentInfo.colorAttachmentDescriptions[i];
 
-		if (attachmentDescription.sampleCount > REFRESH_SAMPLECOUNT_1)
+		if (sampleCount > REFRESH_SAMPLECOUNT_1)
 		{
 			multisampling = 1;
 
@@ -5829,7 +5862,7 @@ static VkRenderPass VULKAN_INTERNAL_CreateTransientRenderPass(
 				attachmentDescription.format
 			];
 			attachmentDescriptions[attachmentDescriptionCount].samples = RefreshToVK_SampleCount[
-				attachmentDescription.sampleCount
+				sampleCount
 			];
 			attachmentDescriptions[attachmentDescriptionCount].loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 			attachmentDescriptions[attachmentDescriptionCount].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
@@ -5960,6 +5993,7 @@ static Refresh_GraphicsPipeline* VULKAN_CreateGraphicsPipeline(
 ) {
 	VkResult vulkanResult;
 	uint32_t i;
+	Refresh_SampleCount actualSampleCount;
 
 	VulkanGraphicsPipeline *graphicsPipeline = (VulkanGraphicsPipeline*) SDL_malloc(sizeof(VulkanGraphicsPipeline));
 	VkGraphicsPipelineCreateInfo vkPipelineCreateInfo;
@@ -5997,11 +6031,19 @@ static Refresh_GraphicsPipeline* VULKAN_CreateGraphicsPipeline(
 
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 
+	/* Find a compatible sample count to use */
+
+	actualSampleCount = VULKAN_INTERNAL_GetMaxMultiSampleCount(
+		renderer,
+		pipelineCreateInfo->multisampleState.multisampleCount
+	);
+
 	/* Create a "compatible" render pass */
 
 	VkRenderPass transientRenderPass = VULKAN_INTERNAL_CreateTransientRenderPass(
 		renderer,
-		pipelineCreateInfo->attachmentInfo
+		pipelineCreateInfo->attachmentInfo,
+		actualSampleCount
 	);
 
 	/* Dynamic state */
@@ -6132,9 +6174,7 @@ static Refresh_GraphicsPipeline* VULKAN_CreateGraphicsPipeline(
 	multisampleStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
 	multisampleStateCreateInfo.pNext = NULL;
 	multisampleStateCreateInfo.flags = 0;
-	multisampleStateCreateInfo.rasterizationSamples = RefreshToVK_SampleCount[
-		pipelineCreateInfo->multisampleState.multisampleCount
-	];
+	multisampleStateCreateInfo.rasterizationSamples = RefreshToVK_SampleCount[actualSampleCount];
 	multisampleStateCreateInfo.sampleShadingEnable = VK_FALSE;
 	multisampleStateCreateInfo.minSampleShading = 1.0f;
 	multisampleStateCreateInfo.pSampleMask =
@@ -8019,6 +8059,10 @@ static VkRenderPass VULKAN_INTERNAL_FetchRenderPass(
 		hash.colorTargetDescriptions[i].storeOp = colorAttachmentInfos[i].storeOp;
 	}
 
+	hash.colorAttachmentSampleCount = (colorAttachmentCount > 0) ?
+		colorAttachmentInfos[0].sampleCount :
+		REFRESH_SAMPLECOUNT_1;
+
 	hash.colorAttachmentCount = colorAttachmentCount;
 
 	if (depthStencilAttachmentInfo == NULL)
@@ -8316,7 +8360,6 @@ static void VULKAN_SetScissor(
 static void VULKAN_BeginRenderPass(
 	Refresh_Renderer *driverData,
 	Refresh_CommandBuffer *commandBuffer,
-	Refresh_Rect *renderArea,
 	Refresh_ColorAttachmentInfo *colorAttachmentInfos,
 	uint32_t colorAttachmentCount,
 	Refresh_DepthStencilAttachmentInfo *depthStencilAttachmentInfo
@@ -8417,7 +8460,7 @@ static void VULKAN_BeginRenderPass(
 			&texture->resourceAccessType
 		);
 
-		if (colorAttachmentInfos[i].sampleCount > 1)
+		if (colorAttachmentInfos[i].sampleCount > REFRESH_SAMPLECOUNT_1)
 		{
 			clearCount += 1;
 			multisampleAttachmentCount += 1;
@@ -8467,7 +8510,7 @@ static void VULKAN_BeginRenderPass(
 		clearValues[i].color.float32[2] = colorAttachmentInfos[i].clearColor.z;
 		clearValues[i].color.float32[3] = colorAttachmentInfos[i].clearColor.w;
 
-		if (colorAttachmentInfos[i].sampleCount > 0)
+		if (colorAttachmentInfos[i].sampleCount > REFRESH_SAMPLECOUNT_1)
 		{
 			i += 1;
 			clearValues[i].color.float32[0] = colorAttachmentInfos[i].clearColor.x;
@@ -8492,21 +8535,10 @@ static void VULKAN_BeginRenderPass(
 	renderPassBeginInfo.framebuffer = framebuffer->framebuffer;
 	renderPassBeginInfo.pClearValues = clearValues;
 	renderPassBeginInfo.clearValueCount = clearCount;
-
-	if (renderArea != NULL)
-	{
-		renderPassBeginInfo.renderArea.extent.width = renderArea->w;
-		renderPassBeginInfo.renderArea.extent.height = renderArea->h;
-		renderPassBeginInfo.renderArea.offset.x = renderArea->x;
-		renderPassBeginInfo.renderArea.offset.y = renderArea->y;
-	}
-	else
-	{
-		renderPassBeginInfo.renderArea.extent.width = framebufferWidth;
-		renderPassBeginInfo.renderArea.extent.height = framebufferHeight;
-		renderPassBeginInfo.renderArea.offset.x = 0;
-		renderPassBeginInfo.renderArea.offset.y = 0;
-	}
+	renderPassBeginInfo.renderArea.extent.width = framebufferWidth;
+	renderPassBeginInfo.renderArea.extent.height = framebufferHeight;
+	renderPassBeginInfo.renderArea.offset.x = 0;
+	renderPassBeginInfo.renderArea.offset.y = 0;
 
 	renderer->vkCmdBeginRenderPass(
 		vulkanCommandBuffer->commandBuffer,

@@ -625,7 +625,6 @@ void Refresh_QueueDestroyGraphicsPipeline(
 void Refresh_BeginRenderPass(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
-	Refresh_Rect *renderArea,
 	Refresh_ColorAttachmentInfo *colorAttachmentInfos,
 	uint32_t colorAttachmentCount,
 	Refresh_DepthStencilAttachmentInfo *depthStencilAttachmentInfo
@@ -634,7 +633,6 @@ void Refresh_BeginRenderPass(
 	device->BeginRenderPass(
 		device->driverData,
 		commandBuffer,
-		renderArea,
 		colorAttachmentInfos,
 		colorAttachmentCount,
 		depthStencilAttachmentInfo

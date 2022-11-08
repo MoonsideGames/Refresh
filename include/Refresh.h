@@ -169,10 +169,7 @@ typedef enum Refresh_SampleCount
 	REFRESH_SAMPLECOUNT_1,
 	REFRESH_SAMPLECOUNT_2,
 	REFRESH_SAMPLECOUNT_4,
-	REFRESH_SAMPLECOUNT_8,
-	REFRESH_SAMPLECOUNT_16,
-	REFRESH_SAMPLECOUNT_32,
-	REFRESH_SAMPLECOUNT_64
+	REFRESH_SAMPLECOUNT_8
 } Refresh_SampleCount;
 
 typedef enum Refresh_CubeMapFace
@@ -467,7 +464,6 @@ typedef struct Refresh_TextureCreateInfo
 	uint32_t height;
 	uint32_t depth;
 	uint8_t isCube;
-	Refresh_SampleCount sampleCount;
 	uint32_t levelCount;
 	Refresh_TextureFormat format;
 	Refresh_TextureUsageFlags usageFlags;
@@ -526,7 +522,6 @@ typedef struct Refresh_DepthStencilState
 typedef struct Refresh_ColorAttachmentDescription
 {
 	Refresh_TextureFormat format;
-	Refresh_SampleCount sampleCount;
 	Refresh_ColorAttachmentBlendState blendState;
 } Refresh_ColorAttachmentDescription;
 
@@ -1000,11 +995,6 @@ REFRESHAPI void Refresh_QueueDestroyGraphicsPipeline(
 /* Begins a render pass.
  * This will also set a default viewport and scissor state.
  *
- * renderArea:
- * 		The area affected by the render pass.
- * 		All load, store and resolve operations are restricted
- * 		to the given rectangle.
- * 		If NULL, a sensible default will be chosen.
  * colorAttachmentInfos:
  * 		A pointer to an array of Refresh_ColorAttachmentInfo structures
  * 		that contains render targets and clear values. May be NULL.
@@ -1014,7 +1004,6 @@ REFRESHAPI void Refresh_QueueDestroyGraphicsPipeline(
 REFRESHAPI void Refresh_BeginRenderPass(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
-	Refresh_Rect *renderArea,
 	Refresh_ColorAttachmentInfo *colorAttachmentInfos,
 	uint32_t colorAttachmentCount,
 	Refresh_DepthStencilAttachmentInfo *depthStencilAttachmentInfo
