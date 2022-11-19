@@ -287,11 +287,7 @@ static VkBlendFactor RefreshToVK_BlendFactor[] =
 	VK_BLEND_FACTOR_ONE_MINUS_CONSTANT_COLOR,
 	VK_BLEND_FACTOR_CONSTANT_ALPHA,
 	VK_BLEND_FACTOR_ONE_MINUS_CONSTANT_ALPHA,
-	VK_BLEND_FACTOR_SRC_ALPHA_SATURATE,
-	VK_BLEND_FACTOR_SRC1_COLOR,
-	VK_BLEND_FACTOR_ONE_MINUS_SRC1_COLOR,
-	VK_BLEND_FACTOR_SRC1_ALPHA,
-	VK_BLEND_FACTOR_ONE_MINUS_SRC1_ALPHA
+	VK_BLEND_FACTOR_SRC_ALPHA_SATURATE
 };
 
 static VkBlendOp RefreshToVK_BlendOp[] =
@@ -6137,7 +6133,7 @@ static Refresh_GraphicsPipeline* VULKAN_CreateGraphicsPipeline(
 	rasterizationStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
 	rasterizationStateCreateInfo.pNext = NULL;
 	rasterizationStateCreateInfo.flags = 0;
-	rasterizationStateCreateInfo.depthClampEnable = pipelineCreateInfo->rasterizerState.depthClampEnable;
+	rasterizationStateCreateInfo.depthClampEnable = VK_FALSE;
 	rasterizationStateCreateInfo.rasterizerDiscardEnable = VK_FALSE;
 	rasterizationStateCreateInfo.polygonMode = RefreshToVK_PolygonMode[
 		pipelineCreateInfo->rasterizerState.fillMode
@@ -10539,9 +10535,7 @@ static uint8_t VULKAN_INTERNAL_CreateLogicalDevice(
 	/* specifying used device features */
 
 	SDL_zero(deviceFeatures);
-	deviceFeatures.occlusionQueryPrecise = VK_TRUE;
 	deviceFeatures.fillModeNonSolid = VK_TRUE;
-	deviceFeatures.depthClamp = VK_TRUE;
 	deviceFeatures.samplerAnisotropy = VK_TRUE;
 
 	/* creating the logical device */

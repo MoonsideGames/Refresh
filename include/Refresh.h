@@ -281,11 +281,7 @@ typedef enum Refresh_BlendFactor
 	REFRESH_BLENDFACTOR_ONE_MINUS_DST_ALPHA,
 	REFRESH_BLENDFACTOR_CONSTANT_COLOR,
 	REFRESH_BLENDFACTOR_ONE_MINUS_CONSTANT_COLOR,
-	REFRESH_BLENDFACTOR_SRC_ALPHA_SATURATE,
-	REFRESH_BLENDFACTOR_SRC1_COLOR,
-	REFRESH_BLENDFACTOR_ONE_MINUS_SRC1_COLOR,
-	REFRESH_BLENDFACTOR_SRC1_ALPHA,
-	REFRESH_BLENDFACTOR_ONE_MINUS_SRC1_ALPHA
+	REFRESH_BLENDFACTOR_SRC_ALPHA_SATURATE
 } Refresh_BlendFactor;
 
 typedef enum Refresh_ColorComponentFlagBits
@@ -484,7 +480,6 @@ typedef struct Refresh_ComputeShaderInfo
 
 typedef struct Refresh_RasterizerState
 {
-	uint8_t depthClampEnable;
 	Refresh_FillMode fillMode;
 	Refresh_CullMode cullMode;
 	Refresh_FrontFace frontFace;
