@@ -2985,7 +2985,7 @@ static void VULKAN_INTERNAL_RemoveFramebuffersContainingView(
 
 		for (j = 0; j < hash->colorAttachmentCount; j += 1)
 		{
-			if (hash->colorAttachmentViews[i] == view)
+			if (hash->colorAttachmentViews[j] == view)
 			{
 				VULKAN_INTERNAL_QueueDestroyFramebuffer(
 					renderer,
