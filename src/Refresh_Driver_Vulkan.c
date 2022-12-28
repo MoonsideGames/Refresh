@@ -2672,11 +2672,6 @@ static void VULKAN_INTERNAL_BufferMemoryBarrier(
 	VulkanResourceAccessType prevAccess, nextAccess;
 	const VulkanResourceAccessInfo *prevAccessInfo, *nextAccessInfo;
 
-	if (buffer->resourceAccessType == nextResourceAccessType)
-	{
-		return;
-	}
-
 	memoryBarrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
 	memoryBarrier.pNext = NULL;
 	memoryBarrier.srcAccessMask = 0;
@@ -2750,11 +2745,6 @@ static void VULKAN_INTERNAL_ImageMemoryBarrier(
 	VkImageMemoryBarrier memoryBarrier;
 	VulkanResourceAccessType prevAccess;
 	const VulkanResourceAccessInfo *pPrevAccessInfo, *pNextAccessInfo;
-
-	if (*resourceAccessType == nextAccess)
-	{
-		return;
-	}
 
 	memoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
 	memoryBarrier.pNext = NULL;
