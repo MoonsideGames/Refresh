@@ -3826,8 +3826,7 @@ static void VULKAN_INTERNAL_BindUniformBuffer(
 
 static uint8_t VULKAN_INTERNAL_CreateUniformBuffer(
 	VulkanRenderer *renderer,
-	VulkanUniformBufferPool *bufferPool,
-	VkDeviceSize blockSize
+	VulkanUniformBufferPool *bufferPool
 ) {
 	VulkanResourceAccessType resourceAccessType;
 	VkDescriptorSetLayout descriptorSetLayout;
@@ -4033,7 +4032,7 @@ static VulkanUniformBuffer* VULKAN_INTERNAL_AcquireUniformBufferFromPool(
 
 	if (bufferPool->availableBufferCount == 0)
 	{
-		if (!VULKAN_INTERNAL_CreateUniformBuffer(renderer, bufferPool, blockSize))
+		if (!VULKAN_INTERNAL_CreateUniformBuffer(renderer, bufferPool))
 		{
 			SDL_UnlockMutex(bufferPool->lock);
 			Refresh_LogError("Failed to create uniform buffer!");
@@ -6845,12 +6844,6 @@ static void VULKAN_SetTextureData(
 	uint32_t bufferRowLength;
 	uint32_t bufferImageHeight;
 
-	if (vulkanCommandBuffer->renderPassInProgress)
-	{
-		Refresh_LogError("Cannot perform buffer updates mid-render pass!");
-		return;
-	}
-
 	transferBuffer = VULKAN_INTERNAL_AcquireTransferBuffer(
 		renderer,
 		vulkanCommandBuffer,
@@ -7344,12 +7337,6 @@ static void VULKAN_SetBufferData(
 	VkBufferCopy bufferCopy;
 	VulkanResourceAccessType accessType = vulkanBuffer->resourceAccessType;
 
-	if (vulkanCommandBuffer->renderPassInProgress)
-	{
-		Refresh_LogError("Cannot perform buffer updates mid-render pass!");
-		return;
-	}
-
 	transferBuffer = VULKAN_INTERNAL_AcquireTransferBuffer(
 		renderer,
 		vulkanCommandBuffer,
@@ -7477,18 +7464,6 @@ static uint32_t VULKAN_PushFragmentShaderUniforms(
 	VulkanGraphicsPipeline* graphicsPipeline = vulkanCommandBuffer->currentGraphicsPipeline;
 	uint32_t offset;
 
-	if (graphicsPipeline == NULL)
-	{
-		Refresh_LogError("Cannot push uniforms if a pipeline is not bound!");
-		return 0;
-	}
-
-	if (graphicsPipeline->fragmentUniformBlockSize == 0)
-	{
-		Refresh_LogError("Bound pipeline's fragment stage does not declare uniforms!");
-		return 0;
-	}
-
 	if (
 		vulkanCommandBuffer->fragmentUniformBuffer->offset +
 		graphicsPipeline->fragmentUniformBlockSize >=
@@ -7530,18 +7505,6 @@ static uint32_t VULKAN_PushComputeShaderUniforms(
 	VulkanCommandBuffer* vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
 	VulkanComputePipeline* computePipeline = vulkanCommandBuffer->currentComputePipeline;
 	uint32_t offset;
-
-	if (computePipeline == NULL)
-	{
-		Refresh_LogError("Cannot push uniforms if a pipeline is not bound!");
-		return 0;
-	}
-
-	if (computePipeline->uniformBlockSize == 0)
-	{
-		Refresh_LogError("Bound compute pipeline does not declare uniforms!");
-		return 0;
-	}
 
 	if (
 		vulkanCommandBuffer->computeUniformBuffer->offset +
@@ -8291,12 +8254,6 @@ static void VULKAN_SetViewport(
 	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
 	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
 
-	if (!vulkanCommandBuffer->renderPassInProgress)
-	{
-		Refresh_LogError("Illegal to set viewport state outside of a render pass!");
-		return;
-	}
-
 	VULKAN_INTERNAL_SetCurrentViewport(
 		vulkanCommandBuffer,
 		viewport
@@ -8327,12 +8284,6 @@ static void VULKAN_SetScissor(
 ) {
 	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
 	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
-
-	if (!vulkanCommandBuffer->renderPassInProgress)
-	{
-		Refresh_LogError("Illegal to set scissor state outside of a render pass!");
-		return;
-	}
 
 	VULKAN_INTERNAL_SetCurrentScissor(
 		vulkanCommandBuffer,
@@ -8369,12 +8320,6 @@ static void VULKAN_BeginRenderPass(
 	Refresh_Rect defaultScissor;
 	uint32_t framebufferWidth = UINT32_MAX;
 	uint32_t framebufferHeight = UINT32_MAX;
-
-	if (colorAttachmentCount == 0 && depthStencilAttachmentInfo == NULL)
-	{
-		Refresh_LogError("Render pass must have at least one render target!");
-		return;
-	}
 
 	/* The framebuffer cannot be larger than the smallest attachment. */
 
@@ -8685,12 +8630,6 @@ static void VULKAN_BindGraphicsPipeline(
 	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
 	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
 	VulkanGraphicsPipeline* pipeline = (VulkanGraphicsPipeline*) graphicsPipeline;
-
-	if (!vulkanCommandBuffer->renderPassInProgress)
-	{
-		Refresh_LogError("Illegal to bind a graphics pipeline outside of a render pass!");
-		return;
-	}
 
 	if (	vulkanCommandBuffer->vertexUniformBuffer != renderer->dummyVertexUniformBuffer &&
 		vulkanCommandBuffer->vertexUniformBuffer != NULL
@@ -9416,13 +9355,6 @@ static Refresh_Texture* VULKAN_AcquireSwapchainTexture(
 	VulkanPresentData *presentData;
 
 	windowData = VULKAN_INTERNAL_FetchWindowData(windowHandle);
-
-	if (windowData == NULL)
-	{
-		Refresh_LogError("Cannot acquire swapchain texture, window has not been claimed!");
-		return NULL;
-	}
-
 	swapchainData = windowData->swapchainData;
 
 	/* Window is claimed but swapchain is invalid! */

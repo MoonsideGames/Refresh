@@ -446,12 +446,6 @@ typedef struct Refresh_ColorAttachmentBlendState
 	Refresh_ColorComponentFlags colorWriteMask;
 } Refresh_ColorAttachmentBlendState;
 
-typedef struct Refresh_ComputePipelineLayoutCreateInfo
-{
-	uint32_t bufferBindingCount;
-	uint32_t imageBindingCount;
-} Refresh_ComputePipelineLayoutCreateInfo;
-
 typedef struct Refresh_ShaderModuleCreateInfo
 {
 	size_t codeSize;
@@ -761,6 +755,11 @@ REFRESHAPI Refresh_Buffer* Refresh_CreateBuffer(
 
 /* Uploads image data to a texture object.
  *
+ * NOTE: 
+ *	DO NOT expect this to execute in sequence relative to other commands!
+ *	Calling SetTextureData in a command buffer that also references the
+ *	texture may result in undefined behavior.
+ *
  * 	textureSlice:		The texture slice to be updated.
  * 	data:				A pointer to the image data.
  * 	dataLengthInBytes:	The size of the image data.
@@ -1036,7 +1035,9 @@ REFRESHAPI void Refresh_SetScissor(
 	Refresh_Rect *scissor
 );
 
-/* Binds vertex buffers for use with subsequent draw calls. */
+/* Binds vertex buffers for use with subsequent draw calls.
+ * Note that this may only be called after binding a graphics pipeline.
+ */
 REFRESHAPI void Refresh_BindVertexBuffers(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
