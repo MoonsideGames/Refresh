@@ -10038,11 +10038,11 @@ static void VULKAN_Submit(
 		}
 	}
 
-	SDL_UnlockMutex(renderer->submitLock);
-
 	/* Check pending destroys */
 
 	VULKAN_INTERNAL_PerformPendingDestroys(renderer);
+
+	SDL_UnlockMutex(renderer->submitLock);
 }
 
 /* Device instantiation */
