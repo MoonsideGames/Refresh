@@ -376,6 +376,14 @@ typedef struct Refresh_TextureSlice
 	uint32_t level;
 } Refresh_TextureSlice;
 
+typedef struct Refresh_IndirectDrawCommand
+{
+	uint32_t vertexCount;
+	uint32_t instanceCount;
+	uint32_t firstVertex;
+	uint32_t firstInstance;
+} Refresh_IndirectDrawCommand;
+
 /* State structures */
 
 typedef struct Refresh_SamplerStateCreateInfo
@@ -666,6 +674,7 @@ REFRESHAPI void Refresh_DrawPrimitives(
 );
 
 /* Similar to Refresh_DrawPrimitives, but draw parameters are set from a buffer.
+ * The buffer layout should match the layout of Refresh_IndirectDrawCommand.
  *
  * buffer:              A buffer containing draw parameters.
  * offsetInBytes:       The offset to start reading from the draw buffer.

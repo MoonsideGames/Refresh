@@ -10537,6 +10537,7 @@ static uint8_t VULKAN_INTERNAL_CreateLogicalDevice(
 	SDL_zero(deviceFeatures);
 	deviceFeatures.fillModeNonSolid = VK_TRUE;
 	deviceFeatures.samplerAnisotropy = VK_TRUE;
+	deviceFeatures.multiDrawIndirect = VK_TRUE;
 
 	/* creating the logical device */
 
