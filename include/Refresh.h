@@ -55,7 +55,7 @@ extern "C" {
 /* Version API */
 
 #define REFRESH_MAJOR_VERSION   1
-#define REFRESH_MINOR_VERSION	9
+#define REFRESH_MINOR_VERSION	10
 #define REFRESH_PATCH_VERSION	0
 
 #define REFRESH_COMPILED_VERSION ( \
@@ -759,7 +759,7 @@ REFRESHAPI Refresh_Buffer* Refresh_CreateBuffer(
 
 /* Uploads image data to a texture object.
  *
- * NOTE: 
+ * NOTE:
  *	DO NOT expect this to execute in sequence relative to other commands!
  *	Calling SetTextureData in a command buffer that also references the
  *	texture may result in undefined behavior.
