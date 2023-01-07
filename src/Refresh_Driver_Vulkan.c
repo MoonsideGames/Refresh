@@ -6734,9 +6734,11 @@ static Refresh_Buffer* VULKAN_CreateBuffer(
 static VulkanTransferBuffer* VULKAN_INTERNAL_AcquireTransferBuffer(
 	VulkanRenderer *renderer,
 	VulkanCommandBuffer *commandBuffer,
-	VkDeviceSize requiredSize
+	VkDeviceSize requiredSize,
+	VkDeviceSize alignment
 ) {
 	VkDeviceSize size;
+	VkDeviceSize offset;
 	uint32_t i;
 	VulkanTransferBuffer *transferBuffer;
 
@@ -6745,9 +6747,11 @@ static VulkanTransferBuffer* VULKAN_INTERNAL_AcquireTransferBuffer(
 	for (i = 0; i < commandBuffer->transferBufferCount; i += 1)
 	{
 		transferBuffer = commandBuffer->transferBuffers[i];
+		offset = transferBuffer->offset + alignment - (transferBuffer->offset % alignment);
 
-		if (transferBuffer->offset + requiredSize <= transferBuffer->buffer->size)
+		if (offset + requiredSize <= transferBuffer->buffer->size)
 		{
+			transferBuffer->offset = offset;
 			return transferBuffer;
 		}
 	}
@@ -6759,8 +6763,9 @@ static VulkanTransferBuffer* VULKAN_INTERNAL_AcquireTransferBuffer(
 	for (i = 0; i < renderer->transferBufferPool.availableBufferCount; i += 1)
 	{
 		transferBuffer = renderer->transferBufferPool.availableBuffers[i];
+		offset = transferBuffer->offset + alignment - (transferBuffer->offset % alignment);
 
-		if (transferBuffer->offset + requiredSize <= transferBuffer->buffer->size)
+		if (offset + requiredSize <= transferBuffer->buffer->size)
 		{
 			if (commandBuffer->transferBufferCount == commandBuffer->transferBufferCapacity)
 			{
@@ -6778,6 +6783,7 @@ static VulkanTransferBuffer* VULKAN_INTERNAL_AcquireTransferBuffer(
 			renderer->transferBufferPool.availableBufferCount -= 1;
 			SDL_UnlockMutex(renderer->transferBufferPool.lock);
 
+			transferBuffer->offset = offset;
 			return transferBuffer;
 		}
 	}
@@ -6847,7 +6853,8 @@ static void VULKAN_SetTextureData(
 			textureSlice->rectangle.w,
 			textureSlice->rectangle.h,
 			vulkanTexture->format
-		)
+		),
+		VULKAN_INTERNAL_BytesPerPixel(vulkanTexture->format)
 	);
 
 	if (transferBuffer == NULL)
@@ -6944,7 +6951,7 @@ static void VULKAN_SetTextureDataYUV(
 	uint32_t dataLength
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
-	VulkanTexture *tex;
+	VulkanTexture *tex = (VulkanTexture*) y;
 
 	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*)commandBuffer;
 	VulkanTransferBuffer *transferBuffer;
@@ -6957,7 +6964,8 @@ static void VULKAN_SetTextureDataYUV(
 	transferBuffer = VULKAN_INTERNAL_AcquireTransferBuffer(
 		renderer,
 		vulkanCommandBuffer,
-		yDataLength + uvDataLength
+		yDataLength + uvDataLength,
+		VULKAN_INTERNAL_BytesPerPixel(tex->format)
 	);
 
 	if (transferBuffer == NULL)
@@ -6982,8 +6990,6 @@ static void VULKAN_SetTextureDataYUV(
 	imageCopy.imageSubresource.mipLevel = 0;
 
 	/* Y */
-
-	tex = (VulkanTexture*) y;
 
 	SDL_memcpy(
 		stagingBufferPointer,
@@ -7336,7 +7342,8 @@ static void VULKAN_SetBufferData(
 	transferBuffer = VULKAN_INTERNAL_AcquireTransferBuffer(
 		renderer,
 		vulkanCommandBuffer,
-		dataLength
+		dataLength,
+		renderer->physicalDeviceProperties.properties.limits.optimalBufferCopyOffsetAlignment
 	);
 
 	if (transferBuffer == NULL)
