@@ -9227,27 +9227,6 @@ static Refresh_CommandBuffer* VULKAN_AcquireCommandBuffer(
 	commandBuffer->renderPassInProgress = 0;
 	commandBuffer->renderPassColorTargetCount = 0;
 
-	result = renderer->vkResetCommandBuffer(
-		commandBuffer->commandBuffer,
-		VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT
-	);
-
-	if (result != VK_SUCCESS)
-	{
-		LogVulkanResultAsError("vkResetCommandBuffer", result);
-	}
-
-	result = renderer->vkResetFences(
-		renderer->logicalDevice,
-		1,
-		&commandBuffer->inFlightFence
-	);
-
-	if (result != VK_SUCCESS)
-	{
-		LogVulkanResultAsError("vkResetFences", result);
-	}
-
 	VULKAN_INTERNAL_BeginCommandBuffer(renderer, commandBuffer);
 
 	return (Refresh_CommandBuffer*) commandBuffer;
@@ -9651,6 +9630,7 @@ static void VULKAN_INTERNAL_CleanCommandBuffer(
 	uint32_t i;
 	VulkanUniformBuffer *uniformBuffer;
 	DescriptorSetData *descriptorSetData;
+	VkResult result;
 
 	/* Bound uniform buffers are now available */
 
@@ -9780,11 +9760,34 @@ static void VULKAN_INTERNAL_CleanCommandBuffer(
 
 	SDL_UnlockMutex(renderer->acquireCommandBufferLock);
 
-	/* Resent presentation data */
+	/* Reset presentation data */
 
 	commandBuffer->presentDataCount = 0;
 	commandBuffer->waitSemaphoreCount = 0;
 	commandBuffer->signalSemaphoreCount = 0;
+
+	/* Reset Vulkan state */
+
+	result = renderer->vkResetCommandBuffer(
+		commandBuffer->commandBuffer,
+		VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT
+	);
+
+	if (result != VK_SUCCESS)
+	{
+		LogVulkanResultAsError("vkResetCommandBuffer", result);
+	}
+
+	result = renderer->vkResetFences(
+		renderer->logicalDevice,
+		1,
+		&commandBuffer->inFlightFence
+	);
+
+	if (result != VK_SUCCESS)
+	{
+		LogVulkanResultAsError("vkResetFences", result);
+	}
 
 	/* Remove this command buffer from the submitted list */
 	for (i = 0; i < renderer->submittedCommandBufferCount; i += 1)
@@ -9955,13 +9958,9 @@ static void VULKAN_Submit(
 
 	for (i = renderer->submittedCommandBufferCount - 1; i >= 0; i -= 1)
 	{
-		/* If we set a timeout of 0, we can query the command buffer state */
-		vulkanResult = renderer->vkWaitForFences(
+		vulkanResult = renderer->vkGetFenceStatus(
 			renderer->logicalDevice,
-			1,
-			&renderer->submittedCommandBuffers[i]->inFlightFence,
-			VK_TRUE,
-			0
+			renderer->submittedCommandBuffers[i]->inFlightFence
 		);
 
 		if (vulkanResult == VK_SUCCESS)
