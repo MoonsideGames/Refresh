@@ -789,13 +789,11 @@ void Refresh_UnclaimWindow(
 }
 
 Refresh_CommandBuffer* Refresh_AcquireCommandBuffer(
-	Refresh_Device *device,
-	uint8_t fixed
+	Refresh_Device *device
 ) {
 	NULL_RETURN_NULL(device);
 	return device->AcquireCommandBuffer(
-		device->driverData,
-		fixed
+		device->driverData
 	);
 }
 

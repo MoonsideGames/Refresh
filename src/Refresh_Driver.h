@@ -470,8 +470,7 @@ struct Refresh_Device
 	);
 
 	Refresh_CommandBuffer* (*AcquireCommandBuffer)(
-		Refresh_Renderer *driverData,
-		uint8_t fixed
+		Refresh_Renderer *driverData
 	);
 
 	Refresh_Texture* (*AcquireSwapchainTexture)(

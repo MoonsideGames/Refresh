@@ -1168,15 +1168,9 @@ REFRESHAPI Refresh_TextureFormat Refresh_GetSwapchainFormat(
  * 	A command buffer may only be used on the thread that
  * 	it was acquired on. Using it on any other thread is an error.
  *
- * fixed:
- * 	If a command buffer is designated as fixed, it can be
- * 	acquired once, have commands recorded into it, and
- * 	be re-submitted indefinitely.
- *
  */
 REFRESHAPI Refresh_CommandBuffer* Refresh_AcquireCommandBuffer(
-	Refresh_Device *device,
-	uint8_t fixed
+	Refresh_Device *device
 );
 
 /* Acquires a texture to use for presentation.

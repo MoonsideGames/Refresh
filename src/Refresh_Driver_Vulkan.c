@@ -1500,10 +1500,6 @@ typedef struct VulkanCommandPool VulkanCommandPool;
 typedef struct VulkanCommandBuffer
 {
 	VkCommandBuffer commandBuffer;
-	uint8_t fixed;
-	uint8_t submitted;
-	uint8_t renderPassInProgress;
-
 	VulkanCommandPool *commandPool;
 
 	VulkanPresentData *presentDatas;
@@ -4662,11 +4658,7 @@ static void VULKAN_INTERNAL_BeginCommandBuffer(
 	beginInfo.pNext = NULL;
 	beginInfo.flags = 0;
 	beginInfo.pInheritanceInfo = NULL;
-
-	if (!commandBuffer->fixed)
-	{
-		beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-	}
+	beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 
 	result = renderer->vkBeginCommandBuffer(
 		commandBuffer->commandBuffer,
@@ -8484,8 +8476,6 @@ static void VULKAN_BeginRenderPass(
 		VK_SUBPASS_CONTENTS_INLINE
 	);
 
-	vulkanCommandBuffer->renderPassInProgress = 1;
-
 	SDL_stack_free(clearValues);
 
 	for (i = 0; i < colorAttachmentCount; i += 1)
@@ -8622,7 +8612,6 @@ static void VULKAN_EndRenderPass(
 	vulkanCommandBuffer->renderPassDepthTexture = NULL;
 
 	vulkanCommandBuffer->currentGraphicsPipeline = NULL;
-	vulkanCommandBuffer->renderPassInProgress = 0;
 }
 
 static void VULKAN_BindGraphicsPipeline(
@@ -9197,8 +9186,7 @@ static VulkanCommandBuffer* VULKAN_INTERNAL_GetInactiveCommandBufferFromPool(
 }
 
 static Refresh_CommandBuffer* VULKAN_AcquireCommandBuffer(
-	Refresh_Renderer *driverData,
-	uint8_t fixed
+	Refresh_Renderer *driverData
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VkResult result;
@@ -9221,10 +9209,6 @@ static Refresh_CommandBuffer* VULKAN_AcquireCommandBuffer(
 	commandBuffer->fragmentUniformBuffer = NULL;
 	commandBuffer->computeUniformBuffer = NULL;
 
-	commandBuffer->fixed = fixed;
-	commandBuffer->submitted = 0;
-
-	commandBuffer->renderPassInProgress = 0;
 	commandBuffer->renderPassColorTargetCount = 0;
 
 	VULKAN_INTERNAL_BeginCommandBuffer(renderer, commandBuffer);
@@ -9920,7 +9904,6 @@ static void VULKAN_Submit(
 			);
 		}
 
-		((VulkanCommandBuffer*)pCommandBuffers[i])->submitted = 1;
 		renderer->submittedCommandBuffers[renderer->submittedCommandBufferCount] = (VulkanCommandBuffer*) pCommandBuffers[i];
 		renderer->submittedCommandBufferCount += 1;
 
