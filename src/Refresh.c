@@ -338,10 +338,52 @@ Refresh_ShaderModule* Refresh_CreateShaderModule(
 	Refresh_Device *device,
 	Refresh_ShaderModuleCreateInfo *shaderModuleCreateInfo
 ) {
+	Refresh_ShaderModuleCreateInfo driverSpecificCreateInfo = { 0, NULL };
+	uint8_t *bytes;
+	uint32_t i, size;
+
 	NULL_RETURN_NULL(device);
+
+	/* verify the magic number in the shader blob header */
+	bytes = (uint8_t*) shaderModuleCreateInfo->byteCode;
+	if (bytes[0] != 'R' || bytes[1] != 'F' || bytes[2] != 'S' || bytes[3] != 'H')
+	{
+		Refresh_LogError("Cannot parse malformed Refresh shader blob!");
+		return NULL;
+	}
+
+	/* find the code for the selected backend */
+	i = 4;
+	while (i < shaderModuleCreateInfo->codeSize)
+	{
+		size = *((uint32_t*) &bytes[i + 1]);
+
+		if (bytes[i] == (uint8_t) selectedBackend)
+		{
+			driverSpecificCreateInfo.codeSize = size;
+			driverSpecificCreateInfo.byteCode = (uint32_t*) &bytes[i + 1 + sizeof(uint32_t)];
+			break;
+		}
+		else
+		{
+			/* skip over the backend byte, the blob size, and the blob */
+			i += 1 + sizeof(uint32_t) + size;
+		}
+	}
+
+	/* verify the shader blob supports the selected backend */
+	if (driverSpecificCreateInfo.byteCode == NULL)
+	{
+		Refresh_LogError(
+			"Cannot create shader module that does not contain shader code for the selected backend! "
+			"Recompile your shader and enable this backend."
+		);
+		return NULL;
+	}
+
 	return device->CreateShaderModule(
 		device->driverData,
-		shaderModuleCreateInfo
+		&driverSpecificCreateInfo
 	);
 }
 
