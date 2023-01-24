@@ -5221,7 +5221,6 @@ static VulkanTexture* VULKAN_INTERNAL_CreateTexture(
 	uint32_t levelCount,
 	VkFormat format,
 	VkImageAspectFlags aspectMask,
-	VkImageType imageType,
 	VkImageUsageFlags imageUsageFlags
 ) {
 	VkResult vulkanResult;
@@ -5255,7 +5254,7 @@ static VulkanTexture* VULKAN_INTERNAL_CreateTexture(
 	imageCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
 	imageCreateInfo.pNext = NULL;
 	imageCreateInfo.flags = imageCreateFlags;
-	imageCreateInfo.imageType = imageType;
+	imageCreateInfo.imageType = is3D ? VK_IMAGE_TYPE_3D : VK_IMAGE_TYPE_2D;
 	imageCreateInfo.format = format;
 	imageCreateInfo.extent.width = width;
 	imageCreateInfo.extent.height = height;
@@ -5360,17 +5359,13 @@ static VulkanTexture* VULKAN_INTERNAL_CreateTexture(
 	{
 		imageViewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_CUBE;
 	}
-	else if (imageType == VK_IMAGE_TYPE_2D)
-	{
-		imageViewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-	}
-	else if (imageType == VK_IMAGE_TYPE_3D)
+	else if (is3D)
 	{
 		imageViewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_3D;
 	}
 	else
 	{
-		Refresh_LogError("invalid image type: %u", imageType);
+		imageViewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
 	}
 
 	vulkanResult = renderer->vkCreateImageView(
@@ -5454,7 +5449,6 @@ static VulkanRenderTarget* VULKAN_INTERNAL_CreateRenderTarget(
 				1,
 				vulkanTexture->format,
 				aspectFlags,
-				VK_IMAGE_TYPE_2D,
 				VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT
 			);
 
@@ -6661,7 +6655,6 @@ static Refresh_Texture* VULKAN_CreateTexture(
 		textureCreateInfo->levelCount,
 		format,
 		imageAspectFlags,
-		VK_IMAGE_TYPE_2D,
 		imageUsageFlags
 	);
 }
