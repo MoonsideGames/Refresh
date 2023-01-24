@@ -8299,6 +8299,7 @@ static void VULKAN_BeginRenderPass(
 	VulkanFramebuffer *framebuffer;
 
 	VulkanTexture *texture;
+	uint32_t w, h;
 	VkClearValue *clearValues;
 	uint32_t clearCount = colorAttachmentCount;
 	uint32_t multisampleAttachmentCount = 0;
@@ -8314,30 +8315,34 @@ static void VULKAN_BeginRenderPass(
 	for (i = 0; i < colorAttachmentCount; i += 1)
 	{
 		texture = (VulkanTexture*) colorAttachmentInfos[i].texture;
+		w = texture->dimensions.width >> colorAttachmentInfos[i].level;
+		h = texture->dimensions.height >> colorAttachmentInfos[i].level;
 
-		if (texture->dimensions.width < framebufferWidth)
+		if (w < framebufferWidth)
 		{
-			framebufferWidth = texture->dimensions.width;
+			framebufferWidth = w;
 		}
 
-		if (texture->dimensions.height < framebufferHeight)
+		if (h < framebufferHeight)
 		{
-			framebufferHeight = texture->dimensions.height;
+			framebufferHeight = h;
 		}
 	}
 
 	if (depthStencilAttachmentInfo != NULL)
 	{
 		texture = (VulkanTexture*) depthStencilAttachmentInfo->texture;
+		w = texture->dimensions.width >> depthStencilAttachmentInfo->level;
+		h = texture->dimensions.height >> depthStencilAttachmentInfo->level;
 
-		if (texture->dimensions.width < framebufferWidth)
+		if (w < framebufferWidth)
 		{
-			framebufferWidth = texture->dimensions.width;
+			framebufferWidth = w;
 		}
 
-		if (texture->dimensions.height < framebufferHeight)
+		if (h < framebufferHeight)
 		{
-			framebufferHeight = texture->dimensions.height;
+			framebufferHeight = h;
 		}
 	}
 
