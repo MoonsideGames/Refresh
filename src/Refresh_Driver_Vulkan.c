@@ -758,11 +758,14 @@ typedef struct VulkanTexture
 	uint32_t depth;
 	uint32_t layerCount;
 	uint32_t levelCount;
+	Refresh_SampleCount sampleCount;
 	VkFormat format;
 	VulkanResourceAccessType resourceAccessType;
 	VkImageUsageFlags usageFlags;
 
 	VkImageAspectFlags aspectFlags;
+
+	struct VulkanTexture *msaaTex;
 
 	SDL_atomic_t referenceCount;
 } VulkanTexture;
@@ -770,8 +773,6 @@ typedef struct VulkanTexture
 typedef struct VulkanRenderTarget
 {
 	VkImageView view;
-	VulkanTexture *multisampleTexture;
-	VkSampleCountFlags multisampleCount;
 } VulkanRenderTarget;
 
 typedef struct VulkanFramebuffer
@@ -1200,11 +1201,10 @@ static inline void FramebufferHashArray_Remove(
 
 typedef struct RenderTargetHash
 {
-	Refresh_Texture *texture;
+	VulkanTexture *texture;
 	uint32_t depth;
 	uint32_t layer;
 	uint32_t level;
-	Refresh_SampleCount sampleCount;
 } RenderTargetHash;
 
 typedef struct RenderTargetHashMap
@@ -1240,11 +1240,6 @@ static inline uint8_t RenderTargetHash_Compare(
 	}
 
 	if (a->depth != b->depth)
-	{
-		return 0;
-	}
-
-	if (a->sampleCount != b->sampleCount)
 	{
 		return 0;
 	}
@@ -3068,6 +3063,15 @@ static void VULKAN_INTERNAL_DestroyTexture(
 		NULL
 	);
 
+	/* destroy the msaa texture, if there is one */
+	if (texture->msaaTex != NULL)
+	{
+		VULKAN_INTERNAL_DestroyTexture(
+			renderer,
+			texture->msaaTex
+		);
+	}
+
 	SDL_free(texture);
 }
 
@@ -3085,18 +3089,6 @@ static void VULKAN_INTERNAL_DestroyRenderTarget(
 		renderTarget->view,
 		NULL
 	);
-
-	/* The texture is not owned by the RenderTarget
-	 * so we don't free it here
-	 * But the multisampleTexture is!
-	 */
-	if (renderTarget->multisampleTexture != NULL)
-	{
-		VULKAN_INTERNAL_DestroyTexture(
-			renderer,
-			renderTarget->multisampleTexture
-		);
-	}
 
 	SDL_free(renderTarget);
 }
@@ -4605,11 +4597,13 @@ static uint8_t VULKAN_INTERNAL_CreateSwapchain(
 		swapchainData->textures[i].isCube = 0;
 		swapchainData->textures[i].layerCount = 1;
 		swapchainData->textures[i].levelCount = 1;
+		swapchainData->textures[i].sampleCount = REFRESH_SAMPLECOUNT_1;
 		swapchainData->textures[i].usageFlags =
 			VK_IMAGE_USAGE_TRANSFER_DST_BIT |
 			VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 		swapchainData->textures[i].aspectFlags = VK_IMAGE_ASPECT_COLOR_BIT;
 		swapchainData->textures[i].resourceAccessType = RESOURCE_ACCESS_NONE;
+		swapchainData->textures[i].msaaTex = NULL;
 	}
 
 	SDL_stack_free(swapchainImages);
@@ -5217,8 +5211,8 @@ static VulkanTexture* VULKAN_INTERNAL_CreateTexture(
 	uint32_t height,
 	uint32_t depth,
 	uint32_t isCube,
-	VkSampleCountFlagBits samples,
 	uint32_t levelCount,
+	Refresh_SampleCount sampleCount,
 	VkFormat format,
 	VkImageAspectFlags aspectMask,
 	VkImageUsageFlags imageUsageFlags
@@ -5261,7 +5255,7 @@ static VulkanTexture* VULKAN_INTERNAL_CreateTexture(
 	imageCreateInfo.extent.depth = depth;
 	imageCreateInfo.mipLevels = levelCount;
 	imageCreateInfo.arrayLayers = layerCount;
-	imageCreateInfo.samples = samples;
+	imageCreateInfo.samples = RefreshToVK_SampleCount[sampleCount];
 	imageCreateInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
 	imageCreateInfo.usage = imageUsageFlags;
 	imageCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
@@ -5388,9 +5382,11 @@ static VulkanTexture* VULKAN_INTERNAL_CreateTexture(
 	texture->format = format;
 	texture->levelCount = levelCount;
 	texture->layerCount = layerCount;
+	texture->sampleCount = sampleCount;
 	texture->resourceAccessType = RESOURCE_ACCESS_NONE;
 	texture->usageFlags = imageUsageFlags;
 	texture->aspectFlags = aspectMask;
+	texture->msaaTex = NULL;
 
 	SDL_AtomicSet(&texture->referenceCount, 0);
 
@@ -5399,27 +5395,22 @@ static VulkanTexture* VULKAN_INTERNAL_CreateTexture(
 
 static VulkanRenderTarget* VULKAN_INTERNAL_CreateRenderTarget(
 	VulkanRenderer *renderer,
-	Refresh_Texture *texture,
+	VulkanTexture *texture,
 	uint32_t depth,
 	uint32_t layer,
-	uint32_t level,
-	Refresh_SampleCount multisampleCount
+	uint32_t level
 ) {
 	VkResult vulkanResult;
 	VulkanRenderTarget *renderTarget = (VulkanRenderTarget*) SDL_malloc(sizeof(VulkanRenderTarget));
-	VulkanTexture *vulkanTexture = (VulkanTexture*) texture;
 	VkImageViewCreateInfo imageViewCreateInfo;
 	VkComponentMapping swizzle = IDENTITY_SWIZZLE;
 	VkImageAspectFlags aspectFlags = 0;
 
-	renderTarget->multisampleTexture = NULL;
-	renderTarget->multisampleCount = 1;
-
-	if (IsDepthFormat(vulkanTexture->format))
+	if (IsDepthFormat(texture->format))
 	{
 		aspectFlags |= VK_IMAGE_ASPECT_DEPTH_BIT;
 
-		if (IsStencilFormat(vulkanTexture->format))
+		if (IsStencilFormat(texture->format))
 		{
 			aspectFlags |= VK_IMAGE_ASPECT_STENCIL_BIT;
 		}
@@ -5429,48 +5420,22 @@ static VulkanRenderTarget* VULKAN_INTERNAL_CreateRenderTarget(
 		aspectFlags |= VK_IMAGE_ASPECT_COLOR_BIT;
 	}
 
-	/* create resolve target for multisample */
-	if (multisampleCount > REFRESH_SAMPLECOUNT_1)
-	{
-		/* Find a compatible sample count to use */
-		multisampleCount = VULKAN_INTERNAL_GetMaxMultiSampleCount(
-			renderer,
-			multisampleCount
-		);
-
-		renderTarget->multisampleTexture =
-			VULKAN_INTERNAL_CreateTexture(
-				renderer,
-				vulkanTexture->dimensions.width,
-				vulkanTexture->dimensions.height,
-				1,
-				0,
-				RefreshToVK_SampleCount[multisampleCount],
-				1,
-				vulkanTexture->format,
-				aspectFlags,
-				VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT
-			);
-
-		renderTarget->multisampleCount = RefreshToVK_SampleCount[multisampleCount];
-	}
-
 	/* create framebuffer compatible views for RenderTarget */
 	imageViewCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
 	imageViewCreateInfo.pNext = NULL;
 	imageViewCreateInfo.flags = 0;
-	imageViewCreateInfo.image = vulkanTexture->image;
-	imageViewCreateInfo.format = vulkanTexture->format;
+	imageViewCreateInfo.image = texture->image;
+	imageViewCreateInfo.format = texture->format;
 	imageViewCreateInfo.components = swizzle;
 	imageViewCreateInfo.subresourceRange.aspectMask = aspectFlags;
 	imageViewCreateInfo.subresourceRange.baseMipLevel = level;
 	imageViewCreateInfo.subresourceRange.levelCount = 1;
 	imageViewCreateInfo.subresourceRange.baseArrayLayer = 0;
-	if (vulkanTexture->is3D)
+	if (texture->is3D)
 	{
 		imageViewCreateInfo.subresourceRange.baseArrayLayer = depth;
 	}
-	else if (vulkanTexture->isCube)
+	else if (texture->isCube)
 	{
 		imageViewCreateInfo.subresourceRange.baseArrayLayer = layer;
 	}
@@ -5499,11 +5464,10 @@ static VulkanRenderTarget* VULKAN_INTERNAL_CreateRenderTarget(
 
 static VulkanRenderTarget* VULKAN_INTERNAL_FetchRenderTarget(
 	VulkanRenderer *renderer,
-	Refresh_Texture *texture,
+	VulkanTexture *texture,
 	uint32_t depth,
 	uint32_t layer,
-	uint32_t level,
-	Refresh_SampleCount sampleCount
+	uint32_t level
 ) {
 	RenderTargetHash hash;
 	VulkanRenderTarget *renderTarget;
@@ -5512,7 +5476,6 @@ static VulkanRenderTarget* VULKAN_INTERNAL_FetchRenderTarget(
 	hash.depth = depth;
 	hash.layer = layer;
 	hash.level = level;
-	hash.sampleCount = sampleCount;
 
 	SDL_LockMutex(renderer->renderTargetFetchLock);
 
@@ -5528,8 +5491,7 @@ static VulkanRenderTarget* VULKAN_INTERNAL_FetchRenderTarget(
 			texture,
 			depth,
 			layer,
-			level,
-			sampleCount
+			level
 		);
 
 		RenderTargetHash_Insert(
@@ -5560,31 +5522,21 @@ static VkRenderPass VULKAN_INTERNAL_CreateRenderPass(
 	VkSubpassDescription subpass;
 	VkRenderPass renderPass;
 	uint32_t i;
-	uint8_t multisampling = 0;
 
 	uint32_t attachmentDescriptionCount = 0;
 	uint32_t colorAttachmentReferenceCount = 0;
 	uint32_t resolveReferenceCount = 0;
 
-	VulkanRenderTarget *renderTarget;
 	VulkanTexture *texture;
+	VulkanTexture *msaaTexture = NULL;
 
 	for (i = 0; i < colorAttachmentCount; i += 1)
 	{
 		texture = (VulkanTexture*) colorAttachmentInfos[i].texture;
 
-		renderTarget = VULKAN_INTERNAL_FetchRenderTarget(
-			renderer,
-			colorAttachmentInfos[i].texture,
-			colorAttachmentInfos[i].depth,
-			colorAttachmentInfos[i].layer,
-			colorAttachmentInfos[i].level,
-			colorAttachmentInfos[i].sampleCount
-		);
-
-		if (renderTarget->multisampleCount > VK_SAMPLE_COUNT_1_BIT)
+		if (texture->msaaTex != NULL)
 		{
-			multisampling = 1;
+			msaaTexture = texture->msaaTex;
 
 			/* Transition the multisample attachment */
 
@@ -5594,12 +5546,12 @@ static VkRenderPass VULKAN_INTERNAL_CreateRenderPass(
 				RESOURCE_ACCESS_COLOR_ATTACHMENT_WRITE,
 				VK_IMAGE_ASPECT_COLOR_BIT,
 				0,
-				renderTarget->multisampleTexture->layerCount,
+				msaaTexture->layerCount,
 				0,
-				renderTarget->multisampleTexture->levelCount,
+				msaaTexture->levelCount,
 				0,
-				renderTarget->multisampleTexture->image,
-				&renderTarget->multisampleTexture->resourceAccessType
+				msaaTexture->image,
+				&msaaTexture->resourceAccessType
 			);
 
 			/* Resolve attachment and multisample attachment */
@@ -5631,8 +5583,10 @@ static VkRenderPass VULKAN_INTERNAL_CreateRenderPass(
 			resolveReferenceCount += 1;
 
 			attachmentDescriptions[attachmentDescriptionCount].flags = 0;
-			attachmentDescriptions[attachmentDescriptionCount].format = texture->format;
-			attachmentDescriptions[attachmentDescriptionCount].samples = renderTarget->multisampleCount;
+			attachmentDescriptions[attachmentDescriptionCount].format = msaaTexture->format;
+			attachmentDescriptions[attachmentDescriptionCount].samples = RefreshToVK_SampleCount[
+				msaaTexture->sampleCount
+			];
 			attachmentDescriptions[attachmentDescriptionCount].loadOp = RefreshToVK_LoadOp[
 				colorAttachmentInfos[i].loadOp
 			];
@@ -5701,16 +5655,9 @@ static VkRenderPass VULKAN_INTERNAL_CreateRenderPass(
 	}
 	else
 	{
-		renderTarget = VULKAN_INTERNAL_FetchRenderTarget(
-			renderer,
-			depthStencilAttachmentInfo->texture,
-			depthStencilAttachmentInfo->depth,
-			depthStencilAttachmentInfo->layer,
-			depthStencilAttachmentInfo->level,
-			REFRESH_SAMPLECOUNT_1
-		);
-
 		texture = (VulkanTexture*) depthStencilAttachmentInfo->texture;
+
+		/* FIXME: MSAA? */
 
 		attachmentDescriptions[attachmentDescriptionCount].flags = 0;
 		attachmentDescriptions[attachmentDescriptionCount].format = texture->format;
@@ -5744,7 +5691,7 @@ static VkRenderPass VULKAN_INTERNAL_CreateRenderPass(
 		attachmentDescriptionCount += 1;
 	}
 
-	if (multisampling)
+	if (msaaTexture != NULL)
 	{
 		subpass.pResolveAttachments = resolveReferences;
 	}
@@ -6601,6 +6548,7 @@ static Refresh_Texture* VULKAN_CreateTexture(
 	);
 	VkImageAspectFlags imageAspectFlags;
 	VkFormat format;
+	VulkanTexture *result;
 
 	if (IsRefreshDepthFormat(textureCreateInfo->format))
 	{
@@ -6645,18 +6593,37 @@ static Refresh_Texture* VULKAN_CreateTexture(
 		imageAspectFlags = VK_IMAGE_ASPECT_COLOR_BIT;
 	}
 
-	return (Refresh_Texture*) VULKAN_INTERNAL_CreateTexture(
+	result = VULKAN_INTERNAL_CreateTexture(
 		renderer,
 		textureCreateInfo->width,
 		textureCreateInfo->height,
 		textureCreateInfo->depth,
 		textureCreateInfo->isCube,
-		VK_SAMPLE_COUNT_1_BIT,
 		textureCreateInfo->levelCount,
+		REFRESH_SAMPLECOUNT_1,
 		format,
 		imageAspectFlags,
 		imageUsageFlags
 	);
+
+	/* create the MSAA texture */
+	if (result != NULL && textureCreateInfo->sampleCount > REFRESH_SAMPLECOUNT_1)
+	{
+		result->msaaTex = VULKAN_INTERNAL_CreateTexture(
+			renderer,
+			textureCreateInfo->width,
+			textureCreateInfo->height,
+			textureCreateInfo->depth,
+			textureCreateInfo->isCube,
+			textureCreateInfo->levelCount,
+			textureCreateInfo->sampleCount,
+			format,
+			imageAspectFlags,
+			imageUsageFlags
+		);
+	}
+
+	return (Refresh_Texture*) result;
 }
 
 static Refresh_Buffer* VULKAN_CreateBuffer(
@@ -7842,7 +7809,7 @@ static void VULKAN_QueueDestroyTexture(
 	Refresh_Texture *texture
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
-	VulkanTexture* vulkanTexture = (VulkanTexture*)texture;
+	VulkanTexture* vulkanTexture = (VulkanTexture*) texture;
 
 	SDL_LockMutex(renderer->disposeLock);
 
@@ -7989,6 +7956,7 @@ static VkRenderPass VULKAN_INTERNAL_FetchRenderPass(
 	VkRenderPass renderPass;
 	RenderPassHash hash;
 	uint32_t i;
+	VulkanTexture *texture;
 
 	SDL_LockMutex(renderer->renderPassFetchLock);
 
@@ -8000,9 +7968,15 @@ static VkRenderPass VULKAN_INTERNAL_FetchRenderPass(
 		hash.colorTargetDescriptions[i].storeOp = colorAttachmentInfos[i].storeOp;
 	}
 
-	hash.colorAttachmentSampleCount = (colorAttachmentCount > 0) ?
-		colorAttachmentInfos[0].sampleCount :
-		REFRESH_SAMPLECOUNT_1;
+	hash.colorAttachmentSampleCount = REFRESH_SAMPLECOUNT_1;
+	if (colorAttachmentCount > 0)
+	{
+		texture = (VulkanTexture*) colorAttachmentInfos[0].texture;
+		if (texture->msaaTex != NULL)
+		{
+			hash.colorAttachmentSampleCount = texture->msaaTex->sampleCount;
+		}
+	}
 
 	hash.colorAttachmentCount = colorAttachmentCount;
 
@@ -8069,6 +8043,7 @@ static VulkanFramebuffer* VULKAN_INTERNAL_FetchFramebuffer(
 	VkResult result;
 	VkImageView imageViewAttachments[2 * MAX_COLOR_TARGET_BINDINGS + 1];
 	FramebufferHash hash;
+	VulkanTexture *texture;
 	VulkanRenderTarget *renderTarget;
 	uint32_t attachmentCount = 0;
 	uint32_t i;
@@ -8085,23 +8060,32 @@ static VulkanFramebuffer* VULKAN_INTERNAL_FetchFramebuffer(
 
 	for (i = 0; i < colorAttachmentCount; i += 1)
 	{
+		texture = (VulkanTexture*) colorAttachmentInfos[i].texture;
+
 		renderTarget = VULKAN_INTERNAL_FetchRenderTarget(
 			renderer,
-			colorAttachmentInfos[i].texture,
+			texture,
 			colorAttachmentInfos[i].depth,
 			colorAttachmentInfos[i].layer,
-			colorAttachmentInfos[i].level,
-			colorAttachmentInfos[i].sampleCount
+			colorAttachmentInfos[i].level
 		);
 
 		hash.colorAttachmentViews[i] = (
 			renderTarget->view
 		);
 
-		if (renderTarget->multisampleTexture != NULL)
+		if (texture->msaaTex != NULL)
 		{
+			renderTarget = VULKAN_INTERNAL_FetchRenderTarget(
+				renderer,
+				texture->msaaTex,
+				colorAttachmentInfos[i].depth,
+				colorAttachmentInfos[i].layer,
+				colorAttachmentInfos[i].level
+			);
+
 			hash.colorMultiSampleAttachmentViews[i] = (
-				renderTarget->multisampleTexture->view
+				renderTarget->view
 			);
 		}
 	}
@@ -8112,13 +8096,13 @@ static VulkanFramebuffer* VULKAN_INTERNAL_FetchFramebuffer(
 	}
 	else
 	{
+		texture = (VulkanTexture*) depthStencilAttachmentInfo->texture;
 		renderTarget = VULKAN_INTERNAL_FetchRenderTarget(
 			renderer,
-			depthStencilAttachmentInfo->texture,
+			texture,
 			depthStencilAttachmentInfo->depth,
 			depthStencilAttachmentInfo->layer,
-			depthStencilAttachmentInfo->level,
-			REFRESH_SAMPLECOUNT_1
+			depthStencilAttachmentInfo->level
 		);
 		hash.depthStencilAttachmentView = renderTarget->view;
 	}
@@ -8145,13 +8129,14 @@ static VulkanFramebuffer* VULKAN_INTERNAL_FetchFramebuffer(
 
 	for (i = 0; i < colorAttachmentCount; i += 1)
 	{
+		texture = (VulkanTexture*) colorAttachmentInfos[i].texture;
+
 		renderTarget = VULKAN_INTERNAL_FetchRenderTarget(
 			renderer,
-			colorAttachmentInfos[i].texture,
+			texture,
 			colorAttachmentInfos[i].depth,
 			colorAttachmentInfos[i].layer,
-			colorAttachmentInfos[i].level,
-			colorAttachmentInfos[i].sampleCount
+			colorAttachmentInfos[i].level
 		);
 
 		imageViewAttachments[attachmentCount] =
@@ -8159,10 +8144,18 @@ static VulkanFramebuffer* VULKAN_INTERNAL_FetchFramebuffer(
 
 		attachmentCount += 1;
 
-		if (renderTarget->multisampleTexture != NULL)
+		if (texture->msaaTex != NULL)
 		{
+			renderTarget = VULKAN_INTERNAL_FetchRenderTarget(
+				renderer,
+				texture->msaaTex,
+				colorAttachmentInfos[i].depth,
+				colorAttachmentInfos[i].layer,
+				colorAttachmentInfos[i].level
+			);
+
 			imageViewAttachments[attachmentCount] =
-				renderTarget->multisampleTexture->view;
+				renderTarget->view;
 
 			attachmentCount += 1;
 		}
@@ -8170,13 +8163,13 @@ static VulkanFramebuffer* VULKAN_INTERNAL_FetchFramebuffer(
 
 	if (depthStencilAttachmentInfo != NULL)
 	{
+		texture = (VulkanTexture*) depthStencilAttachmentInfo->texture;
 		renderTarget = VULKAN_INTERNAL_FetchRenderTarget(
 			renderer,
-			depthStencilAttachmentInfo->texture,
+			texture,
 			depthStencilAttachmentInfo->depth,
 			depthStencilAttachmentInfo->layer,
-			depthStencilAttachmentInfo->level,
-			REFRESH_SAMPLECOUNT_1
+			depthStencilAttachmentInfo->level
 		);
 
 		imageViewAttachments[attachmentCount] = renderTarget->view;
@@ -8388,7 +8381,7 @@ static void VULKAN_BeginRenderPass(
 			&texture->resourceAccessType
 		);
 
-		if (colorAttachmentInfos[i].sampleCount > REFRESH_SAMPLECOUNT_1)
+		if (texture->msaaTex != NULL)
 		{
 			clearCount += 1;
 			multisampleAttachmentCount += 1;
@@ -8438,13 +8431,14 @@ static void VULKAN_BeginRenderPass(
 		clearValues[i].color.float32[2] = colorAttachmentInfos[i].clearColor.z;
 		clearValues[i].color.float32[3] = colorAttachmentInfos[i].clearColor.w;
 
-		if (colorAttachmentInfos[i].sampleCount > REFRESH_SAMPLECOUNT_1)
+		texture = (VulkanTexture*) colorAttachmentInfos[i].texture;
+		if (texture->msaaTex != NULL)
 		{
+			clearValues[i+1].color.float32[0] = colorAttachmentInfos[i].clearColor.x;
+			clearValues[i+1].color.float32[1] = colorAttachmentInfos[i].clearColor.y;
+			clearValues[i+1].color.float32[2] = colorAttachmentInfos[i].clearColor.z;
+			clearValues[i+1].color.float32[3] = colorAttachmentInfos[i].clearColor.w;
 			i += 1;
-			clearValues[i].color.float32[0] = colorAttachmentInfos[i].clearColor.x;
-			clearValues[i].color.float32[1] = colorAttachmentInfos[i].clearColor.y;
-			clearValues[i].color.float32[2] = colorAttachmentInfos[i].clearColor.z;
-			clearValues[i].color.float32[3] = colorAttachmentInfos[i].clearColor.w;
 		}
 	}
 

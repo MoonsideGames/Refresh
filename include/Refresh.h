@@ -463,6 +463,7 @@ typedef struct Refresh_TextureCreateInfo
 	uint32_t depth;
 	uint8_t isCube;
 	uint32_t levelCount;
+	Refresh_SampleCount sampleCount;
 	Refresh_TextureFormat format;
 	Refresh_TextureUsageFlags usageFlags;
 } Refresh_TextureCreateInfo;
@@ -551,7 +552,6 @@ typedef struct Refresh_ColorAttachmentInfo
 	uint32_t depth;
 	uint32_t layer;
 	uint32_t level;
-	Refresh_SampleCount sampleCount;
 	Refresh_Vec4 clearColor; /* Can be ignored by RenderPass */
 	Refresh_LoadOp loadOp;
 	Refresh_StoreOp storeOp;
