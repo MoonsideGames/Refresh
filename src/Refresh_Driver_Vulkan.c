@@ -5657,12 +5657,11 @@ static VkRenderPass VULKAN_INTERNAL_CreateRenderPass(
 	{
 		texture = (VulkanTexture*) depthStencilAttachmentInfo->texture;
 
-		/* FIXME: MSAA? */
-
 		attachmentDescriptions[attachmentDescriptionCount].flags = 0;
 		attachmentDescriptions[attachmentDescriptionCount].format = texture->format;
-		attachmentDescriptions[attachmentDescriptionCount].samples =
-			VK_SAMPLE_COUNT_1_BIT;
+		attachmentDescriptions[attachmentDescriptionCount].samples = RefreshToVK_SampleCount[
+			texture->sampleCount
+		];
 		attachmentDescriptions[attachmentDescriptionCount].loadOp = RefreshToVK_LoadOp[
 			depthStencilAttachmentInfo->loadOp
 		];
@@ -5844,8 +5843,9 @@ static VkRenderPass VULKAN_INTERNAL_CreateTransientRenderPass(
 			renderer,
 			attachmentInfo.depthStencilFormat
 		);
-		attachmentDescriptions[attachmentDescriptionCount].samples =
-			VK_SAMPLE_COUNT_1_BIT; /* FIXME: do these take multisamples? */
+		attachmentDescriptions[attachmentDescriptionCount].samples = RefreshToVK_SampleCount[
+			sampleCount
+		];
 		attachmentDescriptions[attachmentDescriptionCount].loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 		attachmentDescriptions[attachmentDescriptionCount].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
 		attachmentDescriptions[attachmentDescriptionCount].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
@@ -6547,10 +6547,11 @@ static Refresh_Texture* VULKAN_CreateTexture(
 		VK_IMAGE_USAGE_TRANSFER_SRC_BIT
 	);
 	VkImageAspectFlags imageAspectFlags;
+	uint8_t isDepthFormat = IsRefreshDepthFormat(textureCreateInfo->format);
 	VkFormat format;
 	VulkanTexture *result;
 
-	if (IsRefreshDepthFormat(textureCreateInfo->format))
+	if (isDepthFormat)
 	{
 		format = RefreshToVK_DepthFormat(renderer, textureCreateInfo->format);
 	}
@@ -6579,7 +6580,7 @@ static Refresh_Texture* VULKAN_CreateTexture(
 		imageUsageFlags |= VK_IMAGE_USAGE_STORAGE_BIT;
 	}
 
-	if (IsDepthFormat(format))
+	if (isDepthFormat)
 	{
 		imageAspectFlags = VK_IMAGE_ASPECT_DEPTH_BIT;
 
@@ -6600,14 +6601,18 @@ static Refresh_Texture* VULKAN_CreateTexture(
 		textureCreateInfo->depth,
 		textureCreateInfo->isCube,
 		textureCreateInfo->levelCount,
-		REFRESH_SAMPLECOUNT_1,
+		isDepthFormat ?
+			textureCreateInfo->sampleCount : /* depth textures do not have a separate msaaTex */
+			REFRESH_SAMPLECOUNT_1,
 		format,
 		imageAspectFlags,
 		imageUsageFlags
 	);
 
-	/* create the MSAA texture */
-	if (result != NULL && textureCreateInfo->sampleCount > REFRESH_SAMPLECOUNT_1)
+	/* create the MSAA texture for color attachments, if needed */
+	if (	result != NULL &&
+		!isDepthFormat &&
+		textureCreateInfo->sampleCount > REFRESH_SAMPLECOUNT_1	)
 	{
 		result->msaaTex = VULKAN_INTERNAL_CreateTexture(
 			renderer,
@@ -8296,6 +8301,7 @@ static void VULKAN_BeginRenderPass(
 	VkClearValue *clearValues;
 	uint32_t clearCount = colorAttachmentCount;
 	uint32_t multisampleAttachmentCount = 0;
+	uint32_t totalColorAttachmentCount = 0;
 	uint32_t i;
 	VkImageAspectFlags depthAspectFlags;
 	Refresh_Viewport defaultViewport;
@@ -8395,9 +8401,8 @@ static void VULKAN_BeginRenderPass(
 		texture = (VulkanTexture*) depthStencilAttachmentInfo->texture;
 		depthAspectFlags = VK_IMAGE_ASPECT_DEPTH_BIT;
 
-		if (IsStencilFormat(
-			texture->format
-		)) {
+		if (IsStencilFormat(texture->format))
+		{
 			depthAspectFlags |= VK_IMAGE_ASPECT_STENCIL_BIT;
 		}
 
@@ -8424,7 +8429,9 @@ static void VULKAN_BeginRenderPass(
 
 	clearValues = SDL_stack_alloc(VkClearValue, clearCount);
 
-	for (i = 0; i < colorAttachmentCount + multisampleAttachmentCount; i += 1)
+	totalColorAttachmentCount = colorAttachmentCount + multisampleAttachmentCount;
+
+	for (i = 0; i < totalColorAttachmentCount; i += 1)
 	{
 		clearValues[i].color.float32[0] = colorAttachmentInfos[i].clearColor.x;
 		clearValues[i].color.float32[1] = colorAttachmentInfos[i].clearColor.y;
@@ -8444,9 +8451,9 @@ static void VULKAN_BeginRenderPass(
 
 	if (depthStencilAttachmentInfo != NULL)
 	{
-		clearValues[colorAttachmentCount].depthStencil.depth =
+		clearValues[totalColorAttachmentCount].depthStencil.depth =
 			depthStencilAttachmentInfo->depthStencilClearValue.depth;
-		clearValues[colorAttachmentCount].depthStencil.stencil =
+		clearValues[totalColorAttachmentCount].depthStencil.stencil =
 			depthStencilAttachmentInfo->depthStencilClearValue.stencil;
 	}
 
