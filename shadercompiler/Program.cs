@@ -186,7 +186,7 @@ partial class Program
 		}
 
 		// Create the output blob file
-		string outputFilepath = Path.Combine(data.outputDir, $"{shaderName}.refresh");
+		string outputFilepath = Path.Combine(data.outputDir, $"{shaderName}{shaderType}.refresh");
 		using (FileStream fs = File.Create(outputFilepath))
 		{
 			using (BinaryWriter writer = new BinaryWriter(fs))
