@@ -4,6 +4,7 @@
     <OutputType>Exe</OutputType>
     <TargetFramework>net7.0</TargetFramework>
     <TargetName>refreshc</TargetName>
+	<PublishAot>true</PublishAot>
   </PropertyGroup>
 
 </Project>
