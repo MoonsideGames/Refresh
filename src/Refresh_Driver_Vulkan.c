@@ -9210,6 +9210,30 @@ static Refresh_CommandBuffer* VULKAN_AcquireCommandBuffer(
 
 	commandBuffer->renderPassColorTargetCount = 0;
 
+	/* Reset the command buffer here to avoid resets being called
+	 * from a separate thread than where the command buffer was acquired
+	 */
+	result = renderer->vkResetCommandBuffer(
+		commandBuffer->commandBuffer,
+		VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT
+	);
+
+	if (result != VK_SUCCESS)
+	{
+		LogVulkanResultAsError("vkResetCommandBuffer", result);
+	}
+
+	result = renderer->vkResetFences(
+		renderer->logicalDevice,
+		1,
+		&commandBuffer->inFlightFence
+	);
+
+	if (result != VK_SUCCESS)
+	{
+		LogVulkanResultAsError("vkResetFences", result);
+	}
+
 	VULKAN_INTERNAL_BeginCommandBuffer(renderer, commandBuffer);
 
 	return (Refresh_CommandBuffer*) commandBuffer;
@@ -9723,6 +9747,12 @@ static void VULKAN_INTERNAL_CleanCommandBuffer(
 	}
 	commandBuffer->usedFramebufferCount = 0;
 
+	/* Reset presentation data */
+
+	commandBuffer->presentDataCount = 0;
+	commandBuffer->waitSemaphoreCount = 0;
+	commandBuffer->signalSemaphoreCount = 0;
+
 	/* Return command buffer to pool */
 
 	SDL_LockMutex(renderer->acquireCommandBufferLock);
@@ -9742,35 +9772,6 @@ static void VULKAN_INTERNAL_CleanCommandBuffer(
 	commandBuffer->commandPool->inactiveCommandBufferCount += 1;
 
 	SDL_UnlockMutex(renderer->acquireCommandBufferLock);
-
-	/* Reset presentation data */
-
-	commandBuffer->presentDataCount = 0;
-	commandBuffer->waitSemaphoreCount = 0;
-	commandBuffer->signalSemaphoreCount = 0;
-
-	/* Reset Vulkan state */
-
-	result = renderer->vkResetCommandBuffer(
-		commandBuffer->commandBuffer,
-		VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT
-	);
-
-	if (result != VK_SUCCESS)
-	{
-		LogVulkanResultAsError("vkResetCommandBuffer", result);
-	}
-
-	result = renderer->vkResetFences(
-		renderer->logicalDevice,
-		1,
-		&commandBuffer->inFlightFence
-	);
-
-	if (result != VK_SUCCESS)
-	{
-		LogVulkanResultAsError("vkResetFences", result);
-	}
 
 	/* Remove this command buffer from the submitted list */
 	for (i = 0; i < renderer->submittedCommandBufferCount; i += 1)
