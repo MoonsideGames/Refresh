@@ -48,7 +48,6 @@
 #define floorf SDL_floorf
 #define ldexp SDL_scalbn
 #define pow SDL_pow
-#define strtol SDL_strtol
 
 #ifdef memcmp
 #undef memcmp
@@ -74,10 +73,6 @@
 #undef strlen
 #endif
 #define strlen SDL_strlen
-#ifdef strncmp
-#undef strncmp
-#endif
-#define strncmp SDL_strncmp
 
 /* These are per the Texture2D.FromStream spec */
 #define STBI_ONLY_PNG
@@ -140,6 +135,7 @@ SDL_SIMDRealloc(void *mem, const size_t len)
 #endif
 
 #define STB_IMAGE_STATIC
+#define STBI_NO_HDR
 #define STBI_ASSERT SDL_assert
 #define STBI_MALLOC SDL_SIMDAlloc
 #define STBI_REALLOC SDL_SIMDRealloc
@@ -149,6 +145,12 @@ SDL_SIMDRealloc(void *mem, const size_t len)
 #define STBI_NO_THREAD_LOCALS /* FIXME: Port to SDL_TLS -flibit */
 #endif
 #include "stb_image.h"
+
+#define QOI_IMPLEMENTATION
+#define QOI_MALLOC SDL_SIMDAlloc
+#define QOI_FREE SDL_SIMDFree
+#define QOI_ZEROARR SDL_zero
+#include "qoi.h"
 
 #define MINIZ_NO_STDIO
 #define MINIZ_NO_TIME
@@ -189,7 +191,7 @@ static unsigned char* dgibson_stbi_zlib_compress(
 
 /* Image Read API */
 
-uint8_t* Refresh_Image_Load(
+uint8_t* Refresh_Image_LoadPNGFromFile(
 	char const *filename,
 	int32_t *w,
 	int32_t *h,
@@ -198,9 +200,53 @@ uint8_t* Refresh_Image_Load(
 	return stbi_load(filename, w, h, numChannels, STBI_rgb_alpha);
 }
 
-void Refresh_Image_Free(uint8_t *mem)
+uint8_t* Refresh_Image_LoadPNGFromMemory(
+	uint8_t *buffer,
+	int32_t bufferLength,
+	int32_t *w,
+	int32_t *h,
+	int32_t *numChannels
+) {
+	return stbi_load_from_memory(buffer, bufferLength, w, h, numChannels, STBI_rgb_alpha);
+}
+
+void Refresh_Image_FreePNG(uint8_t *mem)
 {
 	stbi_image_free(mem);
+}
+
+uint8_t *Refresh_Image_LoadQOIFromFile(
+	char const *filename,
+	int32_t *w,
+	int32_t *h,
+	int32_t *numChannels
+) {
+	qoi_desc desc;
+	uint8_t *pixels = qoi_read(filename, &desc, 0);
+	*w = desc.width;
+	*h = desc.height;
+	*numChannels = desc.channels;
+	return pixels;
+}
+
+uint8_t* Refresh_Image_LoadQOIFromMemory(
+	uint8_t *buffer,
+	int32_t bufferLength,
+	int32_t *w,
+	int32_t *h,
+	int32_t *numChannels
+) {
+	qoi_desc desc;
+	uint8_t *pixels = qoi_decode(buffer, bufferLength, &desc, 0);
+	*w = desc.width;
+	*h = desc.height;
+	*numChannels = desc.channels;
+	return pixels;
+}
+
+void Refresh_Image_FreeQOI(uint8_t *mem)
+{
+	QOI_FREE(mem);
 }
 
 /* Image Write API */
@@ -235,6 +281,20 @@ void Refresh_Image_SavePNG(
 	{
 		stbi_write_png(filename, w, h, 4, data, w * 4);
 	}
+}
+
+void Refresh_Image_SaveQOI(
+	char const *filename,
+	int32_t w,
+	int32_t h,
+	uint8_t *data
+) {
+	qoi_desc desc;
+	desc.width = w;
+	desc.height = h;
+	desc.channels = 4;
+	desc.colorspace = QOI_LINEAR;
+	qoi_write(filename, data, &desc);
 }
 
 /* vim: set noexpandtab shiftwidth=8 tabstop=8: */

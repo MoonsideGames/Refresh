@@ -51,20 +51,77 @@ extern "C" {
  * numChannels: Filled with the number of channels in the image.
  *
  * Returns a block of memory suitable for use with Refresh_SetTextureData2D.
- * Be sure to free the memory with Refresh_Image_Free after use!
+ * Be sure to free the memory with Refresh_Image_FreePNG after use!
  */
-REFRESHAPI uint8_t* Refresh_Image_Load(
+REFRESHAPI uint8_t* Refresh_Image_LoadPNGFromFile(
 	char const *filename,
 	int32_t *w,
 	int32_t *h,
 	int32_t *numChannels
 );
 
-/* Frees memory returned by Refresh_Image_Load. (Do NOT free the memory yourself!)
+/* Decodes PNG data into raw RGBA8 texture data.
  *
- * mem: A pointer previously returned by Refresh_Image_Load.
+ * w:		    Filled with the width of the image.
+ * h:		    Filled with the height of the image.
+ * numChannels: Filled with the number of channels in the image.
+ *
+ * Returns a block of memory suitable for use with Refresh_SetTextureData2D.
+ * Be sure to free the memory with Refresh_Image_FreePNG after use!
  */
-REFRESHAPI void Refresh_Image_Free(uint8_t *mem);
+REFRESHAPI uint8_t* Refresh_Image_LoadPNGFromMemory(
+	uint8_t *buffer,
+	int32_t bufferLength,
+	int32_t *w,
+	int32_t *h,
+	int32_t *numChannels
+);
+
+/* Frees memory returned by Refresh_Image_LoadPNG functions. (Do NOT free the memory yourself!)
+ *
+ * mem: A pointer previously returned by Refresh_Image_LoadPNG.
+ */
+REFRESHAPI void Refresh_Image_FreePNG(uint8_t *mem);
+
+/* Decodes QOI data into raw RGBA8 texture data.
+ *
+ * w:		    Filled with the width of the image.
+ * h:		    Filled with the height of the image.
+ * numChannels: Filled with the number of channels in the image.
+ *
+ * Returns a block of memory suitable for use with Refresh_SetTextureData2D.
+ * Be sure to free the memory with Refresh_Image_FreeQOI after use!
+ */
+REFRESHAPI uint8_t* Refresh_Image_LoadQOIFromFile(
+	char const *filename,
+	int32_t *w,
+	int32_t *h,
+	int32_t *numChannels
+);
+
+/* Decodes QOI data into raw RGBA8 texture data.
+ *
+ * bufferLength: The length of the input buffer to be decoded.
+ * w:		     Filled with the width of the image.
+ * h:		     Filled with the height of the image.
+ * numChannels:  Filled with the number of channels in the image.
+ *
+ * Returns a block of memory suitable for use with Refresh_SetTextureData2D.
+ * Be sure to free the memory with Refresh_Image_FreeQOI after use!
+ */
+REFRESHAPI uint8_t* Refresh_Image_LoadQOIFromMemory(
+	uint8_t *buffer,
+	int32_t bufferLength,
+	int32_t *w,
+	int32_t *h,
+	int32_t *numChannels
+);
+
+/* Frees memory returned by Refresh_Image_LoadQOI functions. (Do NOT free the memory yourself!)
+ *
+ * mem: A pointer previously returned by Refresh_Image_LoadQOI.
+ */
+REFRESHAPI void Refresh_Image_FreeQOI(uint8_t *mem);
 
 /* Image Write API */
 
@@ -81,6 +138,20 @@ REFRESHAPI void Refresh_Image_SavePNG(
 	int32_t w,
 	int32_t h,
 	uint8_t bgra,
+	uint8_t *data
+);
+
+/* Encodes 32-bit color data into PNG data.
+ *
+ * filename:    The filename that the image will be written to.
+ * w:	        The width of the PNG data.
+ * h:	        The height of the PNG data.
+ * data:	    The raw color data.
+ */
+REFRESHAPI void Refresh_Image_SaveQOI(
+	char const *filename,
+	int32_t w,
+	int32_t h,
 	uint8_t *data
 );
 
