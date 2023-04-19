@@ -76,6 +76,7 @@
 
 /* These are per the Texture2D.FromStream spec */
 #define STBI_ONLY_PNG
+#define STBI_ONLY_QOI
 
 /* These are per the Texture2D.SaveAs* spec */
 #define STBIW_ONLY_PNG
@@ -146,12 +147,6 @@ SDL_SIMDRealloc(void *mem, const size_t len)
 #endif
 #include "stb_image.h"
 
-#define QOI_IMPLEMENTATION
-#define QOI_MALLOC SDL_SIMDAlloc
-#define QOI_FREE SDL_SIMDFree
-#define QOI_ZEROARR SDL_zero
-#include "qoi.h"
-
 #define MINIZ_NO_STDIO
 #define MINIZ_NO_TIME
 #define MINIZ_SDL_MALLOC
@@ -191,110 +186,73 @@ static unsigned char* dgibson_stbi_zlib_compress(
 
 /* Image Read API */
 
-uint8_t* Refresh_Image_LoadPNGFromFile(
-	char const *filename,
-	int32_t *w,
-	int32_t *h,
-	int32_t *numChannels
-) {
-	return stbi_load(filename, w, h, numChannels, STBI_rgb_alpha);
-}
-
-uint8_t* Refresh_Image_LoadPNGFromMemory(
-	uint8_t *buffer,
+uint8_t* Refresh_Image_Load(
+	uint8_t *bufferPtr,
 	int32_t bufferLength,
 	int32_t *w,
 	int32_t *h,
-	int32_t *numChannels
+	int32_t *len
 ) {
-	return stbi_load_from_memory(buffer, bufferLength, w, h, numChannels, STBI_rgb_alpha);
+	uint8_t* result;
+	uint8_t* pixels;
+	int32_t format;
+	int32_t i;
+
+	result = stbi_load_from_memory(
+		bufferPtr,
+		bufferLength,
+		w,
+		h,
+		&format,
+		STBI_rgb_alpha
+	);
+
+	if (result == NULL)
+	{
+		SDL_LogWarn(SDL_LOG_CATEGORY_ERROR, "Image loading failed: %s", stbi_failure_reason());
+	}
+
+	/* Ensure that the alpha pixels are... well, actual alpha.
+	 * You think this looks stupid, but be assured: Your paint program is
+	 * almost certainly even stupider.
+	 * -flibit
+	 */
+	pixels = result;
+	*len = (*w) * (*h) *4;
+	for (i = 0; i < *len; i += 4, pixels += 4)
+	{
+		if (pixels[3] == 0)
+		{
+			pixels[0] = 0;
+			pixels[1] = 1;
+			pixels[2] = 2;
+		}
+	}
+
+	return result;
 }
 
-void Refresh_Image_FreePNG(uint8_t *mem)
+void Refresh_Image_Free(uint8_t *mem)
 {
-	stbi_image_free(mem);
-}
-
-uint8_t *Refresh_Image_LoadQOIFromFile(
-	char const *filename,
-	int32_t *w,
-	int32_t *h,
-	int32_t *numChannels
-) {
-	qoi_desc desc;
-	uint8_t *pixels = qoi_read(filename, &desc, 0);
-	*w = desc.width;
-	*h = desc.height;
-	*numChannels = desc.channels;
-	return pixels;
-}
-
-uint8_t* Refresh_Image_LoadQOIFromMemory(
-	uint8_t *buffer,
-	int32_t bufferLength,
-	int32_t *w,
-	int32_t *h,
-	int32_t *numChannels
-) {
-	qoi_desc desc;
-	uint8_t *pixels = qoi_decode(buffer, bufferLength, &desc, 0);
-	*w = desc.width;
-	*h = desc.height;
-	*numChannels = desc.channels;
-	return pixels;
-}
-
-void Refresh_Image_FreeQOI(uint8_t *mem)
-{
-	QOI_FREE(mem);
+	SDL_SIMDFree(mem);
 }
 
 /* Image Write API */
 
 void Refresh_Image_SavePNG(
-	const char *filename,
+	const char* filename,
+	uint8_t* data,
 	int32_t w,
-	int32_t h,
-	uint8_t bgra,
-	uint8_t *data
+	int32_t h
 ) {
-	uint32_t i;
-	uint8_t *bgraData;
-
-	if (bgra)
-	{
-		bgraData = SDL_malloc(w * h * 4);
-
-		for (i = 0; i < w * h * 4; i += 4)
-		{
-			bgraData[i]     = data[i + 2];
-			bgraData[i + 1] = data[i + 1];
-			bgraData[i + 2] = data[i];
-			bgraData[i + 3] = data[i + 3];
-		}
-
-		stbi_write_png(filename, w, h, 4, bgraData, w * 4);
-
-		SDL_free(bgraData);
-	}
-	else
-	{
-		stbi_write_png(filename, w, h, 4, data, w * 4);
-	}
-}
-
-void Refresh_Image_SaveQOI(
-	char const *filename,
-	int32_t w,
-	int32_t h,
-	uint8_t *data
-) {
-	qoi_desc desc;
-	desc.width = w;
-	desc.height = h;
-	desc.channels = 4;
-	desc.colorspace = QOI_LINEAR;
-	qoi_write(filename, data, &desc);
+	stbi_write_png(
+		filename,
+		w,
+		h,
+		4,
+		data,
+		w * 4
+	);
 }
 
 /* vim: set noexpandtab shiftwidth=8 tabstop=8: */

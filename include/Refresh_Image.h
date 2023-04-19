@@ -44,115 +44,45 @@
 extern "C" {
 #endif /* __cplusplus */
 
-/* Decodes PNG data into raw RGBA8 texture data.
- *
- * w:		    Filled with the width of the image.
- * h:		    Filled with the height of the image.
- * numChannels: Filled with the number of channels in the image.
- *
- * Returns a block of memory suitable for use with Refresh_SetTextureData2D.
- * Be sure to free the memory with Refresh_Image_FreePNG after use!
- */
-REFRESHAPI uint8_t* Refresh_Image_LoadPNGFromFile(
-	char const *filename,
-	int32_t *w,
-	int32_t *h,
-	int32_t *numChannels
-);
+/* Image Read API */
 
-/* Decodes PNG data into raw RGBA8 texture data.
+/* Decodes image data into raw RGBA8 texture data.
  *
  * w:		    Filled with the width of the image.
  * h:		    Filled with the height of the image.
- * numChannels: Filled with the number of channels in the image.
+ * len:			Filled with the length of pixel data in bytes.
  *
  * Returns a block of memory suitable for use with Refresh_SetTextureData2D.
- * Be sure to free the memory with Refresh_Image_FreePNG after use!
+ * Be sure to free the memory with Refresh_Image_Free after use!
  */
-REFRESHAPI uint8_t* Refresh_Image_LoadPNGFromMemory(
-	uint8_t *buffer,
+REFRESHAPI uint8_t* Refresh_Image_Load(
+	uint8_t *bufferPtr,
 	int32_t bufferLength,
 	int32_t *w,
 	int32_t *h,
-	int32_t *numChannels
+	int32_t *len
 );
 
-/* Frees memory returned by Refresh_Image_LoadPNG functions. (Do NOT free the memory yourself!)
+/* Frees memory returned by Refresh_Image_Load. Do NOT free the memory yourself!
  *
  * mem: A pointer previously returned by Refresh_Image_LoadPNG.
  */
-REFRESHAPI void Refresh_Image_FreePNG(uint8_t *mem);
-
-/* Decodes QOI data into raw RGBA8 texture data.
- *
- * w:		    Filled with the width of the image.
- * h:		    Filled with the height of the image.
- * numChannels: Filled with the number of channels in the image.
- *
- * Returns a block of memory suitable for use with Refresh_SetTextureData2D.
- * Be sure to free the memory with Refresh_Image_FreeQOI after use!
- */
-REFRESHAPI uint8_t* Refresh_Image_LoadQOIFromFile(
-	char const *filename,
-	int32_t *w,
-	int32_t *h,
-	int32_t *numChannels
-);
-
-/* Decodes QOI data into raw RGBA8 texture data.
- *
- * bufferLength: The length of the input buffer to be decoded.
- * w:		     Filled with the width of the image.
- * h:		     Filled with the height of the image.
- * numChannels:  Filled with the number of channels in the image.
- *
- * Returns a block of memory suitable for use with Refresh_SetTextureData2D.
- * Be sure to free the memory with Refresh_Image_FreeQOI after use!
- */
-REFRESHAPI uint8_t* Refresh_Image_LoadQOIFromMemory(
-	uint8_t *buffer,
-	int32_t bufferLength,
-	int32_t *w,
-	int32_t *h,
-	int32_t *numChannels
-);
-
-/* Frees memory returned by Refresh_Image_LoadQOI functions. (Do NOT free the memory yourself!)
- *
- * mem: A pointer previously returned by Refresh_Image_LoadQOI.
- */
-REFRESHAPI void Refresh_Image_FreeQOI(uint8_t *mem);
+REFRESHAPI void Refresh_Image_Free(uint8_t *mem);
 
 /* Image Write API */
 
-/* Encodes 32-bit color data into PNG data.
+/* Returns a buffer of PNG encoded from RGBA8 color data.
  *
- * filename:    The filename that the image will be written to.
- * w:	        The width of the PNG data.
- * h:	        The height of the PNG data.
- * bgra:		Whether the data is in BGRA8 format. Otherwise will assume RBGA8.
- * data:	    The raw color data.
+ * data:	The raw color data.
+ * w:		The width of the color data.
+ * h:		The height of the color data.
+ * len:		Filled with the length of PNG data in bytes.
  */
 REFRESHAPI void Refresh_Image_SavePNG(
-	char const *filename,
+	const char* filename,
+	uint8_t* data,
 	int32_t w,
-	int32_t h,
-	uint8_t bgra,
-	uint8_t *data
-);
-
-/* Encodes 32-bit color data into PNG data.
- *
- * filename:    The filename that the image will be written to.
- * w:	        The width of the PNG data.
- * h:	        The height of the PNG data.
- * data:	    The raw color data.
- */
-REFRESHAPI void Refresh_Image_SaveQOI(
-	char const *filename,
-	int32_t w,
-	int32_t h,
-	uint8_t *data
+	int32_t h
 );
 
 #ifdef __cplusplus

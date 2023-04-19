@@ -9639,7 +9639,6 @@ static void VULKAN_INTERNAL_CleanCommandBuffer(
 	uint32_t i;
 	VulkanUniformBuffer *uniformBuffer;
 	DescriptorSetData *descriptorSetData;
-	VkResult result;
 
 	/* Bound uniform buffers are now available */
 
@@ -10599,7 +10598,7 @@ static uint8_t VULKAN_INTERNAL_CreateLogicalDevice(
 	return 1;
 }
 
-static void VULKAN_INTERNAL_LoadEntryPoints()
+static void VULKAN_INTERNAL_LoadEntryPoints(void)
 {
 	/* Load Vulkan entry points */
 	if (SDL_Vulkan_LoadLibrary(NULL) < 0)
