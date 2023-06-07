@@ -286,8 +286,13 @@ struct Refresh_Device
 		uint32_t yHeight,
 		uint32_t uvWidth,
 		uint32_t uvHeight,
-		void* data,
-		uint32_t dataLength
+		void *yDataPtr,
+		void *uDataPtr,
+		void *vDataPtr,
+		uint32_t yDataLength,
+		uint32_t uvDataLength,
+		uint32_t yStride,
+		uint32_t uvStride
 	);
 
 	void(*CopyTextureToTexture)(

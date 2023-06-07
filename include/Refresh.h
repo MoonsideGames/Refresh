@@ -778,15 +778,20 @@ REFRESHAPI void Refresh_SetTextureData(
 
 /* Uploads YUV image data to three R8 texture objects.
  *
- * y:		The texture storing the Y data.
- * u:		The texture storing the U (Cb) data.
- * v:		The texture storing the V (Cr) data.
- * yWidth:	The width of the Y plane.
- * yHeight:	The height of the Y plane.
- * uvWidth:	The width of the U/V planes.
- * uvHeight:	The height of the U/V planes.
- * data:	A pointer to the raw YUV image data.
- * dataLength:	The size of the image data in bytes.
+ * y:            The texture storing the Y data.
+ * u:            The texture storing the U (Cb) data.
+ * v:            The texture storing the V (Cr) data.
+ * yWidth:       The width of the Y plane.
+ * yHeight:      The height of the Y plane.
+ * uvWidth:      The width of the U/V planes.
+ * uvHeight:     The height of the U/V planes.
+ * yData:        A pointer to the raw Y image data.
+ * uData:        A pointer to the raw U image data.
+ * vData:        A pointer to the raw V image data.
+ * yDataLength:  The size of the Y image data in bytes.
+ * uvDataLength: The size of the UV image data in bytes.
+ * yStride:      The length of a Y image data row in bytes.
+ * uvStride:     The length of a UV image data row in bytes.
  */
 REFRESHAPI void Refresh_SetTextureDataYUV(
 	Refresh_Device *driverData,
@@ -798,8 +803,13 @@ REFRESHAPI void Refresh_SetTextureDataYUV(
 	uint32_t yHeight,
 	uint32_t uvWidth,
 	uint32_t uvHeight,
-	void* data,
-	uint32_t dataLength
+	void *yDataPtr,
+	void *uDataPtr,
+	void *vDataPtr,
+	uint32_t yDataLength,
+	uint32_t uvDataLength,
+	uint32_t yStride,
+	uint32_t uvStride
 );
 
 /* Performs an asynchronous texture-to-texture copy.

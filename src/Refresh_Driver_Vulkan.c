@@ -7335,17 +7335,19 @@ static void VULKAN_SetTextureDataYUV(
 	uint32_t yHeight,
 	uint32_t uvWidth,
 	uint32_t uvHeight,
-	void* data,
-	uint32_t dataLength
+	void *yDataPtr,
+	void *uDataPtr,
+	void *vDataPtr,
+	uint32_t yDataLength,
+	uint32_t uvDataLength,
+	uint32_t yStride,
+	uint32_t uvStride
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VulkanTexture *tex = ((VulkanTextureContainer*) y)->vulkanTexture;
 
 	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*)commandBuffer;
 	VulkanTransferBuffer *transferBuffer;
-	uint8_t *dataPtr = (uint8_t*) data;
-	int32_t yDataLength = BytesPerImage(yWidth, yHeight, REFRESH_TEXTUREFORMAT_R8);
-	int32_t uvDataLength = BytesPerImage(uvWidth, uvHeight, REFRESH_TEXTUREFORMAT_R8);
 	VkBufferImageCopy imageCopy;
 	uint8_t * stagingBufferPointer;
 
@@ -7381,7 +7383,7 @@ static void VULKAN_SetTextureDataYUV(
 
 	SDL_memcpy(
 		stagingBufferPointer,
-		dataPtr,
+		yDataPtr,
 		yDataLength
 	);
 
@@ -7403,7 +7405,7 @@ static void VULKAN_SetTextureDataYUV(
 	imageCopy.imageExtent.width = yWidth;
 	imageCopy.imageExtent.height = yHeight;
 	imageCopy.bufferOffset = transferBuffer->offset;
-	imageCopy.bufferRowLength = yWidth;
+	imageCopy.bufferRowLength = yStride;
 	imageCopy.bufferImageHeight = yHeight;
 
 	renderer->vkCmdCopyBufferToImage(
@@ -7439,7 +7441,7 @@ static void VULKAN_SetTextureDataYUV(
 
 	imageCopy.imageExtent.width = uvWidth;
 	imageCopy.imageExtent.height = uvHeight;
-	imageCopy.bufferRowLength = uvWidth;
+	imageCopy.bufferRowLength = uvStride;
 	imageCopy.bufferImageHeight = uvHeight;
 
 	/* U */
@@ -7450,7 +7452,7 @@ static void VULKAN_SetTextureDataYUV(
 
 	SDL_memcpy(
 		stagingBufferPointer + yDataLength,
-		dataPtr + yDataLength,
+		uDataPtr,
 		uvDataLength
 	);
 
@@ -7505,7 +7507,7 @@ static void VULKAN_SetTextureDataYUV(
 
 	SDL_memcpy(
 		stagingBufferPointer + yDataLength + uvDataLength,
-		dataPtr + yDataLength + uvDataLength,
+		vDataPtr,
 		uvDataLength
 	);
 
