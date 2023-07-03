@@ -238,7 +238,7 @@ partial class Program
 	{
 		Process glslc = Process.Start(
 			"glslc",
-			$"{glslPath} -o {outputPath}"
+			$"""{glslPath}"" -o ""{outputPath}"""
 		);
 		glslc.WaitForExit();
 		if (glslc.ExitCode != 0)
@@ -254,7 +254,7 @@ partial class Program
 	{
 		Process spirvcross = Process.Start(
 			"spirv-cross",
-			$"{spirvPath} --hlsl --shader-model 50 --output {outputPath}"
+			$"""{spirvPath}"" --hlsl --shader-model 50 --output ""{outputPath}"""
 		);
 		spirvcross.WaitForExit();
 		if (spirvcross.ExitCode != 0)
