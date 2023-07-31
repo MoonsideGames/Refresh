@@ -2460,9 +2460,6 @@ static void VULKAN_INTERNAL_DeallocateMemory(
 	uint32_t allocationIndex
 ) {
 	uint32_t i;
-	uint8_t isDeviceLocal =
-		(renderer->memoryProperties.memoryTypes[allocator->memoryTypeIndex].propertyFlags &
-		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) != 0;
 
 	VulkanMemoryAllocation *allocation = allocator->allocations[allocationIndex];
 
@@ -2679,15 +2676,11 @@ static uint8_t VULKAN_INTERNAL_BindResourceMemory(
 	VkDeviceSize alignedOffset;
 	uint32_t newRegionSize, newRegionOffset;
 	uint8_t shouldAllocDedicated = forceDedicated;
-	uint8_t isDeviceLocal, isHostVisible, allocationResult;
+	uint8_t isHostVisible, allocationResult;
 
 	isHostVisible =
 		(renderer->memoryProperties.memoryTypes[memoryTypeIndex].propertyFlags &
 		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) != 0;
-
-	isDeviceLocal =
-		(renderer->memoryProperties.memoryTypes[memoryTypeIndex].propertyFlags &
-		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) != 0;
 
 	allocator = &renderer->memoryAllocator->subAllocators[memoryTypeIndex];
 	requiredSize = memoryRequirements->memoryRequirements.size;
@@ -10450,7 +10443,6 @@ static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 	VkImageCopy *imageCopyRegions;
 	VulkanCommandBuffer *commandBuffer;
 	VkCommandBufferBeginInfo beginInfo;
-	VkPipelineStageFlags waitFlags = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
 	uint32_t i, level;
 	VulkanResourceAccessType copyResourceAccessType = RESOURCE_ACCESS_NONE;
 	VulkanResourceAccessType originalResourceAccessType;
@@ -11174,29 +11166,6 @@ static uint8_t VULKAN_INTERNAL_IsDeviceSuitable(
 			swapchainSupportDetails.presentModesLength > 0	);
 }
 
-static void VULKAN_INTERNAL_GetPhysicalDeviceProperties(
-	VulkanRenderer *renderer
-) {
-	renderer->physicalDeviceDriverProperties.sType =
-		VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES_KHR;
-	renderer->physicalDeviceDriverProperties.pNext = NULL;
-
-	renderer->physicalDeviceProperties.sType =
-		VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
-	renderer->physicalDeviceProperties.pNext =
-		&renderer->physicalDeviceDriverProperties;
-
-	renderer->vkGetPhysicalDeviceProperties2KHR(
-		renderer->physicalDevice,
-		&renderer->physicalDeviceProperties
-	);
-
-	renderer->vkGetPhysicalDeviceMemoryProperties(
-		renderer->physicalDevice,
-		&renderer->memoryProperties
-	);
-}
-
 static uint8_t VULKAN_INTERNAL_DeterminePhysicalDevice(
 	VulkanRenderer *renderer,
 	VkSurfaceKHR surface
@@ -11206,7 +11175,6 @@ static uint8_t VULKAN_INTERNAL_DeterminePhysicalDevice(
 	VulkanExtensions *physicalDeviceExtensions;
 	uint32_t physicalDeviceCount, i, suitableIndex;
 	uint32_t queueFamilyIndex, suitableQueueFamilyIndex;
-	float deviceLocalHeapUsageFactor = 1.0f;
 	uint8_t deviceRank, highestRank;
 
 	vulkanResult = renderer->vkEnumeratePhysicalDevices(
