@@ -26,6 +26,9 @@
 
 #if REFRESH_DRIVER_VULKAN
 
+/* Needed for VK_KHR_portability_subset */
+#define VK_ENABLE_BETA_EXTENSIONS
+
 #define VK_NO_PROTOTYPES
 #include "vulkan/vulkan.h"
 
@@ -53,21 +56,21 @@ static PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr = NULL;
 	typedef ret (VKAPI_CALL *vkfntype_##func) params;
 #include "Refresh_Driver_Vulkan_vkfuncs.h"
 
-/* Required extensions */
-static const char* deviceExtensionNames[] =
+typedef struct VulkanExtensions
 {
 	/* Globally supported */
-	VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+	uint8_t KHR_swapchain;
 	/* Core since 1.1 */
-	VK_KHR_MAINTENANCE1_EXTENSION_NAME,
-	VK_KHR_DEDICATED_ALLOCATION_EXTENSION_NAME,
-	VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME,
+	uint8_t KHR_maintenance1;
+	uint8_t KHR_get_memory_requirements2;
+
 	/* Core since 1.2 */
-	VK_KHR_DRIVER_PROPERTIES_EXTENSION_NAME,
+	uint8_t KHR_driver_properties;
 	/* EXT, probably not going to be Core */
-	VK_EXT_VERTEX_ATTRIBUTE_DIVISOR_EXTENSION_NAME,
-};
-static uint32_t deviceExtensionCount = SDL_arraysize(deviceExtensionNames);
+	uint8_t EXT_vertex_attribute_divisor;
+	/* Only required for special implementations (i.e. MoltenVK) */
+	uint8_t KHR_portability_subset;
+} VulkanExtensions;
 
 /* Defines */
 
@@ -95,7 +98,7 @@ static uint32_t deviceExtensionCount = SDL_arraysize(deviceExtensionNames);
 
 #define EXPAND_ELEMENTS_IF_NEEDED(arr, initialValue, type)	\
 	if (arr->count == arr->capacity)			\
-	{							\
+	{								\
 		if (arr->capacity == 0)				\
 		{						\
 			arr->capacity = initialValue;		\
@@ -1717,6 +1720,7 @@ typedef struct VulkanRenderer
 
 	uint8_t supportsDebugUtils;
 	uint8_t debugMode;
+	VulkanExtensions supports;
 
 	VulkanMemoryAllocator *memoryAllocator;
 	VkPhysicalDeviceMemoryProperties memoryProperties;
@@ -1725,11 +1729,8 @@ typedef struct VulkanRenderer
 	uint32_t claimedWindowCount;
 	uint32_t claimedWindowCapacity;
 
-	QueueFamilyIndices queueFamilyIndices;
-	VkQueue graphicsQueue;
-	VkQueue presentQueue;
-	VkQueue computeQueue;
-	VkQueue transferQueue;
+	uint32_t queueFamilyIndex;
+	VkQueue unifiedQueue;
 
 	VulkanCommandBuffer **submittedCommandBuffers;
 	uint32_t submittedCommandBufferCount;
@@ -2506,17 +2507,17 @@ static uint8_t VULKAN_INTERNAL_AllocateMemory(
 	VkImage image,
 	uint32_t memoryTypeIndex,
 	VkDeviceSize allocationSize,
-	uint8_t dedicated,
+	uint8_t dedicated, /* indicates that one resource uses this memory and the memory shouldn't be moved */
 	uint8_t isHostVisible,
-	VulkanMemoryAllocation **pMemoryAllocation
-) {
+	VulkanMemoryAllocation **pMemoryAllocation)
+{
 	VulkanMemoryAllocation *allocation;
 	VulkanMemorySubAllocator *allocator = &renderer->memoryAllocator->subAllocators[memoryTypeIndex];
 	VkMemoryAllocateInfo allocInfo;
-	VkMemoryDedicatedAllocateInfoKHR dedicatedInfo;
 	VkResult result;
 
 	allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+	allocInfo.pNext = NULL;
 	allocInfo.memoryTypeIndex = memoryTypeIndex;
 	allocInfo.allocationSize = allocationSize;
 
@@ -2538,13 +2539,6 @@ static uint8_t VULKAN_INTERNAL_AllocateMemory(
 
 	if (dedicated)
 	{
-		dedicatedInfo.sType =
-			VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO_KHR;
-		dedicatedInfo.pNext = NULL;
-		dedicatedInfo.buffer = buffer;
-		dedicatedInfo.image = image;
-
-		allocInfo.pNext = &dedicatedInfo;
 		allocation->dedicated = 1;
 		allocation->availableForAllocation = 0;
 	}
@@ -2670,7 +2664,6 @@ static uint8_t VULKAN_INTERNAL_BindResourceMemory(
 	VulkanRenderer* renderer,
 	uint32_t memoryTypeIndex,
 	VkMemoryRequirements2KHR* memoryRequirements,
-	VkMemoryDedicatedRequirementsKHR* dedicatedRequirements,
 	uint8_t forceDedicated,
 	VkDeviceSize resourceSize, /* may be different from requirements size! */
 	VkBuffer buffer, /* may be VK_NULL_HANDLE */
@@ -2685,10 +2678,7 @@ static uint8_t VULKAN_INTERNAL_BindResourceMemory(
 	VkDeviceSize requiredSize, allocationSize;
 	VkDeviceSize alignedOffset;
 	uint32_t newRegionSize, newRegionOffset;
-	uint8_t shouldAllocDedicated =
-		forceDedicated ||
-		dedicatedRequirements->prefersDedicatedAllocation ||
-		dedicatedRequirements->requiresDedicatedAllocation;
+	uint8_t shouldAllocDedicated = forceDedicated;
 	uint8_t isDeviceLocal, isHostVisible, allocationResult;
 
 	isHostVisible =
@@ -2909,15 +2899,10 @@ static uint8_t VULKAN_INTERNAL_BindMemoryForImage(
 	uint32_t memoryTypeIndex = 0;
 	VkMemoryPropertyFlags requiredMemoryPropertyFlags;
 	VkMemoryPropertyFlags ignoredMemoryPropertyFlags;
-	VkMemoryDedicatedRequirementsKHR dedicatedRequirements =
-	{
-		VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS_KHR,
-		NULL
-	};
 	VkMemoryRequirements2KHR memoryRequirements =
 	{
 		VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2_KHR,
-		&dedicatedRequirements
+		NULL
 	};
 
 	/* Prefer GPU allocation */
@@ -2936,7 +2921,6 @@ static uint8_t VULKAN_INTERNAL_BindMemoryForImage(
 			renderer,
 			memoryTypeIndex,
 			&memoryRequirements,
-			&dedicatedRequirements,
 			isRenderTarget,
 			memoryRequirements.memoryRequirements.size,
 			VK_NULL_HANDLE,
@@ -2980,7 +2964,6 @@ static uint8_t VULKAN_INTERNAL_BindMemoryForImage(
 				renderer,
 				memoryTypeIndex,
 				&memoryRequirements,
-				&dedicatedRequirements,
 				isRenderTarget,
 				memoryRequirements.memoryRequirements.size,
 				VK_NULL_HANDLE,
@@ -3014,15 +2997,10 @@ static uint8_t VULKAN_INTERNAL_BindMemoryForBuffer(
 	uint32_t memoryTypeIndex = 0;
 	VkMemoryPropertyFlags requiredMemoryPropertyFlags;
 	VkMemoryPropertyFlags ignoredMemoryPropertyFlags;
-	VkMemoryDedicatedRequirementsKHR dedicatedRequirements =
-	{
-		VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS_KHR,
-		NULL
-	};
 	VkMemoryRequirements2KHR memoryRequirements =
 	{
 		VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2_KHR,
-		&dedicatedRequirements
+		NULL
 	};
 
 	requiredMemoryPropertyFlags =
@@ -3048,7 +3026,6 @@ static uint8_t VULKAN_INTERNAL_BindMemoryForBuffer(
 			renderer,
 			memoryTypeIndex,
 			&memoryRequirements,
-			&dedicatedRequirements,
 			isTransferBuffer,
 			size,
 			buffer,
@@ -3093,7 +3070,6 @@ static uint8_t VULKAN_INTERNAL_BindMemoryForBuffer(
 				renderer,
 				memoryTypeIndex,
 				&memoryRequirements,
-				&dedicatedRequirements,
 				isTransferBuffer,
 				size,
 				buffer,
@@ -4157,7 +4133,7 @@ static VulkanBuffer* VULKAN_INTERNAL_CreateBuffer(
 	bufferCreateInfo.usage = usage;
 	bufferCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 	bufferCreateInfo.queueFamilyIndexCount = 1;
-	bufferCreateInfo.pQueueFamilyIndices = &renderer->queueFamilyIndices.graphicsFamily;
+	bufferCreateInfo.pQueueFamilyIndices = &renderer->queueFamilyIndex;
 
 	vulkanResult = renderer->vkCreateBuffer(
 		renderer->logicalDevice,
@@ -4524,58 +4500,62 @@ static uint8_t VULKAN_INTERNAL_QuerySwapChainSupport(
 	VulkanRenderer *renderer,
 	VkPhysicalDevice physicalDevice,
 	VkSurfaceKHR surface,
-	uint32_t graphicsFamilyIndex,
 	SwapChainSupportDetails *outputDetails
 ) {
 	VkResult result;
-	uint32_t formatCount;
-	uint32_t presentModeCount;
 	VkBool32 supportsPresent;
 
-	if (graphicsFamilyIndex != UINT32_MAX)
-	{
-		renderer->vkGetPhysicalDeviceSurfaceSupportKHR(
-			physicalDevice,
-			graphicsFamilyIndex,
-			surface,
-			&supportsPresent
-		);
+	renderer->vkGetPhysicalDeviceSurfaceSupportKHR(
+		physicalDevice,
+		renderer->queueFamilyIndex,
+		surface,
+		&supportsPresent
+	);
 
-		if (!supportsPresent)
-		{
-			Refresh_LogWarn("This surface does not support presenting!");
-			return 0;
-		}
+	if (!supportsPresent)
+	{
+		Refresh_LogWarn("This surface does not support presenting!");
+		return 0;
 	}
 
+	/* Initialize these in case anything fails */
+	outputDetails->formatsLength = 0;
+	outputDetails->presentModesLength = 0;
+
+	/* Run the device surface queries */
 	result = renderer->vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
 		physicalDevice,
 		surface,
 		&outputDetails->capabilities
 	);
-	if (result != VK_SUCCESS)
-	{
-		Refresh_LogError(
-			"vkGetPhysicalDeviceSurfaceCapabilitiesKHR: %s",
-			VkErrorMessages(result)
-		);
+	VULKAN_ERROR_CHECK(result, vkGetPhysicalDeviceSurfaceCapabilitiesKHR, 0)
 
-		return 0;
+	if (!(outputDetails->capabilities.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR))
+	{
+		Refresh_LogWarn("Opaque presentation unsupported! Expect weird transparency bugs!");
 	}
 
-	renderer->vkGetPhysicalDeviceSurfaceFormatsKHR(
+	result = renderer->vkGetPhysicalDeviceSurfaceFormatsKHR(
 		physicalDevice,
 		surface,
-		&formatCount,
+		&outputDetails->formatsLength,
 		NULL
 	);
+	VULKAN_ERROR_CHECK(result, vkGetPhysicalDeviceSurfaceFormatsKHR, 0)
+	result = renderer->vkGetPhysicalDeviceSurfacePresentModesKHR(
+		physicalDevice,
+		surface,
+		&outputDetails->presentModesLength,
+		NULL
+	);
+	VULKAN_ERROR_CHECK(result, vkGetPhysicalDeviceSurfacePresentModesKHR, 0)
 
-	if (formatCount != 0)
+	/* Generate the arrays, if applicable */
+	if (outputDetails->formatsLength != 0)
 	{
 		outputDetails->formats = (VkSurfaceFormatKHR*) SDL_malloc(
-			sizeof(VkSurfaceFormatKHR) * formatCount
+			sizeof(VkSurfaceFormatKHR) * outputDetails->formatsLength
 		);
-		outputDetails->formatsLength = formatCount;
 
 		if (!outputDetails->formats)
 		{
@@ -4586,7 +4566,7 @@ static uint8_t VULKAN_INTERNAL_QuerySwapChainSupport(
 		result = renderer->vkGetPhysicalDeviceSurfaceFormatsKHR(
 			physicalDevice,
 			surface,
-			&formatCount,
+			&outputDetails->formatsLength,
 			outputDetails->formats
 		);
 		if (result != VK_SUCCESS)
@@ -4600,20 +4580,11 @@ static uint8_t VULKAN_INTERNAL_QuerySwapChainSupport(
 			return 0;
 		}
 	}
-
-	renderer->vkGetPhysicalDeviceSurfacePresentModesKHR(
-		physicalDevice,
-		surface,
-		&presentModeCount,
-		NULL
-	);
-
-	if (presentModeCount != 0)
+	if (outputDetails->presentModesLength != 0)
 	{
 		outputDetails->presentModes = (VkPresentModeKHR*) SDL_malloc(
-			sizeof(VkPresentModeKHR) * presentModeCount
+			sizeof(VkPresentModeKHR) * outputDetails->presentModesLength
 		);
-		outputDetails->presentModesLength = presentModeCount;
 
 		if (!outputDetails->presentModes)
 		{
@@ -4624,7 +4595,7 @@ static uint8_t VULKAN_INTERNAL_QuerySwapChainSupport(
 		result = renderer->vkGetPhysicalDeviceSurfacePresentModesKHR(
 			physicalDevice,
 			surface,
-			&presentModeCount,
+			&outputDetails->presentModesLength,
 			outputDetails->presentModes
 		);
 		if (result != VK_SUCCESS)
@@ -4640,6 +4611,9 @@ static uint8_t VULKAN_INTERNAL_QuerySwapChainSupport(
 		}
 	}
 
+	/* If we made it here, all the queries were successfull. This does NOT
+	 * necessarily mean there are any supported formats or present modes!
+	 */
 	return 1;
 }
 
@@ -4746,7 +4720,6 @@ static uint8_t VULKAN_INTERNAL_CreateSwapchain(
 		renderer,
 		renderer->physicalDevice,
 		swapchainData->surface,
-		renderer->queueFamilyIndices.graphicsFamily,
 		&swapchainSupportDetails
 	)) {
 		renderer->vkDestroySurfaceKHR(
@@ -9585,7 +9558,7 @@ static VulkanCommandPool* VULKAN_INTERNAL_FetchCommandPool(
 	commandPoolCreateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
 	commandPoolCreateInfo.pNext = NULL;
 	commandPoolCreateInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-	commandPoolCreateInfo.queueFamilyIndex = renderer->queueFamilyIndices.graphicsFamily;
+	commandPoolCreateInfo.queueFamilyIndex = renderer->queueFamilyIndex;
 
 	vulkanResult = renderer->vkCreateCommandPool(
 		renderer->logicalDevice,
@@ -10348,7 +10321,7 @@ static void VULKAN_Submit(
 		submitInfo.signalSemaphoreCount = currentCommandBuffer->signalSemaphoreCount;
 
 		vulkanResult = renderer->vkQueueSubmit(
-			renderer->graphicsQueue,
+			renderer->unifiedQueue,
 			1,
 			&submitInfo,
 			currentCommandBuffer->inFlightFence
@@ -10390,7 +10363,7 @@ static void VULKAN_Submit(
 			presentInfo.pResults = NULL;
 
 			presentResult = renderer->vkQueuePresentKHR(
-				renderer->presentQueue,
+				renderer->unifiedQueue,
 				&presentInfo
 			);
 
@@ -10716,7 +10689,68 @@ static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 
 /* Device instantiation */
 
-static inline uint8_t VULKAN_INTERNAL_SupportsExtension(
+static inline uint8_t CheckDeviceExtensions(
+	VkExtensionProperties *extensions,
+	uint32_t numExtensions,
+	VulkanExtensions *supports
+) {
+	uint32_t i;
+
+	SDL_memset(supports, '\0', sizeof(VulkanExtensions));
+	for (i = 0; i < numExtensions; i += 1)
+	{
+		const char *name = extensions[i].extensionName;
+		#define CHECK(ext) \
+			if (SDL_strcmp(name, "VK_" #ext) == 0) \
+			{ \
+				supports->ext = 1; \
+			}
+		CHECK(KHR_swapchain)
+		else CHECK(KHR_maintenance1)
+		else CHECK(KHR_get_memory_requirements2)
+		else CHECK(KHR_driver_properties)
+		else CHECK(EXT_vertex_attribute_divisor)
+		else CHECK(KHR_portability_subset)
+		#undef CHECK
+	}
+
+	return (	supports->KHR_swapchain &&
+			supports->KHR_maintenance1 &&
+			supports->KHR_get_memory_requirements2	);
+}
+
+static inline uint32_t GetDeviceExtensionCount(VulkanExtensions *supports)
+{
+	return (
+		supports->KHR_swapchain +
+		supports->KHR_maintenance1 +
+		supports->KHR_get_memory_requirements2 +
+		supports->KHR_driver_properties +
+		supports->EXT_vertex_attribute_divisor +
+		supports->KHR_portability_subset
+	);
+}
+
+static inline void CreateDeviceExtensionArray(
+	VulkanExtensions *supports,
+	const char **extensions
+) {
+	uint8_t cur = 0;
+	#define CHECK(ext) \
+		if (supports->ext) \
+		{ \
+			extensions[cur++] = "VK_" #ext; \
+		}
+	CHECK(KHR_swapchain)
+	CHECK(KHR_maintenance1)
+	CHECK(KHR_get_memory_requirements2)
+	CHECK(KHR_driver_properties)
+	CHECK(EXT_vertex_attribute_divisor)
+	CHECK(KHR_portability_subset)
+	#undef CHECK
+}
+
+static inline uint8_t SupportsInstanceExtension(
 	const char *ext,
 	VkExtensionProperties *availableExtensions,
 	uint32_t numAvailableExtensions
@@ -10746,9 +10780,8 @@ static uint8_t VULKAN_INTERNAL_CheckInstanceExtensions(
 		&extensionCount,
 		NULL
 	);
-	availableExtensions = SDL_stack_alloc(
-		VkExtensionProperties,
-		extensionCount
+	availableExtensions = SDL_malloc(
+		extensionCount * sizeof(VkExtensionProperties)
 	);
 	vkEnumerateInstanceExtensionProperties(
 		NULL,
@@ -10758,7 +10791,7 @@ static uint8_t VULKAN_INTERNAL_CheckInstanceExtensions(
 
 	for (i = 0; i < requiredExtensionsLength; i += 1)
 	{
-		if (!VULKAN_INTERNAL_SupportsExtension(
+		if (!SupportsInstanceExtension(
 			requiredExtensions[i],
 			availableExtensions,
 			extensionCount
@@ -10769,13 +10802,48 @@ static uint8_t VULKAN_INTERNAL_CheckInstanceExtensions(
 	}
 
 	/* This is optional, but nice to have! */
-	*supportsDebugUtils = VULKAN_INTERNAL_SupportsExtension(
+	*supportsDebugUtils = SupportsInstanceExtension(
 		VK_EXT_DEBUG_UTILS_EXTENSION_NAME,
 		availableExtensions,
 		extensionCount
 	);
 
-	SDL_stack_free(availableExtensions);
+	SDL_free(availableExtensions);
+	return allExtensionsSupported;
+}
+
+static uint8_t VULKAN_INTERNAL_CheckDeviceExtensions(
+	VulkanRenderer *renderer,
+	VkPhysicalDevice physicalDevice,
+	VulkanExtensions *physicalDeviceExtensions
+) {
+	uint32_t extensionCount;
+	VkExtensionProperties *availableExtensions;
+	uint8_t allExtensionsSupported;
+
+	renderer->vkEnumerateDeviceExtensionProperties(
+		physicalDevice,
+		NULL,
+		&extensionCount,
+		NULL
+	);
+	availableExtensions = (VkExtensionProperties*) SDL_malloc(
+		extensionCount * sizeof(VkExtensionProperties)
+	);
+	renderer->vkEnumerateDeviceExtensionProperties(
+		physicalDevice,
+		NULL,
+		&extensionCount,
+		availableExtensions
+	);
+
+	allExtensionsSupported = CheckDeviceExtensions(
+		availableExtensions,
+		extensionCount,
+		physicalDeviceExtensions
+	);
+
+	SDL_free(availableExtensions);
 	return allExtensionsSupported;
 }
 
@@ -10786,10 +10854,12 @@ static uint8_t VULKAN_INTERNAL_CheckValidationLayers(
 	uint32_t layerCount;
 	VkLayerProperties *availableLayers;
 	uint32_t i, j;
-	uint8_t layerFound = 0;
+	uint8_t layerFound;
 
 	vkEnumerateInstanceLayerProperties(&layerCount, NULL);
-	availableLayers = SDL_stack_alloc(VkLayerProperties, layerCount);
+	availableLayers = (VkLayerProperties*) SDL_malloc(
+		layerCount * sizeof(VkLayerProperties)
+	);
 	vkEnumerateInstanceLayerProperties(&layerCount, availableLayers);
 
 	for (i = 0; i < validationLayersLength; i += 1)
@@ -10811,7 +10881,7 @@ static uint8_t VULKAN_INTERNAL_CheckValidationLayers(
 		}
 	}
 
-	SDL_stack_free(availableLayers);
+	SDL_free(availableLayers);
 	return layerFound;
 }
 
@@ -10944,81 +11014,52 @@ static uint8_t VULKAN_INTERNAL_CreateInstance(
 	return 1;
 }
 
-static uint8_t VULKAN_INTERNAL_CheckDeviceExtensions(
-	VulkanRenderer *renderer,
-	VkPhysicalDevice physicalDevice,
-	const char** requiredExtensions,
-	uint32_t requiredExtensionsLength
-) {
-	uint32_t extensionCount, i;
-	VkExtensionProperties *availableExtensions;
-	uint8_t allExtensionsSupported = 1;
-
-	renderer->vkEnumerateDeviceExtensionProperties(
-		physicalDevice,
-		NULL,
-		&extensionCount,
-		NULL
-	);
-	availableExtensions = SDL_stack_alloc(
-		VkExtensionProperties,
-		extensionCount
-	);
-	renderer->vkEnumerateDeviceExtensionProperties(
-		physicalDevice,
-		NULL,
-		&extensionCount,
-		availableExtensions
-	);
-
-	for (i = 0; i < requiredExtensionsLength; i += 1)
-	{
-		if (!VULKAN_INTERNAL_SupportsExtension(
-			requiredExtensions[i],
-			availableExtensions,
-			extensionCount
-		)) {
-			allExtensionsSupported = 0;
-			break;
-		}
-	}
-
-	SDL_stack_free(availableExtensions);
-	return allExtensionsSupported;
-}
-
 static uint8_t VULKAN_INTERNAL_IsDeviceSuitable(
 	VulkanRenderer *renderer,
 	VkPhysicalDevice physicalDevice,
-	const char** requiredExtensionNames,
-	uint32_t requiredExtensionNamesLength,
+	VulkanExtensions *physicalDeviceExtensions,
 	VkSurfaceKHR surface,
-	QueueFamilyIndices *queueFamilyIndices,
+	uint32_t *queueFamilyIndex,
 	uint8_t *deviceRank
 ) {
-	uint32_t queueFamilyCount, i;
-	SwapChainSupportDetails swapChainSupportDetails;
+	uint32_t queueFamilyCount, queueFamilyRank, queueFamilyBest;
+	SwapChainSupportDetails swapchainSupportDetails;
 	VkQueueFamilyProperties *queueProps;
 	VkBool32 supportsPresent;
-	uint8_t querySuccess = 0;
-	uint8_t foundSuitableDevice = 0;
+	uint8_t querySuccess;
 	VkPhysicalDeviceProperties deviceProperties;
+	uint32_t i;
 
-	queueFamilyIndices->graphicsFamily = UINT32_MAX;
-	queueFamilyIndices->presentFamily = UINT32_MAX;
-	queueFamilyIndices->computeFamily = UINT32_MAX;
-	queueFamilyIndices->transferFamily = UINT32_MAX;
-	*deviceRank = 0;
-
-	/* Note: If no dedicated device exists,
-	 * one that supports our features would be fine
+	/* Get the device rank before doing any checks, in case one fails.
+	 * Note: If no dedicated device exists, one that supports our features
+	 * would be fine
 	 */
+	renderer->vkGetPhysicalDeviceProperties(
+		physicalDevice,
+		&deviceProperties
+	);
+	if (*deviceRank < DEVICE_PRIORITY[deviceProperties.deviceType])
+	{
+		/* This device outranks the best device we've found so far!
+		 * This includes a dedicated GPU that has less features than an
+		 * integrated GPU, because this is a freak case that is almost
+		 * never intentionally desired by the end user
+		 */
+		*deviceRank = DEVICE_PRIORITY[deviceProperties.deviceType];
+	}
+	else if (*deviceRank > DEVICE_PRIORITY[deviceProperties.deviceType])
+	{
+		/* Device is outranked by a previous device, don't even try to
+		 * run a query and reset the rank to avoid overwrites
+		 */
+		*deviceRank = 0;
+		return 0;
+	}
 
 	if (!VULKAN_INTERNAL_CheckDeviceExtensions(
 		renderer,
 		physicalDevice,
-		requiredExtensionNames,
-		requiredExtensionNamesLength
+		physicalDeviceExtensions
 	)) {
 		return 0;
 	}
@@ -11028,25 +11069,6 @@ static uint8_t VULKAN_INTERNAL_IsDeviceSuitable(
 		&queueFamilyCount,
 		NULL
 	);
-
-	/* FIXME: Need better structure for checking vs storing support details */
-	querySuccess = VULKAN_INTERNAL_QuerySwapChainSupport(
-		renderer,
-		physicalDevice,
-		surface,
-		UINT32_MAX,
-		&swapChainSupportDetails
-	);
-
-	SDL_free(swapChainSupportDetails.formats);
-	SDL_free(swapChainSupportDetails.presentModes);
-
-	if (	querySuccess == 0 ||
-		swapChainSupportDetails.formatsLength == 0 ||
-		swapChainSupportDetails.presentModesLength == 0	)
-	{
-		return 0;
-	}
 
 	queueProps = (VkQueueFamilyProperties*) SDL_stack_alloc(
 		VkQueueFamilyProperties,
@@ -11058,6 +11080,8 @@ static uint8_t VULKAN_INTERNAL_IsDeviceSuitable(
 		queueProps
 	);
 
+	queueFamilyBest = 0;
+	*queueFamilyIndex = UINT32_MAX;
 	for (i = 0; i < queueFamilyCount; i += 1)
 	{
 		renderer->vkGetPhysicalDeviceSurfaceSupportKHR(
@@ -11066,36 +11090,88 @@ static uint8_t VULKAN_INTERNAL_IsDeviceSuitable(
 			surface,
 			&supportsPresent
 		);
-
-		if (	supportsPresent &&
-			(queueProps[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) &&
-			(queueProps[i].queueFlags & VK_QUEUE_COMPUTE_BIT) &&
-			(queueProps[i].queueFlags & VK_QUEUE_TRANSFER_BIT)	)
+		if (	!supportsPresent ||
+			!(queueProps[i].queueFlags & VK_QUEUE_GRAPHICS_BIT)	)
 		{
-			queueFamilyIndices->graphicsFamily = i;
-			queueFamilyIndices->presentFamily = i;
-			queueFamilyIndices->computeFamily = i;
-			queueFamilyIndices->transferFamily = i;
-			foundSuitableDevice = 1;
-			break;
+			/* Not a graphics family, ignore. */
+			continue;
+		}
+
+		/* The queue family bitflags are kind of annoying.
+		 *
+		 * We of course need a graphics family, but we ideally want the
+		 * _primary_ graphics family. The spec states that at least one
+		 * graphics family must also be a compute family, so generally
+		 * drivers make that the first one. But hey, maybe something
+		 * genuinely can't do compute or something, and FNA doesn't
+		 * need it, so we'll be open to a non-compute queue family.
+		 *
+		 * Additionally, it's common to see the primary queue family
+		 * have the transfer bit set, which is great! But this is
+		 * actually optional; it's impossible to NOT have transfers in
+		 * graphics/compute but it _is_ possible for a graphics/compute
+		 * family, even the primary one, to just decide not to set the
+		 * bitflag. Admittedly, a driver may want to isolate transfer
+		 * queues to a dedicated family so that queues made solely for
+		 * transfers can have an optimized DMA queue.
+		 *
+		 * That, or the driver author got lazy and decided not to set
+		 * the bit. Looking at you, Android.
+		 *
+		 * -flibit
+		 */
+		if (queueProps[i].queueFlags & VK_QUEUE_COMPUTE_BIT)
+		{
+			if (queueProps[i].queueFlags & VK_QUEUE_TRANSFER_BIT)
+			{
+				/* Has all attribs! */
+				queueFamilyRank = 3;
+			}
+			else
+			{
+				/* Probably has a DMA transfer queue family */
+				queueFamilyRank = 2;
+			}
+		}
+		else
+		{
+			/* Just a graphics family, probably has something better */
+			queueFamilyRank = 1;
+		}
+		if (queueFamilyRank > queueFamilyBest)
+		{
+			*queueFamilyIndex = i;
+			queueFamilyBest = queueFamilyRank;
 		}
 	}
 
 	SDL_stack_free(queueProps);
 
-	if (foundSuitableDevice)
+	if (*queueFamilyIndex == UINT32_MAX)
 	{
-		/* Try to make sure we pick the best device available */
-		renderer->vkGetPhysicalDeviceProperties(
-			physicalDevice,
-			&deviceProperties
-		);
-		*deviceRank = DEVICE_PRIORITY[deviceProperties.deviceType];
-		return 1;
+		/* Somehow no graphics queues existed. Compute-only device? */
+		return 0;
 	}
 
-	/* This device is useless for us, next! */
-	return 0;
+	/* FIXME: Need better structure for checking vs storing support details */
+	querySuccess = VULKAN_INTERNAL_QuerySwapChainSupport(
+		renderer,
+		physicalDevice,
+		surface,
+		&swapchainSupportDetails
+	);
+	if (swapchainSupportDetails.formatsLength > 0)
+	{
+		SDL_free(swapchainSupportDetails.formats);
+	}
+	if (swapchainSupportDetails.presentModesLength > 0)
+	{
+		SDL_free(swapchainSupportDetails.presentModes);
+	}
+
+	return (	querySuccess &&
+			swapchainSupportDetails.formatsLength > 0 &&
+			swapchainSupportDetails.presentModesLength > 0	);
 }
 
 static void VULKAN_INTERNAL_GetPhysicalDeviceProperties(
@@ -11127,8 +11203,10 @@ static uint8_t VULKAN_INTERNAL_DeterminePhysicalDevice(
 ) {
 	VkResult vulkanResult;
 	VkPhysicalDevice *physicalDevices;
+	VulkanExtensions *physicalDeviceExtensions;
 	uint32_t physicalDeviceCount, i, suitableIndex;
-	QueueFamilyIndices queueFamilyIndices, suitableQueueFamilyIndices;
+	uint32_t queueFamilyIndex, suitableQueueFamilyIndex;
+	float deviceLocalHeapUsageFactor = 1.0f;
 	uint8_t deviceRank, highestRank;
 
 	vulkanResult = renderer->vkEnumeratePhysicalDevices(
@@ -11136,23 +11214,16 @@ static uint8_t VULKAN_INTERNAL_DeterminePhysicalDevice(
 		&physicalDeviceCount,
 		NULL
 	);
-
-	if (vulkanResult != VK_SUCCESS)
-	{
-		Refresh_LogError(
-			"vkEnumeratePhysicalDevices failed: %s",
-			VkErrorMessages(vulkanResult)
-		);
-		return 0;
-	}
+	VULKAN_ERROR_CHECK(vulkanResult, vkEnumeratePhysicalDevices, 0)
 
 	if (physicalDeviceCount == 0)
 	{
-		Refresh_LogError("Failed to find any GPUs with Vulkan support");
+		Refresh_LogWarn("Failed to find any GPUs with Vulkan support");
 		return 0;
 	}
 
 	physicalDevices = SDL_stack_alloc(VkPhysicalDevice, physicalDeviceCount);
+	physicalDeviceExtensions = SDL_stack_alloc(VulkanExtensions, physicalDeviceCount);
 
 	vulkanResult = renderer->vkEnumeratePhysicalDevices(
 		renderer->instance,
@@ -11160,118 +11231,128 @@ static uint8_t VULKAN_INTERNAL_DeterminePhysicalDevice(
 		physicalDevices
 	);
 
+	/* This should be impossible to hit, but from what I can tell this can
+	 * be triggered not because the array is too small, but because there
+	 * were drivers that turned out to be bogus, so this is the loader's way
+	 * of telling us that the list is now smaller than expected :shrug:
+	 */
+	if (vulkanResult == VK_INCOMPLETE)
+	{
+		Refresh_LogWarn("vkEnumeratePhysicalDevices returned VK_INCOMPLETE, will keep trying anyway...");
+		vulkanResult = VK_SUCCESS;
+	}
+
 	if (vulkanResult != VK_SUCCESS)
 	{
-		Refresh_LogError(
+		Refresh_LogWarn(
 			"vkEnumeratePhysicalDevices failed: %s",
 			VkErrorMessages(vulkanResult)
 		);
 		SDL_stack_free(physicalDevices);
+		SDL_stack_free(physicalDeviceExtensions);
 		return 0;
 	}
 
 	/* Any suitable device will do, but we'd like the best */
 	suitableIndex = -1;
-	deviceRank = 0;
 	highestRank = 0;
 	for (i = 0; i < physicalDeviceCount; i += 1)
 	{
-		const uint8_t suitable = VULKAN_INTERNAL_IsDeviceSuitable(
+		deviceRank = highestRank;
+		if (VULKAN_INTERNAL_IsDeviceSuitable(
 			renderer,
 			physicalDevices[i],
-			deviceExtensionNames,
-			deviceExtensionCount,
+			&physicalDeviceExtensions[i],
 			surface,
-			&queueFamilyIndices,
+			&queueFamilyIndex,
 			&deviceRank
-		);
-
-		if (deviceRank >= highestRank)
+		)) {
+			/* Use this for rendering.
+			 * Note that this may override a previous device that
+			 * supports rendering, but shares the same device rank.
+			 */
+			suitableIndex = i;
+			suitableQueueFamilyIndex = queueFamilyIndex;
+			highestRank = deviceRank;
+		}
+		else if (deviceRank > highestRank)
 		{
-			if (suitable)
-			{
-				suitableIndex = i;
-				suitableQueueFamilyIndices.computeFamily = queueFamilyIndices.computeFamily;
-				suitableQueueFamilyIndices.graphicsFamily = queueFamilyIndices.graphicsFamily;
-				suitableQueueFamilyIndices.presentFamily = queueFamilyIndices.presentFamily;
-				suitableQueueFamilyIndices.transferFamily = queueFamilyIndices.transferFamily;
-			}
-			else if (deviceRank > highestRank)
-			{
-				/* In this case, we found a... "realer?" GPU,
-				 * but it doesn't actually support our Vulkan.
-				 * We should disqualify all devices below as a
-				 * result, because if we don't we end up
-				 * ignoring real hardware and risk using
-				 * something like LLVMpipe instead!
-				 * -flibit
-				 */
-				suitableIndex = -1;
-			}
+			/* In this case, we found a... "realer?" GPU,
+			 * but it doesn't actually support our Vulkan.
+			 * We should disqualify all devices below as a
+			 * result, because if we don't we end up
+			 * ignoring real hardware and risk using
+			 * something like LLVMpipe instead!
+			 * -flibit
+			 */
+			suitableIndex = -1;
 			highestRank = deviceRank;
 		}
 	}
 
 	if (suitableIndex != -1)
 	{
+		renderer->supports = physicalDeviceExtensions[suitableIndex];
 		renderer->physicalDevice = physicalDevices[suitableIndex];
-		renderer->queueFamilyIndices = suitableQueueFamilyIndices;
+		renderer->queueFamilyIndex = suitableQueueFamilyIndex;
 	}
 	else
 	{
-		Refresh_LogError("No suitable physical devices found");
 		SDL_stack_free(physicalDevices);
+		SDL_stack_free(physicalDeviceExtensions);
 		return 0;
 	}
 
-	VULKAN_INTERNAL_GetPhysicalDeviceProperties(renderer);
+	renderer->physicalDeviceProperties.sType =
+		VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+	if (renderer->supports.KHR_driver_properties)
+	{
+		renderer->physicalDeviceDriverProperties.sType =
+			VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES_KHR;
+		renderer->physicalDeviceDriverProperties.pNext = NULL;
+
+		renderer->physicalDeviceProperties.pNext =
+			&renderer->physicalDeviceDriverProperties;
+	}
+	else
+	{
+		renderer->physicalDeviceProperties.pNext = NULL;
+	}
+
+	renderer->vkGetPhysicalDeviceProperties2KHR(
+		renderer->physicalDevice,
+		&renderer->physicalDeviceProperties
+	);
+
+	renderer->vkGetPhysicalDeviceMemoryProperties(
+		renderer->physicalDevice,
+		&renderer->memoryProperties
+	);
 
 	SDL_stack_free(physicalDevices);
+	SDL_stack_free(physicalDeviceExtensions);
 	return 1;
 }
 
 static uint8_t VULKAN_INTERNAL_CreateLogicalDevice(
-	VulkanRenderer *renderer,
-	const char **deviceExtensionNames,
-	uint32_t deviceExtensionCount
+	VulkanRenderer *renderer
 ) {
 	VkResult vulkanResult;
-
 	VkDeviceCreateInfo deviceCreateInfo;
 	VkPhysicalDeviceFeatures deviceFeatures;
+	VkPhysicalDevicePortabilitySubsetFeaturesKHR portabilityFeatures;
+	const char **deviceExtensions;
 
-	VkDeviceQueueCreateInfo queueCreateInfos[2];
-	VkDeviceQueueCreateInfo queueCreateInfoGraphics;
-	VkDeviceQueueCreateInfo queueCreateInfoPresent;
-
-	int32_t queueInfoCount = 1;
+	VkDeviceQueueCreateInfo queueCreateInfo;
 	float queuePriority = 1.0f;
 
-	queueCreateInfoGraphics.sType =
+	queueCreateInfo.sType =
 		VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-	queueCreateInfoGraphics.pNext = NULL;
-	queueCreateInfoGraphics.flags = 0;
-	queueCreateInfoGraphics.queueFamilyIndex =
-		renderer->queueFamilyIndices.graphicsFamily;
-	queueCreateInfoGraphics.queueCount = 1;
-	queueCreateInfoGraphics.pQueuePriorities = &queuePriority;
-
-	queueCreateInfos[0] = queueCreateInfoGraphics;
-
-	if (renderer->queueFamilyIndices.presentFamily != renderer->queueFamilyIndices.graphicsFamily)
-	{
-		queueCreateInfoPresent.sType =
-			VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-		queueCreateInfoPresent.pNext = NULL;
-		queueCreateInfoPresent.flags = 0;
-		queueCreateInfoPresent.queueFamilyIndex =
-			renderer->queueFamilyIndices.presentFamily;
-		queueCreateInfoPresent.queueCount = 1;
-		queueCreateInfoPresent.pQueuePriorities = &queuePriority;
-
-		queueCreateInfos[queueInfoCount] = queueCreateInfoPresent;
-		queueInfoCount += 1;
-	}
+	queueCreateInfo.pNext = NULL;
+	queueCreateInfo.flags = 0;
+	queueCreateInfo.queueFamilyIndex = renderer->queueFamilyIndex;
+	queueCreateInfo.queueCount = 1;
+	queueCreateInfo.pQueuePriorities = &queuePriority;
 
 	/* specifying used device features */
 
@@ -11284,14 +11365,45 @@ static uint8_t VULKAN_INTERNAL_CreateLogicalDevice(
 	/* creating the logical device */
 
 	deviceCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-	deviceCreateInfo.pNext = NULL;
+	if (renderer->supports.KHR_portability_subset)
+	{
+		portabilityFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PORTABILITY_SUBSET_FEATURES_KHR;
+		portabilityFeatures.pNext = NULL;
+		portabilityFeatures.constantAlphaColorBlendFactors = VK_FALSE;
+		portabilityFeatures.events = VK_FALSE;
+		portabilityFeatures.imageViewFormatReinterpretation = VK_FALSE;
+		portabilityFeatures.imageViewFormatSwizzle = VK_TRUE;
+		portabilityFeatures.imageView2DOn3DImage = VK_FALSE;
+		portabilityFeatures.multisampleArrayImage = VK_FALSE;
+		portabilityFeatures.mutableComparisonSamplers = VK_FALSE;
+		portabilityFeatures.pointPolygons = VK_FALSE;
+		portabilityFeatures.samplerMipLodBias = VK_FALSE; /* Technically should be true, but eh */
+		portabilityFeatures.separateStencilMaskRef = VK_FALSE;
+		portabilityFeatures.shaderSampleRateInterpolationFunctions = VK_FALSE;
+		portabilityFeatures.tessellationIsolines = VK_FALSE;
+		portabilityFeatures.tessellationPointMode = VK_FALSE;
+		portabilityFeatures.triangleFans = VK_FALSE;
+		portabilityFeatures.vertexAttributeAccessBeyondStride = VK_FALSE;
+		deviceCreateInfo.pNext = &portabilityFeatures;
+	}
+	else
+	{
+		deviceCreateInfo.pNext = NULL;
+	}
 	deviceCreateInfo.flags = 0;
-	deviceCreateInfo.queueCreateInfoCount = queueInfoCount;
-	deviceCreateInfo.pQueueCreateInfos = queueCreateInfos;
+	deviceCreateInfo.queueCreateInfoCount = 1;
+	deviceCreateInfo.pQueueCreateInfos = &queueCreateInfo;
 	deviceCreateInfo.enabledLayerCount = 0;
 	deviceCreateInfo.ppEnabledLayerNames = NULL;
-	deviceCreateInfo.enabledExtensionCount = deviceExtensionCount;
-	deviceCreateInfo.ppEnabledExtensionNames = deviceExtensionNames;
+	deviceCreateInfo.enabledExtensionCount = GetDeviceExtensionCount(
+		&renderer->supports
+	);
+	deviceExtensions = SDL_stack_alloc(
+		const char*,
+		deviceCreateInfo.enabledExtensionCount
+	);
+	CreateDeviceExtensionArray(&renderer->supports, deviceExtensions);
+	deviceCreateInfo.ppEnabledExtensionNames = deviceExtensions;
 	deviceCreateInfo.pEnabledFeatures = &deviceFeatures;
 
 	vulkanResult = renderer->vkCreateDevice(
@@ -11300,14 +11412,8 @@ static uint8_t VULKAN_INTERNAL_CreateLogicalDevice(
 		NULL,
 		&renderer->logicalDevice
 	);
-	if (vulkanResult != VK_SUCCESS)
-	{
-		Refresh_LogError(
-			"vkCreateDevice failed: %s",
-			VkErrorMessages(vulkanResult)
-		);
-		return 0;
-	}
+	SDL_stack_free(deviceExtensions);
+	VULKAN_ERROR_CHECK(vulkanResult, vkCreateDevice, 0)
 
 	/* Load vkDevice entry points */
 
@@ -11321,30 +11427,9 @@ static uint8_t VULKAN_INTERNAL_CreateLogicalDevice(
 
 	renderer->vkGetDeviceQueue(
 		renderer->logicalDevice,
-		renderer->queueFamilyIndices.graphicsFamily,
+		renderer->queueFamilyIndex,
 		0,
-		&renderer->graphicsQueue
-	);
-
-	renderer->vkGetDeviceQueue(
-		renderer->logicalDevice,
-		renderer->queueFamilyIndices.presentFamily,
-		0,
-		&renderer->presentQueue
-	);
-
-	renderer->vkGetDeviceQueue(
-		renderer->logicalDevice,
-		renderer->queueFamilyIndices.computeFamily,
-		0,
-		&renderer->computeQueue
-	);
-
-	renderer->vkGetDeviceQueue(
-		renderer->logicalDevice,
-		renderer->queueFamilyIndices.transferFamily,
-		0,
-		&renderer->transferQueue
+		&renderer->unifiedQueue
 	);
 
 	return 1;
@@ -11534,9 +11619,7 @@ static Refresh_Device* VULKAN_CreateDevice(
 	);
 
 	if (!VULKAN_INTERNAL_CreateLogicalDevice(
-		renderer,
-		deviceExtensionNames,
-		deviceExtensionCount
+		renderer
 	)) {
 		Refresh_LogError("Failed to create logical device");
 		return NULL;
