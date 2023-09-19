@@ -76,6 +76,7 @@ typedef struct Refresh_ShaderModule Refresh_ShaderModule;
 typedef struct Refresh_ComputePipeline Refresh_ComputePipeline;
 typedef struct Refresh_GraphicsPipeline Refresh_GraphicsPipeline;
 typedef struct Refresh_CommandBuffer Refresh_CommandBuffer;
+typedef struct Refresh_Fence Refresh_Fence;
 
 typedef enum Refresh_PresentMode
 {
@@ -1206,13 +1207,48 @@ REFRESHAPI Refresh_Texture* Refresh_AcquireSwapchainTexture(
 /* Submits all of the enqueued commands. */
 REFRESHAPI void Refresh_Submit(
 	Refresh_Device* device,
-	uint32_t commandBufferCount,
-	Refresh_CommandBuffer **pCommandBuffers
+	Refresh_CommandBuffer *commandBuffer
 );
 
-/* Waits for all submissions to complete. */
+/* Submits a command buffer and acquires a fence.
+ * You can use the fence to check if or wait until the command buffer has finished processing.
+ * You are responsible for releasing this fence when you are done using it.
+ */
+REFRESHAPI Refresh_Fence* Refresh_SubmitAndAcquireFence(
+	Refresh_Device* device,
+	Refresh_CommandBuffer *commandBuffer
+);
+
+/* Waits for the device to become idle. */
 REFRESHAPI void Refresh_Wait(
 	Refresh_Device *device
+);
+
+/* Waits for given fences to be signaled.
+ *
+ * waitAll: If 0, waits for any fence to be signaled. If 1, waits for all fences to be signaled.
+ * fenceCount: The number of fences being submitted.
+ * pFences: An array of fences to be waited on.
+ */
+REFRESHAPI void Refresh_WaitForFences(
+	Refresh_Device *device,
+	uint8_t waitAll,
+	uint32_t fenceCount,
+	Refresh_Fence **pFences
+);
+
+/* Check the status of a fence. 1 means the fence is signaled. */
+REFRESHAPI int Refresh_QueryFence(
+	Refresh_Device *device,
+	Refresh_Fence *fence
+);
+
+/* Allows the fence to be reused by future command buffer submissions.
+ * If you do not release fences after acquiring them, you will cause unbounded resource growth.
+ */
+REFRESHAPI void Refresh_ReleaseFence(
+	Refresh_Device *device,
+	Refresh_Fence *fence
 );
 
 #ifdef __cplusplus

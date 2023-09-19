@@ -1533,6 +1533,15 @@ typedef struct VulkanTransferBufferPool
 	uint32_t availableBufferCapacity;
 } VulkanTransferBufferPool;
 
+typedef struct VulkanFencePool
+{
+	SDL_mutex *lock;
+
+	VkFence *availableFences;
+	uint32_t availableFenceCount;
+	uint32_t availableFenceCapacity;
+} VulkanFencePool;
+
 typedef struct VulkanCommandPool VulkanCommandPool;
 
 typedef struct VulkanCommandBuffer
@@ -1624,6 +1633,7 @@ typedef struct VulkanCommandBuffer
 	/* Shader modules have references tracked by pipelines */
 
 	VkFence inFlightFence;
+	uint8_t autoReleaseFence;
 } VulkanCommandBuffer;
 
 struct VulkanCommandPool
@@ -1737,6 +1747,7 @@ typedef struct VulkanRenderer
 	uint32_t submittedCommandBufferCapacity;
 
 	VulkanTransferBufferPool transferBufferPool;
+	VulkanFencePool fencePool;
 
 	CommandPoolHashTable commandPoolHashTable;
 	DescriptorSetLayoutHashTable descriptorSetLayoutHashTable;
@@ -1828,7 +1839,7 @@ static uint8_t VULKAN_INTERNAL_DefragmentMemory(VulkanRenderer *renderer);
 static void VULKAN_INTERNAL_BeginCommandBuffer(VulkanRenderer *renderer, VulkanCommandBuffer *commandBuffer);
 static void VULKAN_UnclaimWindow(Refresh_Renderer *driverData, void *windowHandle);
 static void VULKAN_Wait(Refresh_Renderer *driverData);
-static void VULKAN_Submit(Refresh_Renderer *driverData, uint32_t commandBufferCount, Refresh_CommandBuffer **pCommandBuffers);
+static void VULKAN_Submit(Refresh_Renderer *driverData, Refresh_CommandBuffer *commandBuffer);
 static void VULKAN_INTERNAL_DestroyRenderTarget(VulkanRenderer *renderer, VulkanRenderTarget *renderTarget);
 
 /* Error Handling */
@@ -3589,12 +3600,6 @@ static void VULKAN_INTERNAL_DestroyCommandPool(
 	{
 		commandBuffer = commandPool->inactiveCommandBuffers[i];
 
-		renderer->vkDestroyFence(
-			renderer->logicalDevice,
-			commandBuffer->inFlightFence,
-			NULL
-		);
-
 		SDL_free(commandBuffer->presentDatas);
 		SDL_free(commandBuffer->waitSemaphores);
 		SDL_free(commandBuffer->signalSemaphores);
@@ -5157,6 +5162,14 @@ static void VULKAN_DestroyDevice(
 
 	SDL_free(renderer->transferBufferPool.availableBuffers);
 	SDL_DestroyMutex(renderer->transferBufferPool.lock);
+
+	for (i = 0; i < renderer->fencePool.availableFenceCount; i += 1)
+	{
+		renderer->vkDestroyFence(renderer->logicalDevice, renderer->fencePool.availableFences[i], NULL);
+	}
+
+	SDL_free(renderer->fencePool.availableFences);
+	SDL_DestroyMutex(renderer->fencePool.lock);
 
 	for (i = 0; i < NUM_COMMAND_POOL_BUCKETS; i += 1)
 	{
@@ -9362,7 +9375,6 @@ static void VULKAN_INTERNAL_AllocateCommandBuffers(
 	uint32_t allocateCount
 ) {
 	VkCommandBufferAllocateInfo allocateInfo;
-	VkFenceCreateInfo fenceCreateInfo;
 	VkResult vulkanResult;
 	uint32_t i;
 	VkCommandBuffer *commandBuffers = SDL_stack_alloc(VkCommandBuffer, allocateCount);
@@ -9401,23 +9413,7 @@ static void VULKAN_INTERNAL_AllocateCommandBuffers(
 		commandBuffer->commandPool = vulkanCommandPool;
 		commandBuffer->commandBuffer = commandBuffers[i];
 
-		/* Create fence */
-		fenceCreateInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-		fenceCreateInfo.pNext = NULL;
-		fenceCreateInfo.flags = 0;
-
-		vulkanResult = renderer->vkCreateFence(
-			renderer->logicalDevice,
-			&fenceCreateInfo,
-			NULL,
-			&commandBuffer->inFlightFence
-		);
-
-		if (vulkanResult != VK_SUCCESS)
-		{
-			LogVulkanResultAsError("vkCreateFence", vulkanResult);
-		}
-
+		commandBuffer->inFlightFence = VK_NULL_HANDLE;
 		commandBuffer->renderPassDepthTexture = NULL;
 
 		/* Presentation tracking */
@@ -9648,17 +9644,6 @@ static Refresh_CommandBuffer* VULKAN_AcquireCommandBuffer(
 	if (result != VK_SUCCESS)
 	{
 		LogVulkanResultAsError("vkResetCommandBuffer", result);
-	}
-
-	result = renderer->vkResetFences(
-		renderer->logicalDevice,
-		1,
-		&commandBuffer->inFlightFence
-	);
-
-	if (result != VK_SUCCESS)
-	{
-		LogVulkanResultAsError("vkResetFences", result);
 	}
 
 	VULKAN_INTERNAL_BeginCommandBuffer(renderer, commandBuffer);
@@ -9949,6 +9934,77 @@ static void VULKAN_SetSwapchainPresentMode(
 
 /* Submission structure */
 
+static VkFence VULKAN_INTERNAL_AcquireFenceFromPool(
+	VulkanRenderer *renderer
+) {
+	VkFenceCreateInfo fenceCreateInfo;
+	VkFence fence;
+	VkResult vulkanResult;
+
+	if (renderer->fencePool.availableFenceCount == 0)
+	{
+		/* Create fence */
+		fenceCreateInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+		fenceCreateInfo.pNext = NULL;
+		fenceCreateInfo.flags = 0;
+
+		vulkanResult = renderer->vkCreateFence(
+			renderer->logicalDevice,
+			&fenceCreateInfo,
+			NULL,
+			&fence
+		);
+
+		if (vulkanResult != VK_SUCCESS)
+		{
+			LogVulkanResultAsError("vkCreateFence", vulkanResult);
+			return NULL;
+		}
+
+		return fence;
+	}
+
+	SDL_LockMutex(renderer->fencePool.lock);
+
+	fence = renderer->fencePool.availableFences[renderer->fencePool.availableFenceCount - 1];
+	renderer->fencePool.availableFenceCount -= 1;
+
+	vulkanResult = renderer->vkResetFences(
+		renderer->logicalDevice,
+		1,
+		&fence
+	);
+
+	if (vulkanResult != VK_SUCCESS)
+	{
+		LogVulkanResultAsError("vkResetFences", vulkanResult);
+	}
+
+	SDL_UnlockMutex(renderer->fencePool.lock);
+
+	return fence;
+}
+
+static void VULKAN_INTERNAL_ReturnFenceToPool(
+	VulkanRenderer *renderer,
+	VkFence fence
+) {
+	SDL_LockMutex(renderer->fencePool.lock);
+
+	EXPAND_ARRAY_IF_NEEDED(
+		renderer->fencePool.availableFences,
+		VkFence,
+		renderer->fencePool.availableFenceCount + 1,
+		renderer->fencePool.availableFenceCapacity,
+		renderer->fencePool.availableFenceCapacity * 2
+	);
+
+	renderer->fencePool.availableFences[renderer->fencePool.availableFenceCount] = fence;
+	renderer->fencePool.availableFenceCount += 1;
+
+	SDL_UnlockMutex(renderer->fencePool.lock);
+}
+
 static void VULKAN_INTERNAL_PerformPendingDestroys(
 	VulkanRenderer *renderer
 ) {
@@ -10063,6 +10119,16 @@ static void VULKAN_INTERNAL_CleanCommandBuffer(
 	uint32_t i;
 	VulkanUniformBuffer *uniformBuffer;
 	DescriptorSetData *descriptorSetData;
+
+	if (commandBuffer->autoReleaseFence)
+	{
+		VULKAN_INTERNAL_ReturnFenceToPool(
+			renderer,
+			commandBuffer->inFlightFence
+		);
+
+		commandBuffer->inFlightFence = VK_NULL_HANDLE;
+	}
 
 	/* Bound uniform buffers are now available */
 
@@ -10219,25 +10285,15 @@ static void VULKAN_Wait(
 	VkResult result;
 	int32_t i;
 
-	SDL_LockMutex(renderer->submitLock);
+	result = renderer->vkDeviceWaitIdle(renderer->logicalDevice);
 
-	for (i = renderer->submittedCommandBufferCount - 1; i >= 0; i -= 1)
+	if (result != VK_SUCCESS)
 	{
-		commandBuffer = renderer->submittedCommandBuffers[i];
-
-		result = renderer->vkWaitForFences(
-			renderer->logicalDevice,
-			1,
-			&commandBuffer->inFlightFence,
-			VK_TRUE,
-			UINT64_MAX
-		);
-
-		if (result != VK_SUCCESS)
-		{
-			LogVulkanResultAsError("vkWaitForFences", result);
-		}
+		LogVulkanResultAsError("vkDeviceWaitIdle", result);
+		return;
 	}
+
+	SDL_LockMutex(renderer->submitLock);
 
 	for (i = renderer->submittedCommandBufferCount - 1; i >= 0; i -= 1)
 	{
@@ -10250,17 +10306,30 @@ static void VULKAN_Wait(
 	SDL_UnlockMutex(renderer->submitLock);
 }
 
+static Refresh_Fence* VULKAN_SubmitAndAcquireFence(
+	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer
+) {
+	VulkanCommandBuffer *vulkanCommandBuffer;
+
+	VULKAN_Submit(driverData, commandBuffer);
+
+	vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
+	vulkanCommandBuffer->autoReleaseFence = 0;
+
+	return (Refresh_Fence*) vulkanCommandBuffer->inFlightFence;
+}
+
 static void VULKAN_Submit(
 	Refresh_Renderer *driverData,
-	uint32_t commandBufferCount,
-	Refresh_CommandBuffer **pCommandBuffers
+	Refresh_CommandBuffer *commandBuffer
 ) {
 	VulkanRenderer* renderer = (VulkanRenderer*)driverData;
 	VkSubmitInfo submitInfo;
 	VkPresentInfoKHR presentInfo;
 	VulkanPresentData *presentData;
 	VkResult vulkanResult, presentResult = VK_SUCCESS;
-	VulkanCommandBuffer *currentCommandBuffer;
+	VulkanCommandBuffer *vulkanCommandBuffer;
 	VkPipelineStageFlags waitStages[MAX_PRESENT_COUNT];
 	uint32_t swapchainImageIndex;
 	uint8_t commandBufferCleaned = 0;
@@ -10275,98 +10344,96 @@ static void VULKAN_Submit(
 		waitStages[i] = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 	}
 
-	/* Submit the commands finally */
+	vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
 
-	for (i = 0; i < commandBufferCount; i += 1)
+	for (j = 0; j < vulkanCommandBuffer->presentDataCount; j += 1)
 	{
-		currentCommandBuffer = (VulkanCommandBuffer*)pCommandBuffers[i];
+		swapchainImageIndex = vulkanCommandBuffer->presentDatas[j].swapchainImageIndex;
 
-		for (j = 0; j < currentCommandBuffer->presentDataCount; j += 1)
-		{
-			swapchainImageIndex = currentCommandBuffer->presentDatas[j].swapchainImageIndex;
-
-			VULKAN_INTERNAL_ImageMemoryBarrier(
-				renderer,
-				currentCommandBuffer->commandBuffer,
-				RESOURCE_ACCESS_PRESENT,
-				VK_IMAGE_ASPECT_COLOR_BIT,
-				0,
-				1,
-				0,
-				1,
-				0,
-				currentCommandBuffer->presentDatas[j].windowData->swapchainData->textureContainers[swapchainImageIndex].vulkanTexture->image,
-				&currentCommandBuffer->presentDatas[j].windowData->swapchainData->textureContainers[swapchainImageIndex].vulkanTexture->resourceAccessType
-			);
-		}
-
-		VULKAN_INTERNAL_EndCommandBuffer(renderer, currentCommandBuffer);
-
-		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-		submitInfo.pNext = NULL;
-		submitInfo.commandBufferCount = 1;
-		submitInfo.pCommandBuffers = &currentCommandBuffer->commandBuffer;
-
-		submitInfo.pWaitDstStageMask = waitStages;
-		submitInfo.pWaitSemaphores = currentCommandBuffer->waitSemaphores;
-		submitInfo.waitSemaphoreCount = currentCommandBuffer->waitSemaphoreCount;
-		submitInfo.pSignalSemaphores = currentCommandBuffer->signalSemaphores;
-		submitInfo.signalSemaphoreCount = currentCommandBuffer->signalSemaphoreCount;
-
-		vulkanResult = renderer->vkQueueSubmit(
-			renderer->unifiedQueue,
+		VULKAN_INTERNAL_ImageMemoryBarrier(
+			renderer,
+			vulkanCommandBuffer->commandBuffer,
+			RESOURCE_ACCESS_PRESENT,
+			VK_IMAGE_ASPECT_COLOR_BIT,
+			0,
 			1,
-			&submitInfo,
-			currentCommandBuffer->inFlightFence
+			0,
+			1,
+			0,
+			vulkanCommandBuffer->presentDatas[j].windowData->swapchainData->textureContainers[swapchainImageIndex].vulkanTexture->image,
+			&vulkanCommandBuffer->presentDatas[j].windowData->swapchainData->textureContainers[swapchainImageIndex].vulkanTexture->resourceAccessType
+		);
+	}
+
+	VULKAN_INTERNAL_EndCommandBuffer(renderer, vulkanCommandBuffer);
+
+	vulkanCommandBuffer->autoReleaseFence = 1;
+	vulkanCommandBuffer->inFlightFence = VULKAN_INTERNAL_AcquireFenceFromPool(renderer);
+
+	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	submitInfo.pNext = NULL;
+	submitInfo.commandBufferCount = 1;
+	submitInfo.pCommandBuffers = &vulkanCommandBuffer->commandBuffer;
+
+	submitInfo.pWaitDstStageMask = waitStages;
+	submitInfo.pWaitSemaphores = vulkanCommandBuffer->waitSemaphores;
+	submitInfo.waitSemaphoreCount = vulkanCommandBuffer->waitSemaphoreCount;
+	submitInfo.pSignalSemaphores = vulkanCommandBuffer->signalSemaphores;
+	submitInfo.signalSemaphoreCount = vulkanCommandBuffer->signalSemaphoreCount;
+
+	vulkanResult = renderer->vkQueueSubmit(
+		renderer->unifiedQueue,
+		1,
+		&submitInfo,
+		vulkanCommandBuffer->inFlightFence
+	);
+
+	if (vulkanResult != VK_SUCCESS)
+	{
+		LogVulkanResultAsError("vkQueueSubmit", vulkanResult);
+	}
+
+	/* Mark command buffers as submitted */
+
+	if (renderer->submittedCommandBufferCount + 1 >= renderer->submittedCommandBufferCapacity)
+	{
+		renderer->submittedCommandBufferCapacity = renderer->submittedCommandBufferCount + 1;
+
+		renderer->submittedCommandBuffers = SDL_realloc(
+			renderer->submittedCommandBuffers,
+			sizeof(VulkanCommandBuffer*) * renderer->submittedCommandBufferCapacity
+		);
+	}
+
+	renderer->submittedCommandBuffers[renderer->submittedCommandBufferCount] = vulkanCommandBuffer;
+	renderer->submittedCommandBufferCount += 1;
+
+	/* Present, if applicable */
+
+	for (j = 0; j < vulkanCommandBuffer->presentDataCount; j += 1)
+	{
+		presentData = &vulkanCommandBuffer->presentDatas[j];
+
+		presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+		presentInfo.pNext = NULL;
+		presentInfo.pWaitSemaphores = &presentData->windowData->swapchainData->renderFinishedSemaphore;
+		presentInfo.waitSemaphoreCount = 1;
+		presentInfo.pSwapchains = &presentData->windowData->swapchainData->swapchain;
+		presentInfo.swapchainCount = 1;
+		presentInfo.pImageIndices = &presentData->swapchainImageIndex;
+		presentInfo.pResults = NULL;
+
+		presentResult = renderer->vkQueuePresentKHR(
+			renderer->unifiedQueue,
+			&presentInfo
 		);
 
-		if (vulkanResult != VK_SUCCESS)
+		if (presentResult != VK_SUCCESS)
 		{
-			LogVulkanResultAsError("vkQueueSubmit", vulkanResult);
-		}
-
-		/* Mark command buffers as submitted */
-
-		if (renderer->submittedCommandBufferCount + 1 >= renderer->submittedCommandBufferCapacity)
-		{
-			renderer->submittedCommandBufferCapacity = renderer->submittedCommandBufferCount + 1;
-
-			renderer->submittedCommandBuffers = SDL_realloc(
-				renderer->submittedCommandBuffers,
-				sizeof(VulkanCommandBuffer*) * renderer->submittedCommandBufferCapacity
+			VULKAN_INTERNAL_RecreateSwapchain(
+				renderer,
+				presentData->windowData
 			);
-		}
-
-		renderer->submittedCommandBuffers[renderer->submittedCommandBufferCount] = (VulkanCommandBuffer*) pCommandBuffers[i];
-		renderer->submittedCommandBufferCount += 1;
-
-		/* Present, if applicable */
-
-		for (j = 0; j < currentCommandBuffer->presentDataCount; j += 1)
-		{
-			presentData = &currentCommandBuffer->presentDatas[j];
-
-			presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-			presentInfo.pNext = NULL;
-			presentInfo.pWaitSemaphores = &presentData->windowData->swapchainData->renderFinishedSemaphore;
-			presentInfo.waitSemaphoreCount = 1;
-			presentInfo.pSwapchains = &presentData->windowData->swapchainData->swapchain;
-			presentInfo.swapchainCount = 1;
-			presentInfo.pImageIndices = &presentData->swapchainImageIndex;
-			presentInfo.pResults = NULL;
-
-			presentResult = renderer->vkQueuePresentKHR(
-				renderer->unifiedQueue,
-				&presentInfo
-			);
-
-			if (presentResult != VK_SUCCESS)
-			{
-				VULKAN_INTERNAL_RecreateSwapchain(
-					renderer,
-					presentData->windowData
-				);
-			}
 		}
 	}
 
@@ -10670,13 +10737,69 @@ static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 
 	VULKAN_Submit(
 		(Refresh_Renderer*) renderer,
-		1,
-		(Refresh_CommandBuffer**) &commandBuffer
+		(Refresh_CommandBuffer*) commandBuffer
 	);
 
 	renderer->defragInProgress = 0;
 
 	return 1;
+}
+
+static void VULKAN_WaitForFences(
+	Refresh_Renderer *driverData,
+	uint8_t waitAll,
+	uint32_t fenceCount,
+	Refresh_Fence **pFences
+) {
+	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
+	VkResult result;
+
+	result = renderer->vkWaitForFences(
+		renderer->logicalDevice,
+		fenceCount,
+		(VkFence*) pFences,
+		waitAll,
+		UINT64_MAX
+	);
+
+	if (result != VK_SUCCESS)
+	{
+		LogVulkanResultAsError("vkWaitForFences", result);
+	}
+}
+
+static int VULKAN_QueryFence(
+	Refresh_Renderer *driverData,
+	Refresh_Fence *fence
+) {
+	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
+	VkResult result;
+
+	result = renderer->vkGetFenceStatus(
+		renderer->logicalDevice,
+		(VkFence) fence
+	);
+
+	if (result == VK_SUCCESS)
+	{
+		return 1;
+	}
+	else if (result == VK_NOT_READY)
+	{
+		return 0;
+	}
+	else
+	{
+		LogVulkanResultAsError("vkGetFenceStatus", result);
+		return -1;
+	}
+}
+
+static void VULKAN_ReleaseFence(
+	Refresh_Renderer *driverData,
+	Refresh_Fence *fence
+) {
+	VULKAN_INTERNAL_ReturnFenceToPool((VulkanRenderer*) driverData, (VkFence) fence);
 }
 
 /* Device instantiation */
@@ -11965,6 +12088,16 @@ static Refresh_Device* VULKAN_CreateDevice(
 		renderer->transferBufferPool.availableBuffers[i] = transferBuffer;
 		renderer->transferBufferPool.availableBufferCount += 1;
 	}
+
+	/* Initialize fence pool */
+
+	renderer->fencePool.lock = SDL_CreateMutex();
+
+	renderer->fencePool.availableFenceCapacity = 4;
+	renderer->fencePool.availableFenceCount = 0;
+	renderer->fencePool.availableFences = SDL_malloc(
+		renderer->fencePool.availableFenceCapacity * sizeof(VkFence)
+	);
 
 	/* Some drivers don't support D16, so we have to fall back to D32. */
 

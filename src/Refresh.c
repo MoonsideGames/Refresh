@@ -892,14 +892,23 @@ void Refresh_SetSwapchainPresentMode(
 
 void Refresh_Submit(
 	Refresh_Device *device,
-	uint32_t commandBufferCount,
-	Refresh_CommandBuffer **pCommandBuffers
+	Refresh_CommandBuffer *commandBuffer
 ) {
 	NULL_RETURN(device);
 	device->Submit(
 		device->driverData,
-		commandBufferCount,
-		pCommandBuffers
+		commandBuffer
+	);
+}
+
+Refresh_Fence* Refresh_SubmitAndAcquireFence(
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer
+) {
+	NULL_RETURN_NULL(device);
+	return device->SubmitAndAcquireFence(
+		device->driverData,
+		commandBuffer
 	);
 }
 
@@ -909,6 +918,46 @@ void Refresh_Wait(
 	NULL_RETURN(device);
 	device->Wait(
 		device->driverData
+	);
+}
+
+void Refresh_WaitForFences(
+	Refresh_Device *device,
+	uint8_t waitAll,
+	uint32_t fenceCount,
+	Refresh_Fence **pFences
+) {
+	NULL_RETURN(device);
+	device->WaitForFences(
+		device->driverData,
+		waitAll,
+		fenceCount,
+		pFences
+	);
+}
+
+int Refresh_QueryFence(
+	Refresh_Device *device,
+	Refresh_Fence *fence
+) {
+	if (device == NULL) {
+		return 0;
+	}
+
+	return device->QueryFence(
+		device->driverData,
+		fence
+	);
+}
+
+void Refresh_ReleaseFence(
+	Refresh_Device *device,
+	Refresh_Fence *fence
+) {
+	NULL_RETURN(device);
+	device->ReleaseFence(
+		device->driverData,
+		fence
 	);
 }
 

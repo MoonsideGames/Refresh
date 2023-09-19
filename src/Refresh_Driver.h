@@ -268,7 +268,7 @@ struct Refresh_Device
 
 	/* Setters */
 
-	void(*SetTextureData)(
+	void (*SetTextureData)(
 		Refresh_Renderer *driverData,
 		Refresh_CommandBuffer *commandBuffer,
 		Refresh_TextureSlice *textureSlice,
@@ -276,7 +276,7 @@ struct Refresh_Device
 		uint32_t dataLengthInBytes
 	);
 
-	void(*SetTextureDataYUV)(
+	void (*SetTextureDataYUV)(
 		Refresh_Renderer *driverData,
 		Refresh_CommandBuffer* commandBuffer,
 		Refresh_Texture *y,
@@ -295,7 +295,7 @@ struct Refresh_Device
 		uint32_t uvStride
 	);
 
-	void(*CopyTextureToTexture)(
+	void (*CopyTextureToTexture)(
 		Refresh_Renderer *driverData,
 		Refresh_CommandBuffer *commandBuffer,
 		Refresh_TextureSlice *sourceTextureSlice,
@@ -303,14 +303,14 @@ struct Refresh_Device
 		Refresh_Filter filter
 	);
 
-	void(*CopyTextureToBuffer)(
+	void (*CopyTextureToBuffer)(
 		Refresh_Renderer *driverData,
 		Refresh_CommandBuffer *commandBuffer,
 		Refresh_TextureSlice *textureSlice,
 		Refresh_Buffer *buffer
 	);
 
-	void(*SetBufferData)(
+	void (*SetBufferData)(
 		Refresh_Renderer *driverData,
 		Refresh_CommandBuffer *commandBuffer,
 		Refresh_Buffer *buffer,
@@ -319,14 +319,14 @@ struct Refresh_Device
 		uint32_t dataLength
 	);
 
-	uint32_t(*PushVertexShaderUniforms)(
+	uint32_t (*PushVertexShaderUniforms)(
 		Refresh_Renderer *driverData,
 		Refresh_CommandBuffer *commandBuffer,
 		void *data,
 		uint32_t dataLengthInBytes
 	);
 
-	uint32_t(*PushFragmentShaderUniforms)(
+	uint32_t (*PushFragmentShaderUniforms)(
 		Refresh_Renderer *driverData,
 		Refresh_CommandBuffer *commandBuffer,
 		void *data,
@@ -340,14 +340,14 @@ struct Refresh_Device
 		uint32_t dataLengthInBytes
 	);
 
-	void(*BindVertexSamplers)(
+	void (*BindVertexSamplers)(
 		Refresh_Renderer *driverData,
 		Refresh_CommandBuffer *commandBuffer,
 		Refresh_Texture **pTextures,
 		Refresh_Sampler **pSamplers
 	);
 
-	void(*BindFragmentSamplers)(
+	void (*BindFragmentSamplers)(
 		Refresh_Renderer *driverData,
 		Refresh_CommandBuffer *commandBuffer,
 		Refresh_Texture **pTextures,
@@ -356,7 +356,7 @@ struct Refresh_Device
 
 	/* Getters */
 
-	void(*GetBufferData)(
+	void (*GetBufferData)(
 		Refresh_Renderer *driverData,
 		Refresh_Buffer *buffer,
 		void *data,
@@ -365,39 +365,39 @@ struct Refresh_Device
 
 	/* Disposal */
 
-	void(*QueueDestroyTexture)(
+	void (*QueueDestroyTexture)(
 		Refresh_Renderer *driverData,
 		Refresh_Texture *texture
 	);
 
-	void(*QueueDestroySampler)(
+	void (*QueueDestroySampler)(
 		Refresh_Renderer *driverData,
 		Refresh_Sampler *sampler
 	);
 
-	void(*QueueDestroyBuffer)(
+	void (*QueueDestroyBuffer)(
 		Refresh_Renderer *driverData,
 		Refresh_Buffer *buffer
 	);
 
-	void(*QueueDestroyShaderModule)(
+	void (*QueueDestroyShaderModule)(
 		Refresh_Renderer *driverData,
 		Refresh_ShaderModule *shaderModule
 	);
 
-	void(*QueueDestroyComputePipeline)(
+	void (*QueueDestroyComputePipeline)(
 		Refresh_Renderer *driverData,
 		Refresh_ComputePipeline *computePipeline
 	);
 
-	void(*QueueDestroyGraphicsPipeline)(
+	void (*QueueDestroyGraphicsPipeline)(
 		Refresh_Renderer *driverData,
 		Refresh_GraphicsPipeline *graphicsPipeline
 	);
 
 	/* Graphics State */
 
-	void(*BeginRenderPass)(
+	void (*BeginRenderPass)(
 		Refresh_Renderer *driverData,
 		Refresh_CommandBuffer *commandBuffer,
 		Refresh_ColorAttachmentInfo *colorAttachmentInfos,
@@ -405,30 +405,30 @@ struct Refresh_Device
 		Refresh_DepthStencilAttachmentInfo *depthStencilAttachmentInfo
 	);
 
-	void(*EndRenderPass)(
+	void (*EndRenderPass)(
 		Refresh_Renderer *driverData,
 		Refresh_CommandBuffer *commandBuffer
 	);
 
-	void(*SetViewport)(
+	void (*SetViewport)(
 		Refresh_Renderer *driverData,
 		Refresh_CommandBuffer *commandBuffer,
 		Refresh_Viewport *viewport
 	);
 
-	void(*SetScissor)(
+	void (*SetScissor)(
 		Refresh_Renderer *driverData,
 		Refresh_CommandBuffer *commandBuffer,
 		Refresh_Rect *scissor
 	);
 
-	void(*BindGraphicsPipeline)(
+	void (*BindGraphicsPipeline)(
 		Refresh_Renderer *driverData,
 		Refresh_CommandBuffer *commandBuffer,
 		Refresh_GraphicsPipeline *graphicsPipeline
 	);
 
-	void(*BindVertexBuffers)(
+	void (*BindVertexBuffers)(
 		Refresh_Renderer *driverData,
 		Refresh_CommandBuffer *commandBuffer,
 		uint32_t firstBinding,
@@ -437,7 +437,7 @@ struct Refresh_Device
 		uint64_t *pOffsets
 	);
 
-	void(*BindIndexBuffer)(
+	void (*BindIndexBuffer)(
 		Refresh_Renderer *driverData,
 		Refresh_CommandBuffer *commandBuffer,
 		Refresh_Buffer *buffer,
@@ -445,19 +445,19 @@ struct Refresh_Device
 		Refresh_IndexElementSize indexElementSize
 	);
 
-	void(*BindComputePipeline)(
+	void (*BindComputePipeline)(
 		Refresh_Renderer *driverData,
 		Refresh_CommandBuffer *commandBuffer,
 		Refresh_ComputePipeline *computePipeline
 	);
 
-	void(*BindComputeBuffers)(
+	void (*BindComputeBuffers)(
 		Refresh_Renderer *driverData,
 		Refresh_CommandBuffer *commandBuffer,
 		Refresh_Buffer **pBuffers
 	);
 
-	void(*BindComputeTextures)(
+	void (*BindComputeTextures)(
 		Refresh_Renderer *driverData,
 		Refresh_CommandBuffer *commandBuffer,
 		Refresh_Texture **pTextures
@@ -469,7 +469,7 @@ struct Refresh_Device
 		Refresh_PresentMode presentMode
 	);
 
-	void(*UnclaimWindow)(
+	void (*UnclaimWindow)(
 		Refresh_Renderer *driverData,
 		void *windowHandle
 	);
@@ -497,14 +497,35 @@ struct Refresh_Device
 		Refresh_PresentMode presentMode
 	);
 
-	void(*Submit)(
+	void (*Submit)(
 		Refresh_Renderer *driverData,
-		uint32_t commandBufferCount,
-		Refresh_CommandBuffer **pCommandBuffers
+		Refresh_CommandBuffer *commandBuffer
 	);
 
-	void(*Wait)(
+	Refresh_Fence* (*SubmitAndAcquireFence)(
+		Refresh_Renderer *driverData,
+		Refresh_CommandBuffer *commandBuffer
+	);
+
+	void (*Wait)(
 		Refresh_Renderer *driverData
+	);
+
+	void (*WaitForFences)(
+		Refresh_Renderer *driverData,
+		uint8_t waitAll,
+		uint32_t fenceCount,
+		Refresh_Fence **pFences
+	);
+
+	int (*QueryFence)(
+		Refresh_Renderer *driverData,
+		Refresh_Fence *fence
+	);
+
+	void (*ReleaseFence)(
+		Refresh_Renderer *driverData,
+		Refresh_Fence *fence
 	);
 
 	/* Opaque pointer for the Driver */
@@ -560,7 +581,11 @@ struct Refresh_Device
 	ASSIGN_DRIVER_FUNC(GetSwapchainFormat, name) \
 	ASSIGN_DRIVER_FUNC(SetSwapchainPresentMode, name) \
 	ASSIGN_DRIVER_FUNC(Submit, name) \
-	ASSIGN_DRIVER_FUNC(Wait, name)
+	ASSIGN_DRIVER_FUNC(SubmitAndAcquireFence, name) \
+	ASSIGN_DRIVER_FUNC(Wait, name) \
+	ASSIGN_DRIVER_FUNC(WaitForFences, name) \
+	ASSIGN_DRIVER_FUNC(QueryFence, name) \
+	ASSIGN_DRIVER_FUNC(ReleaseFence, name)
 
 typedef struct Refresh_Driver
 {
