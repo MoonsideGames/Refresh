@@ -661,6 +661,7 @@ typedef struct Refresh_Driver
 } Refresh_Driver;
 
 extern Refresh_Driver VulkanDriver;
+extern Refresh_Driver D3D11Driver;
 extern Refresh_Driver PS5Driver;
 
 #endif /* REFRESH_DRIVER_H */

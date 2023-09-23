@@ -10,6 +10,9 @@
     <ClCompile Include="..\src\Refresh_Image.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\src\Refresh_Driver_D3D11.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\include\Refresh.h">
@@ -22,6 +25,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\include\Refresh_Image.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\Refresh_Driver_D3D11_cdefines.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

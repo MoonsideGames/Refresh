@@ -41,6 +41,12 @@ add_definitions(
 	-DREFRESH_DRIVER_VULKAN
 )
 
+if (WIN32)
+	add_definitions(
+		-DREFRESH_DRIVER_D3D11
+	)
+endif()
+
 # Source lists
 add_library(Refresh
 	# Public Headers
@@ -51,6 +57,7 @@ add_library(Refresh
 	src/Refresh_Driver_Vulkan_vkfuncs.h
 	# Source Files
 	src/Refresh.c
+	src/Refresh_Driver_D3D11.c
 	src/Refresh_Driver_Vulkan.c
 	src/Refresh_Image.c
 )

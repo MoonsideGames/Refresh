@@ -39,6 +39,12 @@
 	#define VULKAN_DRIVER NULL
 #endif
 
+#ifdef REFRESH_DRIVER_D3D11
+	#define D3D11_DRIVER &D3D11Driver
+#else
+	#define D3D11_DRIVER NULL
+#endif
+
 #ifdef REFRESH_DRIVER_PS5
 	#define PS5_DRIVER &PS5Driver
 #else
@@ -47,6 +53,7 @@
 
 static const Refresh_Driver *backends[] = {
 	NULL,
+	D3D11_DRIVER,
 	VULKAN_DRIVER,
 	PS5_DRIVER
 };
