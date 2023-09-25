@@ -46,7 +46,7 @@
 #define D3D11_CREATE_DEVICE_FUNC "D3D11CreateDevice"
 #define D3DCOMPILE_FUNC "D3DCompile"
 #define CREATE_DXGI_FACTORY1_FUNC "CreateDXGIFactory1"
-#define WINDOW_SWAPCHAIN_DATA "Refresh_D3D11Swapchain"
+#define WINDOW_DATA "Refresh_D3D11WindowData"
 
 #define NOT_IMPLEMENTED SDL_assert(0 && "Not implemented!");
 
@@ -83,7 +83,7 @@ typedef HRESULT(WINAPI *PFN_D3DCOMPILE)(
 
  /* Conversions */
 
-static DXGI_FORMAT RefreshToD3D11_SurfaceFormat[] =
+static DXGI_FORMAT RefreshToD3D11_TextureFormat[] =
 {
 	DXGI_FORMAT_R8G8B8A8_UNORM,	/* R8G8B8A8 */
 	DXGI_FORMAT_B8G8R8A8_UNORM,	/* B8G8R8A8 */
@@ -233,6 +233,19 @@ static D3D11_TEXTURE_ADDRESS_MODE RefreshToD3D11_SamplerAddressMode[] =
 
 /* Structs */
 
+typedef struct SwapchainData
+{
+	IDXGISwapChain *swapchain;
+	ID3D11RenderTargetView *swapchainRTView;
+} SwapchainData;
+
+typedef struct WindowData
+{
+	void* windowHandle;
+	uint8_t allowTearing;
+	SwapchainData *swapchainData;
+} WindowData;
+
 typedef struct D3D11Renderer
 {
 	ID3D11Device *device;
@@ -244,8 +257,12 @@ typedef struct D3D11Renderer
 	void *d3dcompiler_dll;
 
 	uint8_t debugMode;
-	D3D_FEATURE_LEVEL featureLevel;
+	D3D_FEATURE_LEVEL featureLevel; /* FIXME: Do we need this? */
 	PFN_D3DCOMPILE D3DCompileFunc;
+
+	WindowData **claimedWindows;
+	uint32_t claimedWindowCount;
+	uint32_t claimedWindowCapacity;
 } D3D11Renderer;
 
 /* Logging */
@@ -693,13 +710,195 @@ static void D3D11_BindComputeTextures(
 
 /* Window and Swapchain Management */
 
+static WindowData* D3D11_INTERNAL_FetchWindowData(
+	void *windowHandle
+) {
+	return (WindowData*) SDL_GetWindowData(windowHandle, WINDOW_DATA);
+}
+
+static void D3D11_INTERNAL_ResolveSwapChainModeDescription(
+	IUnknown *device,
+	IDXGIAdapter *adapter,
+	IDXGIFactory1 *factory,
+	HWND window,
+	DXGI_MODE_DESC *modeDescription,
+	DXGI_MODE_DESC *swapChainDescription
+) {
+	HMONITOR monitor;
+	int iAdapter = 0, iOutput;
+	IDXGIAdapter1* pAdapter;
+	IDXGIOutput *output;
+	DXGI_OUTPUT_DESC description;
+
+	/* Find the output (on any adapter) attached to the monitor that holds our window */
+	monitor = MonitorFromWindow(window, MONITOR_DEFAULTTOPRIMARY);
+	while (SUCCEEDED(IDXGIFactory1_EnumAdapters1(factory, iAdapter++, &pAdapter)))
+	{
+		iOutput = 0;
+		while (SUCCEEDED(IDXGIAdapter_EnumOutputs(pAdapter, iOutput++, &output)))
+		{
+			IDXGIOutput_GetDesc(output, &description);
+			if (description.Monitor == monitor)
+			{
+				if (SUCCEEDED(IDXGIOutput_FindClosestMatchingMode(output, modeDescription, swapChainDescription, device)))
+				{
+					IDXGIOutput_Release(output);
+					IDXGIAdapter1_Release(pAdapter);
+					return;
+				}
+			}
+			IDXGIOutput_Release(output);
+		}
+		IDXGIAdapter1_Release(pAdapter);
+	}
+}
+
+static uint8_t D3D11_INTERNAL_CreateSwapchain(
+	D3D11Renderer *renderer,
+	WindowData *windowData
+) {
+	SDL_SysWMinfo info;
+	HWND dxgiHandle;
+	DXGI_MODE_DESC swapchainBufferDesc;
+	DXGI_SWAP_CHAIN_DESC swapchainDesc;
+	IDXGIFactory1 *pParent;
+	IDXGISwapChain *swapchain;
+	SwapchainData *swapchainData;
+	HRESULT res;
+
+	/* Get the DXGI handle */
+	SDL_VERSION(&info.version);
+	SDL_GetWindowWMInfo((SDL_Window*) windowData->windowHandle, &info);
+	dxgiHandle = info.info.win.window;
+
+	/* Initialize the swapchain buffer descriptor */
+	swapchainBufferDesc.Width = 0;
+	swapchainBufferDesc.Height = 0;
+	swapchainBufferDesc.RefreshRate.Numerator = 0;
+	swapchainBufferDesc.RefreshRate.Denominator = 0;
+	swapchainBufferDesc.Format = RefreshToD3D11_TextureFormat[REFRESH_TEXTUREFORMAT_R8G8B8A8];
+	swapchainBufferDesc.ScanlineOrdering = DXGI_MODE_SCANLINE_ORDER_UNSPECIFIED;
+	swapchainBufferDesc.Scaling = DXGI_MODE_SCALING_UNSPECIFIED;
+
+	/* Get the closest matching mode we can from the current monitor */
+	D3D11_INTERNAL_ResolveSwapChainModeDescription(
+		(IUnknown*) renderer->device,
+		(IDXGIAdapter*) renderer->adapter,
+		(IDXGIFactory1*) renderer->factory,
+		dxgiHandle,
+		&swapchainBufferDesc,
+		&swapchainDesc.BufferDesc
+	);
+
+	/* Initialize the swapchain descriptor */
+	swapchainDesc.BufferDesc = swapchainBufferDesc; /* FIXME: I think this is wrong, and it's wrong in FNA3D too! */
+	swapchainDesc.SampleDesc.Count = 1;
+	swapchainDesc.SampleDesc.Quality = 0;
+	swapchainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+	swapchainDesc.BufferCount = 3;
+	swapchainDesc.OutputWindow = dxgiHandle;
+	swapchainDesc.Windowed = 1;
+	swapchainDesc.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
+	swapchainDesc.Flags = 0;
+
+	/* Create the swapchain! */
+	res = IDXGIFactory1_CreateSwapChain(
+		(IDXGIFactory1*) renderer->factory,
+		(IUnknown*) renderer->device,
+		&swapchainDesc,
+		&swapchain
+	);
+	ERROR_CHECK("Could not create swapchain");
+
+	/*
+	 * The swapchain's parent is a separate factory from the factory that
+	 * we used to create the swapchain, and only that parent can be used to
+	 * set the window association. Trying to set an association on our factory
+	 * will silently fail and doesn't even verify arguments or return errors.
+	 * See https://gamedev.net/forums/topic/634235-dxgidisabling-altenter/4999955/
+	 */
+	res = IDXGISwapChain_GetParent(
+		swapchain,
+		&D3D_IID_IDXGIFactory1,
+		(void**) &pParent
+	);
+	if (FAILED(res))
+	{
+		Refresh_LogWarn(
+			"Could not get swapchain parent! Error Code: %08X",
+			res
+		);
+	}
+	else
+	{
+		/* Disable DXGI window crap */
+		res = IDXGIFactory1_MakeWindowAssociation(
+			pParent,
+			dxgiHandle,
+			DXGI_MWA_NO_WINDOW_CHANGES
+		);
+		if (FAILED(res))
+		{
+			Refresh_LogWarn(
+				"MakeWindowAssociation failed! Error Code: %08X",
+				res
+			);
+		}
+	}
+
+	/* Create the swapchain data */
+	swapchainData = (SwapchainData*) SDL_malloc(sizeof(SwapchainData));
+	swapchainData->swapchain = swapchain;
+	swapchainData->swapchainRTView = NULL;
+
+	windowData->swapchainData = swapchainData;
+	return 1;
+}
+
 static uint8_t D3D11_ClaimWindow(
 	Refresh_Renderer *driverData,
 	void *windowHandle,
 	Refresh_PresentMode presentMode
 ) {
-	NOT_IMPLEMENTED
-	return 0;
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	WindowData *windowData = D3D11_INTERNAL_FetchWindowData(windowHandle);
+
+	if (windowData == NULL)
+	{
+		windowData = (WindowData*) SDL_malloc(sizeof(WindowData));
+		windowData->windowHandle = windowHandle;
+		windowData->allowTearing = presentMode == REFRESH_PRESENTMODE_IMMEDIATE;
+
+		if (D3D11_INTERNAL_CreateSwapchain(renderer, windowData))
+		{
+			SDL_SetWindowData((SDL_Window*) windowHandle, WINDOW_DATA, windowData);
+
+			if (renderer->claimedWindowCount >= renderer->claimedWindowCapacity)
+			{
+				renderer->claimedWindowCapacity *= 2;
+				renderer->claimedWindows = SDL_realloc(
+					renderer->claimedWindows,
+					renderer->claimedWindowCapacity * sizeof(WindowData*)
+				);
+			}
+
+			renderer->claimedWindows[renderer->claimedWindowCount] = windowData;
+			renderer->claimedWindowCount += 1;
+
+			return 1;
+		}
+		else
+		{
+			Refresh_LogError("Could not create swapchain, failed to claim window!");
+			SDL_free(windowData);
+			return 0;
+		}
+	}
+	else
+	{
+		Refresh_LogWarn("Window already claimed!");
+		return 0;
+	}
 }
 
 static uint8_t D3D11_UnclaimWindow(
@@ -725,7 +924,6 @@ static Refresh_TextureFormat D3D11_GetSwapchainFormat(
 	Refresh_Renderer *driverData,
 	void *windowHandle
 ) {
-	NOT_IMPLEMENTED
 	return REFRESH_TEXTUREFORMAT_R8G8B8A8;
 }
 
