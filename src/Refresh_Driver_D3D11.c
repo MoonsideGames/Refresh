@@ -65,6 +65,24 @@
 		return ret; \
 	}
 
+#define EXPAND_ELEMENTS_IF_NEEDED(arr, initialValue, type)	\
+	if (arr->count == arr->capacity)			\
+	{							\
+		if (arr->capacity == 0)				\
+		{						\
+			arr->capacity = initialValue;		\
+		}						\
+		else						\
+		{						\
+			arr->capacity *= 2;			\
+		}						\
+		arr->elements = (type*) SDL_realloc(		\
+			arr->elements,				\
+			arr->capacity * sizeof(type)		\
+		);						\
+	}
+
+
 /* D3DCompile signature */
 
 typedef HRESULT(WINAPI *PFN_D3DCOMPILE)(
@@ -233,18 +251,42 @@ static D3D11_TEXTURE_ADDRESS_MODE RefreshToD3D11_SamplerAddressMode[] =
 
 /* Structs */
 
-typedef struct SwapchainData
+typedef struct D3D11SwapchainData
 {
 	IDXGISwapChain *swapchain;
 	ID3D11RenderTargetView *swapchainRTView;
-} SwapchainData;
+} D3D11SwapchainData;
 
-typedef struct WindowData
+typedef struct D3D11WindowData
 {
 	void* windowHandle;
 	uint8_t allowTearing;
-	SwapchainData *swapchainData;
-} WindowData;
+	D3D11SwapchainData *swapchainData;
+} D3D11WindowData;
+
+typedef struct D3D11CommandBuffer
+{
+	/* D3D11 Object References */
+	ID3D11DeviceContext *context;
+	ID3D11CommandList *commandList;
+	D3D11SwapchainData *swapchainData;
+
+	/* Render Pass */
+	uint8_t numBoundColorAttachments;
+	ID3D11RenderTargetView *rtViews[MAX_COLOR_TARGET_BINDINGS];
+	ID3D11DepthStencilView* dsView;
+
+	/* State */
+	SDL_threadID threadID;
+	uint8_t recording;
+} D3D11CommandBuffer;
+
+typedef struct D3D11CommandBufferPool
+{
+	D3D11CommandBuffer **elements;
+	uint32_t count;
+	uint32_t capacity;
+} D3D11CommandBufferPool;
 
 typedef struct D3D11Renderer
 {
@@ -260,9 +302,12 @@ typedef struct D3D11Renderer
 	D3D_FEATURE_LEVEL featureLevel; /* FIXME: Do we need this? */
 	PFN_D3DCOMPILE D3DCompileFunc;
 
-	WindowData **claimedWindows;
+	D3D11WindowData **claimedWindows;
 	uint32_t claimedWindowCount;
 	uint32_t claimedWindowCapacity;
+
+	D3D11CommandBufferPool *commandBufferPool;
+	SDL_mutex *commandBufferAcquisitionMutex;
 } D3D11Renderer;
 
 /* Logging */
@@ -616,8 +661,72 @@ static void D3D11_QueueDestroyGraphicsPipeline(
 static Refresh_CommandBuffer* D3D11_AcquireCommandBuffer(
 	Refresh_Renderer *driverData
 ) {
-	NOT_IMPLEMENTED
-	return NULL;
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	D3D11CommandBuffer *commandBuffer = NULL;
+	uint32_t i;
+	HRESULT res;
+
+	/* Make sure multiple threads can't acquire the same command buffer. */
+	SDL_LockMutex(renderer->commandBufferAcquisitionMutex);
+
+	/* Try to use an existing command buffer, if one is available. */
+	for (i = 0; i < renderer->commandBufferPool->count; i += 1)
+	{
+		/* Search for a command buffer in the pool that is not recording. */
+		if (!renderer->commandBufferPool->elements[i]->recording)
+		{
+			commandBuffer = renderer->commandBufferPool->elements[i];
+			break;
+		}
+	}
+
+	/* If there are no free command buffers, make a new one. */
+	if (commandBuffer == NULL)
+	{
+		/* Expand the capacity as needed */
+		EXPAND_ELEMENTS_IF_NEEDED(
+			renderer->commandBufferPool,
+			2,
+			D3D11CommandBuffer*
+		);
+
+		/* Create a new command buffer */
+		renderer->commandBufferPool->elements[i] = (D3D11CommandBuffer*) SDL_malloc(
+			sizeof(D3D11CommandBuffer)
+		);
+
+		/* Assign it a new deferred context */
+		res = ID3D11Device_CreateDeferredContext(
+			renderer->device,
+			0,
+			&renderer->commandBufferPool->elements[i]->context
+		);
+		if (FAILED(res))
+		{
+			SDL_UnlockMutex(renderer->commandBufferAcquisitionMutex);
+			ERROR_CHECK_RETURN("Could not create deferred context for command buffer", NULL);
+		}
+
+		/* Now we have a new command buffer we can use! */
+		commandBuffer = renderer->commandBufferPool->elements[i];
+		renderer->commandBufferPool->count += 1;
+	}
+
+	/* Set up the command buffer */
+	commandBuffer->threadID = SDL_ThreadID();
+	commandBuffer->recording = 1;
+	commandBuffer->swapchainData = NULL;
+	commandBuffer->commandList = NULL;
+	commandBuffer->dsView = NULL;
+	commandBuffer->numBoundColorAttachments = 0;
+	for (i = 0; i < MAX_COLOR_TARGET_BINDINGS; i += 1)
+	{
+		commandBuffer->rtViews[i] = NULL;
+	}
+
+	SDL_UnlockMutex(renderer->commandBufferAcquisitionMutex);
+
+	return (Refresh_CommandBuffer*) commandBuffer;
 }
 
 static void D3D11_BeginRenderPass(
@@ -710,10 +819,10 @@ static void D3D11_BindComputeTextures(
 
 /* Window and Swapchain Management */
 
-static WindowData* D3D11_INTERNAL_FetchWindowData(
+static D3D11WindowData* D3D11_INTERNAL_FetchWindowData(
 	void *windowHandle
 ) {
-	return (WindowData*) SDL_GetWindowData(windowHandle, WINDOW_DATA);
+	return (D3D11WindowData*) SDL_GetWindowData(windowHandle, WINDOW_DATA);
 }
 
 static void D3D11_INTERNAL_ResolveSwapChainModeDescription(
@@ -755,7 +864,7 @@ static void D3D11_INTERNAL_ResolveSwapChainModeDescription(
 
 static uint8_t D3D11_INTERNAL_CreateSwapchain(
 	D3D11Renderer *renderer,
-	WindowData *windowData
+	D3D11WindowData *windowData
 ) {
 	SDL_SysWMinfo info;
 	HWND dxgiHandle;
@@ -763,7 +872,7 @@ static uint8_t D3D11_INTERNAL_CreateSwapchain(
 	DXGI_SWAP_CHAIN_DESC swapchainDesc;
 	IDXGIFactory1 *pParent;
 	IDXGISwapChain *swapchain;
-	SwapchainData *swapchainData;
+	D3D11SwapchainData *swapchainData;
 	HRESULT res;
 
 	/* Get the DXGI handle */
@@ -847,7 +956,7 @@ static uint8_t D3D11_INTERNAL_CreateSwapchain(
 	}
 
 	/* Create the swapchain data */
-	swapchainData = (SwapchainData*) SDL_malloc(sizeof(SwapchainData));
+	swapchainData = (D3D11SwapchainData*) SDL_malloc(sizeof(D3D11SwapchainData));
 	swapchainData->swapchain = swapchain;
 	swapchainData->swapchainRTView = NULL;
 
@@ -861,11 +970,11 @@ static uint8_t D3D11_ClaimWindow(
 	Refresh_PresentMode presentMode
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
-	WindowData *windowData = D3D11_INTERNAL_FetchWindowData(windowHandle);
+	D3D11WindowData *windowData = D3D11_INTERNAL_FetchWindowData(windowHandle);
 
 	if (windowData == NULL)
 	{
-		windowData = (WindowData*) SDL_malloc(sizeof(WindowData));
+		windowData = (D3D11WindowData*) SDL_malloc(sizeof(D3D11WindowData));
 		windowData->windowHandle = windowHandle;
 		windowData->allowTearing = presentMode == REFRESH_PRESENTMODE_IMMEDIATE;
 
@@ -878,7 +987,7 @@ static uint8_t D3D11_ClaimWindow(
 				renderer->claimedWindowCapacity *= 2;
 				renderer->claimedWindows = SDL_realloc(
 					renderer->claimedWindows,
-					renderer->claimedWindowCapacity * sizeof(WindowData*)
+					renderer->claimedWindowCapacity * sizeof(D3D11WindowData*)
 				);
 			}
 
@@ -1226,6 +1335,15 @@ tryCreateDevice:
 	/* Print driver info */
 	Refresh_LogInfo("Refresh Driver: D3D11");
 	Refresh_LogInfo("D3D11 Adapter: %S", adapterDesc.Description);
+
+	/* Create the command buffer pool */
+	renderer->commandBufferPool = (D3D11CommandBufferPool*) SDL_calloc(
+		1,
+		sizeof(D3D11CommandBufferPool)
+	);
+
+	/* Create mutexes */
+	renderer->commandBufferAcquisitionMutex = SDL_CreateMutex();
 
 	/* Initialize miscellaneous renderer members */
 	renderer->debugMode = (flags & D3D11_CREATE_DEVICE_DEBUG);
