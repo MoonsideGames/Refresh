@@ -25,7 +25,7 @@
  */
 
 /* Function Pointer Signatures */
-typedef HRESULT(WINAPI* PFN_CREATE_DXGI_FACTORY)(const GUID* riid, void** ppFactory);
+typedef HRESULT(WINAPI* PFN_CREATE_DXGI_FACTORY1)(const GUID* riid, void** ppFactory);
 
  /* IIDs (from https://magnumdb.com) */
 

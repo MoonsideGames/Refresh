@@ -43,6 +43,9 @@
 
 #define D3D11_DLL "d3d11.dll"
 #define DXGI_DLL "dxgi.dll"
+#define D3D11_CREATE_DEVICE_FUNC "D3D11CreateDevice"
+#define D3DCOMPILE_FUNC "D3DCompile"
+#define CREATE_DXGI_FACTORY1_FUNC "CreateDXGIFactory1"
 #define WINDOW_SWAPCHAIN_DATA "Refresh_D3D11Swapchain"
 
 #define NOT_IMPLEMENTED SDL_assert(0 && "Not implemented!");
@@ -230,129 +233,15 @@ static D3D11_TEXTURE_ADDRESS_MODE RefreshToD3D11_SamplerAddressMode[] =
 
 /* Structs */
 
-typedef struct D3D11Texture
-{
-	/* D3D Handles */
-	ID3D11Resource *handle; /* ID3D11Texture2D* or ID3D11Texture3D* */
-	ID3D11ShaderResourceView *shaderView;
-
-	/* Basic Info */
-	int32_t levelCount;
-	uint8_t isRenderTarget;
-
-	/* Dimensions */
-	#define REFRESH_D3D11_RENDERTARGET_2D 0
-	#define REFRESH_D3D11_RENDERTARGET_3D 1
-	#define REFRESH_D3D11_RENDERTARGET_CUBE 2
-	uint8_t rtType;
-	REFRESHNAMELESS union
-	{
-		struct
-		{
-			int32_t width;
-			int32_t height;
-			ID3D11View *targetView;	/* ID3D11RenderTargetView* or ID3D11DepthStencilView* */
-		} twod;
-		struct
-		{
-			int32_t width;
-			int32_t height;
-			int32_t depth;
-		} threed;
-		struct
-		{
-			int32_t size;
-			ID3D11RenderTargetView **rtViews;
-		} cube;
-	};
-} D3D11Texture;
-
-typedef struct D3D11Buffer
-{
-	ID3D11Buffer *handle;
-} D3D11Buffer;
-
-typedef struct D3D11SwapchainData
-{
-	IDXGISwapChain* swapchain;
-	D3D11Texture refreshTexture;
-	void* windowHandle;
-} D3D11SwapchainData;
-
-typedef struct D3D11CommandBuffer
-{
-	/* D3D11 Object References */
-	ID3D11DeviceContext *context;
-	ID3D11CommandList *commandList;
-	D3D11SwapchainData *swapchainData;
-
-	/* Render Pass */
-	uint8_t numBoundColorAttachments;
-	ID3D11RenderTargetView *rtViews[MAX_COLOR_TARGET_BINDINGS];
-	ID3D11DepthStencilView* dsView;
-
-	/* State */
-	SDL_threadID threadID;
-	uint8_t recording;
-} D3D11CommandBuffer;
-
-typedef struct D3D11CommandBufferPool
-{
-	D3D11CommandBuffer **elements;
-	uint32_t count;
-	uint32_t capacity;
-} D3D11CommandBufferPool;
-
-typedef struct D3D11ShaderModule
-{
-	ID3D11DeviceChild *shader; /* ID3D11VertexShader, ID3D11PixelShader, ID3D11ComputeShader */
-	ID3D10Blob *blob;
-	char *shaderSource;
-	size_t shaderSourceLength;
-} D3D11ShaderModule;
-
-typedef struct D3D11GraphicsPipeline
-{
-	float blendConstants[4];
-
-	int32_t numColorAttachments;
-	int32_t colorAttachmentSampleCounts[MAX_COLOR_TARGET_BINDINGS];
-	DXGI_FORMAT colorAttachmentFormats[MAX_COLOR_TARGET_BINDINGS];
-	ID3D11BlendState *colorAttachmentBlendState;
-
-	uint8_t hasDepthStencilAttachment;
-	DXGI_FORMAT depthStencilAttachmentFormat;
-
-	D3D11_PRIMITIVE_TOPOLOGY primitiveTopology;
-	uint32_t stencilRef;
-	ID3D11DepthStencilState *depthStencilState;
-	ID3D11RasterizerState *rasterizerState;
-	ID3D11InputLayout *inputLayout;
-
-	Refresh_MultisampleState multisampleState;
-	ID3D11VertexShader *vertexShader;
-	ID3D11PixelShader *fragmentShader;
-} D3D11GraphicsPipeline;
-
 typedef struct D3D11Renderer
 {
 	ID3D11Device *device;
 	ID3D11DeviceContext *immediateContext;
 	IDXGIFactory1 *factory;
-	IDXGIAdapter1* adapter;
+	IDXGIAdapter1 *adapter;
 	void *d3d11_dll;
 	void *dxgi_dll;
 	void *d3dcompiler_dll;
-	SDL_mutex *contextLock;
-
-	D3D11CommandBufferPool *commandBufferPool;
-	SDL_mutex *commandBufferAcquisitionMutex;
-
-	D3D11SwapchainData** swapchainDatas;
-	uint32_t swapchainDataCount;
-	uint32_t swapchainDataCapacity;
-
-	Refresh_Vec4 blendFactor;
 
 	uint8_t debugMode;
 	D3D_FEATURE_LEVEL featureLevel;
@@ -900,7 +789,99 @@ static void D3D11_ReleaseFence(
 static uint8_t D3D11_PrepareDriver(
 	uint32_t *flags
 ) {
-	/* Nothing to do here. */
+	void *d3d11_dll, *d3dcompiler_dll, *dxgi_dll;
+	PFN_D3D11_CREATE_DEVICE D3D11CreateDeviceFunc;
+	D3D_FEATURE_LEVEL levels[] = { D3D_FEATURE_LEVEL_11_0 };
+	PFN_D3DCOMPILE D3DCompileFunc;
+	PFN_CREATE_DXGI_FACTORY1 CreateDXGIFactoryFunc;
+	HRESULT res;
+
+	/* Can we load D3D11? */
+
+	d3d11_dll = SDL_LoadObject(D3D11_DLL);
+	if (d3d11_dll == NULL)
+	{
+		Refresh_LogWarn("D3D11: Could not find " D3D11_DLL);
+		return 0;
+	}
+
+	D3D11CreateDeviceFunc = (PFN_D3D11_CREATE_DEVICE) SDL_LoadFunction(
+		d3d11_dll,
+		D3D11_CREATE_DEVICE_FUNC
+	);
+	if (D3D11CreateDeviceFunc == NULL)
+	{
+		Refresh_LogWarn("D3D11: Could not find function " D3D11_CREATE_DEVICE_FUNC " in " D3D11_DLL);
+		SDL_UnloadObject(d3d11_dll);
+		return 0;
+	}
+
+	/* Can we create a device? */
+
+	res = D3D11CreateDeviceFunc(
+		NULL,
+		D3D_DRIVER_TYPE_HARDWARE,
+		NULL,
+		D3D11_CREATE_DEVICE_BGRA_SUPPORT,
+		levels,
+		SDL_arraysize(levels),
+		D3D11_SDK_VERSION,
+		NULL,
+		NULL,
+		NULL
+	);
+
+	SDL_UnloadObject(d3d11_dll);
+
+	if (FAILED(res))
+	{
+		Refresh_LogWarn("D3D11: Could not create D3D11Device with feature level 11_0");
+		return 0;
+	}
+
+	/* Can we load D3DCompiler? */
+
+	d3dcompiler_dll = SDL_LoadObject(D3DCOMPILER_DLL);
+	if (d3dcompiler_dll == NULL)
+	{
+		Refresh_LogWarn("D3D11: Could not find " D3DCOMPILER_DLL);
+		return 0;
+	}
+
+	D3DCompileFunc = (PFN_D3DCOMPILE) SDL_LoadFunction(
+		d3dcompiler_dll,
+		D3DCOMPILE_FUNC
+	);
+	SDL_UnloadObject(d3dcompiler_dll); /* We're not going to call this function, so we can just unload now. */
+	if (D3DCompileFunc == NULL)
+	{
+		Refresh_LogWarn("D3D11: Could not find function " D3DCOMPILE_FUNC " in " D3DCOMPILER_DLL);
+		return 0;
+	}
+
+	/* Can we load DXGI? */
+
+	dxgi_dll = SDL_LoadObject(DXGI_DLL);
+	if (dxgi_dll == NULL)
+	{
+		Refresh_LogWarn("D3D11: Could not find " DXGI_DLL);
+		return 0;
+	}
+
+	CreateDXGIFactoryFunc = (PFN_CREATE_DXGI_FACTORY1) SDL_LoadFunction(
+		dxgi_dll,
+		CREATE_DXGI_FACTORY1_FUNC
+	);
+	SDL_UnloadObject(dxgi_dll); /* We're not going to call this function, so we can just unload now. */
+	if (CreateDXGIFactoryFunc == NULL)
+	{
+		Refresh_LogWarn("D3D11: Could not find function " CREATE_DXGI_FACTORY1_FUNC " in " DXGI_DLL);
+		return 0;
+	}
+
+	/* No window flags required */
+	SDL_SetHint(SDL_HINT_VIDEO_EXTERNAL_CONTEXT, "1");
+
 	return 1;
 }
 
@@ -908,10 +889,10 @@ static Refresh_Device* D3D11_CreateDevice(
 	uint8_t debugMode
 ) {
 	D3D11Renderer *renderer;
-	PFN_CREATE_DXGI_FACTORY CreateDXGIFactoryFunc;
+	PFN_CREATE_DXGI_FACTORY1 CreateDXGIFactoryFunc;
 	PFN_D3D11_CREATE_DEVICE D3D11CreateDeviceFunc;
 	D3D_FEATURE_LEVEL levels[] = { D3D_FEATURE_LEVEL_11_0 };
-	void* factory6;
+	IDXGIFactory6 *factory6;
 	uint32_t flags;
 	DXGI_ADAPTER_DESC1 adapterDesc;
 	HRESULT res;
@@ -931,11 +912,11 @@ static Refresh_Device* D3D11_CreateDevice(
 	/* Load the D3DCompile function pointer */
 	renderer->D3DCompileFunc = (PFN_D3DCOMPILE) SDL_LoadFunction(
 		renderer->d3dcompiler_dll,
-		"D3DCompile"
+		D3DCOMPILE_FUNC
 	);
 	if (renderer->D3DCompileFunc == NULL)
 	{
-		Refresh_LogError("Could not load D3DCompile function!");
+		Refresh_LogError("Could not load function: " D3DCOMPILE_FUNC);
 		return NULL;
 	}
 
@@ -947,14 +928,14 @@ static Refresh_Device* D3D11_CreateDevice(
 		return NULL;
 	}
 
-	/* Load the CreateDXGIFactory function */
-	CreateDXGIFactoryFunc = (PFN_CREATE_DXGI_FACTORY) SDL_LoadFunction(
+	/* Load the CreateDXGIFactory1 function */
+	CreateDXGIFactoryFunc = (PFN_CREATE_DXGI_FACTORY1) SDL_LoadFunction(
 		renderer->dxgi_dll,
-		"CreateDXGIFactory1"
+		CREATE_DXGI_FACTORY1_FUNC
 	);
 	if (CreateDXGIFactoryFunc == NULL)
 	{
-		Refresh_LogError("Could not load CreateDXGIFactory1 function!");
+		Refresh_LogError("Could not load function: " CREATE_DXGI_FACTORY1_FUNC);
 		return NULL;
 	}
 
@@ -974,7 +955,7 @@ static Refresh_Device* D3D11_CreateDevice(
 	if (SUCCEEDED(res))
 	{
 		IDXGIFactory6_EnumAdapterByGpuPreference(
-			(IDXGIFactory6*) factory6,
+			factory6,
 			0,
 			DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE,
 			&D3D_IID_IDXGIAdapter1,
@@ -1004,11 +985,11 @@ static Refresh_Device* D3D11_CreateDevice(
 	/* Load the CreateDevice function */
 	D3D11CreateDeviceFunc = (PFN_D3D11_CREATE_DEVICE) SDL_LoadFunction(
 		renderer->d3d11_dll,
-		"D3D11CreateDevice"
+		D3D11_CREATE_DEVICE_FUNC
 	);
 	if (D3D11CreateDeviceFunc == NULL)
 	{
-		Refresh_LogError("Could not load D3D11CreateDevice function!");
+		Refresh_LogError("Could not load function: " D3D11_CREATE_DEVICE_FUNC);
 		return NULL;
 	}
 
@@ -1022,7 +1003,7 @@ static Refresh_Device* D3D11_CreateDevice(
 	/* Create the device */
 tryCreateDevice:
 	res = D3D11CreateDeviceFunc(
-		(IDXGIAdapter*)renderer->adapter,
+		(IDXGIAdapter*) renderer->adapter,
 		D3D_DRIVER_TYPE_UNKNOWN, /* Must be UNKNOWN if adapter is non-null according to spec */
 		NULL,
 		flags,
@@ -1048,27 +1029,12 @@ tryCreateDevice:
 	Refresh_LogInfo("Refresh Driver: D3D11");
 	Refresh_LogInfo("D3D11 Adapter: %S", adapterDesc.Description);
 
-	/* Create the command buffer pool */
-	renderer->commandBufferPool = (D3D11CommandBufferPool*) SDL_calloc(
-		1,
-		sizeof(D3D11CommandBufferPool)
-	);
-
-	/* Create mutexes */
-	renderer->contextLock = SDL_CreateMutex();
-	renderer->commandBufferAcquisitionMutex = SDL_CreateMutex();
-
 	/* Initialize miscellaneous renderer members */
 	renderer->debugMode = (flags & D3D11_CREATE_DEVICE_DEBUG);
-	renderer->blendFactor.x = 1.0f;
-	renderer->blendFactor.y = 1.0f;
-	renderer->blendFactor.z = 1.0f;
-	renderer->blendFactor.w = 1.0f;
 
 	/* Create the Refresh Device */
 	result = (Refresh_Device*) SDL_malloc(sizeof(Refresh_Device));
 	ASSIGN_DRIVER(D3D11)
-
 	result->driverData = (Refresh_Renderer*) renderer;
 
 	return result;
