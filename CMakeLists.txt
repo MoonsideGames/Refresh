@@ -55,6 +55,7 @@ add_library(Refresh
 	# Internal Headers
 	src/Refresh_Driver.h
 	src/Refresh_Driver_Vulkan_vkfuncs.h
+	Refresh_Driver_D3D11_cdefines.h
 	# Source Files
 	src/Refresh.c
 	src/Refresh_Driver_D3D11.c
