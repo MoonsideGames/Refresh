@@ -251,10 +251,36 @@ static D3D11_TEXTURE_ADDRESS_MODE RefreshToD3D11_SamplerAddressMode[] =
 
 /* Structs */
 
+typedef struct D3D11Texture
+{
+	/* D3D Handles */
+	ID3D11Resource *handle; /* ID3D11Texture2D* or ID3D11Texture3D* */
+	ID3D11ShaderResourceView *shaderView;
+
+	/* Basic Info */
+	uint32_t levelCount;
+	uint8_t isRenderTarget;
+
+	/* Dimensions*/
+	#define REFRESH_D3D11_RENDERTARGET_2D 0
+	#define REFRESH_D3D11_RENDERTARGET_3D 1
+	#define REFRESH_D3D11_RENDERTARGET_CUBE 2
+	uint8_t rtType;
+	REFRESHNAMELESS union
+	{
+		struct
+		{
+			uint32_t width;
+			uint32_t height;
+			ID3D11View *targetView; /* ID3D11RenderTargetView* or ID3D11DepthStencilView* */
+		} twod;
+	};
+} D3D11Texture;
+
 typedef struct D3D11SwapchainData
 {
 	IDXGISwapChain *swapchain;
-	ID3D11RenderTargetView *swapchainRTView;
+	D3D11Texture texture;
 } D3D11SwapchainData;
 
 typedef struct D3D11WindowData
@@ -825,12 +851,73 @@ static D3D11WindowData* D3D11_INTERNAL_FetchWindowData(
 	return (D3D11WindowData*) SDL_GetWindowData(windowHandle, WINDOW_DATA);
 }
 
+static uint8_t D3D11_INTERNAL_InitializeSwapchainTexture(
+	D3D11Renderer *renderer,
+	IDXGISwapChain *swapchain,
+	D3D11Texture *pTexture
+) {
+	ID3D11Texture2D *swapchainTexture;
+	D3D11_RENDER_TARGET_VIEW_DESC rtvDesc;
+	D3D11_TEXTURE2D_DESC textureDesc;
+	HRESULT res;
+
+	/* Clear all the texture data */
+	SDL_zerop(pTexture);
+
+	/* Grab the buffer from the swapchain */
+	res = IDXGISwapChain_GetBuffer(
+		swapchain,
+		0,
+		&D3D_IID_ID3D11Texture2D,
+		(void**) &swapchainTexture
+	);
+	ERROR_CHECK_RETURN("Could not get buffer from swapchain!", 0);
+
+	/* Create the RTV for the swapchain */
+	rtvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	rtvDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
+	rtvDesc.Texture2D.MipSlice = 0;
+
+	res = ID3D11Device_CreateRenderTargetView(
+		renderer->device,
+		(ID3D11Resource*) swapchainTexture,
+		&rtvDesc,
+		(ID3D11RenderTargetView**) &pTexture->twod.targetView
+	);
+	if (FAILED(res))
+	{
+		Refresh_LogError(
+			"Swapchain RTV creation failed. Error Code: %08X",
+			res
+		);
+		ID3D11Texture2D_Release(swapchainTexture);
+		return 0;
+	}
+
+	/* Fill out the rest of the texture struct */
+	pTexture->handle = NULL;
+	pTexture->shaderView = NULL;
+	pTexture->isRenderTarget = 1;
+	pTexture->rtType = REFRESH_D3D11_RENDERTARGET_2D;
+
+	ID3D11Texture2D_GetDesc(swapchainTexture, &textureDesc);
+	pTexture->levelCount = textureDesc.MipLevels;
+	pTexture->twod.width = textureDesc.Width;
+	pTexture->twod.height = textureDesc.Height;
+
+	/* Cleanup */
+	ID3D11Texture2D_Release(swapchainTexture);
+
+	return 1;
+}
+
 static uint8_t D3D11_INTERNAL_CreateSwapchain(
 	D3D11Renderer *renderer,
 	D3D11WindowData *windowData
 ) {
 	SDL_SysWMinfo info;
 	HWND dxgiHandle;
+	int width, height;
 	DXGI_SWAP_CHAIN_DESC swapchainDesc;
 	IDXGIFactory1 *pParent;
 	IDXGISwapChain *swapchain;
@@ -841,6 +928,9 @@ static uint8_t D3D11_INTERNAL_CreateSwapchain(
 	SDL_VERSION(&info.version);
 	SDL_GetWindowWMInfo((SDL_Window*) windowData->windowHandle, &info);
 	dxgiHandle = info.info.win.window;
+
+	/* Get the window size */
+	SDL_GetWindowSize((SDL_Window*) windowData->windowHandle, &width, &height);
 
 	/* Initialize the swapchain buffer descriptor */
 	swapchainDesc.BufferDesc.Width = 0;
@@ -880,7 +970,7 @@ static uint8_t D3D11_INTERNAL_CreateSwapchain(
 	res = IDXGISwapChain_GetParent(
 		swapchain,
 		&D3D_IID_IDXGIFactory1,
-		(void**) &pParent
+		(void**) &pParent /* FIXME: Does pParent need to get released? (Same for FNA3D) */
 	);
 	if (FAILED(res))
 	{
@@ -909,11 +999,51 @@ static uint8_t D3D11_INTERNAL_CreateSwapchain(
 	/* Create the swapchain data */
 	swapchainData = (D3D11SwapchainData*) SDL_malloc(sizeof(D3D11SwapchainData));
 	swapchainData->swapchain = swapchain;
-	swapchainData->swapchainRTView = NULL;
+
+	if (!D3D11_INTERNAL_InitializeSwapchainTexture(
+		renderer,
+		swapchain,
+		&swapchainData->texture
+	)) {
+		SDL_free(swapchainData);
+		IDXGISwapChain_Release(swapchain);
+		return 0;
+	}
 
 	windowData->swapchainData = swapchainData;
 	return 1;
 }
+
+static uint8_t D3D11_INTERNAL_ResizeSwapchain(
+	D3D11Renderer *renderer,
+	D3D11SwapchainData *swapchainData,
+	int32_t width,
+	int32_t height
+) {
+	HRESULT res;
+
+	/* Release the old RTV */
+	ID3D11RenderTargetView_Release(swapchainData->texture.twod.targetView);
+
+	/* Resize the swapchain */
+	res = IDXGISwapChain_ResizeBuffers(
+		swapchainData->swapchain,
+		0,			/* Keep buffer count the same */
+		width,
+		height,
+		DXGI_FORMAT_UNKNOWN,	/* Keep the old format */
+		0
+	);
+	ERROR_CHECK_RETURN("Could not resize swapchain buffers", 0);
+
+	/* Create the Refresh-side texture for the swapchain */
+	return D3D11_INTERNAL_InitializeSwapchainTexture(
+		renderer,
+		swapchainData->swapchain,
+		&swapchainData->texture
+	);
+}
+
 
 static uint8_t D3D11_ClaimWindow(
 	Refresh_Renderer *driverData,
@@ -976,8 +1106,45 @@ static Refresh_Texture* D3D11_AcquireSwapchainTexture(
 	uint32_t *pWidth,
 	uint32_t *pHeight
 ) {
-	NOT_IMPLEMENTED
-	return NULL;
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	D3D11CommandBuffer *cmdbuf = (D3D11CommandBuffer*) commandBuffer;
+	D3D11SwapchainData *swapchainData;
+	DXGI_SWAP_CHAIN_DESC swapchainDesc;
+	int w, h;
+	HRESULT res;
+
+	/* Fetch the window and swapchain data. */
+	swapchainData = D3D11_INTERNAL_FetchWindowData(windowHandle)->swapchainData;
+	if (swapchainData == NULL)
+	{
+		return NULL;
+	}
+
+	/* Check for window size changes and resize the swapchain if needed. */
+	IDXGISwapChain_GetDesc(swapchainData->swapchain, &swapchainDesc);
+	SDL_GetWindowSize((SDL_Window*) windowHandle, &w, &h);
+
+	if (w != swapchainDesc.BufferDesc.Width || h != swapchainDesc.BufferDesc.Height)
+	{
+		res = D3D11_INTERNAL_ResizeSwapchain(
+			renderer,
+			swapchainData,
+			w,
+			h
+		);
+		ERROR_CHECK_RETURN("Could not resize swapchain", NULL);
+	}
+
+	/* Let the command buffer know it's associated with this swapchain. */
+	cmdbuf->swapchainData = swapchainData;
+
+	/* Send the dimensions to the out parameters. */
+	*pWidth = swapchainData->texture.twod.width;
+	*pHeight = swapchainData->texture.twod.height;
+
+	/* Return the swapchain texture */
+	return (Refresh_Texture*) &swapchainData->texture;
+
 }
 
 static Refresh_TextureFormat D3D11_GetSwapchainFormat(
