@@ -333,7 +333,9 @@ typedef struct D3D11Renderer
 	uint32_t claimedWindowCapacity;
 
 	D3D11CommandBufferPool *commandBufferPool;
-	SDL_mutex *commandBufferAcquisitionMutex;
+
+	SDL_mutex *contextLock;
+	SDL_mutex *commandBufferAcquisitionLock;
 } D3D11Renderer;
 
 /* Logging */
@@ -693,7 +695,7 @@ static Refresh_CommandBuffer* D3D11_AcquireCommandBuffer(
 	HRESULT res;
 
 	/* Make sure multiple threads can't acquire the same command buffer. */
-	SDL_LockMutex(renderer->commandBufferAcquisitionMutex);
+	SDL_LockMutex(renderer->commandBufferAcquisitionLock);
 
 	/* Try to use an existing command buffer, if one is available. */
 	for (i = 0; i < renderer->commandBufferPool->count; i += 1)
@@ -729,7 +731,7 @@ static Refresh_CommandBuffer* D3D11_AcquireCommandBuffer(
 		);
 		if (FAILED(res))
 		{
-			SDL_UnlockMutex(renderer->commandBufferAcquisitionMutex);
+			SDL_UnlockMutex(renderer->commandBufferAcquisitionLock);
 			ERROR_CHECK_RETURN("Could not create deferred context for command buffer", NULL);
 		}
 
@@ -750,7 +752,7 @@ static Refresh_CommandBuffer* D3D11_AcquireCommandBuffer(
 		commandBuffer->rtViews[i] = NULL;
 	}
 
-	SDL_UnlockMutex(renderer->commandBufferAcquisitionMutex);
+	SDL_UnlockMutex(renderer->commandBufferAcquisitionLock);
 
 	return (Refresh_CommandBuffer*) commandBuffer;
 }
@@ -762,14 +764,121 @@ static void D3D11_BeginRenderPass(
 	uint32_t colorAttachmentCount,
 	Refresh_DepthStencilAttachmentInfo *depthStencilAttachmentInfo
 ) {
-	NOT_IMPLEMENTED
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	D3D11CommandBuffer *d3d11CommandBuffer = (D3D11CommandBuffer*) commandBuffer;
+	float clearColors[4];
+	D3D11_CLEAR_FLAG dsClearFlags;
+	D3D11_VIEWPORT viewport;
+	D3D11_RECT scissorRect;
+	uint32_t i;
+
+	/* FIXME:
+	 * We need to unbind the RT textures on the Refresh side
+	 * if they're bound for sampling on the command buffer!
+	 */
+
+	/* Clear the bound RTs for the current command buffer */
+	for (i = 0; i < MAX_COLOR_TARGET_BINDINGS; i += 1)
+	{
+		d3d11CommandBuffer->rtViews[i] = NULL;
+	}
+	d3d11CommandBuffer->dsView = NULL;
+
+	/* Get RTVs for the color attachments */
+	for (i = 0; i < colorAttachmentCount; i += 1)
+	{
+		/* FIXME: Cube RTs */
+		d3d11CommandBuffer->rtViews[i] = (ID3D11RenderTargetView*) ((D3D11Texture*) colorAttachmentInfos[i].texture)->twod.targetView;
+	}
+
+	/* Get the DSV for the depth stencil attachment, if applicable */
+	if (depthStencilAttachmentInfo != NULL)
+	{
+		d3d11CommandBuffer->dsView = (ID3D11DepthStencilView*) ((D3D11Texture*) depthStencilAttachmentInfo->texture)->twod.targetView;
+	}
+
+	/* Actually set the RTs */
+	ID3D11DeviceContext_OMSetRenderTargets(
+		d3d11CommandBuffer->context,
+		colorAttachmentCount,
+		d3d11CommandBuffer->rtViews,
+		d3d11CommandBuffer->dsView
+	);
+
+	/* Perform load ops on the RTs */
+	for (i = 0; i < colorAttachmentCount; i += 1)
+	{
+		if (colorAttachmentInfos[i].loadOp == REFRESH_LOADOP_CLEAR)
+		{
+			clearColors[0] = colorAttachmentInfos[i].clearColor.x;
+			clearColors[1] = colorAttachmentInfos[i].clearColor.y;
+			clearColors[2] = colorAttachmentInfos[i].clearColor.z;
+			clearColors[3] = colorAttachmentInfos[i].clearColor.w;
+
+			ID3D11DeviceContext_ClearRenderTargetView(
+				d3d11CommandBuffer->context,
+				(ID3D11RenderTargetView*) ((D3D11Texture*) colorAttachmentInfos[i].texture)->twod.targetView,
+				clearColors
+			);
+		}
+	}
+
+	if (d3d11CommandBuffer->dsView != NULL)
+	{
+		dsClearFlags = 0;
+		if (depthStencilAttachmentInfo->loadOp == REFRESH_LOADOP_CLEAR)
+		{
+			dsClearFlags |= D3D11_CLEAR_DEPTH;
+		}
+		if (depthStencilAttachmentInfo->stencilLoadOp == REFRESH_LOADOP_CLEAR)
+		{
+			dsClearFlags |= D3D11_CLEAR_STENCIL;
+		}
+
+		if (dsClearFlags != 0)
+		{
+			ID3D11DeviceContext_ClearDepthStencilView(
+				d3d11CommandBuffer->context,
+				(ID3D11DepthStencilView*) ((D3D11Texture*) depthStencilAttachmentInfo->texture)->twod.targetView,
+				dsClearFlags,
+				depthStencilAttachmentInfo->depthStencilClearValue.depth,
+				(uint8_t) depthStencilAttachmentInfo->depthStencilClearValue.stencil
+			);
+		}
+	}
+
+	/* Set default viewport and scissor state */
+	viewport.TopLeftX = 0;
+	viewport.TopLeftY = 0;
+	viewport.Width = (float) ((D3D11Texture*) colorAttachmentInfos[0].texture)->twod.width;
+	viewport.Height = (float) ((D3D11Texture*) colorAttachmentInfos[0].texture)->twod.height;
+	viewport.MinDepth = 0;
+	viewport.MaxDepth = 1;
+
+	ID3D11DeviceContext_RSSetViewports(
+		d3d11CommandBuffer->context,
+		1,
+		&viewport
+	);
+
+	scissorRect.left = 0;
+	scissorRect.right = (LONG) viewport.Width;
+	scissorRect.top = 0;
+	scissorRect.bottom = (LONG) viewport.Height;
+
+	ID3D11DeviceContext_RSSetScissorRects(
+		d3d11CommandBuffer->context,
+		1,
+		&scissorRect
+	);
 }
 
 static void D3D11_EndRenderPass(
 	Refresh_Renderer *driverData,
 	Refresh_CommandBuffer *commandBuffer
 ) {
-	NOT_IMPLEMENTED
+	/* FIXME: Resolve MSAA here! */
+	/* FIXME: Anything else we need to do...? */
 }
 
 static void D3D11_BindGraphicsPipeline(
@@ -1168,7 +1277,47 @@ static void D3D11_Submit(
 	Refresh_Renderer *driverData,
 	Refresh_CommandBuffer *commandBuffer
 ) {
-	NOT_IMPLEMENTED
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	D3D11CommandBuffer *d3d11CommandBuffer = (D3D11CommandBuffer*) commandBuffer;
+	ID3D11CommandList *commandList;
+	HRESULT res;
+
+	/* FIXME: Should add sanity check that current thread ID matches the command buffer's threadID. */
+
+	/* Serialize the commands into the command list */
+	res = ID3D11DeviceContext_FinishCommandList(
+		d3d11CommandBuffer->context,
+		0,
+		&commandList
+	);
+	ERROR_CHECK("Could not finish command list recording!");
+
+	/* Submit the command list to the immediate context */
+	SDL_LockMutex(renderer->contextLock);
+	ID3D11DeviceContext_ExecuteCommandList(
+		renderer->immediateContext,
+		commandList,
+		0
+	);
+	SDL_UnlockMutex(renderer->contextLock);
+
+	/* Now that we're done with the command list, release it! */
+	ID3D11CommandList_Release(commandList);
+
+	/* Mark the command buffer as not-recording so that it can be used to record again. */
+	d3d11CommandBuffer->recording = 0;
+
+	/* Present, if applicable */
+	if (d3d11CommandBuffer->swapchainData)
+	{
+		SDL_LockMutex(renderer->contextLock);
+		IDXGISwapChain_Present(
+			d3d11CommandBuffer->swapchainData->swapchain,
+			1, /* FIXME: Assumes vsync! */
+			0
+		);
+		SDL_UnlockMutex(renderer->contextLock);
+	}
 }
 
 static Refresh_Fence* D3D11_SubmitAndAcquireFence(
@@ -1461,7 +1610,8 @@ tryCreateDevice:
 	);
 
 	/* Create mutexes */
-	renderer->commandBufferAcquisitionMutex = SDL_CreateMutex();
+	renderer->contextLock = SDL_CreateMutex();
+	renderer->commandBufferAcquisitionLock = SDL_CreateMutex();
 
 	/* Initialize miscellaneous renderer members */
 	renderer->debugMode = (flags & D3D11_CREATE_DEVICE_DEBUG);
