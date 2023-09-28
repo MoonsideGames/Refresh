@@ -99,6 +99,10 @@ typedef HRESULT(WINAPI *PFN_D3DCOMPILE)(
 	ID3DBlob **ppErrorMsgs
 );
 
+/* Forward Declarations */
+
+static void D3D11_Wait(Refresh_Renderer *driverData);
+
  /* Conversions */
 
 static DXGI_FORMAT RefreshToD3D11_TextureFormat[] =
@@ -1153,6 +1157,30 @@ static uint8_t D3D11_INTERNAL_ResizeSwapchain(
 	);
 }
 
+static void D3D11_INTERNAL_DestroySwapchain(
+	D3D11Renderer *renderer,
+	D3D11WindowData *windowData
+) {
+	D3D11SwapchainData *swapchainData;
+
+	if (windowData == NULL)
+	{
+		return;
+	}
+
+	swapchainData = windowData->swapchainData;
+
+	if (swapchainData == NULL)
+	{
+		return;
+	}
+
+	ID3D11RenderTargetView_Release(swapchainData->texture.twod.targetView);
+	IDXGISwapChain_Release(swapchainData->swapchain);
+
+	windowData->swapchainData = NULL;
+	SDL_free(swapchainData);
+}
 
 static uint8_t D3D11_ClaimWindow(
 	Refresh_Renderer *driverData,
@@ -1200,12 +1228,40 @@ static uint8_t D3D11_ClaimWindow(
 	}
 }
 
-static uint8_t D3D11_UnclaimWindow(
+static void D3D11_UnclaimWindow(
 	Refresh_Renderer *driverData,
 	void *windowHandle
 ) {
-	NOT_IMPLEMENTED
-	return 0;
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	D3D11WindowData *windowData = D3D11_INTERNAL_FetchWindowData(windowHandle);
+	uint32_t i;
+
+	if (windowData == NULL)
+	{
+		return;
+	}
+
+	if (windowData->swapchainData != NULL)
+	{
+		D3D11_Wait(driverData);
+		D3D11_INTERNAL_DestroySwapchain(
+			(D3D11Renderer*) driverData,
+			windowData
+		);
+	}
+
+	for (i = 0; i < renderer->claimedWindowCount; i += 1)
+	{
+		if (renderer->claimedWindows[i]->windowHandle == windowHandle)
+		{
+			renderer->claimedWindows[i] = renderer->claimedWindows[renderer->claimedWindowCount - 1];
+			renderer->claimedWindowCount -= 1;
+			break;
+		}
+	}
+
+	SDL_free(windowData);
+	SDL_SetWindowData((SDL_Window*) windowHandle, WINDOW_DATA, NULL);
 }
 
 static Refresh_Texture* D3D11_AcquireSwapchainTexture(
