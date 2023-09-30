@@ -268,6 +268,19 @@ static void TEMPLATE_DrawPrimitives(
 	NOT_IMPLEMENTED
 }
 
+static void TEMPLATE_DrawPrimitivesIndirect(
+	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_Buffer *buffer,
+	uint32_t offsetInBytes,
+	uint32_t drawCount,
+	uint32_t stride,
+	uint32_t vertexParamOffset,
+	uint32_t fragmentParamOffset
+) {
+	NOT_IMPLEMENTED
+}
+
 static void TEMPLATE_DispatchCompute(
 	Refresh_Renderer *device,
 	Refresh_CommandBuffer *commandBuffer,
@@ -347,8 +360,13 @@ static void TEMPLATE_SetTextureDataYUV(
 	uint32_t yHeight,
 	uint32_t uvWidth,
 	uint32_t uvHeight,
-	void* data,
-	uint32_t dataLength
+	void *yDataPtr,
+	void *uDataPtr,
+	void *vDataPtr,
+	uint32_t yDataLength,
+	uint32_t uvDataLength,
+	uint32_t yStride,
+	uint32_t uvStride
 ) {
 	NOT_IMPLEMENTED
 }
@@ -485,10 +503,15 @@ static void TEMPLATE_QueueDestroyGraphicsPipeline(
 
 /* Graphics State */
 
+static Refresh_CommandBuffer* TEMPLATE_AcquireCommandBuffer(
+	Refresh_Renderer *driverData
+) {
+	NOT_IMPLEMENTED
+}
+
 static void TEMPLATE_BeginRenderPass(
 	Refresh_Renderer *driverData,
 	Refresh_CommandBuffer *commandBuffer,
-	Refresh_Rect *renderArea,
 	Refresh_ColorAttachmentInfo *colorAttachmentInfos,
 	uint32_t colorAttachmentCount,
 	Refresh_DepthStencilAttachmentInfo *depthStencilAttachmentInfo
@@ -548,6 +571,8 @@ static void TEMPLATE_BindIndexBuffer(
 	NOT_IMPLEMENTED
 }
 
+/* Compute State */
+
 static void TEMPLATE_BindComputePipeline(
 	Refresh_Renderer *driverData,
 	Refresh_CommandBuffer *commandBuffer,
@@ -572,14 +597,24 @@ static void TEMPLATE_BindComputeTextures(
 	NOT_IMPLEMENTED
 }
 
-static Refresh_CommandBuffer* TEMPLATE_AcquireCommandBuffer(
+/* Window and Swapchain Management */
+
+static uint8_t TEMPLATE_ClaimWindow(
 	Refresh_Renderer *driverData,
-	uint8_t fixed
+	void *windowHandle,
+	Refresh_PresentMode presentMode
 ) {
 	NOT_IMPLEMENTED
 }
 
-Refresh_Texture* TEMPLATE_AcquireSwapchainTexture(
+static void TEMPLATE_UnclaimWindow(
+	Refresh_Renderer *driverData,
+	void *windowHandle
+) {
+	NOT_IMPLEMENTED
+}
+
+static Refresh_Texture* TEMPLATE_AcquireSwapchainTexture(
 	Refresh_Renderer *driverData,
 	Refresh_CommandBuffer *commandBuffer,
 	void *windowHandle,
@@ -589,17 +624,33 @@ Refresh_Texture* TEMPLATE_AcquireSwapchainTexture(
 	NOT_IMPLEMENTED
 }
 
-Refresh_TextureFormat TEMPLATE_GetSwapchainFormat(
+static Refresh_TextureFormat TEMPLATE_GetSwapchainFormat(
 	Refresh_Renderer *driverData,
 	void *windowHandle
 ) {
 	NOT_IMPLEMENTED
 }
 
+static void TEMPLATE_SetSwapchainPresentMode(
+	Refresh_Renderer *driverData,
+	void *windowHandle,
+	Refresh_PresentMode presentMode
+) {
+	NOT_IMPLEMENTED
+}
+
+/* Submission and Fences */
+
 static void TEMPLATE_Submit(
 	Refresh_Renderer *driverData,
-	uint32_t commandBufferCount,
-	Refresh_CommandBuffer **pCommandBuffers
+	Refresh_CommandBuffer *commandBuffer
+) {
+	NOT_IMPLEMENTED
+}
+
+static Refresh_Fence* TEMPLATE_SubmitAndAcquireFence(
+	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer
 ) {
 	NOT_IMPLEMENTED
 }
@@ -610,8 +661,38 @@ static void TEMPLATE_Wait(
 	NOT_IMPLEMENTED
 }
 
+static void TEMPLATE_WaitForFences(
+	Refresh_Renderer *driverData,
+	uint8_t waitAll,
+	uint32_t fenceCount,
+	Refresh_Fence **pFences
+) {
+	NOT_IMPLEMENTED
+}
+
+static int TEMPLATE_QueryFence(
+	Refresh_Renderer *driverData,
+	Refresh_Fence *fence
+) {
+	NOT_IMPLEMENTED
+}
+
+static void TEMPLATE_ReleaseFence(
+	Refresh_Renderer *driverData,
+	Refresh_Fence *fence
+) {
+	NOT_IMPLEMENTED
+}
+
+/* Device Creation */
+
+static uint8_t TEMPLATE_PrepareDriver(
+	uint32_t *flags
+) {
+	NOT_IMPLEMENTED
+}
+
 static Refresh_Device* TEMPLATE_CreateDevice(
-	Refresh_PresentationParameters *presentationParameters,
 	uint8_t debugMode
 ) {
 	NOT_IMPLEMENTED
@@ -619,6 +700,7 @@ static Refresh_Device* TEMPLATE_CreateDevice(
 
 Refresh_Driver TEMPLATEDriver = {
 	"TEMPLATE",
+	TEMPLATE_PrepareDriver,
 	TEMPLATE_CreateDevice
 };
 

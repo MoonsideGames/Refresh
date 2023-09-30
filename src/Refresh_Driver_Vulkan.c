@@ -9756,6 +9756,11 @@ static Refresh_Texture* VULKAN_AcquireSwapchainTexture(
 	VulkanPresentData *presentData;
 
 	windowData = VULKAN_INTERNAL_FetchWindowData(windowHandle);
+	if (windowData == NULL)
+	{
+		return NULL;
+	}
+
 	swapchainData = windowData->swapchainData;
 
 	/* Window is claimed but swapchain is invalid! */
