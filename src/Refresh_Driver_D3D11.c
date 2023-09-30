@@ -1273,13 +1273,19 @@ static Refresh_Texture* D3D11_AcquireSwapchainTexture(
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11CommandBuffer *cmdbuf = (D3D11CommandBuffer*) commandBuffer;
+	D3D11WindowData *windowData;
 	D3D11SwapchainData *swapchainData;
 	DXGI_SWAP_CHAIN_DESC swapchainDesc;
 	int w, h;
 	HRESULT res;
 
-	/* Fetch the window and swapchain data. */
-	swapchainData = D3D11_INTERNAL_FetchWindowData(windowHandle)->swapchainData;
+	windowData = D3D11_INTERNAL_FetchWindowData(windowHandle);
+	if (windowData == NULL)
+	{
+		return NULL;
+	}
+
+	swapchainData = windowData->swapchainData;
 	if (swapchainData == NULL)
 	{
 		return NULL;
@@ -1387,7 +1393,7 @@ static Refresh_Fence* D3D11_SubmitAndAcquireFence(
 static void D3D11_Wait(
 	Refresh_Renderer *driverData
 ) {
-	NOT_IMPLEMENTED
+	/* FIXME: Anything we need to do here? */
 }
 
 static void D3D11_WaitForFences(
