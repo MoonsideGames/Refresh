@@ -53,8 +53,8 @@
 
 static const Refresh_Driver *backends[] = {
 	NULL,
-	D3D11_DRIVER,
 	VULKAN_DRIVER,
+	D3D11_DRIVER,
 	PS5_DRIVER
 };
 
