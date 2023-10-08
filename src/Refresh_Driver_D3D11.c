@@ -1403,6 +1403,12 @@ static void D3D11_Submit(
 
 	SDL_LockMutex(renderer->contextLock);
 
+	/* Notify the command buffer completion query that we have completed recording */
+	ID3D11DeviceContext_End(
+		renderer->immediateContext,
+		(ID3D11Asynchronous*) d3d11CommandBuffer->completionQuery
+	);
+
 	/* Serialize the commands into the command list */
 	res = ID3D11DeviceContext_FinishCommandList(
 		d3d11CommandBuffer->context,
@@ -1774,6 +1780,9 @@ tryCreateDevice:
 
 	/* Initialize miscellaneous renderer members */
 	renderer->debugMode = (flags & D3D11_CREATE_DEVICE_DEBUG);
+
+	/* Create command buffers to initialize the pool */
+	D3D11_INTERNAL_AllocateCommandBuffers(renderer, 2);
 
 	/* Create the Refresh Device */
 	result = (Refresh_Device*) SDL_malloc(sizeof(Refresh_Device));
