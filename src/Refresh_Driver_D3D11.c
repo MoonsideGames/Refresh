@@ -298,7 +298,6 @@ typedef struct D3D11CommandBuffer
 {
 	/* D3D11 Object References */
 	ID3D11DeviceContext *context;
-	ID3D11CommandList *commandList;
 	D3D11SwapchainData *swapchainData;
 
 	/* Render Pass */
@@ -308,7 +307,7 @@ typedef struct D3D11CommandBuffer
 
 	/* State */
 	SDL_threadID threadID;
-	uint8_t recording;
+	ID3D11Query *completionQuery;
 } D3D11CommandBuffer;
 
 typedef struct D3D11CommandBufferPool
@@ -339,7 +338,11 @@ typedef struct D3D11Renderer
 	D3D11CommandBufferPool *commandBufferPool;
 
 	SDL_mutex *contextLock;
-	SDL_mutex *commandBufferAcquisitionLock;
+	SDL_mutex *acquireCommandBufferLock;
+
+	D3D11CommandBuffer **submittedCommandBuffers;
+	uint32_t submittedCommandBufferCount;
+	uint32_t submittedCommandBufferCapacity;
 } D3D11Renderer;
 
 /* Logging */
@@ -690,65 +693,82 @@ static void D3D11_QueueDestroyGraphicsPipeline(
 
 /* Graphics State */
 
+static void D3D11_INTERNAL_AllocateCommandBuffers(
+	D3D11Renderer *renderer,
+	uint32_t allocateCount
+) {
+	D3D11CommandBufferPool *pool = renderer->commandBufferPool;
+	D3D11CommandBuffer *commandBuffer;
+	D3D11_QUERY_DESC queryDesc;
+	HRESULT res;
+
+	pool->capacity += allocateCount;
+
+	pool->elements = SDL_realloc(
+		pool->elements,
+		sizeof(D3D11CommandBuffer*) * pool->capacity
+	);
+
+	for (uint32_t i = 0; i < allocateCount; i += 1)
+	{
+		commandBuffer = SDL_malloc(sizeof(D3D11CommandBuffer));
+
+		res = ID3D11Device_CreateDeferredContext(
+			renderer->device,
+			0,
+			&commandBuffer->context
+		);
+		ERROR_CHECK("Could not create deferred context! Error Code: %08X");
+
+		queryDesc.Query = D3D11_QUERY_EVENT;
+		queryDesc.MiscFlags = 0;
+		res = ID3D11Device_CreateQuery(
+			renderer->device,
+			&queryDesc,
+			&commandBuffer->completionQuery
+		);
+		ERROR_CHECK("Could not create query! Error Code: %08X");
+
+		/* FIXME: Resource tracking? */
+
+		pool->elements[pool->count] = commandBuffer;
+		pool->count += 1;
+	}
+}
+
+static D3D11CommandBuffer* D3D11_INTERNAL_GetInactiveCommandBufferFromPool(
+	D3D11Renderer *renderer
+) {
+	D3D11CommandBufferPool *commandPool = renderer->commandBufferPool;
+	D3D11CommandBuffer *commandBuffer;
+
+	if (commandPool->count == 0)
+	{
+		D3D11_INTERNAL_AllocateCommandBuffers(
+			renderer,
+			commandPool->capacity
+		);
+	}
+
+	commandBuffer = commandPool->elements[commandPool->count - 1];
+	commandPool->count -= 1;
+
+	return commandBuffer;
+}
+
 static Refresh_CommandBuffer* D3D11_AcquireCommandBuffer(
 	Refresh_Renderer *driverData
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
-	D3D11CommandBuffer *commandBuffer = NULL;
+	D3D11CommandBuffer *commandBuffer;
 	uint32_t i;
-	HRESULT res;
 
-	/* Make sure multiple threads can't acquire the same command buffer. */
-	SDL_LockMutex(renderer->commandBufferAcquisitionLock);
-
-	/* Try to use an existing command buffer, if one is available. */
-	for (i = 0; i < renderer->commandBufferPool->count; i += 1)
-	{
-		/* Search for a command buffer in the pool that is not recording. */
-		if (!renderer->commandBufferPool->elements[i]->recording)
-		{
-			commandBuffer = renderer->commandBufferPool->elements[i];
-			break;
-		}
-	}
-
-	/* If there are no free command buffers, make a new one. */
-	if (commandBuffer == NULL)
-	{
-		/* Expand the capacity as needed */
-		EXPAND_ELEMENTS_IF_NEEDED(
-			renderer->commandBufferPool,
-			2,
-			D3D11CommandBuffer*
-		);
-
-		/* Create a new command buffer */
-		renderer->commandBufferPool->elements[i] = (D3D11CommandBuffer*) SDL_malloc(
-			sizeof(D3D11CommandBuffer)
-		);
-
-		/* Assign it a new deferred context */
-		res = ID3D11Device_CreateDeferredContext(
-			renderer->device,
-			0,
-			&renderer->commandBufferPool->elements[i]->context
-		);
-		if (FAILED(res))
-		{
-			SDL_UnlockMutex(renderer->commandBufferAcquisitionLock);
-			ERROR_CHECK_RETURN("Could not create deferred context for command buffer", NULL);
-		}
-
-		/* Now we have a new command buffer we can use! */
-		commandBuffer = renderer->commandBufferPool->elements[i];
-		renderer->commandBufferPool->count += 1;
-	}
+	SDL_LockMutex(renderer->acquireCommandBufferLock);
 
 	/* Set up the command buffer */
+	commandBuffer = D3D11_INTERNAL_GetInactiveCommandBufferFromPool(renderer);
 	commandBuffer->threadID = SDL_ThreadID();
-	commandBuffer->recording = 1;
 	commandBuffer->swapchainData = NULL;
-	commandBuffer->commandList = NULL;
 	commandBuffer->dsView = NULL;
 	commandBuffer->numBoundColorAttachments = 0;
 	for (i = 0; i < MAX_COLOR_TARGET_BINDINGS; i += 1)
@@ -756,7 +776,7 @@ static Refresh_CommandBuffer* D3D11_AcquireCommandBuffer(
 		commandBuffer->rtViews[i] = NULL;
 	}
 
-	SDL_UnlockMutex(renderer->commandBufferAcquisitionLock);
+	SDL_UnlockMutex(renderer->acquireCommandBufferLock);
 
 	return (Refresh_CommandBuffer*) commandBuffer;
 }
@@ -1335,6 +1355,41 @@ static void D3D11_SetSwapchainPresentMode(
 
 /* Submission and Fences */
 
+static void D3D11_INTERNAL_CleanCommandBuffer(
+	D3D11Renderer *renderer,
+	D3D11CommandBuffer *commandBuffer
+) {
+	uint32_t i;
+
+	/* FIXME: All kinds of stuff should go here... */
+
+	SDL_LockMutex(renderer->acquireCommandBufferLock);
+
+	if (renderer->commandBufferPool->count == renderer->commandBufferPool->capacity)
+	{
+		renderer->commandBufferPool->capacity += 1;
+		renderer->commandBufferPool->elements = SDL_realloc(
+			renderer->commandBufferPool->elements,
+			renderer->commandBufferPool->capacity * sizeof(D3D11CommandBuffer*)
+		);
+	}
+
+	renderer->commandBufferPool->elements[renderer->commandBufferPool->count] = commandBuffer;
+	renderer->commandBufferPool->count += 1;
+
+	SDL_UnlockMutex(renderer->acquireCommandBufferLock);
+
+	/* Remove this command buffer from the submitted list */
+	for (i = 0; i < renderer->submittedCommandBufferCount; i += 1)
+	{
+		if (renderer->submittedCommandBuffers[i] == commandBuffer)
+		{
+			renderer->submittedCommandBuffers[i] = renderer->submittedCommandBuffers[renderer->submittedCommandBufferCount - 1];
+			renderer->submittedCommandBufferCount -= 1;
+		}
+	}
+}
+
 static void D3D11_Submit(
 	Refresh_Renderer *driverData,
 	Refresh_CommandBuffer *commandBuffer
@@ -1346,6 +1401,8 @@ static void D3D11_Submit(
 
 	/* FIXME: Should add sanity check that current thread ID matches the command buffer's threadID. */
 
+	SDL_LockMutex(renderer->contextLock);
+
 	/* Serialize the commands into the command list */
 	res = ID3D11DeviceContext_FinishCommandList(
 		d3d11CommandBuffer->context,
@@ -1355,31 +1412,40 @@ static void D3D11_Submit(
 	ERROR_CHECK("Could not finish command list recording!");
 
 	/* Submit the command list to the immediate context */
-	SDL_LockMutex(renderer->contextLock);
 	ID3D11DeviceContext_ExecuteCommandList(
 		renderer->immediateContext,
 		commandList,
 		0
 	);
-	SDL_UnlockMutex(renderer->contextLock);
-
-	/* Now that we're done with the command list, release it! */
 	ID3D11CommandList_Release(commandList);
 
-	/* Mark the command buffer as not-recording so that it can be used to record again. */
-	d3d11CommandBuffer->recording = 0;
+	/* Mark the command buffer as submitted */
+	if (renderer->submittedCommandBufferCount + 1 >= renderer->submittedCommandBufferCapacity)
+	{
+		renderer->submittedCommandBufferCapacity = renderer->submittedCommandBufferCount + 1;
+
+		renderer->submittedCommandBuffers = SDL_realloc(
+			renderer->submittedCommandBuffers,
+			sizeof(D3D11CommandBuffer*) * renderer->submittedCommandBufferCapacity
+		);
+	}
+
+	renderer->submittedCommandBuffers[renderer->submittedCommandBufferCount] = d3d11CommandBuffer;
+	renderer->submittedCommandBufferCount += 1;
+
+	SDL_UnlockMutex(renderer->contextLock);
 
 	/* Present, if applicable */
 	if (d3d11CommandBuffer->swapchainData)
 	{
-		SDL_LockMutex(renderer->contextLock);
 		IDXGISwapChain_Present(
 			d3d11CommandBuffer->swapchainData->swapchain,
 			1, /* FIXME: Assumes vsync! */
 			0
 		);
-		SDL_UnlockMutex(renderer->contextLock);
 	}
+
+	SDL_UnlockMutex(renderer->contextLock);
 }
 
 static Refresh_Fence* D3D11_SubmitAndAcquireFence(
@@ -1393,7 +1459,38 @@ static Refresh_Fence* D3D11_SubmitAndAcquireFence(
 static void D3D11_Wait(
 	Refresh_Renderer *driverData
 ) {
-	/* FIXME: Anything we need to do here? */
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	D3D11CommandBuffer *commandBuffer;
+	BOOL queryData;
+
+	/*
+	 * Wait for all submitted command buffers to complete.
+	 * Sort of equivalent to vkDeviceWaitIdle.
+	 */
+	for (uint32_t i = 0; i < renderer->submittedCommandBufferCount; i += 1)
+	{
+		while (S_OK != ID3D11DeviceContext_GetData(
+			renderer->immediateContext,
+			(ID3D11Asynchronous*) renderer->submittedCommandBuffers[i]->completionQuery,
+			&queryData,
+			sizeof(queryData),
+			0
+		)) {
+			/* Spin until we get a result back... */
+		}
+	}
+
+	SDL_LockMutex(renderer->contextLock);
+
+	for (int32_t i = renderer->submittedCommandBufferCount - 1; i >= 0; i -= 1)
+	{
+		commandBuffer = renderer->submittedCommandBuffers[i];
+		D3D11_INTERNAL_CleanCommandBuffer(renderer, commandBuffer);
+	}
+
+	/* FIXME: D3D11_INTERNAL_PerformPendingDestroys(renderer); */
+
+	SDL_UnlockMutex(renderer->contextLock);
 }
 
 static void D3D11_WaitForFences(
@@ -1673,7 +1770,7 @@ tryCreateDevice:
 
 	/* Create mutexes */
 	renderer->contextLock = SDL_CreateMutex();
-	renderer->commandBufferAcquisitionLock = SDL_CreateMutex();
+	renderer->acquireCommandBufferLock = SDL_CreateMutex();
 
 	/* Initialize miscellaneous renderer members */
 	renderer->debugMode = (flags & D3D11_CREATE_DEVICE_DEBUG);
