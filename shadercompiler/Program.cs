@@ -254,7 +254,7 @@ partial class Program
 	{
 		Process spirvcross = Process.Start(
 			"spirv-cross",
-			$"\"{spirvPath}\" --hlsl --shader-model 50 --output \"{outputPath}\""
+			$"\"{spirvPath}\" --hlsl --flip-vert-y --shader-model 50 --output \"{outputPath}\""
 		);
 		spirvcross.WaitForExit();
 		if (spirvcross.ExitCode != 0)
