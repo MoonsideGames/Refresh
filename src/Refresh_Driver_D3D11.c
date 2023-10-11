@@ -290,9 +290,9 @@ typedef struct D3D11CommandBuffer
 	D3D11SwapchainData *swapchainData;
 
 	/* Render Pass */
-	uint8_t numBoundColorAttachments;
 	ID3D11RenderTargetView *rtViews[MAX_COLOR_TARGET_BINDINGS];
-	ID3D11DepthStencilView* dsView;
+	ID3D11DepthStencilView *dsView;
+	struct D3D11GraphicsPipeline *graphicsPipeline;
 
 	/* State */
 	SDL_threadID threadID;
@@ -325,7 +325,7 @@ typedef struct D3D11GraphicsPipeline
 	uint8_t hasDepthStencilAttachment;
 	DXGI_FORMAT depthStencilAttachmentFormat;
 
-	D3D11_PRIMITIVE_TOPOLOGY primitiveTopology;
+	Refresh_PrimitiveType primitiveType;
 	uint32_t stencilRef;
 	ID3D11DepthStencilState *depthStencilState;
 	ID3D11RasterizerState *rasterizerState;
@@ -465,7 +465,15 @@ static void D3D11_DrawPrimitives(
 	uint32_t vertexParamOffset,
 	uint32_t fragmentParamOffset
 ) {
-	NOT_IMPLEMENTED
+	D3D11CommandBuffer *cmdbuf = (D3D11CommandBuffer*) commandBuffer;
+
+	ID3D11DeviceContext_Draw(
+		cmdbuf->context,
+		PrimitiveVerts(cmdbuf->graphicsPipeline->primitiveType, primitiveCount),
+		vertexStart
+	);
+
+	/* FIXME: vertex/fragment param offsets */
 }
 
 static void D3D11_DrawPrimitivesIndirect(
@@ -735,6 +743,12 @@ static Refresh_GraphicsPipeline* D3D11_CreateGraphicsPipeline(
 
 	/* Color */
 
+	pipeline->colorAttachmentBlendState = D3D11_INTERNAL_FetchBlendState(
+		renderer,
+		pipelineCreateInfo->attachmentInfo.colorAttachmentCount,
+		pipelineCreateInfo->attachmentInfo.colorAttachmentDescriptions
+	);
+
 	pipeline->numColorAttachments = pipelineCreateInfo->attachmentInfo.colorAttachmentCount;
 	for (i = 0; i < pipeline->numColorAttachments; i += 1)
 	{
@@ -750,31 +764,22 @@ static Refresh_GraphicsPipeline* D3D11_CreateGraphicsPipeline(
 
 	pipeline->multisampleState = pipelineCreateInfo->multisampleState;
 
-	pipeline->colorAttachmentBlendState = D3D11_INTERNAL_FetchBlendState(
-		renderer,
-		pipelineCreateInfo->attachmentInfo.colorAttachmentCount,
-		pipelineCreateInfo->attachmentInfo.colorAttachmentDescriptions
-	);
-
 	/* Depth stencil */
-
-	pipeline->hasDepthStencilAttachment = pipelineCreateInfo->attachmentInfo.hasDepthStencilAttachment;
-
-	pipeline->depthStencilAttachmentFormat = RefreshToD3D11_TextureFormat[
-		pipelineCreateInfo->attachmentInfo.depthStencilFormat
-	];
-
-	pipeline->stencilRef = pipelineCreateInfo->depthStencilState.backStencilState.reference; /* FIXME: Should we use front or back? */
 
 	pipeline->depthStencilState = D3D11_INTERNAL_FetchDepthStencilState(
 		renderer,
 		pipelineCreateInfo->depthStencilState
 	);
 
+	pipeline->hasDepthStencilAttachment = pipelineCreateInfo->attachmentInfo.hasDepthStencilAttachment;
+	pipeline->depthStencilAttachmentFormat = RefreshToD3D11_TextureFormat[
+		pipelineCreateInfo->attachmentInfo.depthStencilFormat
+	];
+	pipeline->stencilRef = pipelineCreateInfo->depthStencilState.backStencilState.reference; /* FIXME: Should we use front or back? */
+
 	/* Rasterizer */
 
-	pipeline->primitiveTopology = RefreshToD3D11_PrimitiveType[pipelineCreateInfo->primitiveType];
-
+	pipeline->primitiveType = pipelineCreateInfo->primitiveType;
 	pipeline->rasterizerState = D3D11_INTERNAL_FetchRasterizerState(
 		renderer,
 		pipelineCreateInfo->rasterizerState
@@ -1056,7 +1061,11 @@ static void D3D11_QueueDestroyShaderModule(
 	Refresh_Renderer *driverData,
 	Refresh_ShaderModule *shaderModule
 ) {
-	NOT_IMPLEMENTED
+	D3D11ShaderModule *d3dShaderModule = (D3D11ShaderModule*) shaderModule;
+	ID3D11DeviceChild_Release(d3dShaderModule->shader);
+	ID3D10Blob_Release(d3dShaderModule->blob);
+	SDL_free(d3dShaderModule->shaderSource);
+	SDL_free(d3dShaderModule);
 }
 
 static void D3D11_QueueDestroyComputePipeline(
@@ -1070,7 +1079,17 @@ static void D3D11_QueueDestroyGraphicsPipeline(
 	Refresh_Renderer *driverData,
 	Refresh_GraphicsPipeline *graphicsPipeline
 ) {
-	NOT_IMPLEMENTED
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	D3D11GraphicsPipeline *d3dGraphicsPipeline = (D3D11GraphicsPipeline*) graphicsPipeline;
+
+	ID3D11BlendState_Release(d3dGraphicsPipeline->colorAttachmentBlendState);
+	ID3D11DepthStencilState_Release(d3dGraphicsPipeline->depthStencilState);
+	ID3D11RasterizerState_Release(d3dGraphicsPipeline->rasterizerState);
+	ID3D11InputLayout_Release(d3dGraphicsPipeline->inputLayout);
+
+	/* FIXME: Release uniform buffers, once that's written in */
+
+	SDL_free(d3dGraphicsPipeline);
 }
 
 /* Graphics State */
@@ -1152,7 +1171,7 @@ static Refresh_CommandBuffer* D3D11_AcquireCommandBuffer(
 	commandBuffer->threadID = SDL_ThreadID();
 	commandBuffer->swapchainData = NULL;
 	commandBuffer->dsView = NULL;
-	commandBuffer->numBoundColorAttachments = 0;
+	commandBuffer->graphicsPipeline = NULL;
 	for (i = 0; i < MAX_COLOR_TARGET_BINDINGS; i += 1)
 	{
 		commandBuffer->rtViews[i] = NULL;
@@ -1292,7 +1311,53 @@ static void D3D11_BindGraphicsPipeline(
 	Refresh_CommandBuffer *commandBuffer,
 	Refresh_GraphicsPipeline *graphicsPipeline
 ) {
-	NOT_IMPLEMENTED
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	D3D11CommandBuffer *cmdbuf = (D3D11CommandBuffer*) commandBuffer;
+	D3D11GraphicsPipeline *pipeline = (D3D11GraphicsPipeline*) graphicsPipeline;
+
+	cmdbuf->graphicsPipeline = pipeline;
+
+	ID3D11DeviceContext_OMSetBlendState(
+		cmdbuf->context,
+		pipeline->colorAttachmentBlendState,
+		pipeline->blendConstants,
+		pipeline->multisampleState.sampleMask
+	);
+
+	ID3D11DeviceContext_OMSetDepthStencilState(
+		cmdbuf->context,
+		pipeline->depthStencilState,
+		pipeline->stencilRef
+	);
+
+	ID3D11DeviceContext_IASetPrimitiveTopology(
+		cmdbuf->context,
+		RefreshToD3D11_PrimitiveType[pipeline->primitiveType]
+	);
+
+	ID3D11DeviceContext_IASetInputLayout(
+		cmdbuf->context,
+		pipeline->inputLayout
+	);
+
+	ID3D11DeviceContext_RSSetState(
+		cmdbuf->context,
+		pipeline->rasterizerState
+	);
+
+	ID3D11DeviceContext_VSSetShader(
+		cmdbuf->context,
+		pipeline->vertexShader,
+		NULL,
+		0
+	);
+
+	ID3D11DeviceContext_PSSetShader(
+		cmdbuf->context,
+		pipeline->fragmentShader,
+		NULL,
+		0
+	);
 }
 
 static void D3D11_SetViewport(
