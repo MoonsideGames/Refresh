@@ -874,8 +874,20 @@ static Refresh_ShaderModule* D3D11_CreateShaderModule(
 	Refresh_Renderer *driverData,
 	Refresh_ShaderModuleCreateInfo *shaderModuleCreateInfo
 ) {
-	NOT_IMPLEMENTED
-	return NULL;
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	D3D11ShaderModule *shaderModule = (D3D11ShaderModule*) SDL_malloc(sizeof(D3D11ShaderModule));
+
+	/* We don't know whether this is a vertex or fragment shader,
+	 * so wait to compile until we bind to a pipeline...
+	 */
+	shaderModule->shader = NULL;
+	shaderModule->blob = NULL;
+
+	shaderModule->shaderSourceLength = shaderModuleCreateInfo->codeSize;
+	shaderModule->shaderSource = (char*) SDL_malloc(shaderModule->shaderSourceLength);
+	SDL_memcpy(shaderModule->shaderSource, shaderModuleCreateInfo->byteCode, shaderModuleCreateInfo->codeSize);
+
+	return (Refresh_ShaderModule*) shaderModule;
 }
 
 static Refresh_Texture* D3D11_CreateTexture(
