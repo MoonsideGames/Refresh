@@ -200,20 +200,20 @@ partial class Program
 					WriteShaderBlob(writer, inputPath, 1);
 				}
 
+				if (data.d3d11)
+				{
+					string inputPath = Path.Combine(tempDir, $"{shaderName}.hlsl");
+					WriteShaderBlob(writer, inputPath, 2);
+				}
+
 #if PS5
 				if (data.ps5)
 				{
 					string ext = GetPS5ShaderFileExtension();
 					string inputPath = Path.Combine(tempDir, $"{shaderName}{ext}");
-					WriteShaderBlob(writer, inputPath, 2);
-				}
-#endif
-
-				if (data.d3d11)
-				{
-					string inputPath = Path.Combine(tempDir, $"{shaderName}.hlsl");
 					WriteShaderBlob(writer, inputPath, 3);
 				}
+#endif
 			}
 		}
 

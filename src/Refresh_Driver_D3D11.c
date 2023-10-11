@@ -228,17 +228,6 @@ static D3D11_STENCIL_OP RefreshToD3D11_StencilOp[] =
 	D3D11_STENCIL_OP_DECR		/* DECREMENT_AND_WRAP */
 };
 
-static int32_t RefreshToD3D11_SampleCount[] =
-{
-	1,	/* 1 */
-	2,	/* 2 */
-	4,	/* 4 */
-	8,	/* 8 */
-	16,	/* 16 */
-	32,	/* 32 */
-	64	/* 64 */
-};
-
 static D3D11_INPUT_CLASSIFICATION RefreshToD3D11_VertexInputRate[] =
 {
 	D3D11_INPUT_PER_VERTEX_DATA,	/* VERTEX */
@@ -316,6 +305,36 @@ typedef struct D3D11CommandBufferPool
 	uint32_t count;
 	uint32_t capacity;
 } D3D11CommandBufferPool;
+
+typedef struct D3D11ShaderModule
+{
+	ID3D11DeviceChild *shader; /* ID3D11VertexShader, ID3D11PixelShader, ID3D11ComputeShader */
+	ID3D10Blob *blob;
+	char *shaderSource;
+	size_t shaderSourceLength;
+} D3D11ShaderModule;
+
+typedef struct D3D11GraphicsPipeline
+{
+	float blendConstants[4];
+
+	int32_t numColorAttachments;
+	DXGI_FORMAT colorAttachmentFormats[MAX_COLOR_TARGET_BINDINGS];
+	ID3D11BlendState *colorAttachmentBlendState;
+
+	uint8_t hasDepthStencilAttachment;
+	DXGI_FORMAT depthStencilAttachmentFormat;
+
+	D3D11_PRIMITIVE_TOPOLOGY primitiveTopology;
+	uint32_t stencilRef;
+	ID3D11DepthStencilState *depthStencilState;
+	ID3D11RasterizerState *rasterizerState;
+	ID3D11InputLayout *inputLayout;
+
+	Refresh_MultisampleState multisampleState;
+	ID3D11VertexShader *vertexShader;
+	ID3D11PixelShader *fragmentShader;
+} D3D11GraphicsPipeline;
 
 typedef struct D3D11Renderer
 {
@@ -475,6 +494,224 @@ static void D3D11_DispatchCompute(
 
 /* State Creation */
 
+static ID3D11BlendState* D3D11_INTERNAL_FetchBlendState(
+	D3D11Renderer *renderer,
+	uint32_t numColorAttachments,
+	Refresh_ColorAttachmentDescription *colorAttachments
+) {
+	ID3D11BlendState *result;
+	D3D11_BLEND_DESC blendDesc;
+	uint32_t i;
+	HRESULT res;
+
+	/* Create a new blend state.
+	 * The spec says the driver will not create duplicate states, so there's no need to cache.
+	 */
+	SDL_zero(blendDesc); /* needed for any unused RT entries */
+
+	blendDesc.AlphaToCoverageEnable = FALSE;
+	blendDesc.IndependentBlendEnable = TRUE;
+
+	for (i = 0; i < numColorAttachments; i += 1)
+	{
+		blendDesc.RenderTarget[i].BlendEnable = colorAttachments[i].blendState.blendEnable;
+		blendDesc.RenderTarget[i].BlendOp = RefreshToD3D11_BlendOp[
+			colorAttachments[i].blendState.colorBlendOp
+		];
+		blendDesc.RenderTarget[i].BlendOpAlpha = RefreshToD3D11_BlendOp[
+			colorAttachments[i].blendState.alphaBlendOp
+		];
+		blendDesc.RenderTarget[i].DestBlend = RefreshToD3D11_BlendFactor[
+			colorAttachments[i].blendState.dstColorBlendFactor
+		];
+		blendDesc.RenderTarget[i].DestBlendAlpha = RefreshToD3D11_BlendFactor[
+			colorAttachments[i].blendState.dstAlphaBlendFactor
+		];
+		blendDesc.RenderTarget[i].RenderTargetWriteMask = colorAttachments[i].blendState.colorWriteMask;
+		blendDesc.RenderTarget[i].SrcBlend = RefreshToD3D11_BlendFactor[
+			colorAttachments[i].blendState.srcColorBlendFactor
+		];
+		blendDesc.RenderTarget[i].SrcBlendAlpha = RefreshToD3D11_BlendFactor[
+			colorAttachments[i].blendState.srcAlphaBlendFactor
+		];
+	}
+
+	res = ID3D11Device_CreateBlendState(
+		renderer->device,
+		&blendDesc,
+		&result
+	);
+	ERROR_CHECK_RETURN("Could not create blend state", NULL);
+
+	return result;
+}
+
+static ID3D11DepthStencilState* D3D11_INTERNAL_FetchDepthStencilState(
+	D3D11Renderer *renderer,
+	Refresh_DepthStencilState depthStencilState
+) {
+	ID3D11DepthStencilState *result;
+	D3D11_DEPTH_STENCIL_DESC dsDesc;
+	HRESULT res;
+
+	/* Create a new depth-stencil state.
+	 * The spec says the driver will not create duplicate states, so there's no need to cache.
+	 */
+	dsDesc.DepthEnable = depthStencilState.depthTestEnable;
+	dsDesc.StencilEnable = depthStencilState.stencilTestEnable;
+	dsDesc.DepthFunc = depthStencilState.compareOp;
+	dsDesc.DepthWriteMask = (
+		depthStencilState.depthWriteEnable ?
+			D3D11_DEPTH_WRITE_MASK_ALL :
+			D3D11_DEPTH_WRITE_MASK_ZERO
+	);
+
+	dsDesc.BackFace.StencilFunc = depthStencilState.backStencilState.compareOp;
+	dsDesc.BackFace.StencilDepthFailOp = depthStencilState.backStencilState.depthFailOp;
+	dsDesc.BackFace.StencilFailOp = depthStencilState.backStencilState.failOp;
+	dsDesc.BackFace.StencilPassOp = depthStencilState.backStencilState.passOp;
+
+	dsDesc.FrontFace.StencilFunc = depthStencilState.frontStencilState.compareOp;
+	dsDesc.FrontFace.StencilDepthFailOp = depthStencilState.frontStencilState.depthFailOp;
+	dsDesc.FrontFace.StencilFailOp = depthStencilState.frontStencilState.failOp;
+	dsDesc.FrontFace.StencilPassOp = depthStencilState.frontStencilState.passOp;
+
+	/* FIXME: D3D11 doesn't have separate read/write masks for each stencil side. What should we do? */
+	dsDesc.StencilReadMask = depthStencilState.backStencilState.compareMask;
+	dsDesc.StencilWriteMask = depthStencilState.backStencilState.writeMask;
+
+	/* FIXME: What do we do with these?
+	 *	depthStencilState.depthBoundsTestEnable
+	 *	depthStencilState.maxDepthBounds
+	 *	depthStencilState.minDepthBounds
+	 */
+
+	res = ID3D11Device_CreateDepthStencilState(
+		renderer->device,
+		&dsDesc,
+		&result
+	);
+	ERROR_CHECK_RETURN("Could not create depth-stencil state", NULL);
+
+	return result;
+}
+
+static ID3D11RasterizerState* D3D11_INTERNAL_FetchRasterizerState(
+	D3D11Renderer *renderer,
+	Refresh_RasterizerState rasterizerState
+) {
+	ID3D11RasterizerState *result;
+	D3D11_RASTERIZER_DESC rasterizerDesc;
+	HRESULT res;
+
+	/* Create a new rasterizer state.
+	 * The spec says the driver will not create duplicate states, so there's no need to cache.
+	 */
+	rasterizerDesc.AntialiasedLineEnable = FALSE;
+	rasterizerDesc.CullMode = RefreshToD3D11_CullMode[rasterizerState.cullMode];
+	rasterizerDesc.DepthBias = (INT) rasterizerState.depthBiasConstantFactor; /* FIXME: Is this cast correct? */
+	rasterizerDesc.DepthBiasClamp = rasterizerState.depthBiasClamp;
+	rasterizerDesc.DepthClipEnable = TRUE; /* FIXME: Do we want this...? */
+	rasterizerDesc.FillMode = (rasterizerState.fillMode == REFRESH_FILLMODE_FILL) ? D3D11_FILL_SOLID : D3D11_FILL_WIREFRAME;
+	rasterizerDesc.FrontCounterClockwise = (rasterizerState.frontFace == REFRESH_FRONTFACE_COUNTER_CLOCKWISE);
+	rasterizerDesc.MultisampleEnable = TRUE; /* only applies to MSAA render targets */
+	rasterizerDesc.ScissorEnable = TRUE;
+	rasterizerDesc.SlopeScaledDepthBias = rasterizerState.depthBiasSlopeFactor;
+
+	res = ID3D11Device_CreateRasterizerState(
+		renderer->device,
+		&rasterizerDesc,
+		&result
+	);
+	ERROR_CHECK_RETURN("Could not create rasterizer state", NULL);
+
+	return result;
+}
+
+static uint32_t D3D11_INTERNAL_FindIndexOfVertexBinding(
+	uint32_t targetBinding,
+	const Refresh_VertexBinding *bindings,
+	uint32_t numBindings
+) {
+	uint32_t i;
+	for (i = 0; i < numBindings; i += 1)
+	{
+		if (bindings[i].binding == targetBinding)
+		{
+			return i;
+		}
+	}
+
+	Refresh_LogError("Could not find vertex binding %d!", targetBinding);
+	return 0;
+}
+
+static ID3D11InputLayout* D3D11_INTERNAL_FetchInputLayout(
+	D3D11Renderer *renderer,
+	Refresh_VertexInputState inputState,
+	void *shaderBytes,
+	size_t shaderByteLength
+) {
+	ID3D11InputLayout *result = NULL;
+	D3D11_INPUT_ELEMENT_DESC *elementDescs;
+	uint32_t i, bindingIndex;
+	HRESULT res;
+
+	/* Allocate an array of vertex elements */
+	elementDescs = SDL_stack_alloc(
+		D3D11_INPUT_ELEMENT_DESC,
+		inputState.vertexAttributeCount
+	);
+
+	/* Create the array of input elements */
+	for (i = 0; i < inputState.vertexAttributeCount; i += 1)
+	{
+		elementDescs[i].AlignedByteOffset = inputState.vertexAttributes[i].offset;
+		elementDescs[i].Format = RefreshToD3D11_VertexFormat[
+			inputState.vertexAttributes[i].format
+		];
+		elementDescs[i].InputSlot = inputState.vertexAttributes[i].binding;
+
+		bindingIndex = D3D11_INTERNAL_FindIndexOfVertexBinding(
+			elementDescs[i].InputSlot,
+			inputState.vertexBindings,
+			inputState.vertexBindingCount
+		);
+		elementDescs[i].InputSlotClass = RefreshToD3D11_VertexInputRate[
+			inputState.vertexBindings[bindingIndex].inputRate
+		];
+		/* The spec requires this to be 0 for per-vertex data */
+		elementDescs[i].InstanceDataStepRate = (
+			elementDescs[i].InputSlotClass == D3D11_INPUT_PER_INSTANCE_DATA ? 1 : 0
+		);
+
+		elementDescs[i].SemanticIndex = inputState.vertexAttributes[i].location;
+		elementDescs[i].SemanticName = "TEXCOORD";
+	}
+
+	res = ID3D11Device_CreateInputLayout(
+		renderer->device,
+		elementDescs,
+		inputState.vertexAttributeCount,
+		shaderBytes,
+		shaderByteLength,
+		&result
+	);
+	if (FAILED(res))
+	{
+		Refresh_LogError("Could not create input layout! Error: %X", res);
+		SDL_stack_free(elementDescs);
+		return NULL;
+	}
+
+	/* FIXME:
+	 * These are not cached by the driver! Should we cache them, or allow duplicates?
+	 * If we have one input layout per graphics pipeline maybe that wouldn't be so bad...?
+	 */
+
+	SDL_stack_free(elementDescs);
+	return result;
+}
 
 static Refresh_ComputePipeline* D3D11_CreateComputePipeline(
 	Refresh_Renderer *driverData,
@@ -488,8 +725,141 @@ static Refresh_GraphicsPipeline* D3D11_CreateGraphicsPipeline(
 	Refresh_Renderer *driverData,
 	Refresh_GraphicsPipelineCreateInfo *pipelineCreateInfo
 ) {
-	NOT_IMPLEMENTED
-	return NULL;
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	D3D11GraphicsPipeline *pipeline = (D3D11GraphicsPipeline*) SDL_malloc(sizeof(D3D11GraphicsPipeline));
+	D3D11ShaderModule *vertShaderModule = (D3D11ShaderModule*) pipelineCreateInfo->vertexShaderInfo.shaderModule;
+	D3D11ShaderModule *fragShaderModule = (D3D11ShaderModule*) pipelineCreateInfo->fragmentShaderInfo.shaderModule;
+	ID3D10Blob *errorBlob;
+	int32_t i;
+	HRESULT res;
+
+	/* Color */
+
+	pipeline->numColorAttachments = pipelineCreateInfo->attachmentInfo.colorAttachmentCount;
+	for (i = 0; i < pipeline->numColorAttachments; i += 1)
+	{
+		pipeline->colorAttachmentFormats[i] = RefreshToD3D11_TextureFormat[
+			pipelineCreateInfo->attachmentInfo.colorAttachmentDescriptions[i].format
+		];
+	}
+
+	pipeline->blendConstants[0] = pipelineCreateInfo->blendConstants[0];
+	pipeline->blendConstants[1] = pipelineCreateInfo->blendConstants[1];
+	pipeline->blendConstants[2] = pipelineCreateInfo->blendConstants[2];
+	pipeline->blendConstants[3] = pipelineCreateInfo->blendConstants[3];
+
+	pipeline->multisampleState = pipelineCreateInfo->multisampleState;
+
+	pipeline->colorAttachmentBlendState = D3D11_INTERNAL_FetchBlendState(
+		renderer,
+		pipelineCreateInfo->attachmentInfo.colorAttachmentCount,
+		pipelineCreateInfo->attachmentInfo.colorAttachmentDescriptions
+	);
+
+	/* Depth stencil */
+
+	pipeline->hasDepthStencilAttachment = pipelineCreateInfo->attachmentInfo.hasDepthStencilAttachment;
+
+	pipeline->depthStencilAttachmentFormat = RefreshToD3D11_TextureFormat[
+		pipelineCreateInfo->attachmentInfo.depthStencilFormat
+	];
+
+	pipeline->stencilRef = pipelineCreateInfo->depthStencilState.backStencilState.reference; /* FIXME: Should we use front or back? */
+
+	pipeline->depthStencilState = D3D11_INTERNAL_FetchDepthStencilState(
+		renderer,
+		pipelineCreateInfo->depthStencilState
+	);
+
+	/* Rasterizer */
+
+	pipeline->primitiveTopology = RefreshToD3D11_PrimitiveType[pipelineCreateInfo->primitiveType];
+
+	pipeline->rasterizerState = D3D11_INTERNAL_FetchRasterizerState(
+		renderer,
+		pipelineCreateInfo->rasterizerState
+	);
+
+	/* Vertex shader */
+
+	if (vertShaderModule->shader == NULL)
+	{
+		res = renderer->D3DCompileFunc(
+			vertShaderModule->shaderSource,
+			vertShaderModule->shaderSourceLength,
+			NULL,
+			NULL,
+			NULL,
+			"main",
+			"vs_5_0",
+			0,
+			0,
+			&vertShaderModule->blob,
+			&errorBlob
+		);
+		if (FAILED(res))
+		{
+			Refresh_LogError("Vertex Shader Compile Error: %s", ID3D10Blob_GetBufferPointer(errorBlob));
+			return NULL;
+		}
+
+		res = ID3D11Device_CreateVertexShader(
+			renderer->device,
+			ID3D10Blob_GetBufferPointer(vertShaderModule->blob),
+			ID3D10Blob_GetBufferSize(vertShaderModule->blob),
+			NULL,
+			(ID3D11VertexShader**) &vertShaderModule->shader
+		);
+		ERROR_CHECK_RETURN("Could not create vertex shader", NULL);
+	}
+	pipeline->vertexShader = (ID3D11VertexShader*) vertShaderModule->shader;
+
+	/* Input Layout */
+
+	pipeline->inputLayout = D3D11_INTERNAL_FetchInputLayout(
+		renderer,
+		pipelineCreateInfo->vertexInputState,
+		ID3D10Blob_GetBufferPointer(vertShaderModule->blob),
+		ID3D10Blob_GetBufferSize(vertShaderModule->blob)
+	);
+
+	/* Fragment Shader */
+
+	if (fragShaderModule->shader == NULL)
+	{
+		res = renderer->D3DCompileFunc(
+			fragShaderModule->shaderSource,
+			fragShaderModule->shaderSourceLength,
+			NULL,
+			NULL,
+			NULL,
+			"main",
+			"ps_5_0",
+			0,
+			0,
+			&fragShaderModule->blob,
+			&errorBlob
+		);
+		if (FAILED(res))
+		{
+			Refresh_LogError("Fragment Shader Compile Error: %s", ID3D10Blob_GetBufferPointer(errorBlob));
+			return NULL;
+		}
+
+		res = ID3D11Device_CreatePixelShader(
+			renderer->device,
+			ID3D10Blob_GetBufferPointer(fragShaderModule->blob),
+			ID3D10Blob_GetBufferSize(fragShaderModule->blob),
+			NULL,
+			(ID3D11PixelShader**) &fragShaderModule->shader
+		);
+		ERROR_CHECK_RETURN("Could not create pixel shader", NULL);
+	}
+	pipeline->fragmentShader = (ID3D11PixelShader*) fragShaderModule->shader;
+
+	/* FIXME: Need to create uniform buffers for the shaders */
+
+	return (Refresh_GraphicsPipeline*) pipeline;
 }
 
 static Refresh_Sampler* D3D11_CreateSampler(
