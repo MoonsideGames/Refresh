@@ -1369,7 +1369,22 @@ static void D3D11_SetViewport(
 	Refresh_CommandBuffer *commandBuffer,
 	Refresh_Viewport *viewport
 ) {
-	NOT_IMPLEMENTED
+	D3D11CommandBuffer *d3d11CommandBuffer = (D3D11CommandBuffer*) commandBuffer;
+	D3D11_VIEWPORT vp =
+	{
+		viewport->x,
+		viewport->y,
+		viewport->w,
+		viewport->h,
+		viewport->minDepth,
+		viewport->maxDepth
+	};
+
+	ID3D11DeviceContext_RSSetViewports(
+		d3d11CommandBuffer->context,
+		1,
+		&vp
+	);
 }
 
 static void D3D11_SetScissor(
@@ -1377,7 +1392,20 @@ static void D3D11_SetScissor(
 	Refresh_CommandBuffer *commandBuffer,
 	Refresh_Rect *scissor
 ) {
-	NOT_IMPLEMENTED
+	D3D11CommandBuffer *d3d11CommandBuffer = (D3D11CommandBuffer*)commandBuffer;
+	D3D11_RECT rect =
+	{
+		scissor->x,
+		scissor->y,
+		scissor->x + scissor->w,
+		scissor->y + scissor->h
+	};
+
+	ID3D11DeviceContext_RSSetScissorRects(
+		d3d11CommandBuffer->context,
+		1,
+		&rect
+	);
 }
 
 static void D3D11_BindVertexBuffers(
