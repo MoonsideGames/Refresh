@@ -60,6 +60,11 @@ if(NOT MSVC)
 	set_property(TARGET Refresh PROPERTY COMPILE_FLAGS "-std=gnu99 -Wall -Wno-strict-aliasing -pedantic")
 endif()
 
+# Windows is silly and we need to manually include the Vulkan SDK
+if(MSVC)
+	target_include_directories(Refresh PUBLIC $ENV{VULKAN_SDK}/include)
+endif()
+
 # Refresh folders as includes, for other targets to consume
 target_include_directories(Refresh PUBLIC
 	$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
