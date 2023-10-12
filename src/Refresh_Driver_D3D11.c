@@ -465,11 +465,11 @@ static void D3D11_DrawPrimitives(
 	uint32_t vertexParamOffset,
 	uint32_t fragmentParamOffset
 ) {
-	D3D11CommandBuffer *cmdbuf = (D3D11CommandBuffer*) commandBuffer;
+	D3D11CommandBuffer *d3d11CommandBuffer = (D3D11CommandBuffer*) commandBuffer;
 
 	ID3D11DeviceContext_Draw(
-		cmdbuf->context,
-		PrimitiveVerts(cmdbuf->graphicsPipeline->primitiveType, primitiveCount),
+		d3d11CommandBuffer->context,
+		PrimitiveVerts(d3d11CommandBuffer->graphicsPipeline->primitiveType, primitiveCount),
 		vertexStart
 	);
 
@@ -789,6 +789,10 @@ static Refresh_GraphicsPipeline* D3D11_CreateGraphicsPipeline(
 
 	if (vertShaderModule->shader == NULL)
 	{
+		/* FIXME:
+		 * Could we store a flag in the shaderc output to mark if a shader is vertex/fragment?
+		 * Then we could compile on shader module creation instead of at bind time.
+		 */
 		res = renderer->D3DCompileFunc(
 			vertShaderModule->shaderSource,
 			vertShaderModule->shaderSourceLength,
@@ -1312,48 +1316,48 @@ static void D3D11_BindGraphicsPipeline(
 	Refresh_GraphicsPipeline *graphicsPipeline
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
-	D3D11CommandBuffer *cmdbuf = (D3D11CommandBuffer*) commandBuffer;
+	D3D11CommandBuffer *d3d11CommandBuffer = (D3D11CommandBuffer*) commandBuffer;
 	D3D11GraphicsPipeline *pipeline = (D3D11GraphicsPipeline*) graphicsPipeline;
 
-	cmdbuf->graphicsPipeline = pipeline;
+	d3d11CommandBuffer->graphicsPipeline = pipeline;
 
 	ID3D11DeviceContext_OMSetBlendState(
-		cmdbuf->context,
+		d3d11CommandBuffer->context,
 		pipeline->colorAttachmentBlendState,
 		pipeline->blendConstants,
 		pipeline->multisampleState.sampleMask
 	);
 
 	ID3D11DeviceContext_OMSetDepthStencilState(
-		cmdbuf->context,
+		d3d11CommandBuffer->context,
 		pipeline->depthStencilState,
 		pipeline->stencilRef
 	);
 
 	ID3D11DeviceContext_IASetPrimitiveTopology(
-		cmdbuf->context,
+		d3d11CommandBuffer->context,
 		RefreshToD3D11_PrimitiveType[pipeline->primitiveType]
 	);
 
 	ID3D11DeviceContext_IASetInputLayout(
-		cmdbuf->context,
+		d3d11CommandBuffer->context,
 		pipeline->inputLayout
 	);
 
 	ID3D11DeviceContext_RSSetState(
-		cmdbuf->context,
+		d3d11CommandBuffer->context,
 		pipeline->rasterizerState
 	);
 
 	ID3D11DeviceContext_VSSetShader(
-		cmdbuf->context,
+		d3d11CommandBuffer->context,
 		pipeline->vertexShader,
 		NULL,
 		0
 	);
 
 	ID3D11DeviceContext_PSSetShader(
-		cmdbuf->context,
+		d3d11CommandBuffer->context,
 		pipeline->fragmentShader,
 		NULL,
 		0
@@ -1739,7 +1743,7 @@ static Refresh_Texture* D3D11_AcquireSwapchainTexture(
 	uint32_t *pHeight
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
-	D3D11CommandBuffer *cmdbuf = (D3D11CommandBuffer*) commandBuffer;
+	D3D11CommandBuffer *d3d11CommandBuffer = (D3D11CommandBuffer*) commandBuffer;
 	D3D11WindowData *windowData;
 	D3D11SwapchainData *swapchainData;
 	DXGI_SWAP_CHAIN_DESC swapchainDesc;
@@ -1774,7 +1778,7 @@ static Refresh_Texture* D3D11_AcquireSwapchainTexture(
 	}
 
 	/* Let the command buffer know it's associated with this swapchain. */
-	cmdbuf->swapchainData = swapchainData;
+	d3d11CommandBuffer->swapchainData = swapchainData;
 
 	/* Send the dimensions to the out parameters. */
 	*pWidth = swapchainData->texture.twod.width;
@@ -1782,7 +1786,6 @@ static Refresh_Texture* D3D11_AcquireSwapchainTexture(
 
 	/* Return the swapchain texture */
 	return (Refresh_Texture*) &swapchainData->texture;
-
 }
 
 static Refresh_TextureFormat D3D11_GetSwapchainFormat(
