@@ -82,7 +82,6 @@
 		);						\
 	}
 
-
 /* D3DCompile signature */
 
 typedef HRESULT(WINAPI *PFN_D3DCOMPILE)(
@@ -102,6 +101,10 @@ typedef HRESULT(WINAPI *PFN_D3DCOMPILE)(
 /* Forward Declarations */
 
 static void D3D11_Wait(Refresh_Renderer *driverData);
+static void D3D11_UnclaimWindow(
+	Refresh_Renderer * driverData,
+	void *windowHandle
+);
 
  /* Conversions */
 
@@ -354,7 +357,7 @@ typedef struct D3D11Renderer
 	uint32_t claimedWindowCount;
 	uint32_t claimedWindowCapacity;
 
-	D3D11CommandBufferPool *commandBufferPool;
+	D3D11CommandBufferPool commandBufferPool;
 
 	SDL_mutex *contextLock;
 	SDL_mutex *acquireCommandBufferLock;
@@ -427,7 +430,54 @@ static void D3D11_INTERNAL_LogError(
 static void D3D11_DestroyDevice(
 	Refresh_Device *device
 ) {
-	NOT_IMPLEMENTED
+	D3D11Renderer *renderer = (D3D11Renderer*) device->driverData;
+	D3D11CommandBuffer *commandBuffer;
+	int32_t i;
+
+	D3D11_Wait(device->driverData);
+
+	/* Release the window data */
+
+	for (i = renderer->claimedWindowCount - 1; i >= 0; i -= 1)
+	{
+		D3D11_UnclaimWindow(device->driverData, renderer->claimedWindows[i]->windowHandle);
+	}
+
+	SDL_free(renderer->claimedWindows);
+
+	D3D11_Wait(device->driverData); /* FIXME: Copied this from Vulkan, is it actually necessary? */
+
+	/* Release command buffer infrastructure */
+
+	SDL_free(renderer->submittedCommandBuffers);
+
+	for (i = 0; i < renderer->commandBufferPool.count; i += 1)
+	{
+		commandBuffer = renderer->commandBufferPool.elements[i];
+
+		ID3D11Query_Release(commandBuffer->completionQuery);
+		ID3D11DeviceContext_Release(commandBuffer->context);
+
+		SDL_free(commandBuffer);
+	}
+
+	/* Release the mutexes */
+
+	SDL_DestroyMutex(renderer->acquireCommandBufferLock);
+	SDL_DestroyMutex(renderer->contextLock);
+
+	/* Release the DLLs and D3D11 device infrastructure */
+
+	SDL_UnloadObject(renderer->d3d11_dll);
+	SDL_UnloadObject(renderer->d3dcompiler_dll);
+
+	ID3D11DeviceContext_Release(renderer->immediateContext);
+	ID3D11Device_Release(renderer->device);
+	IDXGIAdapter_Release(renderer->adapter);
+	IDXGIFactory_Release(renderer->factory);
+
+	SDL_free(renderer);
+	SDL_free(device);
 }
 
 /* Drawing */
@@ -1066,8 +1116,16 @@ static void D3D11_QueueDestroyShaderModule(
 	Refresh_ShaderModule *shaderModule
 ) {
 	D3D11ShaderModule *d3dShaderModule = (D3D11ShaderModule*) shaderModule;
-	ID3D11DeviceChild_Release(d3dShaderModule->shader);
-	ID3D10Blob_Release(d3dShaderModule->blob);
+
+	if (d3dShaderModule->shader)
+	{
+		ID3D11DeviceChild_Release(d3dShaderModule->shader);
+	}
+	if (d3dShaderModule->blob)
+	{
+		ID3D10Blob_Release(d3dShaderModule->blob);
+	}
+
 	SDL_free(d3dShaderModule->shaderSource);
 	SDL_free(d3dShaderModule);
 }
@@ -1102,7 +1160,7 @@ static void D3D11_INTERNAL_AllocateCommandBuffers(
 	D3D11Renderer *renderer,
 	uint32_t allocateCount
 ) {
-	D3D11CommandBufferPool *pool = renderer->commandBufferPool;
+	D3D11CommandBufferPool *pool = &renderer->commandBufferPool;
 	D3D11CommandBuffer *commandBuffer;
 	D3D11_QUERY_DESC queryDesc;
 	HRESULT res;
@@ -1144,19 +1202,19 @@ static void D3D11_INTERNAL_AllocateCommandBuffers(
 static D3D11CommandBuffer* D3D11_INTERNAL_GetInactiveCommandBufferFromPool(
 	D3D11Renderer *renderer
 ) {
-	D3D11CommandBufferPool *commandPool = renderer->commandBufferPool;
+	D3D11CommandBufferPool *pool = &renderer->commandBufferPool;
 	D3D11CommandBuffer *commandBuffer;
 
-	if (commandPool->count == 0)
+	if (pool->count == 0)
 	{
 		D3D11_INTERNAL_AllocateCommandBuffers(
 			renderer,
-			commandPool->capacity
+			pool->capacity
 		);
 	}
 
-	commandBuffer = commandPool->elements[commandPool->count - 1];
-	commandPool->count -= 1;
+	commandBuffer = pool->elements[pool->count - 1];
+	pool->count -= 1;
 
 	return commandBuffer;
 }
@@ -1837,23 +1895,24 @@ static void D3D11_INTERNAL_CleanCommandBuffer(
 	D3D11Renderer *renderer,
 	D3D11CommandBuffer *commandBuffer
 ) {
+	D3D11CommandBufferPool *commandBufferPool = &renderer->commandBufferPool;
 	uint32_t i;
 
 	/* FIXME: All kinds of stuff should go here... */
 
 	SDL_LockMutex(renderer->acquireCommandBufferLock);
 
-	if (renderer->commandBufferPool->count == renderer->commandBufferPool->capacity)
+	if (commandBufferPool->count == commandBufferPool->capacity)
 	{
-		renderer->commandBufferPool->capacity += 1;
-		renderer->commandBufferPool->elements = SDL_realloc(
-			renderer->commandBufferPool->elements,
-			renderer->commandBufferPool->capacity * sizeof(D3D11CommandBuffer*)
+		commandBufferPool->capacity += 1;
+		commandBufferPool->elements = SDL_realloc(
+			commandBufferPool->elements,
+			commandBufferPool->capacity * sizeof(D3D11CommandBuffer*)
 		);
 	}
 
-	renderer->commandBufferPool->elements[renderer->commandBufferPool->count] = commandBuffer;
-	renderer->commandBufferPool->count += 1;
+	commandBufferPool->elements[commandBufferPool->count] = commandBuffer;
+	commandBufferPool->count += 1;
 
 	SDL_UnlockMutex(renderer->acquireCommandBufferLock);
 
@@ -2246,11 +2305,8 @@ tryCreateDevice:
 	Refresh_LogInfo("Refresh Driver: D3D11");
 	Refresh_LogInfo("D3D11 Adapter: %S", adapterDesc.Description);
 
-	/* Create the command buffer pool */
-	renderer->commandBufferPool = (D3D11CommandBufferPool*) SDL_calloc(
-		1,
-		sizeof(D3D11CommandBufferPool)
-	);
+	/* Initialize the command buffer pool */
+	renderer->commandBufferPool = (D3D11CommandBufferPool) { 0 };
 
 	/* Create mutexes */
 	renderer->contextLock = SDL_CreateMutex();
