@@ -245,6 +245,38 @@ static D3D11_TEXTURE_ADDRESS_MODE RefreshToD3D11_SamplerAddressMode[] =
 	D3D11_TEXTURE_ADDRESS_BORDER	/* CLAMP_TO_BORDER */
 };
 
+static void RefreshToD3D11_BorderColor(
+	Refresh_SamplerStateCreateInfo *createInfo,
+	D3D11_SAMPLER_DESC *desc
+) {
+	switch (createInfo->borderColor)
+	{
+	case REFRESH_BORDERCOLOR_FLOAT_OPAQUE_BLACK:
+	case REFRESH_BORDERCOLOR_INT_OPAQUE_BLACK:
+		desc->BorderColor[0] = 0.0f;
+		desc->BorderColor[1] = 0.0f;
+		desc->BorderColor[2] = 0.0f;
+		desc->BorderColor[3] = 1.0f;
+		break;
+
+	case REFRESH_BORDERCOLOR_FLOAT_OPAQUE_WHITE:
+	case REFRESH_BORDERCOLOR_INT_OPAQUE_WHITE:
+		desc->BorderColor[0] = 1.0f;
+		desc->BorderColor[1] = 1.0f;
+		desc->BorderColor[2] = 1.0f;
+		desc->BorderColor[3] = 1.0f;
+		break;
+
+	case REFRESH_BORDERCOLOR_FLOAT_TRANSPARENT_BLACK:
+	case REFRESH_BORDERCOLOR_INT_TRANSPARENT_BLACK:
+		desc->BorderColor[0] = 0.0f;
+		desc->BorderColor[1] = 0.0f;
+		desc->BorderColor[2] = 0.0f;
+		desc->BorderColor[3] = 0.0f;
+		break;
+	}
+}
+
 static D3D11_FILTER RefreshToD3D11_Filter(Refresh_SamplerStateCreateInfo *createInfo)
 {
 	if (createInfo->minFilter == REFRESH_FILTER_LINEAR)
@@ -1018,7 +1050,10 @@ static Refresh_Sampler* D3D11_CreateSampler(
 	samplerDesc.AddressV = RefreshToD3D11_SamplerAddressMode[samplerStateCreateInfo->addressModeV];
 	samplerDesc.AddressW = RefreshToD3D11_SamplerAddressMode[samplerStateCreateInfo->addressModeW];
 
-	/* FIXME: border color! */
+	RefreshToD3D11_BorderColor(
+		samplerStateCreateInfo,
+		&samplerDesc
+	);
 
 	samplerDesc.ComparisonFunc = (
 		samplerStateCreateInfo->compareEnable ?
