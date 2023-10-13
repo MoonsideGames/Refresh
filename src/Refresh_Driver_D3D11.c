@@ -1319,7 +1319,9 @@ static void D3D11_QueueDestroySampler(
 	Refresh_Renderer *driverData,
 	Refresh_Sampler *sampler
 ) {
-	NOT_IMPLEMENTED
+	D3D11Sampler *d3d11Sampler = (D3D11Sampler*) sampler;
+	ID3D11SamplerState_Release(d3d11Sampler->handle);
+	SDL_free(d3d11Sampler);
 }
 
 static void D3D11_QueueDestroyBuffer(
