@@ -245,6 +245,60 @@ static D3D11_TEXTURE_ADDRESS_MODE RefreshToD3D11_SamplerAddressMode[] =
 	D3D11_TEXTURE_ADDRESS_BORDER	/* CLAMP_TO_BORDER */
 };
 
+static D3D11_FILTER RefreshToD3D11_Filter(Refresh_SamplerStateCreateInfo *createInfo)
+{
+	if (createInfo->minFilter == REFRESH_FILTER_LINEAR)
+	{
+		if (createInfo->magFilter == REFRESH_FILTER_LINEAR)
+		{
+			if (createInfo->mipmapMode == REFRESH_SAMPLERMIPMAPMODE_LINEAR)
+			{
+				return D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+			}
+			else
+			{
+				return D3D11_FILTER_MIN_MAG_LINEAR_MIP_POINT;
+			}
+		}
+		else
+		{
+			if (createInfo->mipmapMode == REFRESH_SAMPLERMIPMAPMODE_LINEAR)
+			{
+				return D3D11_FILTER_MIN_LINEAR_MAG_POINT_MIP_LINEAR;
+			}
+			else
+			{
+				return D3D11_FILTER_MIN_LINEAR_MAG_MIP_POINT;
+			}
+		}
+	}
+	else
+	{
+		if (createInfo->magFilter == REFRESH_FILTER_LINEAR)
+		{
+			if (createInfo->mipmapMode == REFRESH_SAMPLERMIPMAPMODE_LINEAR)
+			{
+				return D3D11_FILTER_MIN_POINT_MAG_MIP_LINEAR;
+			}
+			else
+			{
+				return D3D11_FILTER_MIN_POINT_MAG_LINEAR_MIP_POINT;
+			}
+		}
+		else
+		{
+			if (createInfo->mipmapMode == REFRESH_SAMPLERMIPMAPMODE_LINEAR)
+			{
+				return D3D11_FILTER_MIN_MAG_POINT_MIP_LINEAR;
+			}
+			else
+			{
+				return D3D11_FILTER_MIN_MAG_MIP_POINT;
+			}
+		}
+	}
+}
+
 /* Structs */
 
 typedef struct D3D11Texture
@@ -346,6 +400,11 @@ typedef struct D3D11Buffer
 	ID3D11Buffer *handle;
 	uint32_t size;
 } D3D11Buffer;
+
+typedef struct D3D11Sampler
+{
+	ID3D11SamplerState *handle;
+} D3D11Sampler;
 
 typedef struct D3D11Renderer
 {
@@ -949,8 +1008,44 @@ static Refresh_Sampler* D3D11_CreateSampler(
 	Refresh_Renderer *driverData,
 	Refresh_SamplerStateCreateInfo *samplerStateCreateInfo
 ) {
-	NOT_IMPLEMENTED
-	return NULL;
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	D3D11_SAMPLER_DESC samplerDesc;
+	ID3D11SamplerState *samplerState;
+	D3D11Sampler *d3d11Sampler;
+	HRESULT res;
+
+	samplerDesc.AddressU = RefreshToD3D11_SamplerAddressMode[samplerStateCreateInfo->addressModeU];
+	samplerDesc.AddressV = RefreshToD3D11_SamplerAddressMode[samplerStateCreateInfo->addressModeV];
+	samplerDesc.AddressW = RefreshToD3D11_SamplerAddressMode[samplerStateCreateInfo->addressModeW];
+
+	/* FIXME: border color! */
+
+	samplerDesc.ComparisonFunc = (
+		samplerStateCreateInfo->compareEnable ?
+			RefreshToD3D11_CompareOp[samplerStateCreateInfo->compareOp] :
+			RefreshToD3D11_CompareOp[REFRESH_COMPAREOP_ALWAYS]
+	);
+	samplerDesc.MaxAnisotropy = (
+		samplerStateCreateInfo->anisotropyEnable ?
+			(UINT) samplerStateCreateInfo->maxAnisotropy :
+			0
+	);
+	samplerDesc.Filter = RefreshToD3D11_Filter(samplerStateCreateInfo);
+	samplerDesc.MaxLOD = samplerStateCreateInfo->maxLod;
+	samplerDesc.MinLOD = samplerStateCreateInfo->minLod;
+	samplerDesc.MipLODBias = samplerStateCreateInfo->mipLodBias;
+
+	res = ID3D11Device_CreateSamplerState(
+		renderer->device,
+		&samplerDesc,
+		&samplerState
+	);
+	ERROR_CHECK_RETURN("Could not create sampler state! Error Code: %08X", NULL);
+
+	d3d11Sampler = (D3D11Sampler*) SDL_malloc(sizeof(D3D11Sampler));
+	d3d11Sampler->handle = samplerState;
+
+	return (Refresh_Sampler*) d3d11Sampler;
 }
 
 static Refresh_ShaderModule* D3D11_CreateShaderModule(
