@@ -286,6 +286,38 @@ typedef struct D3D11WindowData
 	D3D11SwapchainData *swapchainData;
 } D3D11WindowData;
 
+typedef struct D3D11ShaderModule
+{
+	ID3D11DeviceChild *shader; /* ID3D11VertexShader, ID3D11PixelShader, ID3D11ComputeShader */
+	ID3D10Blob *blob;
+	char *shaderSource;
+	size_t shaderSourceLength;
+} D3D11ShaderModule;
+
+typedef struct D3D11GraphicsPipeline
+{
+	float blendConstants[4];
+	int32_t numColorAttachments;
+	DXGI_FORMAT colorAttachmentFormats[MAX_COLOR_TARGET_BINDINGS];
+	ID3D11BlendState *colorAttachmentBlendState;
+
+	Refresh_MultisampleState multisampleState;
+
+	uint8_t hasDepthStencilAttachment;
+	DXGI_FORMAT depthStencilAttachmentFormat;
+	ID3D11DepthStencilState *depthStencilState;
+	uint32_t stencilRef;
+
+	Refresh_PrimitiveType primitiveType;
+	ID3D11RasterizerState *rasterizerState;
+
+	ID3D11VertexShader *vertexShader;
+	ID3D11InputLayout *inputLayout;
+	uint32_t *vertexStrides;
+
+	ID3D11PixelShader *fragmentShader;
+} D3D11GraphicsPipeline;
+
 typedef struct D3D11CommandBuffer
 {
 	/* D3D11 Object References */
@@ -295,7 +327,7 @@ typedef struct D3D11CommandBuffer
 	/* Render Pass */
 	ID3D11RenderTargetView *rtViews[MAX_COLOR_TARGET_BINDINGS];
 	ID3D11DepthStencilView *dsView;
-	struct D3D11GraphicsPipeline *graphicsPipeline;
+	D3D11GraphicsPipeline *graphicsPipeline;
 
 	/* State */
 	SDL_threadID threadID;
@@ -309,35 +341,11 @@ typedef struct D3D11CommandBufferPool
 	uint32_t capacity;
 } D3D11CommandBufferPool;
 
-typedef struct D3D11ShaderModule
+typedef struct D3D11Buffer
 {
-	ID3D11DeviceChild *shader; /* ID3D11VertexShader, ID3D11PixelShader, ID3D11ComputeShader */
-	ID3D10Blob *blob;
-	char *shaderSource;
-	size_t shaderSourceLength;
-} D3D11ShaderModule;
-
-typedef struct D3D11GraphicsPipeline
-{
-	float blendConstants[4];
-
-	int32_t numColorAttachments;
-	DXGI_FORMAT colorAttachmentFormats[MAX_COLOR_TARGET_BINDINGS];
-	ID3D11BlendState *colorAttachmentBlendState;
-
-	uint8_t hasDepthStencilAttachment;
-	DXGI_FORMAT depthStencilAttachmentFormat;
-
-	Refresh_PrimitiveType primitiveType;
-	uint32_t stencilRef;
-	ID3D11DepthStencilState *depthStencilState;
-	ID3D11RasterizerState *rasterizerState;
-	ID3D11InputLayout *inputLayout;
-
-	Refresh_MultisampleState multisampleState;
-	ID3D11VertexShader *vertexShader;
-	ID3D11PixelShader *fragmentShader;
-} D3D11GraphicsPipeline;
+	ID3D11Buffer *handle;
+	uint32_t size;
+} D3D11Buffer;
 
 typedef struct D3D11Renderer
 {
@@ -432,13 +440,12 @@ static void D3D11_DestroyDevice(
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) device->driverData;
 	D3D11CommandBuffer *commandBuffer;
-	int32_t i;
 
 	D3D11_Wait(device->driverData);
 
 	/* Release the window data */
 
-	for (i = renderer->claimedWindowCount - 1; i >= 0; i -= 1)
+	for (int32_t i = renderer->claimedWindowCount - 1; i >= 0; i -= 1)
 	{
 		D3D11_UnclaimWindow(device->driverData, renderer->claimedWindows[i]->windowHandle);
 	}
@@ -451,7 +458,7 @@ static void D3D11_DestroyDevice(
 
 	SDL_free(renderer->submittedCommandBuffers);
 
-	for (i = 0; i < renderer->commandBufferPool.count; i += 1)
+	for (uint32_t i = 0; i < renderer->commandBufferPool.count; i += 1)
 	{
 		commandBuffer = renderer->commandBufferPool.elements[i];
 
@@ -788,7 +795,6 @@ static Refresh_GraphicsPipeline* D3D11_CreateGraphicsPipeline(
 	D3D11ShaderModule *vertShaderModule = (D3D11ShaderModule*) pipelineCreateInfo->vertexShaderInfo.shaderModule;
 	D3D11ShaderModule *fragShaderModule = (D3D11ShaderModule*) pipelineCreateInfo->fragmentShaderInfo.shaderModule;
 	ID3D10Blob *errorBlob;
-	int32_t i;
 	HRESULT res;
 
 	/* Color */
@@ -800,7 +806,7 @@ static Refresh_GraphicsPipeline* D3D11_CreateGraphicsPipeline(
 	);
 
 	pipeline->numColorAttachments = pipelineCreateInfo->attachmentInfo.colorAttachmentCount;
-	for (i = 0; i < pipeline->numColorAttachments; i += 1)
+	for (int32_t i = 0; i < pipeline->numColorAttachments; i += 1)
 	{
 		pipeline->colorAttachmentFormats[i] = RefreshToD3D11_TextureFormat[
 			pipelineCreateInfo->attachmentInfo.colorAttachmentDescriptions[i].format
@@ -882,6 +888,24 @@ static Refresh_GraphicsPipeline* D3D11_CreateGraphicsPipeline(
 		ID3D10Blob_GetBufferSize(vertShaderModule->blob)
 	);
 
+	if (pipelineCreateInfo->vertexInputState.vertexBindingCount > 0)
+	{
+		pipeline->vertexStrides = SDL_malloc(
+			sizeof(uint32_t) *
+			pipelineCreateInfo->vertexInputState.vertexBindingCount
+		);
+
+		for (uint32_t i = 0; i < pipelineCreateInfo->vertexInputState.vertexBindingCount; i += 1)
+		{
+			pipeline->vertexStrides[i] = pipelineCreateInfo->vertexInputState.vertexBindings[i].stride;
+		}
+	}
+	else
+	{
+		/* Not sure if this is even possible, but juuust in case... */
+		pipeline->vertexStrides = NULL;
+	}
+
 	/* Fragment Shader */
 
 	if (fragShaderModule->shader == NULL)
@@ -962,8 +986,46 @@ static Refresh_Buffer* D3D11_CreateBuffer(
 	Refresh_BufferUsageFlags usageFlags,
 	uint32_t sizeInBytes
 ) {
-	NOT_IMPLEMENTED
-	return NULL;
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	D3D11_BUFFER_DESC bufferDesc;
+	ID3D11Buffer *bufferHandle;
+	D3D11Buffer *d3d11Buffer;
+	HRESULT res;
+
+	uint32_t bindFlags = 0;
+	if (usageFlags & REFRESH_BUFFERUSAGE_VERTEX_BIT)
+	{
+		bindFlags |= D3D11_BIND_VERTEX_BUFFER;
+	}
+	if (usageFlags & REFRESH_BUFFERUSAGE_INDEX_BIT)
+	{
+		bindFlags |= D3D11_BIND_INDEX_BUFFER;
+	}
+	if (usageFlags & REFRESH_BUFFERUSAGE_COMPUTE_BIT)
+	{
+		bindFlags |= D3D11_BIND_UNORDERED_ACCESS;
+	}
+	bufferDesc.BindFlags = bindFlags;
+
+	bufferDesc.ByteWidth = sizeInBytes;
+	bufferDesc.Usage = D3D11_USAGE_DYNAMIC;
+	bufferDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+	bufferDesc.MiscFlags = 0;
+	bufferDesc.StructureByteStride = 0;
+
+	res = ID3D11Device_CreateBuffer(
+		renderer->device,
+		&bufferDesc,
+		NULL,
+		&bufferHandle
+	);
+	ERROR_CHECK_RETURN("Could not create buffer! Error Code: %08X", NULL);
+
+	d3d11Buffer = SDL_malloc(sizeof(D3D11Buffer));
+	d3d11Buffer->handle = bufferHandle;
+	d3d11Buffer->size = sizeInBytes;
+
+	return (Refresh_Buffer*) d3d11Buffer;
 }
 
 /* Setters */
@@ -1026,7 +1088,33 @@ static void D3D11_SetBufferData(
 	void* data,
 	uint32_t dataLength
 ) {
-	NOT_IMPLEMENTED
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	D3D11CommandBuffer *d3d11CommandBuffer = (D3D11CommandBuffer*) commandBuffer;
+	D3D11Buffer *d3d11Buffer = (D3D11Buffer*) buffer;
+	D3D11_MAPPED_SUBRESOURCE subres = { 0 };
+	HRESULT res;
+
+	res = ID3D11DeviceContext_Map(
+		d3d11CommandBuffer->context,
+		(ID3D11Resource*) d3d11Buffer->handle,
+		0,
+		D3D11_MAP_WRITE_DISCARD,
+		0,
+		&subres
+	);
+	ERROR_CHECK_RETURN("Could not map buffer for writing!", );
+
+	SDL_memcpy(
+		(uint8_t*) subres.pData + offsetInBytes,
+		data,
+		dataLength
+	);
+
+	ID3D11DeviceContext_Unmap(
+		d3d11CommandBuffer->context,
+		(ID3D11Resource*) d3d11Buffer->handle,
+		0
+	);
 }
 
 static uint32_t D3D11_PushVertexShaderUniforms(
@@ -1108,7 +1196,9 @@ static void D3D11_QueueDestroyBuffer(
 	Refresh_Renderer *driverData,
 	Refresh_Buffer *buffer
 ) {
-	NOT_IMPLEMENTED
+	D3D11Buffer *d3d11Buffer = (D3D11Buffer*) buffer;
+	ID3D11Buffer_Release(d3d11Buffer->handle);
+	SDL_free(d3d11Buffer);
 }
 
 static void D3D11_QueueDestroyShaderModule(
@@ -1150,6 +1240,11 @@ static void D3D11_QueueDestroyGraphicsPipeline(
 	ID3D11InputLayout_Release(d3dGraphicsPipeline->inputLayout);
 
 	/* FIXME: Release uniform buffers, once that's written in */
+
+	if (d3dGraphicsPipeline->vertexStrides)
+	{
+		SDL_free(d3dGraphicsPipeline->vertexStrides);
+	}
 
 	SDL_free(d3dGraphicsPipeline);
 }
@@ -1450,7 +1545,7 @@ static void D3D11_SetScissor(
 	Refresh_CommandBuffer *commandBuffer,
 	Refresh_Rect *scissor
 ) {
-	D3D11CommandBuffer *d3d11CommandBuffer = (D3D11CommandBuffer*)commandBuffer;
+	D3D11CommandBuffer *d3d11CommandBuffer = (D3D11CommandBuffer*) commandBuffer;
 	D3D11_RECT rect =
 	{
 		scissor->x,
@@ -1474,7 +1569,23 @@ static void D3D11_BindVertexBuffers(
 	Refresh_Buffer **pBuffers,
 	uint64_t *pOffsets
 ) {
-	NOT_IMPLEMENTED
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	D3D11CommandBuffer *d3d11CommandBuffer = (D3D11CommandBuffer*) commandBuffer;
+	ID3D11Buffer *bufferHandles[MAX_BUFFER_BINDINGS];
+
+	for (uint32_t i = 0; i < bindingCount; i += 1)
+	{
+		bufferHandles[i] = ((D3D11Buffer*) pBuffers[i])->handle;
+	}
+
+	ID3D11DeviceContext_IASetVertexBuffers(
+		d3d11CommandBuffer->context,
+		firstBinding,
+		bindingCount,
+		bufferHandles,
+		&d3d11CommandBuffer->graphicsPipeline->vertexStrides[firstBinding],
+		(UINT*) pOffsets
+	);
 }
 
 static void D3D11_BindIndexBuffer(
