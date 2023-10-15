@@ -11568,6 +11568,7 @@ static void VULKAN_INTERNAL_LoadEntryPoints(void)
 	if (SDL_Vulkan_LoadLibrary(NULL) < 0)
 	{
 		Refresh_LogWarn("Vulkan: SDL_Vulkan_LoadLibrary failed!");
+		Refresh_LogWarn(SDL_GetError());
 		return;
 	}
 
