@@ -2483,8 +2483,6 @@ static void D3D11_Submit(
 	renderer->submittedCommandBuffers[renderer->submittedCommandBufferCount] = d3d11CommandBuffer;
 	renderer->submittedCommandBufferCount += 1;
 
-	SDL_UnlockMutex(renderer->contextLock);
-
 	/* Present, if applicable */
 	if (d3d11CommandBuffer->swapchainData)
 	{
@@ -2493,6 +2491,27 @@ static void D3D11_Submit(
 			1, /* FIXME: Assumes vsync! */
 			0
 		);
+	}
+
+	/* Check if we can perform any cleanups */
+	for (int32_t i = renderer->submittedCommandBufferCount - 1; i >= 0; i -= 1)
+	{
+		BOOL queryData;
+
+		res = ID3D11DeviceContext_GetData(
+			renderer->immediateContext,
+			(ID3D11Asynchronous*) renderer->submittedCommandBuffers[i]->completionQuery,
+			&queryData,
+			sizeof(queryData),
+			0
+		);
+		if (res == S_OK)
+		{
+			D3D11_INTERNAL_CleanCommandBuffer(
+				renderer,
+				renderer->submittedCommandBuffers[i]
+			);
+		}
 	}
 
 	SDL_UnlockMutex(renderer->contextLock);
