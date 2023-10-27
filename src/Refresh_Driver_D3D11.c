@@ -1042,7 +1042,7 @@ static Refresh_Sampler* D3D11_CreateSampler(
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11_SAMPLER_DESC samplerDesc;
-	ID3D11SamplerState *samplerState;
+	ID3D11SamplerState *samplerStateHandle;
 	D3D11Sampler *d3d11Sampler;
 	HRESULT res;
 
@@ -1073,12 +1073,12 @@ static Refresh_Sampler* D3D11_CreateSampler(
 	res = ID3D11Device_CreateSamplerState(
 		renderer->device,
 		&samplerDesc,
-		&samplerState
+		&samplerStateHandle
 	);
-	ERROR_CHECK_RETURN("Could not create sampler state! Error Code: %08X", NULL);
+	ERROR_CHECK_RETURN("Could not create sampler state", NULL);
 
 	d3d11Sampler = (D3D11Sampler*) SDL_malloc(sizeof(D3D11Sampler));
-	d3d11Sampler->handle = samplerState;
+	d3d11Sampler->handle = samplerStateHandle;
 
 	return (Refresh_Sampler*) d3d11Sampler;
 }
@@ -1149,7 +1149,7 @@ static Refresh_Buffer* D3D11_CreateBuffer(
 		NULL,
 		&bufferHandle
 	);
-	ERROR_CHECK_RETURN("Could not create buffer! Error Code: %08X", NULL);
+	ERROR_CHECK_RETURN("Could not create buffer", NULL);
 
 	d3d11Buffer = SDL_malloc(sizeof(D3D11Buffer));
 	d3d11Buffer->handle = bufferHandle;
@@ -1408,7 +1408,7 @@ static void D3D11_INTERNAL_AllocateCommandBuffers(
 			0,
 			&commandBuffer->context
 		);
-		ERROR_CHECK("Could not create deferred context! Error Code: %08X");
+		ERROR_CHECK("Could not create deferred context");
 
 		queryDesc.Query = D3D11_QUERY_EVENT;
 		queryDesc.MiscFlags = 0;
@@ -1417,7 +1417,7 @@ static void D3D11_INTERNAL_AllocateCommandBuffers(
 			&queryDesc,
 			&commandBuffer->completionQuery
 		);
-		ERROR_CHECK("Could not create query! Error Code: %08X");
+		ERROR_CHECK("Could not create query");
 
 		/* FIXME: Resource tracking? */
 
@@ -1799,11 +1799,8 @@ static uint8_t D3D11_INTERNAL_InitializeSwapchainTexture(
 	);
 	if (FAILED(res))
 	{
-		Refresh_LogError(
-			"Swapchain RTV creation failed. Error Code: %08X",
-			res
-		);
 		ID3D11Texture2D_Release(swapchainTexture);
+		D3D11_INTERNAL_LogError(renderer->device, "Swapchain RTV creation failed", res);
 		return 0;
 	}
 
