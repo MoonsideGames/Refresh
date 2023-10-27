@@ -48,6 +48,46 @@ void Refresh_LogError(const char *fmt, ...);
 
 /* Internal Helper Utilities */
 
+static inline int32_t Texture_GetBlockSize(
+	Refresh_TextureFormat format
+) {
+	switch (format)
+	{
+		case REFRESH_TEXTUREFORMAT_BC1:
+		case REFRESH_TEXTUREFORMAT_BC2:
+		case REFRESH_TEXTUREFORMAT_BC3:
+		case REFRESH_TEXTUREFORMAT_BC7:
+			return 4;
+		case REFRESH_TEXTUREFORMAT_R8:
+		case REFRESH_TEXTUREFORMAT_R8_UINT:
+		case REFRESH_TEXTUREFORMAT_R5G6B5:
+		case REFRESH_TEXTUREFORMAT_B4G4R4A4:
+		case REFRESH_TEXTUREFORMAT_A1R5G5B5:
+		case REFRESH_TEXTUREFORMAT_R16_SFLOAT:
+		case REFRESH_TEXTUREFORMAT_R8G8_SNORM:
+		case REFRESH_TEXTUREFORMAT_R8G8_UINT:
+		case REFRESH_TEXTUREFORMAT_R16_UINT:
+		case REFRESH_TEXTUREFORMAT_R8G8B8A8:
+		case REFRESH_TEXTUREFORMAT_R32_SFLOAT:
+		case REFRESH_TEXTUREFORMAT_R16G16_SFLOAT:
+		case REFRESH_TEXTUREFORMAT_R8G8B8A8_SNORM:
+		case REFRESH_TEXTUREFORMAT_A2R10G10B10:
+		case REFRESH_TEXTUREFORMAT_R8G8B8A8_UINT:
+		case REFRESH_TEXTUREFORMAT_R16G16_UINT:
+		case REFRESH_TEXTUREFORMAT_R16G16B16A16_SFLOAT:
+		case REFRESH_TEXTUREFORMAT_R16G16B16A16:
+		case REFRESH_TEXTUREFORMAT_R32G32_SFLOAT:
+		case REFRESH_TEXTUREFORMAT_R16G16B16A16_UINT:
+		case REFRESH_TEXTUREFORMAT_R32G32B32A32_SFLOAT:
+			return 1;
+		default:
+			Refresh_LogError(
+				"Unrecognized TextureFormat!"
+			);
+			return 0;
+	}
+}
+
 static inline uint32_t Texture_GetFormatSize(
 	Refresh_TextureFormat format
 ) {
@@ -87,7 +127,7 @@ static inline uint32_t Texture_GetFormatSize(
 			return 16;
 		default:
 			Refresh_LogError(
-				"Unrecognized SurfaceFormat!"
+				"Unrecognized TextureFormat!"
 			);
 			return 0;
 	}
