@@ -47,6 +47,7 @@
 #define D3DCOMPILE_FUNC "D3DCompile"
 #define CREATE_DXGI_FACTORY1_FUNC "CreateDXGIFactory1"
 #define WINDOW_DATA "Refresh_D3D11WindowData"
+#define UBO_BUFFER_SIZE 16000 /* 16KB */
 
 #define NOT_IMPLEMENTED SDL_assert(0 && "Not implemented!");
 
@@ -406,10 +407,24 @@ typedef struct D3D11GraphicsPipeline
 	ID3D11InputLayout *inputLayout;
 	uint32_t *vertexStrides;
 	uint32_t numVertexSamplers;
+	uint32_t vertexUniformBlockSize;
 
 	ID3D11PixelShader *fragmentShader;
 	uint32_t numFragmentSamplers;
+	uint32_t fragmentUniformBlockSize;
 } D3D11GraphicsPipeline;
+
+typedef struct D3D11Buffer
+{
+	ID3D11Buffer *handle;
+	uint32_t size;
+} D3D11Buffer;
+
+typedef struct D3D11UniformBuffer
+{
+	D3D11Buffer *d3d11Buffer;
+	uint32_t offset;
+} D3D11UniformBuffer;
 
 typedef struct D3D11CommandBuffer
 {
@@ -425,20 +440,15 @@ typedef struct D3D11CommandBuffer
 	/* State */
 	SDL_threadID threadID;
 	ID3D11Query *completionQuery;
+
+	/* Uniforms */
+	D3D11UniformBuffer *vertexUniformBuffer;
+	D3D11UniformBuffer *fragmentUniformBuffer;
+
+	D3D11UniformBuffer **boundUniformBuffers;
+	uint32_t boundUniformBufferCount;
+	uint32_t boundUniformBufferCapacity;
 } D3D11CommandBuffer;
-
-typedef struct D3D11CommandBufferPool
-{
-	D3D11CommandBuffer **elements;
-	uint32_t count;
-	uint32_t capacity;
-} D3D11CommandBufferPool;
-
-typedef struct D3D11Buffer
-{
-	ID3D11Buffer *handle;
-	uint32_t size;
-} D3D11Buffer;
 
 typedef struct D3D11Sampler
 {
@@ -463,14 +473,21 @@ typedef struct D3D11Renderer
 	uint32_t claimedWindowCount;
 	uint32_t claimedWindowCapacity;
 
-	D3D11CommandBufferPool commandBufferPool;
-
-	SDL_mutex *contextLock;
-	SDL_mutex *acquireCommandBufferLock;
+	D3D11CommandBuffer **availableCommandBuffers;
+	uint32_t availableCommandBufferCount;
+	uint32_t availableCommandBufferCapacity;
 
 	D3D11CommandBuffer **submittedCommandBuffers;
 	uint32_t submittedCommandBufferCount;
 	uint32_t submittedCommandBufferCapacity;
+
+	D3D11UniformBuffer **availableUniformBuffers;
+	uint32_t availableUniformBufferCount;
+	uint32_t availableUniformBufferCapacity;
+
+	SDL_mutex *contextLock;
+	SDL_mutex *acquireCommandBufferLock;
+	SDL_mutex *uniformBufferLock;
 } D3D11Renderer;
 
 /* Logging */
@@ -547,45 +564,51 @@ static void D3D11_DestroyDevice(
 	Refresh_Device *device
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) device->driverData;
-	D3D11CommandBuffer *commandBuffer;
 
+	/* Flush any remaining GPU work... */
 	D3D11_Wait(device->driverData);
 
 	/* Release the window data */
-
 	for (int32_t i = renderer->claimedWindowCount - 1; i >= 0; i -= 1)
 	{
 		D3D11_UnclaimWindow(device->driverData, renderer->claimedWindows[i]->windowHandle);
 	}
-
 	SDL_free(renderer->claimedWindows);
 
-	D3D11_Wait(device->driverData); /* FIXME: Copied this from Vulkan, is it actually necessary? */
+	/* FIXME: Copied this from Vulkan, is it actually necessary? */
+	D3D11_Wait(device->driverData);
 
 	/* Release command buffer infrastructure */
-
-	SDL_free(renderer->submittedCommandBuffers);
-
-	for (uint32_t i = 0; i < renderer->commandBufferPool.count; i += 1)
+	for (uint32_t i = 0; i < renderer->availableCommandBufferCount; i += 1)
 	{
-		commandBuffer = renderer->commandBufferPool.elements[i];
-
+		D3D11CommandBuffer *commandBuffer = renderer->availableCommandBuffers[i];
 		ID3D11Query_Release(commandBuffer->completionQuery);
 		ID3D11DeviceContext_Release(commandBuffer->context);
-
 		SDL_free(commandBuffer);
 	}
+	SDL_free(renderer->availableCommandBuffers);
+	SDL_free(renderer->submittedCommandBuffers);
+
+	/* Release uniform buffer infrastructure */
+	for (uint32_t i = 0; i < renderer->availableUniformBufferCount; i += 1)
+	{
+		D3D11UniformBuffer *uniformBuffer = renderer->availableUniformBuffers[i];
+		ID3D11Buffer_Release(uniformBuffer->d3d11Buffer->handle);
+		SDL_free(uniformBuffer->d3d11Buffer);
+		SDL_free(uniformBuffer);
+	}
+	SDL_free(renderer->availableCommandBuffers);
 
 	/* Release the mutexes */
-
 	SDL_DestroyMutex(renderer->acquireCommandBufferLock);
 	SDL_DestroyMutex(renderer->contextLock);
+	SDL_DestroyMutex(renderer->uniformBufferLock);
 
-	/* Release the DLLs and D3D11 device infrastructure */
-
+	/* Release the DLLs */
 	SDL_UnloadObject(renderer->d3d11_dll);
 	SDL_UnloadObject(renderer->d3dcompiler_dll);
 
+	/* Release the device and associated objects */
 	ID3D11DeviceContext_Release(renderer->immediateContext);
 	ID3D11Device_Release(renderer->device);
 	IDXGIAdapter_Release(renderer->adapter);
@@ -608,6 +631,26 @@ static void D3D11_DrawInstancedPrimitives(
 	uint32_t fragmentParamOffset
 ) {
 	D3D11CommandBuffer *d3d11CommandBuffer = (D3D11CommandBuffer*) commandBuffer;
+
+	if (d3d11CommandBuffer->vertexUniformBuffer != NULL)
+	{
+		ID3D11DeviceContext_VSSetConstantBuffers(
+			d3d11CommandBuffer->context,
+			0,
+			1,
+			&d3d11CommandBuffer->vertexUniformBuffer->d3d11Buffer->handle
+		);
+	}
+
+	if (d3d11CommandBuffer->fragmentUniformBuffer != NULL)
+	{
+		ID3D11DeviceContext_PSSetConstantBuffers(
+			d3d11CommandBuffer->context,
+			0,
+			1,
+			&d3d11CommandBuffer->fragmentUniformBuffer->d3d11Buffer->handle
+		);
+	}
 
 	ID3D11DeviceContext_DrawIndexedInstanced(
 		d3d11CommandBuffer->context,
@@ -652,13 +695,31 @@ static void D3D11_DrawPrimitives(
 ) {
 	D3D11CommandBuffer *d3d11CommandBuffer = (D3D11CommandBuffer*) commandBuffer;
 
+	if (d3d11CommandBuffer->vertexUniformBuffer != NULL)
+	{
+		ID3D11DeviceContext_VSSetConstantBuffers(
+			d3d11CommandBuffer->context,
+			0,
+			1,
+			&d3d11CommandBuffer->vertexUniformBuffer->d3d11Buffer->handle
+		);
+	}
+
+	if (d3d11CommandBuffer->fragmentUniformBuffer != NULL)
+	{
+		ID3D11DeviceContext_PSSetConstantBuffers(
+			d3d11CommandBuffer->context,
+			0,
+			1,
+			&d3d11CommandBuffer->fragmentUniformBuffer->d3d11Buffer->handle
+		);
+	}
+
 	ID3D11DeviceContext_Draw(
 		d3d11CommandBuffer->context,
 		PrimitiveVerts(d3d11CommandBuffer->graphicsPipeline->primitiveType, primitiveCount),
 		vertexStart
 	);
-
-	/* FIXME: vertex/fragment param offsets */
 }
 
 static void D3D11_DrawPrimitivesIndirect(
@@ -983,7 +1044,7 @@ static Refresh_GraphicsPipeline* D3D11_CreateGraphicsPipeline(
 			NULL,
 			NULL,
 			NULL,
-			"main",
+			"main", /* FIXME: Is this correct or should this be vertexShaderInfo.entryPoint? */
 			"vs_5_0",
 			0,
 			0,
@@ -1007,6 +1068,7 @@ static Refresh_GraphicsPipeline* D3D11_CreateGraphicsPipeline(
 	}
 	pipeline->vertexShader = (ID3D11VertexShader*) vertShaderModule->shader;
 	pipeline->numVertexSamplers = pipelineCreateInfo->vertexShaderInfo.samplerBindingCount;
+	pipeline->vertexUniformBlockSize = (uint32_t) pipelineCreateInfo->vertexShaderInfo.uniformBufferSize;
 
 	/* Input Layout */
 
@@ -1045,7 +1107,7 @@ static Refresh_GraphicsPipeline* D3D11_CreateGraphicsPipeline(
 			NULL,
 			NULL,
 			NULL,
-			"main",
+			"main", /* FIXME: Is this correct or should this be fragmentShaderInfo.entryPoint? */
 			"ps_5_0",
 			0,
 			0,
@@ -1069,8 +1131,7 @@ static Refresh_GraphicsPipeline* D3D11_CreateGraphicsPipeline(
 	}
 	pipeline->fragmentShader = (ID3D11PixelShader*) fragShaderModule->shader;
 	pipeline->numFragmentSamplers = pipelineCreateInfo->fragmentShaderInfo.samplerBindingCount;
-
-	/* FIXME: Need to create uniform buffers for the shaders */
+	pipeline->fragmentUniformBlockSize = (uint32_t) pipelineCreateInfo->fragmentShaderInfo.uniformBufferSize;
 
 	return (Refresh_GraphicsPipeline*) pipeline;
 }
@@ -1447,25 +1508,23 @@ static void D3D11_CopyTextureToBuffer(
 	NOT_IMPLEMENTED
 }
 
-static void D3D11_SetBufferData(
-	Refresh_Renderer *driverData,
-	Refresh_CommandBuffer *commandBuffer,
-	Refresh_Buffer *buffer,
+static void D3D11_INTERNAL_SetBufferData(
+	D3D11Renderer *renderer,
+	D3D11CommandBuffer *commandBuffer,
+	D3D11Buffer *buffer,
 	uint32_t offsetInBytes,
 	void* data,
-	uint32_t dataLength
+	uint32_t dataLength,
+	uint8_t noOverwrite
 ) {
-	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
-	D3D11CommandBuffer *d3d11CommandBuffer = (D3D11CommandBuffer*) commandBuffer;
-	D3D11Buffer *d3d11Buffer = (D3D11Buffer*) buffer;
-	D3D11_MAPPED_SUBRESOURCE subres = { 0 };
+	D3D11_MAPPED_SUBRESOURCE subres;
 	HRESULT res;
 
 	res = ID3D11DeviceContext_Map(
-		d3d11CommandBuffer->context,
-		(ID3D11Resource*) d3d11Buffer->handle,
+		commandBuffer->context,
+		(ID3D11Resource*) buffer->handle,
 		0,
-		D3D11_MAP_WRITE_DISCARD,
+		noOverwrite ? D3D11_MAP_WRITE_NO_OVERWRITE : D3D11_MAP_WRITE_DISCARD,
 		0,
 		&subres
 	);
@@ -1478,10 +1537,115 @@ static void D3D11_SetBufferData(
 	);
 
 	ID3D11DeviceContext_Unmap(
-		d3d11CommandBuffer->context,
-		(ID3D11Resource*) d3d11Buffer->handle,
+		commandBuffer->context,
+		(ID3D11Resource*) buffer->handle,
 		0
 	);
+}
+
+static void D3D11_SetBufferData(
+	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_Buffer *buffer,
+	uint32_t offsetInBytes,
+	void* data,
+	uint32_t dataLength
+) {
+	D3D11_INTERNAL_SetBufferData(
+		(D3D11Renderer*) driverData,
+		(D3D11CommandBuffer*) commandBuffer,
+		(D3D11Buffer*) buffer,
+		offsetInBytes,
+		data,
+		dataLength,
+		0
+	);
+}
+
+static void D3D11_INTERNAL_BindUniformBuffer(
+	D3D11CommandBuffer *commandBuffer,
+	D3D11UniformBuffer *uniformBuffer
+) {
+	if (commandBuffer->boundUniformBufferCount >= commandBuffer->boundUniformBufferCapacity)
+	{
+		commandBuffer->boundUniformBufferCapacity *= 2;
+		commandBuffer->boundUniformBuffers = SDL_realloc(
+			commandBuffer->boundUniformBuffers,
+			sizeof(D3D11UniformBuffer*) * commandBuffer->boundUniformBufferCapacity
+		);
+	}
+
+	commandBuffer->boundUniformBuffers[commandBuffer->boundUniformBufferCount] = uniformBuffer;
+	commandBuffer->boundUniformBufferCount += 1;
+}
+
+static uint8_t D3D11_INTERNAL_CreateUniformBuffer(
+	D3D11Renderer *renderer
+) {
+	D3D11_BUFFER_DESC bufferDesc;
+	bufferDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+	bufferDesc.ByteWidth = UBO_BUFFER_SIZE;
+	bufferDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+	bufferDesc.MiscFlags = 0;
+	bufferDesc.StructureByteStride = 0;
+	bufferDesc.Usage = D3D11_USAGE_DYNAMIC;
+
+	ID3D11Buffer *bufferHandle;
+	HRESULT res = ID3D11Device_CreateBuffer(
+		renderer->device,
+		&bufferDesc,
+		NULL,
+		&bufferHandle
+	);
+	ERROR_CHECK_RETURN("Failed to create uniform buffer", 0);
+
+	D3D11UniformBuffer *uniformBuffer = SDL_malloc(sizeof(D3D11UniformBuffer));
+	uniformBuffer->offset = 0;
+	uniformBuffer->d3d11Buffer = SDL_malloc(sizeof(D3D11Buffer));
+	uniformBuffer->d3d11Buffer->handle = bufferHandle;
+	uniformBuffer->d3d11Buffer->size = UBO_BUFFER_SIZE;
+
+	/* Add it to the available pool */
+	if (renderer->availableUniformBufferCount >= renderer->availableUniformBufferCapacity)
+	{
+		renderer->availableUniformBufferCapacity *= 2;
+
+		renderer->availableUniformBuffers = SDL_realloc(
+			renderer->availableUniformBuffers,
+			sizeof(D3D11UniformBuffer*) * renderer->availableUniformBufferCapacity
+		);
+	}
+
+	renderer->availableUniformBuffers[renderer->availableUniformBufferCount] = uniformBuffer;
+	renderer->availableUniformBufferCount += 1;
+
+	return 1;
+}
+
+static D3D11UniformBuffer* D3D11_INTERNAL_AcquireUniformBufferFromPool(
+	D3D11Renderer *renderer,
+	uint64_t blockSize
+) {
+	SDL_LockMutex(renderer->uniformBufferLock);
+
+	if (renderer->availableUniformBufferCount == 0)
+	{
+		if (!D3D11_INTERNAL_CreateUniformBuffer(renderer))
+		{
+			SDL_UnlockMutex(renderer->uniformBufferLock);
+			Refresh_LogError("Failed to create uniform buffer!");
+			return NULL;
+		}
+	}
+
+	D3D11UniformBuffer *uniformBuffer = renderer->availableUniformBuffers[renderer->availableUniformBufferCount - 1];
+	renderer->availableUniformBufferCount -= 1;
+
+	SDL_UnlockMutex(renderer->uniformBufferLock);
+
+	uniformBuffer->offset = 0;
+
+	return uniformBuffer;
 }
 
 static uint32_t D3D11_PushVertexShaderUniforms(
@@ -1490,8 +1654,39 @@ static uint32_t D3D11_PushVertexShaderUniforms(
 	void *data,
 	uint32_t dataLengthInBytes
 ) {
-	NOT_IMPLEMENTED
-	return 0;
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	D3D11CommandBuffer *d3d11CommandBuffer = (D3D11CommandBuffer*) commandBuffer;
+	D3D11GraphicsPipeline *graphicsPipeline = d3d11CommandBuffer->graphicsPipeline;
+	uint32_t offset;
+
+	if (d3d11CommandBuffer->vertexUniformBuffer->offset + graphicsPipeline->vertexUniformBlockSize >= UBO_BUFFER_SIZE)
+	{
+		/* We're out of space in this buffer, bind the old one and acquire a new one */
+		D3D11_INTERNAL_BindUniformBuffer(
+			d3d11CommandBuffer,
+			d3d11CommandBuffer->vertexUniformBuffer
+		);
+		d3d11CommandBuffer->vertexUniformBuffer = D3D11_INTERNAL_AcquireUniformBufferFromPool(
+			renderer,
+			graphicsPipeline->vertexUniformBlockSize
+		);
+	}
+
+	offset = d3d11CommandBuffer->vertexUniformBuffer->offset;
+
+	D3D11_INTERNAL_SetBufferData(
+		renderer,
+		d3d11CommandBuffer,
+		d3d11CommandBuffer->vertexUniformBuffer->d3d11Buffer,
+		d3d11CommandBuffer->vertexUniformBuffer->offset,
+		data,
+		dataLengthInBytes,
+		0
+	);
+
+	d3d11CommandBuffer->vertexUniformBuffer->offset += graphicsPipeline->vertexUniformBlockSize;
+
+	return offset;
 }
 
 static uint32_t D3D11_PushFragmentShaderUniforms(
@@ -1500,8 +1695,39 @@ static uint32_t D3D11_PushFragmentShaderUniforms(
 	void *data,
 	uint32_t dataLengthInBytes
 ) {
-	NOT_IMPLEMENTED
-	return 0;
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	D3D11CommandBuffer *d3d11CommandBuffer = (D3D11CommandBuffer*) commandBuffer;
+	D3D11GraphicsPipeline *graphicsPipeline = d3d11CommandBuffer->graphicsPipeline;
+	uint32_t offset;
+
+	if (d3d11CommandBuffer->fragmentUniformBuffer->offset + graphicsPipeline->fragmentUniformBlockSize >= UBO_BUFFER_SIZE)
+	{
+		/* We're out of space in this buffer, bind the old one and acquire a new one */
+		D3D11_INTERNAL_BindUniformBuffer(
+			d3d11CommandBuffer,
+			d3d11CommandBuffer->fragmentUniformBuffer
+		);
+		d3d11CommandBuffer->fragmentUniformBuffer = D3D11_INTERNAL_AcquireUniformBufferFromPool(
+			renderer,
+			graphicsPipeline->fragmentUniformBlockSize
+		);
+	}
+
+	offset = d3d11CommandBuffer->fragmentUniformBuffer->offset;
+
+	D3D11_INTERNAL_SetBufferData(
+		renderer,
+		d3d11CommandBuffer,
+		d3d11CommandBuffer->fragmentUniformBuffer->d3d11Buffer,
+		d3d11CommandBuffer->fragmentUniformBuffer->offset,
+		data,
+		dataLengthInBytes,
+		0
+	);
+
+	d3d11CommandBuffer->fragmentUniformBuffer->offset += graphicsPipeline->fragmentUniformBlockSize;
+
+	return offset;
 }
 
 static uint32_t D3D11_PushComputeShaderUniforms(
@@ -1651,22 +1877,22 @@ static void D3D11_INTERNAL_AllocateCommandBuffers(
 	D3D11Renderer *renderer,
 	uint32_t allocateCount
 ) {
-	D3D11CommandBufferPool *pool = &renderer->commandBufferPool;
 	D3D11CommandBuffer *commandBuffer;
 	D3D11_QUERY_DESC queryDesc;
 	HRESULT res;
 
-	pool->capacity += allocateCount;
+	renderer->availableCommandBufferCapacity += allocateCount;
 
-	pool->elements = SDL_realloc(
-		pool->elements,
-		sizeof(D3D11CommandBuffer*) * pool->capacity
+	renderer->availableCommandBuffers = SDL_realloc(
+		renderer->availableCommandBuffers,
+		sizeof(D3D11CommandBuffer*) * renderer->availableCommandBufferCapacity
 	);
 
 	for (uint32_t i = 0; i < allocateCount; i += 1)
 	{
 		commandBuffer = SDL_malloc(sizeof(D3D11CommandBuffer));
 
+		/* Deferred Device Context */
 		res = ID3D11Device_CreateDeferredContext(
 			renderer->device,
 			0,
@@ -1674,6 +1900,7 @@ static void D3D11_INTERNAL_AllocateCommandBuffers(
 		);
 		ERROR_CHECK("Could not create deferred context");
 
+		/* Fence Query */
 		queryDesc.Query = D3D11_QUERY_EVENT;
 		queryDesc.MiscFlags = 0;
 		res = ID3D11Device_CreateQuery(
@@ -1683,29 +1910,35 @@ static void D3D11_INTERNAL_AllocateCommandBuffers(
 		);
 		ERROR_CHECK("Could not create query");
 
+		/* Bound Uniform Buffers */
+		commandBuffer->boundUniformBufferCapacity = 16;
+		commandBuffer->boundUniformBufferCount = 0;
+		commandBuffer->boundUniformBuffers = SDL_malloc(
+			commandBuffer->boundUniformBufferCapacity * sizeof(D3D11UniformBuffer*)
+		);
+
 		/* FIXME: Resource tracking? */
 
-		pool->elements[pool->count] = commandBuffer;
-		pool->count += 1;
+		renderer->availableCommandBuffers[renderer->availableCommandBufferCount] = commandBuffer;
+		renderer->availableCommandBufferCount += 1;
 	}
 }
 
 static D3D11CommandBuffer* D3D11_INTERNAL_GetInactiveCommandBufferFromPool(
 	D3D11Renderer *renderer
 ) {
-	D3D11CommandBufferPool *pool = &renderer->commandBufferPool;
 	D3D11CommandBuffer *commandBuffer;
 
-	if (pool->count == 0)
+	if (renderer->availableCommandBufferCount == 0)
 	{
 		D3D11_INTERNAL_AllocateCommandBuffers(
 			renderer,
-			pool->capacity
+			renderer->availableCommandBufferCapacity
 		);
 	}
 
-	commandBuffer = pool->elements[pool->count - 1];
-	pool->count -= 1;
+	commandBuffer = renderer->availableCommandBuffers[renderer->availableCommandBufferCount - 1];
+	renderer->availableCommandBufferCount -= 1;
 
 	return commandBuffer;
 }
@@ -1723,8 +1956,9 @@ static Refresh_CommandBuffer* D3D11_AcquireCommandBuffer(
 	commandBuffer = D3D11_INTERNAL_GetInactiveCommandBufferFromPool(renderer);
 	commandBuffer->threadID = SDL_ThreadID();
 	commandBuffer->swapchainData = NULL;
-	commandBuffer->dsView = NULL;
 	commandBuffer->graphicsPipeline = NULL;
+	commandBuffer->vertexUniformBuffer = NULL;
+	commandBuffer->dsView = NULL;
 	for (i = 0; i < MAX_COLOR_TARGET_BINDINGS; i += 1)
 	{
 		commandBuffer->rtViews[i] = NULL;
@@ -1856,6 +2090,26 @@ static void D3D11_EndRenderPass(
 	Refresh_Renderer *driverData,
 	Refresh_CommandBuffer *commandBuffer
 ) {
+	D3D11CommandBuffer *d3d11CommandBuffer = (D3D11CommandBuffer*) commandBuffer;
+
+	if (d3d11CommandBuffer->vertexUniformBuffer != NULL)
+	{
+		D3D11_INTERNAL_BindUniformBuffer(
+			d3d11CommandBuffer,
+			d3d11CommandBuffer->vertexUniformBuffer
+		);
+	}
+	d3d11CommandBuffer->vertexUniformBuffer = NULL;
+
+	if (d3d11CommandBuffer->fragmentUniformBuffer != NULL)
+	{
+		D3D11_INTERNAL_BindUniformBuffer(
+			d3d11CommandBuffer,
+			d3d11CommandBuffer->fragmentUniformBuffer
+		);
+	}
+	d3d11CommandBuffer->fragmentUniformBuffer = NULL;
+
 	/* FIXME: Resolve MSAA here! */
 	/* FIXME: Anything else we need to do...? */
 }
@@ -1870,6 +2124,46 @@ static void D3D11_BindGraphicsPipeline(
 	D3D11GraphicsPipeline *pipeline = (D3D11GraphicsPipeline*) graphicsPipeline;
 
 	d3d11CommandBuffer->graphicsPipeline = pipeline;
+
+	if (d3d11CommandBuffer->vertexUniformBuffer != NULL)
+	{
+		D3D11_INTERNAL_BindUniformBuffer(
+			d3d11CommandBuffer,
+			d3d11CommandBuffer->vertexUniformBuffer
+		);
+	}
+
+	if (pipeline->vertexUniformBlockSize == 0)
+	{
+		d3d11CommandBuffer->vertexUniformBuffer = NULL;
+	}
+	else
+	{
+		d3d11CommandBuffer->vertexUniformBuffer = D3D11_INTERNAL_AcquireUniformBufferFromPool(
+			renderer,
+			pipeline->vertexUniformBlockSize
+		);
+	}
+
+	if (d3d11CommandBuffer->fragmentUniformBuffer != NULL)
+	{
+		D3D11_INTERNAL_BindUniformBuffer(
+			d3d11CommandBuffer,
+			d3d11CommandBuffer->fragmentUniformBuffer
+		);
+	}
+
+	if (pipeline->fragmentUniformBlockSize == 0)
+	{
+		d3d11CommandBuffer->fragmentUniformBuffer = NULL;
+	}
+	else
+	{
+		d3d11CommandBuffer->fragmentUniformBuffer = D3D11_INTERNAL_AcquireUniformBufferFromPool(
+			renderer,
+			pipeline->fragmentUniformBlockSize
+		);
+	}
 
 	ID3D11DeviceContext_OMSetBlendState(
 		d3d11CommandBuffer->context,
@@ -2409,29 +2703,47 @@ static void D3D11_INTERNAL_CleanCommandBuffer(
 	D3D11Renderer *renderer,
 	D3D11CommandBuffer *commandBuffer
 ) {
-	D3D11CommandBufferPool *commandBufferPool = &renderer->commandBufferPool;
-	uint32_t i;
-
 	/* FIXME: All kinds of stuff should go here... */
 
+	/* Bound uniform buffers are now available */
+	SDL_LockMutex(renderer->uniformBufferLock);
+	for (uint32_t i = 0; i < commandBuffer->boundUniformBufferCount; i += 1)
+	{
+		if (renderer->availableUniformBufferCount == renderer->availableUniformBufferCapacity)
+		{
+			renderer->availableUniformBufferCapacity *= 2;
+			renderer->availableUniformBuffers = SDL_realloc(
+				renderer->availableUniformBuffers,
+				renderer->availableUniformBufferCapacity * sizeof(D3D11UniformBuffer*)
+			);
+		}
+
+		renderer->availableUniformBuffers[renderer->availableUniformBufferCount] = commandBuffer->boundUniformBuffers[i];
+		renderer->availableUniformBufferCount += 1;
+	}
+	SDL_UnlockMutex(renderer->uniformBufferLock);
+
+	commandBuffer->boundUniformBufferCount = 0;
+
+	/* Return command buffer to pool */
 	SDL_LockMutex(renderer->acquireCommandBufferLock);
 
-	if (commandBufferPool->count == commandBufferPool->capacity)
+	if (renderer->availableCommandBufferCount == renderer->availableCommandBufferCapacity)
 	{
-		commandBufferPool->capacity += 1;
-		commandBufferPool->elements = SDL_realloc(
-			commandBufferPool->elements,
-			commandBufferPool->capacity * sizeof(D3D11CommandBuffer*)
+		renderer->availableCommandBufferCapacity += 1;
+		renderer->availableCommandBuffers = SDL_realloc(
+			renderer->availableCommandBuffers,
+			renderer->availableCommandBufferCapacity * sizeof(D3D11CommandBuffer*)
 		);
 	}
 
-	commandBufferPool->elements[commandBufferPool->count] = commandBuffer;
-	commandBufferPool->count += 1;
+	renderer->availableCommandBuffers[renderer->availableCommandBufferCount] = commandBuffer;
+	renderer->availableCommandBufferCount += 1;
 
 	SDL_UnlockMutex(renderer->acquireCommandBufferLock);
 
 	/* Remove this command buffer from the submitted list */
-	for (i = 0; i < renderer->submittedCommandBufferCount; i += 1)
+	for (uint32_t i = 0; i < renderer->submittedCommandBufferCount; i += 1)
 	{
 		if (renderer->submittedCommandBuffers[i] == commandBuffer)
 		{
@@ -2700,7 +3012,7 @@ static Refresh_Device* D3D11_CreateDevice(
 	D3D11Renderer *renderer;
 	PFN_CREATE_DXGI_FACTORY1 CreateDXGIFactoryFunc;
 	PFN_D3D11_CREATE_DEVICE D3D11CreateDeviceFunc;
-	D3D_FEATURE_LEVEL levels[] = { D3D_FEATURE_LEVEL_11_0 };
+	D3D_FEATURE_LEVEL levels[] = { D3D_FEATURE_LEVEL_11_1 };
 	IDXGIFactory6 *factory6;
 	uint32_t flags;
 	DXGI_ADAPTER_DESC1 adapterDesc;
@@ -2838,18 +3150,20 @@ tryCreateDevice:
 	Refresh_LogInfo("Refresh Driver: D3D11");
 	Refresh_LogInfo("D3D11 Adapter: %S", adapterDesc.Description);
 
-	/* Initialize the command buffer pool */
-	renderer->commandBufferPool = (D3D11CommandBufferPool) { 0 };
-
 	/* Create mutexes */
 	renderer->contextLock = SDL_CreateMutex();
 	renderer->acquireCommandBufferLock = SDL_CreateMutex();
+	renderer->uniformBufferLock = SDL_CreateMutex();
 
 	/* Initialize miscellaneous renderer members */
 	renderer->debugMode = (flags & D3D11_CREATE_DEVICE_DEBUG);
 
 	/* Create command buffers to initialize the pool */
 	D3D11_INTERNAL_AllocateCommandBuffers(renderer, 2);
+
+	/* Create uniform buffer pool */
+	renderer->availableUniformBufferCapacity = 2;
+	renderer->availableUniformBuffers = SDL_malloc(sizeof(D3D11UniformBuffer*) * renderer->availableUniformBufferCapacity);
 
 	/* Create the Refresh Device */
 	result = (Refresh_Device*) SDL_malloc(sizeof(Refresh_Device));
