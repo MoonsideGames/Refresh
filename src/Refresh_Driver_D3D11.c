@@ -30,7 +30,9 @@
 #define CINTERFACE
 #define COBJMACROS
 #include <d3d11.h>
+#include <d3d11_1.h>
 #include <dxgi.h>
+#include <dxgi1_6.h>
 #include <d3dcompiler.h>
 
 #include "Refresh_Driver.h"
@@ -429,7 +431,7 @@ typedef struct D3D11UniformBuffer
 typedef struct D3D11CommandBuffer
 {
 	/* D3D11 Object References */
-	ID3D11DeviceContext *context;
+	ID3D11DeviceContext1 *context;
 	D3D11SwapchainData *swapchainData;
 
 	/* Render Pass */
@@ -457,7 +459,7 @@ typedef struct D3D11Sampler
 
 typedef struct D3D11Renderer
 {
-	ID3D11Device *device;
+	ID3D11Device1 *device;
 	ID3D11DeviceContext *immediateContext;
 	IDXGIFactory1 *factory;
 	IDXGIAdapter1 *adapter;
@@ -493,7 +495,7 @@ typedef struct D3D11Renderer
 /* Logging */
 
 static void D3D11_INTERNAL_LogError(
-	ID3D11Device *device,
+	ID3D11Device1 *device,
 	const char *msg,
 	HRESULT res
 ) {
@@ -631,24 +633,32 @@ static void D3D11_DrawInstancedPrimitives(
 	uint32_t fragmentParamOffset
 ) {
 	D3D11CommandBuffer *d3d11CommandBuffer = (D3D11CommandBuffer*) commandBuffer;
+	uint32_t vertexOffsetInConstants = vertexParamOffset / 16;
+	uint32_t fragmentOffsetInConstants = fragmentParamOffset / 16;
+	uint32_t vertexBlockSizeInConstants = d3d11CommandBuffer->graphicsPipeline->vertexUniformBlockSize / 16;
+	uint32_t fragmentBlockSizeInConstants = d3d11CommandBuffer->graphicsPipeline->fragmentUniformBlockSize / 16;
 
 	if (d3d11CommandBuffer->vertexUniformBuffer != NULL)
 	{
-		ID3D11DeviceContext_VSSetConstantBuffers(
+		ID3D11DeviceContext1_VSSetConstantBuffers1(
 			d3d11CommandBuffer->context,
 			0,
 			1,
-			&d3d11CommandBuffer->vertexUniformBuffer->d3d11Buffer->handle
+			&d3d11CommandBuffer->vertexUniformBuffer->d3d11Buffer->handle,
+			&vertexOffsetInConstants,
+			&vertexBlockSizeInConstants
 		);
 	}
 
 	if (d3d11CommandBuffer->fragmentUniformBuffer != NULL)
 	{
-		ID3D11DeviceContext_PSSetConstantBuffers(
+		ID3D11DeviceContext1_PSSetConstantBuffers1(
 			d3d11CommandBuffer->context,
 			0,
 			1,
-			&d3d11CommandBuffer->fragmentUniformBuffer->d3d11Buffer->handle
+			&d3d11CommandBuffer->fragmentUniformBuffer->d3d11Buffer->handle,
+			&fragmentOffsetInConstants,
+			&fragmentBlockSizeInConstants
 		);
 	}
 
@@ -660,8 +670,6 @@ static void D3D11_DrawInstancedPrimitives(
 		baseVertex,
 		0
 	);
-
-	/* FIXME: vertex/fragment param offsets */
 }
 
 static void D3D11_DrawIndexedPrimitives(
@@ -694,24 +702,32 @@ static void D3D11_DrawPrimitives(
 	uint32_t fragmentParamOffset
 ) {
 	D3D11CommandBuffer *d3d11CommandBuffer = (D3D11CommandBuffer*) commandBuffer;
+	uint32_t vertexOffsetInConstants = vertexParamOffset / 16;
+	uint32_t fragmentOffsetInConstants = fragmentParamOffset / 16;
+	uint32_t vertexBlockSizeInConstants = d3d11CommandBuffer->graphicsPipeline->vertexUniformBlockSize / 16;
+	uint32_t fragmentBlockSizeInConstants = d3d11CommandBuffer->graphicsPipeline->fragmentUniformBlockSize / 16;
 
 	if (d3d11CommandBuffer->vertexUniformBuffer != NULL)
 	{
-		ID3D11DeviceContext_VSSetConstantBuffers(
+		ID3D11DeviceContext1_VSSetConstantBuffers1(
 			d3d11CommandBuffer->context,
 			0,
 			1,
-			&d3d11CommandBuffer->vertexUniformBuffer->d3d11Buffer->handle
+			&d3d11CommandBuffer->vertexUniformBuffer->d3d11Buffer->handle,
+			&vertexOffsetInConstants,
+			&vertexBlockSizeInConstants
 		);
 	}
 
 	if (d3d11CommandBuffer->fragmentUniformBuffer != NULL)
 	{
-		ID3D11DeviceContext_PSSetConstantBuffers(
+		ID3D11DeviceContext1_PSSetConstantBuffers1(
 			d3d11CommandBuffer->context,
 			0,
 			1,
-			&d3d11CommandBuffer->fragmentUniformBuffer->d3d11Buffer->handle
+			&d3d11CommandBuffer->fragmentUniformBuffer->d3d11Buffer->handle,
+			&fragmentOffsetInConstants,
+			&fragmentBlockSizeInConstants
 		);
 	}
 
@@ -975,6 +991,13 @@ static Refresh_ComputePipeline* D3D11_CreateComputePipeline(
 	return NULL;
 }
 
+static inline uint32_t D3D11_INTERNAL_NextHighestAlignment(
+	uint32_t n,
+	uint32_t align
+) {
+	return align * ((n + align - 1) / align);
+}
+
 static Refresh_GraphicsPipeline* D3D11_CreateGraphicsPipeline(
 	Refresh_Renderer *driverData,
 	Refresh_GraphicsPipelineCreateInfo *pipelineCreateInfo
@@ -1068,7 +1091,10 @@ static Refresh_GraphicsPipeline* D3D11_CreateGraphicsPipeline(
 	}
 	pipeline->vertexShader = (ID3D11VertexShader*) vertShaderModule->shader;
 	pipeline->numVertexSamplers = pipelineCreateInfo->vertexShaderInfo.samplerBindingCount;
-	pipeline->vertexUniformBlockSize = (uint32_t) pipelineCreateInfo->vertexShaderInfo.uniformBufferSize;
+	pipeline->vertexUniformBlockSize = D3D11_INTERNAL_NextHighestAlignment(
+		(uint32_t) pipelineCreateInfo->vertexShaderInfo.uniformBufferSize,
+		256
+	);
 
 	/* Input Layout */
 
@@ -1131,7 +1157,10 @@ static Refresh_GraphicsPipeline* D3D11_CreateGraphicsPipeline(
 	}
 	pipeline->fragmentShader = (ID3D11PixelShader*) fragShaderModule->shader;
 	pipeline->numFragmentSamplers = pipelineCreateInfo->fragmentShaderInfo.samplerBindingCount;
-	pipeline->fragmentUniformBlockSize = (uint32_t) pipelineCreateInfo->fragmentShaderInfo.uniformBufferSize;
+	pipeline->fragmentUniformBlockSize = D3D11_INTERNAL_NextHighestAlignment(
+		(uint32_t) pipelineCreateInfo->vertexShaderInfo.uniformBufferSize,
+		256
+	);
 
 	return (Refresh_GraphicsPipeline*) pipeline;
 }
@@ -1681,7 +1710,7 @@ static uint32_t D3D11_PushVertexShaderUniforms(
 		d3d11CommandBuffer->vertexUniformBuffer->offset,
 		data,
 		dataLengthInBytes,
-		0
+		0 /* FIXME: Should be NoOverwrite! */
 	);
 
 	d3d11CommandBuffer->vertexUniformBuffer->offset += graphicsPipeline->vertexUniformBlockSize;
@@ -1722,7 +1751,7 @@ static uint32_t D3D11_PushFragmentShaderUniforms(
 		d3d11CommandBuffer->fragmentUniformBuffer->offset,
 		data,
 		dataLengthInBytes,
-		0
+		0 /* FIXME: Should be NoOverwrite! */
 	);
 
 	d3d11CommandBuffer->fragmentUniformBuffer->offset += graphicsPipeline->fragmentUniformBlockSize;
@@ -1893,7 +1922,7 @@ static void D3D11_INTERNAL_AllocateCommandBuffers(
 		commandBuffer = SDL_malloc(sizeof(D3D11CommandBuffer));
 
 		/* Deferred Device Context */
-		res = ID3D11Device_CreateDeferredContext(
+		res = ID3D11Device1_CreateDeferredContext1(
 			renderer->device,
 			0,
 			&commandBuffer->context
@@ -1958,6 +1987,7 @@ static Refresh_CommandBuffer* D3D11_AcquireCommandBuffer(
 	commandBuffer->swapchainData = NULL;
 	commandBuffer->graphicsPipeline = NULL;
 	commandBuffer->vertexUniformBuffer = NULL;
+	commandBuffer->fragmentUniformBuffer = NULL;
 	commandBuffer->dsView = NULL;
 	for (i = 0; i < MAX_COLOR_TARGET_BINDINGS; i += 1)
 	{
@@ -3122,6 +3152,7 @@ static Refresh_Device* D3D11_CreateDevice(
 	}
 
 	/* Create the device */
+	ID3D11Device *d3d11Device;
 tryCreateDevice:
 	res = D3D11CreateDeviceFunc(
 		(IDXGIAdapter*) renderer->adapter,
@@ -3131,7 +3162,7 @@ tryCreateDevice:
 		levels,
 		SDL_arraysize(levels),
 		D3D11_SDK_VERSION,
-		&renderer->device,
+		&d3d11Device,
 		&renderer->featureLevel,
 		&renderer->immediateContext
 	);
@@ -3145,6 +3176,14 @@ tryCreateDevice:
 	}
 
 	ERROR_CHECK_RETURN("Could not create D3D11 device", NULL);
+
+	/* The actual device we want is the ID3D11Device1 interface... */
+	res = ID3D11Device_QueryInterface(
+		d3d11Device,
+		&D3D_IID_ID3D11Device1,
+		&renderer->device
+	);
+	ERROR_CHECK_RETURN("Could not get ID3D11Device1 interface", NULL);
 
 	/* Print driver info */
 	Refresh_LogInfo("Refresh Driver: D3D11");
