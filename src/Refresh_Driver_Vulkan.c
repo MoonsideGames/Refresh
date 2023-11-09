@@ -8839,7 +8839,7 @@ static void VULKAN_BeginRenderPass(
 		VULKAN_INTERNAL_ImageMemoryBarrier(
 			renderer,
 			vulkanCommandBuffer->commandBuffer,
-			RESOURCE_ACCESS_COLOR_ATTACHMENT_WRITE,
+			RESOURCE_ACCESS_COLOR_ATTACHMENT_READ_WRITE,
 			VK_IMAGE_ASPECT_COLOR_BIT,
 			0,
 			texture->layerCount,
@@ -8872,7 +8872,7 @@ static void VULKAN_BeginRenderPass(
 		VULKAN_INTERNAL_ImageMemoryBarrier(
 			renderer,
 			vulkanCommandBuffer->commandBuffer,
-			RESOURCE_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE,
+			RESOURCE_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_WRITE,
 			depthAspectFlags,
 			0,
 			texture->layerCount,
