@@ -3598,6 +3598,8 @@ static void VULKAN_INTERNAL_DestroyCommandPool(
 		SDL_free(commandBuffer->transferBuffers);
 		SDL_free(commandBuffer->boundUniformBuffers);
 		SDL_free(commandBuffer->boundDescriptorSetDatas);
+		SDL_free(commandBuffer->boundComputeBuffers);
+		SDL_free(commandBuffer->boundComputeTextures);
 		SDL_free(commandBuffer->usedBuffers);
 		SDL_free(commandBuffer->usedTextures);
 		SDL_free(commandBuffer->usedSamplers);
@@ -5407,6 +5409,7 @@ static void VULKAN_DestroyDevice(
 	SDL_free(renderer->computePipelinesToDestroy);
 	SDL_free(renderer->shaderModulesToDestroy);
 	SDL_free(renderer->samplersToDestroy);
+	SDL_free(renderer->framebuffersToDestroy);
 
 	SDL_DestroyMutex(renderer->allocatorLock);
 	SDL_DestroyMutex(renderer->disposeLock);
