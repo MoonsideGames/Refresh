@@ -2986,7 +2986,7 @@ static uint8_t VULKAN_INTERNAL_BindMemoryForBuffer(
 	VkBuffer buffer,
 	VkDeviceSize size,
 	uint8_t preferDeviceLocal,
-	uint8_t isTransferBuffer,
+	uint8_t dedicatedAllocation,
 	VulkanMemoryUsedRegion** usedRegion
 ) {
 	uint8_t bindResult = 0;
@@ -3022,7 +3022,7 @@ static uint8_t VULKAN_INTERNAL_BindMemoryForBuffer(
 			renderer,
 			memoryTypeIndex,
 			&memoryRequirements,
-			isTransferBuffer,
+			dedicatedAllocation,
 			size,
 			buffer,
 			VK_NULL_HANDLE,
@@ -3066,7 +3066,7 @@ static uint8_t VULKAN_INTERNAL_BindMemoryForBuffer(
 				renderer,
 				memoryTypeIndex,
 				&memoryRequirements,
-				isTransferBuffer,
+				dedicatedAllocation,
 				size,
 				buffer,
 				VK_NULL_HANDLE,
@@ -4104,7 +4104,7 @@ static VulkanBuffer* VULKAN_INTERNAL_CreateBuffer(
 	VulkanResourceAccessType resourceAccessType,
 	VkBufferUsageFlags usage,
 	uint8_t preferDeviceLocal,
-	uint8_t isTransferBuffer
+	uint8_t dedicatedAllocation
 ) {
 	VulkanBuffer* buffer;
 	VkResult vulkanResult;
@@ -4140,7 +4140,7 @@ static VulkanBuffer* VULKAN_INTERNAL_CreateBuffer(
 		buffer->buffer,
 		buffer->size,
 		buffer->preferDeviceLocal,
-		isTransferBuffer,
+		dedicatedAllocation,
 		&buffer->usedRegion
 	);
 
@@ -4243,7 +4243,8 @@ static VulkanBufferContainer* VULKAN_INTERNAL_CreateBufferContainer(
 	VulkanRenderer *renderer,
 	uint32_t sizeInBytes,
 	VulkanResourceAccessType resourceAccessType,
-	VkBufferUsageFlags usageFlags
+	VkBufferUsageFlags usageFlags,
+	uint8_t dedicated
 ) {
 	VulkanBufferContainer* bufferContainer;
 	VulkanBuffer* buffer;
@@ -4257,7 +4258,7 @@ static VulkanBufferContainer* VULKAN_INTERNAL_CreateBufferContainer(
 		resourceAccessType,
 		usageFlags,
 		1,
-		0
+		dedicated
 	);
 
 	if (buffer == NULL)
@@ -4307,7 +4308,8 @@ static uint8_t VULKAN_INTERNAL_CreateUniformBuffer(
 		renderer,
 		UBO_BUFFER_SIZE,
 		resourceAccessType,
-		VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT
+		VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+		0
 	);
 
 	if (uniformBuffer->vulkanBufferContainer == NULL)
@@ -4396,7 +4398,8 @@ static VulkanUniformBuffer* VULKAN_INTERNAL_CreateDummyUniformBuffer(
 		renderer,
 		UBO_BUFFER_SIZE,
 		resourceAccessType,
-		VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT
+		VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+		1
 	);
 
 	uniformBuffer->offset = 0;
@@ -7111,7 +7114,8 @@ static Refresh_Buffer* VULKAN_CreateBuffer(
 		(VulkanRenderer*) driverData,
 		sizeInBytes,
 		resourceAccessType,
-		vulkanUsageFlags
+		vulkanUsageFlags,
+		0
 	);
 }
 
@@ -10545,7 +10549,6 @@ static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 	VkBufferCopy bufferCopy;
 	VkImageCopy *imageCopyRegions;
 	VulkanCommandBuffer *commandBuffer;
-	VkCommandBufferBeginInfo beginInfo;
 	uint32_t i, level;
 	VulkanResourceAccessType copyResourceAccessType = RESOURCE_ACCESS_NONE;
 	VulkanResourceAccessType originalResourceAccessType;
@@ -10554,11 +10557,6 @@ static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 
 	renderer->needDefrag = 0;
 	renderer->defragInProgress = 1;
-
-	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-	beginInfo.pNext = NULL;
-	beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-	beginInfo.pInheritanceInfo = NULL;
 
 	commandBuffer = (VulkanCommandBuffer*) VULKAN_AcquireCommandBuffer((Refresh_Renderer *) renderer);
 
