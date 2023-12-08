@@ -4396,7 +4396,7 @@ static VulkanUniformBuffer* VULKAN_INTERNAL_CreateDummyUniformBuffer(
 	uniformBuffer->pool = NULL;
 	uniformBuffer->vulkanBufferContainer = VULKAN_INTERNAL_CreateBufferContainer(
 		renderer,
-		UBO_BUFFER_SIZE,
+		1,
 		resourceAccessType,
 		VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
 		1
