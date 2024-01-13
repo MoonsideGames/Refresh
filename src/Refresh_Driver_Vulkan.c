@@ -561,8 +561,8 @@ static const VulkanResourceAccessInfo AccessMap[RESOURCE_ACCESS_TYPES_COUNT] =
 
 	/* RESOURCE_ACCESS_ANY_SHADER_READ_SAMPLED_IMAGE */
 	{
-		VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-		VK_ACCESS_SHADER_READ_BIT,
+		VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+		VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_INPUT_ATTACHMENT_READ_BIT,
 		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
 	},
 
@@ -998,6 +998,7 @@ typedef struct RenderPassColorTargetDescription
 	Refresh_Vec4 clearColor;
 	Refresh_LoadOp loadOp;
 	Refresh_StoreOp storeOp;
+	VkImageLayout finalLayout;
 } RenderPassColorTargetDescription;
 
 typedef struct RenderPassDepthStencilTargetDescription
@@ -1007,6 +1008,7 @@ typedef struct RenderPassDepthStencilTargetDescription
 	Refresh_StoreOp storeOp;
 	Refresh_LoadOp stencilLoadOp;
 	Refresh_StoreOp stencilStoreOp;
+	VkImageLayout finalLayout;
 } RenderPassDepthStencilTargetDescription;
 
 typedef struct RenderPassHash
@@ -1070,6 +1072,11 @@ static inline uint8_t RenderPassHash_Compare(
 		{
 			return 0;
 		}
+
+		if (a->colorTargetDescriptions[i].finalLayout != b->colorTargetDescriptions[i].finalLayout)
+		{
+			return 0;
+		}
 	}
 
 	if (a->depthStencilTargetDescription.format != b->depthStencilTargetDescription.format)
@@ -1093,6 +1100,11 @@ static inline uint8_t RenderPassHash_Compare(
 	}
 
 	if (a->depthStencilTargetDescription.stencilStoreOp != b->depthStencilTargetDescription.stencilStoreOp)
+	{
+		return 0;
+	}
+
+	if (a->depthStencilTargetDescription.finalLayout != b->depthStencilTargetDescription.finalLayout)
 	{
 		return 0;
 	}
@@ -4308,22 +4320,18 @@ static uint8_t VULKAN_INTERNAL_CreateUniformBuffer(
 	VulkanRenderer *renderer,
 	VulkanUniformBufferPool *bufferPool
 ) {
-	VulkanResourceAccessType resourceAccessType;
 	VkDescriptorSetLayout descriptorSetLayout;
 
 	if (bufferPool->type == UNIFORM_BUFFER_VERTEX)
 	{
-		resourceAccessType = RESOURCE_ACCESS_VERTEX_SHADER_READ_UNIFORM_BUFFER;
 		descriptorSetLayout = renderer->vertexUniformDescriptorSetLayout;
 	}
 	else if (bufferPool->type == UNIFORM_BUFFER_FRAGMENT)
 	{
-		resourceAccessType = RESOURCE_ACCESS_FRAGMENT_SHADER_READ_UNIFORM_BUFFER;
 		descriptorSetLayout = renderer->fragmentUniformDescriptorSetLayout;
 	}
 	else if (bufferPool->type == UNIFORM_BUFFER_COMPUTE)
 	{
-		resourceAccessType = RESOURCE_ACCESS_COMPUTE_SHADER_READ_UNIFORM_BUFFER;
 		descriptorSetLayout = renderer->computeUniformDescriptorSetLayout;
 	}
 	else
@@ -4393,24 +4401,20 @@ static VulkanUniformBuffer* VULKAN_INTERNAL_CreateDummyUniformBuffer(
 	VulkanRenderer *renderer,
 	VulkanUniformBufferType uniformBufferType
 ) {
-	VulkanResourceAccessType resourceAccessType;
 	VkDescriptorSetLayout descriptorSetLayout;
 	VkWriteDescriptorSet writeDescriptorSet;
 	VkDescriptorBufferInfo descriptorBufferInfo;
 
 	if (uniformBufferType == UNIFORM_BUFFER_VERTEX)
 	{
-		resourceAccessType = RESOURCE_ACCESS_VERTEX_SHADER_READ_UNIFORM_BUFFER;
 		descriptorSetLayout = renderer->vertexUniformDescriptorSetLayout;
 	}
 	else if (uniformBufferType == UNIFORM_BUFFER_FRAGMENT)
 	{
-		resourceAccessType = RESOURCE_ACCESS_FRAGMENT_SHADER_READ_UNIFORM_BUFFER;
 		descriptorSetLayout = renderer->fragmentUniformDescriptorSetLayout;
 	}
 	else if (uniformBufferType == UNIFORM_BUFFER_COMPUTE)
 	{
-		resourceAccessType = RESOURCE_ACCESS_COMPUTE_SHADER_READ_UNIFORM_BUFFER;
 		descriptorSetLayout = renderer->computeUniformDescriptorSetLayout;
 	}
 	else
@@ -5955,6 +5959,41 @@ static VulkanRenderTarget* VULKAN_INTERNAL_FetchRenderTarget(
 	return renderTarget;
 }
 
+static VkImageLayout VULKAN_INTERNAL_GetRenderPassFinalLayout(
+	VulkanTexture *texture
+) {
+	VkImageLayout finalLayout;
+
+	if (IsDepthFormat(texture->format))
+	{
+		if (texture->usageFlags & VK_IMAGE_USAGE_SAMPLED_BIT)
+		{
+			finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		}
+		else
+		{
+			finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+		}
+	}
+	else
+	{
+		if (texture->usageFlags & VK_IMAGE_USAGE_SAMPLED_BIT)
+		{
+			finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		}
+		else if (texture->usageFlags & VK_IMAGE_USAGE_STORAGE_BIT)
+		{
+			finalLayout = VK_IMAGE_LAYOUT_GENERAL;
+		}
+		else
+		{
+			finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+		}
+	}
+
+	return finalLayout;
+}
+
 static VkRenderPass VULKAN_INTERNAL_CreateRenderPass(
 	VulkanRenderer *renderer,
 	VulkanCommandBuffer *commandBuffer,
@@ -5969,6 +6008,7 @@ static VkRenderPass VULKAN_INTERNAL_CreateRenderPass(
 	VkAttachmentReference depthStencilAttachmentReference;
 	VkRenderPassCreateInfo renderPassCreateInfo;
 	VkSubpassDescription subpass;
+	VkSubpassDependency dep[2];
 	VkRenderPass renderPass;
 	uint32_t i;
 
@@ -6021,7 +6061,7 @@ static VkRenderPass VULKAN_INTERNAL_CreateRenderPass(
 			attachmentDescriptions[attachmentDescriptionCount].initialLayout =
 				VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 			attachmentDescriptions[attachmentDescriptionCount].finalLayout =
-				VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+				VULKAN_INTERNAL_GetRenderPassFinalLayout(texture);
 
 			resolveReferences[resolveReferenceCount].attachment =
 				attachmentDescriptionCount;
@@ -6077,8 +6117,7 @@ static VkRenderPass VULKAN_INTERNAL_CreateRenderPass(
 			attachmentDescriptions[attachmentDescriptionCount].initialLayout =
 				VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 			attachmentDescriptions[attachmentDescriptionCount].finalLayout =
-				VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-
+				VULKAN_INTERNAL_GetRenderPassFinalLayout(texture);
 
 			colorAttachmentReferences[colorAttachmentReferenceCount].attachment = attachmentDescriptionCount;
 			colorAttachmentReferences[colorAttachmentReferenceCount].layout =
@@ -6126,7 +6165,7 @@ static VkRenderPass VULKAN_INTERNAL_CreateRenderPass(
 		attachmentDescriptions[attachmentDescriptionCount].initialLayout =
 			VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 		attachmentDescriptions[attachmentDescriptionCount].finalLayout =
-			VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+			VULKAN_INTERNAL_GetRenderPassFinalLayout(texture);
 
 		depthStencilAttachmentReference.attachment =
 			attachmentDescriptionCount;
@@ -6148,6 +6187,37 @@ static VkRenderPass VULKAN_INTERNAL_CreateRenderPass(
 		subpass.pResolveAttachments = NULL;
 	}
 
+	const VkPipelineStageFlags graphicsStages = 0
+		| VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT
+		| VK_PIPELINE_STAGE_VERTEX_INPUT_BIT
+		| VK_PIPELINE_STAGE_VERTEX_SHADER_BIT
+		| VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT
+		| VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT
+		| VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT
+		| VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
+		;
+	const VkPipelineStageFlags outsideStages = 0
+		| graphicsStages
+		| VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT
+		| VK_PIPELINE_STAGE_TRANSFER_BIT
+		;
+
+	dep[0].srcSubpass      = VK_SUBPASS_EXTERNAL;
+	dep[0].dstSubpass      = 0;
+	dep[0].srcStageMask    = outsideStages;
+	dep[0].dstStageMask    = graphicsStages;
+	dep[0].srcAccessMask   = VK_ACCESS_MEMORY_WRITE_BIT;
+	dep[0].dstAccessMask   = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
+	dep[0].dependencyFlags = 0;
+
+	dep[1].srcSubpass      = 0;
+	dep[1].dstSubpass      = VK_SUBPASS_EXTERNAL;
+	dep[1].srcStageMask    = graphicsStages;
+	dep[1].dstStageMask    = outsideStages;
+	dep[1].srcAccessMask   = VK_ACCESS_MEMORY_WRITE_BIT;
+	dep[1].dstAccessMask   = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
+	dep[1].dependencyFlags = 0;
+
 	renderPassCreateInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
 	renderPassCreateInfo.pNext = NULL;
 	renderPassCreateInfo.flags = 0;
@@ -6155,8 +6225,8 @@ static VkRenderPass VULKAN_INTERNAL_CreateRenderPass(
 	renderPassCreateInfo.attachmentCount = attachmentDescriptionCount;
 	renderPassCreateInfo.subpassCount = 1;
 	renderPassCreateInfo.pSubpasses = &subpass;
-	renderPassCreateInfo.dependencyCount = 0;
-	renderPassCreateInfo.pDependencies = NULL;
+	renderPassCreateInfo.dependencyCount = 2;
+	renderPassCreateInfo.pDependencies = dep;
 
 	vulkanResult = renderer->vkCreateRenderPass(
 		renderer->logicalDevice,
@@ -6185,6 +6255,7 @@ static VkRenderPass VULKAN_INTERNAL_CreateTransientRenderPass(
 	VkAttachmentReference depthStencilAttachmentReference;
 	Refresh_ColorAttachmentDescription attachmentDescription;
 	VkSubpassDescription subpass;
+	VkSubpassDependency dep[2];
 	VkRenderPassCreateInfo renderPassCreateInfo;
 	VkRenderPass renderPass;
 	VkResult result;
@@ -6195,6 +6266,7 @@ static VkRenderPass VULKAN_INTERNAL_CreateTransientRenderPass(
 	uint32_t resolveReferenceCount = 0;
 	uint32_t i;
 
+	/* Note: Render pass compatibility does not care about layout */
 	for (i = 0; i < attachmentInfo.colorAttachmentCount; i += 1)
 	{
 		attachmentDescription = attachmentInfo.colorAttachmentDescriptions[i];
@@ -6328,6 +6400,37 @@ static VkRenderPass VULKAN_INTERNAL_CreateTransientRenderPass(
 		subpass.pResolveAttachments = NULL;
 	}
 
+	const VkPipelineStageFlags graphicsStages = 0
+		| VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT
+		| VK_PIPELINE_STAGE_VERTEX_INPUT_BIT
+		| VK_PIPELINE_STAGE_VERTEX_SHADER_BIT
+		| VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT
+		| VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT
+		| VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT
+		| VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
+		;
+	const VkPipelineStageFlags outsideStages = 0
+		| graphicsStages
+		| VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT
+		| VK_PIPELINE_STAGE_TRANSFER_BIT
+		;
+
+	dep[0].srcSubpass      = VK_SUBPASS_EXTERNAL;
+	dep[0].dstSubpass      = 0;
+	dep[0].srcStageMask    = outsideStages;
+	dep[0].dstStageMask    = graphicsStages;
+	dep[0].srcAccessMask   = VK_ACCESS_MEMORY_WRITE_BIT;
+	dep[0].dstAccessMask   = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
+	dep[0].dependencyFlags = 0;
+
+	dep[1].srcSubpass      = 0;
+	dep[1].dstSubpass      = VK_SUBPASS_EXTERNAL;
+	dep[1].srcStageMask    = graphicsStages;
+	dep[1].dstStageMask    = outsideStages;
+	dep[1].srcAccessMask   = VK_ACCESS_MEMORY_WRITE_BIT;
+	dep[1].dstAccessMask   = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
+	dep[1].dependencyFlags = 0;
+
 	renderPassCreateInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
 	renderPassCreateInfo.pNext = NULL;
 	renderPassCreateInfo.flags = 0;
@@ -6335,8 +6438,8 @@ static VkRenderPass VULKAN_INTERNAL_CreateTransientRenderPass(
 	renderPassCreateInfo.attachmentCount = attachmentDescriptionCount;
 	renderPassCreateInfo.subpassCount = 1;
 	renderPassCreateInfo.pSubpasses = &subpass;
-	renderPassCreateInfo.dependencyCount = 0;
-	renderPassCreateInfo.pDependencies = NULL;
+	renderPassCreateInfo.dependencyCount = 2;
+	renderPassCreateInfo.pDependencies = dep;
 
 	result = renderer->vkCreateRenderPass(
 		renderer->logicalDevice,
@@ -7777,6 +7880,14 @@ static void VULKAN_SetBufferData(
 		vulkanBuffer
 	);
 
+	// this janky call will wait for transfer writes to finish!
+	VULKAN_INTERNAL_BufferMemoryBarrier(
+		renderer,
+		vulkanCommandBuffer->commandBuffer,
+		RESOURCE_ACCESS_TRANSFER_WRITE,
+		vulkanBuffer
+	);
+
 	bufferCopy.srcOffset = transferBuffer->offset;
 	bufferCopy.dstOffset = offsetInBytes;
 	bufferCopy.size = (VkDeviceSize) dataLength;
@@ -8446,10 +8557,13 @@ static VkRenderPass VULKAN_INTERNAL_FetchRenderPass(
 
 	for (i = 0; i < colorAttachmentCount; i += 1)
 	{
-		hash.colorTargetDescriptions[i].format = ((VulkanTextureContainer*) colorAttachmentInfos[i].texture)->vulkanTexture->format;
+		texture = ((VulkanTextureContainer*) colorAttachmentInfos[i].texture)->vulkanTexture;
+
+		hash.colorTargetDescriptions[i].format = texture->format;
 		hash.colorTargetDescriptions[i].clearColor = colorAttachmentInfos[i].clearColor;
 		hash.colorTargetDescriptions[i].loadOp = colorAttachmentInfos[i].loadOp;
 		hash.colorTargetDescriptions[i].storeOp = colorAttachmentInfos[i].storeOp;
+		hash.colorTargetDescriptions[i].finalLayout = VULKAN_INTERNAL_GetRenderPassFinalLayout(texture);
 	}
 
 	hash.colorAttachmentSampleCount = REFRESH_SAMPLECOUNT_1;
@@ -8471,14 +8585,18 @@ static VkRenderPass VULKAN_INTERNAL_FetchRenderPass(
 		hash.depthStencilTargetDescription.storeOp = REFRESH_STOREOP_DONT_CARE;
 		hash.depthStencilTargetDescription.stencilLoadOp = REFRESH_LOADOP_DONT_CARE;
 		hash.depthStencilTargetDescription.stencilStoreOp = REFRESH_STOREOP_DONT_CARE;
+		hash.depthStencilTargetDescription.finalLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 	}
 	else
 	{
-		hash.depthStencilTargetDescription.format = ((VulkanTextureContainer*) depthStencilAttachmentInfo->texture)->vulkanTexture->format;
+		texture = ((VulkanTextureContainer*) depthStencilAttachmentInfo->texture)->vulkanTexture;
+
+		hash.depthStencilTargetDescription.format = texture->format;
 		hash.depthStencilTargetDescription.loadOp = depthStencilAttachmentInfo->loadOp;
 		hash.depthStencilTargetDescription.storeOp = depthStencilAttachmentInfo->storeOp;
 		hash.depthStencilTargetDescription.stencilLoadOp = depthStencilAttachmentInfo->stencilLoadOp;
 		hash.depthStencilTargetDescription.stencilStoreOp = depthStencilAttachmentInfo->stencilStoreOp;
+		hash.depthStencilTargetDescription.finalLayout = VULKAN_INTERNAL_GetRenderPassFinalLayout(texture);
 	}
 
 	renderPass = RenderPassHashArray_Fetch(
@@ -9039,35 +9157,11 @@ static void VULKAN_EndRenderPass(
 
 		if (currentTexture->usageFlags & VK_IMAGE_USAGE_SAMPLED_BIT)
 		{
-			VULKAN_INTERNAL_ImageMemoryBarrier(
-				renderer,
-				vulkanCommandBuffer->commandBuffer,
-				RESOURCE_ACCESS_ANY_SHADER_READ_SAMPLED_IMAGE,
-				currentTexture->aspectFlags,
-				0,
-				currentTexture->layerCount,
-				0,
-				currentTexture->levelCount,
-				0,
-				currentTexture->image,
-				&currentTexture->resourceAccessType
-			);
+			currentTexture->resourceAccessType = RESOURCE_ACCESS_ANY_SHADER_READ_SAMPLED_IMAGE;
 		}
 		else if (currentTexture->usageFlags & VK_IMAGE_USAGE_STORAGE_BIT)
 		{
-			VULKAN_INTERNAL_ImageMemoryBarrier(
-				renderer,
-				vulkanCommandBuffer->commandBuffer,
-				RESOURCE_ACCESS_COMPUTE_SHADER_STORAGE_IMAGE_READ_WRITE,
-				currentTexture->aspectFlags,
-				0,
-				currentTexture->layerCount,
-				0,
-				currentTexture->levelCount,
-				0,
-				currentTexture->image,
-				&currentTexture->resourceAccessType
-			);
+			currentTexture->resourceAccessType = RESOURCE_ACCESS_COMPUTE_SHADER_STORAGE_IMAGE_READ_WRITE;
 		}
 	}
 	vulkanCommandBuffer->renderPassColorTargetCount = 0;
@@ -9078,19 +9172,7 @@ static void VULKAN_EndRenderPass(
 
 		if (currentTexture->usageFlags & VK_IMAGE_USAGE_SAMPLED_BIT)
 		{
-			VULKAN_INTERNAL_ImageMemoryBarrier(
-				renderer,
-				vulkanCommandBuffer->commandBuffer,
-				RESOURCE_ACCESS_ANY_SHADER_READ_SAMPLED_IMAGE,
-				currentTexture->aspectFlags,
-				0,
-				currentTexture->layerCount,
-				0,
-				currentTexture->levelCount,
-				0,
-				currentTexture->image,
-				&currentTexture->resourceAccessType
-			);
+			currentTexture->resourceAccessType = RESOURCE_ACCESS_ANY_SHADER_READ_SAMPLED_IMAGE;
 		}
 	}
 	vulkanCommandBuffer->renderPassDepthTexture = NULL;
