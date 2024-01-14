@@ -79,8 +79,8 @@ typedef struct VulkanExtensions
 #define ALLOCATION_INCREMENT 16000000           /* 16MB */
 #define TRANSFER_BUFFER_STARTING_SIZE 8000000 	/* 8MB */
 #define POOLED_TRANSFER_BUFFER_SIZE 16000000    /* 16MB */
-#define UBO_BUFFER_SIZE 16000000				/* 16MB */
-#define UBO_SECTION_SIZE 4000 			        /* 4KB */
+#define UBO_BUFFER_SIZE 1048576					/* 16MB */
+#define UBO_SECTION_SIZE 4096 			        /* 4KB */
 #define DESCRIPTOR_POOL_STARTING_SIZE 128
 #define DEFRAG_TIME 200
 #define WINDOW_DATA "Refresh_VulkanWindowData"
@@ -4345,7 +4345,7 @@ static uint8_t VULKAN_INTERNAL_CreateUniformBuffer(
 	uniformBuffer->poolOffset = bufferPool->nextAvailableOffset;
 	uniformBuffer->offset = 0;
 
-	bufferPool->nextAvailableOffset += UBO_SECTION_SIZE;
+	bufferPool->nextAvailableOffset += VULKAN_INTERNAL_NextHighestAlignment(UBO_SECTION_SIZE, renderer->minUBOAlignment);
 
 	if (bufferPool->nextAvailableOffset >= UBO_BUFFER_SIZE)
 	{
