@@ -4295,22 +4295,18 @@ static uint8_t VULKAN_INTERNAL_CreateUniformBuffer(
 	VulkanRenderer *renderer,
 	VulkanUniformBufferPool *bufferPool
 ) {
-	VulkanResourceAccessType resourceAccessType;
 	VkDescriptorSetLayout descriptorSetLayout;
 
 	if (bufferPool->type == UNIFORM_BUFFER_VERTEX)
 	{
-		resourceAccessType = RESOURCE_ACCESS_VERTEX_SHADER_READ_UNIFORM_BUFFER;
 		descriptorSetLayout = renderer->vertexUniformDescriptorSetLayout;
 	}
 	else if (bufferPool->type == UNIFORM_BUFFER_FRAGMENT)
 	{
-		resourceAccessType = RESOURCE_ACCESS_FRAGMENT_SHADER_READ_UNIFORM_BUFFER;
 		descriptorSetLayout = renderer->fragmentUniformDescriptorSetLayout;
 	}
 	else if (bufferPool->type == UNIFORM_BUFFER_COMPUTE)
 	{
-		resourceAccessType = RESOURCE_ACCESS_COMPUTE_SHADER_READ_UNIFORM_BUFFER;
 		descriptorSetLayout = renderer->computeUniformDescriptorSetLayout;
 	}
 	else
@@ -4380,24 +4376,20 @@ static VulkanUniformBuffer* VULKAN_INTERNAL_CreateDummyUniformBuffer(
 	VulkanRenderer *renderer,
 	VulkanUniformBufferType uniformBufferType
 ) {
-	VulkanResourceAccessType resourceAccessType;
 	VkDescriptorSetLayout descriptorSetLayout;
 	VkWriteDescriptorSet writeDescriptorSet;
 	VkDescriptorBufferInfo descriptorBufferInfo;
 
 	if (uniformBufferType == UNIFORM_BUFFER_VERTEX)
 	{
-		resourceAccessType = RESOURCE_ACCESS_VERTEX_SHADER_READ_UNIFORM_BUFFER;
 		descriptorSetLayout = renderer->vertexUniformDescriptorSetLayout;
 	}
 	else if (uniformBufferType == UNIFORM_BUFFER_FRAGMENT)
 	{
-		resourceAccessType = RESOURCE_ACCESS_FRAGMENT_SHADER_READ_UNIFORM_BUFFER;
 		descriptorSetLayout = renderer->fragmentUniformDescriptorSetLayout;
 	}
 	else if (uniformBufferType == UNIFORM_BUFFER_COMPUTE)
 	{
-		resourceAccessType = RESOURCE_ACCESS_COMPUTE_SHADER_READ_UNIFORM_BUFFER;
 		descriptorSetLayout = renderer->computeUniformDescriptorSetLayout;
 	}
 	else
