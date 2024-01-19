@@ -11986,7 +11986,7 @@ static Refresh_Device* VULKAN_CreateDevice(
 
 	renderer->dummyBuffer = VULKAN_INTERNAL_CreateBuffer(
 		renderer,
-		1,
+		16,
 		RESOURCE_ACCESS_GENERAL,
 		VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
 		0,
