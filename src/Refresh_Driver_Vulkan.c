@@ -708,6 +708,7 @@ struct VulkanBuffer
 	VulkanResourceAccessType resourceAccessType;
 	VkBufferUsageFlags usage;
 
+	uint8_t requireHostVisible;
 	uint8_t preferDeviceLocal;
 
 	SDL_atomic_t referenceCount; /* Tracks command buffer usage */
@@ -2978,23 +2979,33 @@ static uint8_t VULKAN_INTERNAL_BindMemoryForBuffer(
 	VulkanRenderer* renderer,
 	VkBuffer buffer,
 	VkDeviceSize size,
+	uint8_t requireHostVisible,
 	uint8_t preferDeviceLocal,
 	uint8_t dedicatedAllocation,
 	VulkanMemoryUsedRegion** usedRegion
 ) {
 	uint8_t bindResult = 0;
 	uint32_t memoryTypeIndex = 0;
-	VkMemoryPropertyFlags requiredMemoryPropertyFlags;
-	VkMemoryPropertyFlags ignoredMemoryPropertyFlags;
+	VkMemoryPropertyFlags requiredMemoryPropertyFlags = 0;
+	VkMemoryPropertyFlags ignoredMemoryPropertyFlags = 0;
 	VkMemoryRequirements2KHR memoryRequirements =
 	{
 		VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2_KHR,
 		NULL
 	};
 
-	requiredMemoryPropertyFlags =
-		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-		VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+	if (requireHostVisible)
+	{
+		requiredMemoryPropertyFlags =
+			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+			VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+	}
+	else
+	{
+		ignoredMemoryPropertyFlags =
+			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+			VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+	}
 
 	if (preferDeviceLocal)
 	{
@@ -3036,9 +3047,15 @@ static uint8_t VULKAN_INTERNAL_BindMemoryForBuffer(
 	if (bindResult != 1 && preferDeviceLocal)
 	{
 		memoryTypeIndex = 0;
-		requiredMemoryPropertyFlags =
-			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-			VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+
+		requiredMemoryPropertyFlags = 0;
+
+		if (requireHostVisible)
+		{
+			requiredMemoryPropertyFlags =
+				VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+				VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+		}
 
 		/* Follow-up for the warning logged by FindMemoryType */
 		if (!renderer->unifiedMemoryWarning)
@@ -4096,6 +4113,7 @@ static VulkanBuffer* VULKAN_INTERNAL_CreateBuffer(
 	VkDeviceSize size,
 	VulkanResourceAccessType resourceAccessType,
 	VkBufferUsageFlags usage,
+	uint8_t requireHostVisible,
 	uint8_t preferDeviceLocal,
 	uint8_t dedicatedAllocation
 ) {
@@ -4109,6 +4127,7 @@ static VulkanBuffer* VULKAN_INTERNAL_CreateBuffer(
 	buffer->size = size;
 	buffer->resourceAccessType = resourceAccessType;
 	buffer->usage = usage;
+	buffer->requireHostVisible = requireHostVisible;
 	buffer->preferDeviceLocal = preferDeviceLocal;
 
 	bufferCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -4132,6 +4151,7 @@ static VulkanBuffer* VULKAN_INTERNAL_CreateBuffer(
 		renderer,
 		buffer->buffer,
 		buffer->size,
+		buffer->requireHostVisible,
 		buffer->preferDeviceLocal,
 		dedicatedAllocation,
 		&buffer->usedRegion
@@ -4215,6 +4235,7 @@ static VulkanUniformBufferPool* VULKAN_INTERNAL_CreateUniformBufferPool(
 		UBO_BUFFER_SIZE,
 		resourceAccessType,
 		VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+		1,
 		0,
 		1
 	);
@@ -4274,6 +4295,7 @@ static VulkanBufferContainer* VULKAN_INTERNAL_CreateBufferContainer(
 		sizeInBytes,
 		resourceAccessType,
 		usageFlags,
+		0,
 		1,
 		dedicated
 	);
@@ -7188,6 +7210,7 @@ static VulkanTransferBuffer* VULKAN_INTERNAL_AcquireTransferBuffer(
 		size,
 		RESOURCE_ACCESS_TRANSFER_READ_WRITE,
 		VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+		1,
 		1,
 		1
 	);
@@ -10582,6 +10605,7 @@ static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 					currentRegion->vulkanBuffer->size,
 					RESOURCE_ACCESS_NONE,
 					currentRegion->vulkanBuffer->usage,
+					currentRegion->vulkanBuffer->requireHostVisible,
 					currentRegion->vulkanBuffer->preferDeviceLocal,
 					0
 				);
@@ -11990,6 +12014,7 @@ static Refresh_Device* VULKAN_CreateDevice(
 		RESOURCE_ACCESS_GENERAL,
 		VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
 		0,
+		0,
 		1
 	);
 
@@ -12105,6 +12130,7 @@ static Refresh_Device* VULKAN_CreateDevice(
 			POOLED_TRANSFER_BUFFER_SIZE,
 			RESOURCE_ACCESS_TRANSFER_READ_WRITE,
 			VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+			1,
 			1,
 			1
 		);
