@@ -3057,6 +3057,8 @@ static uint8_t VULKAN_INTERNAL_BindMemoryForBuffer(
 				VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
 		}
 
+		ignoredMemoryPropertyFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+
 		/* Follow-up for the warning logged by FindMemoryType */
 		if (!renderer->unifiedMemoryWarning)
 		{
