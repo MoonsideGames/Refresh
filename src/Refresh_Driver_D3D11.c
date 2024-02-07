@@ -29,10 +29,12 @@
 #define D3D11_NO_HELPERS
 #define CINTERFACE
 #define COBJMACROS
+
 #include <d3d11.h>
 #include <d3d11_1.h>
 #include <dxgi.h>
 #include <dxgi1_6.h>
+#include <dxgidebug.h>
 #include <d3dcompiler.h>
 
 #include "Refresh_Driver.h"
@@ -45,9 +47,11 @@
 
 #define D3D11_DLL "d3d11.dll"
 #define DXGI_DLL "dxgi.dll"
+#define DXGIDEBUG_DLL "dxgidebug.dll"
 #define D3D11_CREATE_DEVICE_FUNC "D3D11CreateDevice"
 #define D3DCOMPILE_FUNC "D3DCompile"
 #define CREATE_DXGI_FACTORY1_FUNC "CreateDXGIFactory1"
+#define DXGI_GET_DEBUG_INTERFACE_FUNC "DXGIGetDebugInterface"
 #define WINDOW_DATA "Refresh_D3D11WindowData"
 #define UBO_BUFFER_SIZE 16000 /* 16KB */
 
@@ -463,8 +467,11 @@ typedef struct D3D11Renderer
 	ID3D11DeviceContext *immediateContext;
 	IDXGIFactory1 *factory;
 	IDXGIAdapter1 *adapter;
+	IDXGIDebug *dxgiDebug;
+	IDXGIInfoQueue *dxgiInfoQueue;
 	void *d3d11_dll;
 	void *dxgi_dll;
+	void *dxgidebug_dll;
 	void *d3dcompiler_dll;
 
 	uint8_t debugMode;
@@ -612,9 +619,25 @@ static void D3D11_DestroyDevice(
 	IDXGIAdapter_Release(renderer->adapter);
 	IDXGIFactory_Release(renderer->factory);
 
+	/* Report leaks and clean up debug objects */
+	if (renderer->dxgiDebug)
+	{
+		IDXGIDebug_ReportLiveObjects(renderer->dxgiDebug, D3D_IID_DXGI_DEBUG_ALL, DXGI_DEBUG_RLO_ALL);
+		IDXGIDebug_Release(renderer->dxgiDebug);
+	}
+
+	if (renderer->dxgiInfoQueue)
+	{
+		IDXGIInfoQueue_Release(renderer->dxgiInfoQueue);
+	}
+
 	/* Release the DLLs */
 	SDL_UnloadObject(renderer->d3d11_dll);
 	SDL_UnloadObject(renderer->dxgi_dll);
+	if (renderer->dxgidebug_dll)
+	{
+		SDL_UnloadObject(renderer->dxgidebug_dll);
+	}
 	SDL_UnloadObject(renderer->d3dcompiler_dll);
 
 	/* Free the primary Refresh structures */
@@ -1842,7 +1865,18 @@ static void D3D11_QueueDestroyTexture(
 	Refresh_Texture *texture
 ) {
 	D3D11Texture *d3d11Texture = (D3D11Texture*) texture;
+
+	if (d3d11Texture->shaderView)
+	{
+		ID3D11ShaderResourceView_Release(d3d11Texture->shaderView);
+	}
+	if (d3d11Texture->targetView)
+	{
+		ID3D11View_Release(d3d11Texture->targetView);
+	}
+
 	ID3D11Resource_Release(d3d11Texture->handle);
+
 	SDL_free(d3d11Texture);
 }
 
@@ -3052,6 +3086,42 @@ static uint8_t D3D11_PrepareDriver(
 	return 1;
 }
 
+static void D3D11_INTERNAL_TryInitializeDXGIDebug(D3D11Renderer *renderer)
+{
+	PFN_DXGI_GET_DEBUG_INTERFACE DXGIGetDebugInterfaceFunc;
+	HRESULT res;
+
+	renderer->dxgidebug_dll = SDL_LoadObject(DXGIDEBUG_DLL);
+	if (renderer->dxgidebug_dll == NULL)
+	{
+		Refresh_LogWarn("Could not find " DXGIDEBUG_DLL);
+		return;
+	}
+
+	DXGIGetDebugInterfaceFunc = SDL_LoadFunction(
+		renderer->dxgidebug_dll,
+		DXGI_GET_DEBUG_INTERFACE_FUNC
+	);
+	if (DXGIGetDebugInterfaceFunc == NULL)
+	{
+		Refresh_LogWarn("Could not load function: " DXGI_GET_DEBUG_INTERFACE_FUNC);
+		return;
+	}
+
+	res = DXGIGetDebugInterfaceFunc(&D3D_IID_IDXGIDebug, &renderer->dxgiDebug);
+	if (FAILED(res))
+	{
+		Refresh_LogWarn("Could not get IDXGIDebug interface");
+	}
+
+	/* FIXME: Actually do something with the info queue! */
+	res = DXGIGetDebugInterfaceFunc(&D3D_IID_IDXGIInfoQueue, &renderer->dxgiInfoQueue);
+	if (FAILED(res))
+	{
+		Refresh_LogWarn("Could not get IDXGIInfoQueue interface");
+	}
+}
+
 static Refresh_Device* D3D11_CreateDevice(
 	uint8_t debugMode
 ) {
@@ -3140,6 +3210,12 @@ static Refresh_Device* D3D11_CreateDevice(
 
 	/* Get information about the selected adapter. Used for logging info. */
 	IDXGIAdapter1_GetDesc1(renderer->adapter, &adapterDesc);
+
+	/* Initialize the DXGI debug layer, if applicable */
+	if (debugMode)
+	{
+		D3D11_INTERNAL_TryInitializeDXGIDebug(renderer);
+	}
 
 	/* Load the D3D library */
 	renderer->d3d11_dll = SDL_LoadObject(D3D11_DLL);
