@@ -606,16 +606,18 @@ static void D3D11_DestroyDevice(
 	SDL_DestroyMutex(renderer->contextLock);
 	SDL_DestroyMutex(renderer->uniformBufferLock);
 
-	/* Release the DLLs */
-	SDL_UnloadObject(renderer->d3d11_dll);
-	SDL_UnloadObject(renderer->d3dcompiler_dll);
-
 	/* Release the device and associated objects */
 	ID3D11DeviceContext_Release(renderer->immediateContext);
 	ID3D11Device_Release(renderer->device);
 	IDXGIAdapter_Release(renderer->adapter);
 	IDXGIFactory_Release(renderer->factory);
 
+	/* Release the DLLs */
+	SDL_UnloadObject(renderer->d3d11_dll);
+	SDL_UnloadObject(renderer->dxgi_dll);
+	SDL_UnloadObject(renderer->d3dcompiler_dll);
+
+	/* Free the primary Refresh structures */
 	SDL_free(renderer);
 	SDL_free(device);
 }
