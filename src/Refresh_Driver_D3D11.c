@@ -599,7 +599,7 @@ static void D3D11_DestroyDevice(
 		SDL_free(uniformBuffer->d3d11Buffer);
 		SDL_free(uniformBuffer);
 	}
-	SDL_free(renderer->availableCommandBuffers);
+	SDL_free(renderer->availableUniformBuffers);
 
 	/* Release the mutexes */
 	SDL_DestroyMutex(renderer->acquireCommandBufferLock);
@@ -1905,8 +1905,6 @@ static void D3D11_QueueDestroyGraphicsPipeline(
 		SDL_free(d3dGraphicsPipeline->vertexStrides);
 	}
 
-	/* FIXME: Release uniform buffers, once that's written in */
-
 	SDL_free(d3dGraphicsPipeline);
 }
 
@@ -2488,7 +2486,7 @@ static uint8_t D3D11_INTERNAL_CreateSwapchain(
 	res = IDXGISwapChain_GetParent(
 		swapchain,
 		&D3D_IID_IDXGIFactory1,
-		(void**) &pParent /* FIXME: Does pParent need to get released? (Same for FNA3D) */
+		(void**) &pParent
 	);
 	if (FAILED(res))
 	{
@@ -2512,6 +2510,9 @@ static uint8_t D3D11_INTERNAL_CreateSwapchain(
 				res
 			);
 		}
+
+		/* We're done with the parent now */
+		IDXGIFactory1_Release(pParent);
 	}
 
 	/* Create the swapchain data */
