@@ -424,6 +424,7 @@ typedef struct D3D11Buffer
 {
 	ID3D11Buffer *handle;
 	uint32_t size;
+	uint8_t isDynamic;
 } D3D11Buffer;
 
 typedef struct D3D11UniformBuffer
@@ -777,7 +778,48 @@ static void D3D11_DrawPrimitivesIndirect(
 	uint32_t vertexParamOffset,
 	uint32_t fragmentParamOffset
 ) {
-	NOT_IMPLEMENTED
+	D3D11CommandBuffer *d3d11CommandBuffer = (D3D11CommandBuffer*) commandBuffer;
+	D3D11Buffer *d3d11Buffer = (D3D11Buffer*) buffer;
+	uint32_t vertexOffsetInConstants = vertexParamOffset / 16;
+	uint32_t fragmentOffsetInConstants = fragmentParamOffset / 16;
+	uint32_t vertexBlockSizeInConstants = d3d11CommandBuffer->graphicsPipeline->vertexUniformBlockSize / 16;
+	uint32_t fragmentBlockSizeInConstants = d3d11CommandBuffer->graphicsPipeline->fragmentUniformBlockSize / 16;
+
+	if (d3d11CommandBuffer->vertexUniformBuffer != NULL)
+	{
+		ID3D11DeviceContext1_VSSetConstantBuffers1(
+			d3d11CommandBuffer->context,
+			0,
+			1,
+			&d3d11CommandBuffer->vertexUniformBuffer->d3d11Buffer->handle,
+			&vertexOffsetInConstants,
+			&vertexBlockSizeInConstants
+		);
+	}
+
+	if (d3d11CommandBuffer->fragmentUniformBuffer != NULL)
+	{
+		ID3D11DeviceContext1_PSSetConstantBuffers1(
+			d3d11CommandBuffer->context,
+			0,
+			1,
+			&d3d11CommandBuffer->fragmentUniformBuffer->d3d11Buffer->handle,
+			&fragmentOffsetInConstants,
+			&fragmentBlockSizeInConstants
+		);
+	}
+
+	/* D3D11: "We have multi-draw at home!"
+	 * Multi-draw at home:
+	 */
+	for (uint32_t i = 0; i < drawCount; i += 1)
+	{
+		ID3D11DeviceContext_DrawInstancedIndirect(
+			d3d11CommandBuffer->context,
+			d3d11Buffer->handle,
+			offsetInBytes + (stride * i)
+		);
+	}
 }
 
 static void D3D11_DispatchCompute(
@@ -1455,6 +1497,7 @@ static Refresh_Buffer* D3D11_CreateBuffer(
 	D3D11Buffer *d3d11Buffer;
 	HRESULT res;
 
+	uint8_t isDynamic = 1;
 	uint32_t bindFlags = 0;
 	if (usageFlags & REFRESH_BUFFERUSAGE_VERTEX_BIT)
 	{
@@ -1464,16 +1507,17 @@ static Refresh_Buffer* D3D11_CreateBuffer(
 	{
 		bindFlags |= D3D11_BIND_INDEX_BUFFER;
 	}
-	if (usageFlags & REFRESH_BUFFERUSAGE_COMPUTE_BIT)
+	if ((usageFlags & REFRESH_BUFFERUSAGE_COMPUTE_BIT) || (usageFlags & REFRESH_BUFFERUSAGE_INDIRECT_BIT))
 	{
 		bindFlags |= D3D11_BIND_UNORDERED_ACCESS;
+		isDynamic = 0;
 	}
 	bufferDesc.BindFlags = bindFlags;
 
 	bufferDesc.ByteWidth = sizeInBytes;
-	bufferDesc.Usage = D3D11_USAGE_DYNAMIC;
-	bufferDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-	bufferDesc.MiscFlags = 0;
+	bufferDesc.Usage = isDynamic ? D3D11_USAGE_DYNAMIC : D3D11_USAGE_DEFAULT;
+	bufferDesc.CPUAccessFlags = isDynamic ? D3D11_CPU_ACCESS_WRITE : 0;
+	bufferDesc.MiscFlags = (usageFlags & REFRESH_BUFFERUSAGE_INDIRECT_BIT) ? D3D11_RESOURCE_MISC_DRAWINDIRECT_ARGS : 0;
 	bufferDesc.StructureByteStride = 0;
 
 	res = ID3D11Device_CreateBuffer(
@@ -1487,6 +1531,7 @@ static Refresh_Buffer* D3D11_CreateBuffer(
 	d3d11Buffer = SDL_malloc(sizeof(D3D11Buffer));
 	d3d11Buffer->handle = bufferHandle;
 	d3d11Buffer->size = sizeInBytes;
+	d3d11Buffer->isDynamic = isDynamic;
 
 	return (Refresh_Buffer*) d3d11Buffer;
 }
@@ -1587,8 +1632,32 @@ static void D3D11_INTERNAL_SetBufferData(
 	uint32_t dataLength,
 	uint8_t noOverwrite
 ) {
+	D3D11_BOX dstBox;
 	D3D11_MAPPED_SUBRESOURCE subres;
 	HRESULT res;
+
+	/* Use UpdateSubresource for non-dynamic buffers (i.e. compute/indirect) */
+	if (!buffer->isDynamic)
+	{
+		dstBox.left = 0;
+		dstBox.right = dataLength;
+		dstBox.top = 0;
+		dstBox.bottom = 1;
+		dstBox.front = 0;
+		dstBox.back = 1;
+
+		ID3D11DeviceContext_UpdateSubresource(
+			commandBuffer->context,
+			(ID3D11Resource*) buffer->handle,
+			0,
+			&dstBox,
+			data,
+			dataLength,
+			1
+		);
+
+		return;
+	}
 
 	res = ID3D11DeviceContext_Map(
 		commandBuffer->context,
