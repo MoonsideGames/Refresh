@@ -1619,6 +1619,10 @@ static uint8_t D3D11_INTERNAL_CreateUniformBuffer(
 	D3D11Renderer *renderer
 ) {
 	D3D11_BUFFER_DESC bufferDesc;
+	ID3D11Buffer *bufferHandle;
+	D3D11UniformBuffer *uniformBuffer;
+	HRESULT res;
+
 	bufferDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
 	bufferDesc.ByteWidth = UBO_BUFFER_SIZE;
 	bufferDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
@@ -1626,8 +1630,7 @@ static uint8_t D3D11_INTERNAL_CreateUniformBuffer(
 	bufferDesc.StructureByteStride = 0;
 	bufferDesc.Usage = D3D11_USAGE_DYNAMIC;
 
-	ID3D11Buffer *bufferHandle;
-	HRESULT res = ID3D11Device_CreateBuffer(
+	res = ID3D11Device_CreateBuffer(
 		renderer->device,
 		&bufferDesc,
 		NULL,
@@ -1635,7 +1638,7 @@ static uint8_t D3D11_INTERNAL_CreateUniformBuffer(
 	);
 	ERROR_CHECK_RETURN("Failed to create uniform buffer", 0);
 
-	D3D11UniformBuffer *uniformBuffer = SDL_malloc(sizeof(D3D11UniformBuffer));
+	uniformBuffer = SDL_malloc(sizeof(D3D11UniformBuffer));
 	uniformBuffer->offset = 0;
 	uniformBuffer->d3d11Buffer = SDL_malloc(sizeof(D3D11Buffer));
 	uniformBuffer->d3d11Buffer->handle = bufferHandle;
@@ -1662,6 +1665,8 @@ static D3D11UniformBuffer* D3D11_INTERNAL_AcquireUniformBufferFromPool(
 	D3D11Renderer *renderer,
 	uint64_t blockSize
 ) {
+	D3D11UniformBuffer *uniformBuffer;
+
 	SDL_LockMutex(renderer->uniformBufferLock);
 
 	if (renderer->availableUniformBufferCount == 0)
@@ -1674,7 +1679,7 @@ static D3D11UniformBuffer* D3D11_INTERNAL_AcquireUniformBufferFromPool(
 		}
 	}
 
-	D3D11UniformBuffer *uniformBuffer = renderer->availableUniformBuffers[renderer->availableUniformBufferCount - 1];
+	uniformBuffer = renderer->availableUniformBuffers[renderer->availableUniformBufferCount - 1];
 	renderer->availableUniformBufferCount -= 1;
 
 	SDL_UnlockMutex(renderer->uniformBufferLock);
