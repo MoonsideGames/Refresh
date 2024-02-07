@@ -1192,7 +1192,7 @@ static Refresh_GraphicsPipeline* D3D11_CreateGraphicsPipeline(
 	pipeline->fragmentShader = (ID3D11PixelShader*) fragShaderModule->shader;
 	pipeline->numFragmentSamplers = pipelineCreateInfo->fragmentShaderInfo.samplerBindingCount;
 	pipeline->fragmentUniformBlockSize = D3D11_INTERNAL_NextHighestAlignment(
-		(uint32_t) pipelineCreateInfo->vertexShaderInfo.uniformBufferSize,
+		(uint32_t) pipelineCreateInfo->fragmentShaderInfo.uniformBufferSize,
 		256
 	);
 
