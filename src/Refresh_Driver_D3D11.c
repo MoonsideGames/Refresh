@@ -927,6 +927,12 @@ static ID3D11InputLayout* D3D11_INTERNAL_FetchInputLayout(
 	uint32_t i, bindingIndex;
 	HRESULT res;
 
+	/* Don't bother creating/fetching an input layout if there are no attributes. */
+	if (inputState.vertexAttributeCount == 0)
+	{
+		return NULL;
+	}
+
 	/* Allocate an array of vertex elements */
 	elementDescs = SDL_stack_alloc(
 		D3D11_INPUT_ELEMENT_DESC,
@@ -1119,7 +1125,6 @@ static Refresh_GraphicsPipeline* D3D11_CreateGraphicsPipeline(
 	}
 	else
 	{
-		/* Not sure if this is even possible, but juuust in case... */
 		pipeline->vertexStrides = NULL;
 	}
 
@@ -1888,14 +1893,17 @@ static void D3D11_QueueDestroyGraphicsPipeline(
 	ID3D11BlendState_Release(d3dGraphicsPipeline->colorAttachmentBlendState);
 	ID3D11DepthStencilState_Release(d3dGraphicsPipeline->depthStencilState);
 	ID3D11RasterizerState_Release(d3dGraphicsPipeline->rasterizerState);
-	ID3D11InputLayout_Release(d3dGraphicsPipeline->inputLayout);
 
-	/* FIXME: Release uniform buffers, once that's written in */
-
+	if (d3dGraphicsPipeline->inputLayout)
+	{
+		ID3D11InputLayout_Release(d3dGraphicsPipeline->inputLayout);
+	}
 	if (d3dGraphicsPipeline->vertexStrides)
 	{
 		SDL_free(d3dGraphicsPipeline->vertexStrides);
 	}
+
+	/* FIXME: Release uniform buffers, once that's written in */
 
 	SDL_free(d3dGraphicsPipeline);
 }
