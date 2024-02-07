@@ -1821,7 +1821,32 @@ static void D3D11_BindVertexSamplers(
 	Refresh_Texture **pTextures,
 	Refresh_Sampler **pSamplers
 ) {
-	NOT_IMPLEMENTED
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	D3D11CommandBuffer *d3d11CommandBuffer = (D3D11CommandBuffer*) commandBuffer;
+	ID3D11ShaderResourceView* srvs[MAX_VERTEXTEXTURE_SAMPLERS];
+	ID3D11SamplerState* d3d11Samplers[MAX_VERTEXTEXTURE_SAMPLERS];
+
+	int32_t numVertexSamplers = d3d11CommandBuffer->graphicsPipeline->numVertexSamplers;
+
+	for (int32_t i = 0; i < numVertexSamplers; i += 1)
+	{
+		srvs[i] = ((D3D11Texture*) pTextures[i])->shaderView;
+		d3d11Samplers[i] = ((D3D11Sampler*) pSamplers[i])->handle;
+	}
+
+	ID3D11DeviceContext_VSSetShaderResources(
+		d3d11CommandBuffer->context,
+		0,
+		numVertexSamplers,
+		srvs
+	);
+
+	ID3D11DeviceContext_VSSetSamplers(
+		d3d11CommandBuffer->context,
+		0,
+		numVertexSamplers,
+		d3d11Samplers
+	);
 }
 
 static void D3D11_BindFragmentSamplers(
