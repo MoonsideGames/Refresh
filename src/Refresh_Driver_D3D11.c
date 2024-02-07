@@ -2996,7 +2996,7 @@ static uint8_t D3D11_PrepareDriver(
 ) {
 	void *d3d11_dll, *d3dcompiler_dll, *dxgi_dll;
 	PFN_D3D11_CREATE_DEVICE D3D11CreateDeviceFunc;
-	D3D_FEATURE_LEVEL levels[] = { D3D_FEATURE_LEVEL_11_0 };
+	D3D_FEATURE_LEVEL levels[] = { D3D_FEATURE_LEVEL_11_1 };
 	PFN_D3DCOMPILE D3DCompileFunc;
 	PFN_CREATE_DXGI_FACTORY1 CreateDXGIFactoryFunc;
 	HRESULT res;
@@ -3279,6 +3279,9 @@ tryCreateDevice:
 		&renderer->device
 	);
 	ERROR_CHECK_RETURN("Could not get ID3D11Device1 interface", NULL);
+
+	/* Release the old device interface, we don't need it anymore */
+	ID3D11Device_Release(d3d11Device);
 
 	/* Set up the info queue */
 	if (renderer->dxgiInfoQueue)
