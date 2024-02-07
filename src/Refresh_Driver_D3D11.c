@@ -1405,6 +1405,12 @@ static Refresh_Texture* D3D11_CreateTexture(
 			srvDesc.Texture3D.MipLevels = desc3D.MipLevels;
 			srvDesc.Texture3D.MostDetailedMip = 0;
 
+			res = ID3D11Device_CreateShaderResourceView(
+				renderer->device,
+				textureHandle,
+				&srvDesc,
+				&srv
+			);
 			if (FAILED(res))
 			{
 				ID3D11Resource_Release(textureHandle);
@@ -1516,7 +1522,7 @@ static void D3D11_SetTextureData(
 	dstBox.bottom = textureSlice->rectangle.y + h;
 	dstBox.back = textureSlice->depth + 1;
 
-	ID3D11DeviceContext_UpdateSubresource(
+	ID3D11DeviceContext1_UpdateSubresource1(
 		d3d11CommandBuffer->context,
 		d3d11Texture->handle,
 		D3D11_INTERNAL_CalcSubresource(
@@ -1527,7 +1533,8 @@ static void D3D11_SetTextureData(
 		&dstBox,
 		data,
 		BytesPerRow(w, d3d11Texture->format),
-		BytesPerImage(w, h, d3d11Texture->format)
+		BytesPerImage(w, h, d3d11Texture->format),
+		D3D11_COPY_DISCARD /* FIXME: Is this right? */
 	);
 }
 
