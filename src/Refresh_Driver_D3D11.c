@@ -622,7 +622,11 @@ static void D3D11_DestroyDevice(
 	/* Report leaks and clean up debug objects */
 	if (renderer->dxgiDebug)
 	{
-		IDXGIDebug_ReportLiveObjects(renderer->dxgiDebug, D3D_IID_DXGI_DEBUG_ALL, DXGI_DEBUG_RLO_ALL);
+		IDXGIDebug_ReportLiveObjects(
+			renderer->dxgiDebug,
+			D3D_IID_DXGI_DEBUG_ALL,
+			DXGI_DEBUG_RLO_SUMMARY | DXGI_DEBUG_RLO_DETAIL
+		);
 		IDXGIDebug_Release(renderer->dxgiDebug);
 	}
 
@@ -3114,7 +3118,6 @@ static void D3D11_INTERNAL_TryInitializeDXGIDebug(D3D11Renderer *renderer)
 		Refresh_LogWarn("Could not get IDXGIDebug interface");
 	}
 
-	/* FIXME: Actually do something with the info queue! */
 	res = DXGIGetDebugInterfaceFunc(&D3D_IID_IDXGIInfoQueue, &renderer->dxgiInfoQueue);
 	if (FAILED(res))
 	{
@@ -3276,6 +3279,28 @@ tryCreateDevice:
 		&renderer->device
 	);
 	ERROR_CHECK_RETURN("Could not get ID3D11Device1 interface", NULL);
+
+	/* Set up the info queue */
+	if (renderer->dxgiInfoQueue)
+	{
+		DXGI_INFO_QUEUE_MESSAGE_SEVERITY sevList[] =
+		{
+			DXGI_INFO_QUEUE_MESSAGE_SEVERITY_CORRUPTION,
+			DXGI_INFO_QUEUE_MESSAGE_SEVERITY_ERROR,
+			DXGI_INFO_QUEUE_MESSAGE_SEVERITY_WARNING,
+			// DXGI_INFO_QUEUE_MESSAGE_SEVERITY_INFO, /* This can be a bit much, so toggle as needed for debugging. */
+			DXGI_INFO_QUEUE_MESSAGE_SEVERITY_MESSAGE
+		};
+		DXGI_INFO_QUEUE_FILTER filter = { 0 };
+		filter.AllowList.NumSeverities = SDL_arraysize(sevList);
+		filter.AllowList.pSeverityList = sevList;
+
+		IDXGIInfoQueue_PushStorageFilter(
+			renderer->dxgiInfoQueue,
+			D3D_IID_DXGI_DEBUG_ALL,
+			&filter
+		);
+	}
 
 	/* Print driver info */
 	Refresh_LogInfo("Refresh Driver: D3D11");
