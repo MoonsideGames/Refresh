@@ -361,6 +361,7 @@ typedef struct D3D11Texture
 	ID3D11Resource *handle; /* ID3D11Texture2D* or ID3D11Texture3D* */
 	ID3D11ShaderResourceView *shaderView;
 	ID3D11View *targetView; /* ID3D11RenderTargetView* or ID3D11DepthStencilView* */
+	ID3D11UnorderedAccessView *unorderedAccessView;
 
 	/* Basic Info */
 	Refresh_TextureFormat format;
@@ -420,11 +421,20 @@ typedef struct D3D11GraphicsPipeline
 	uint32_t fragmentUniformBlockSize;
 } D3D11GraphicsPipeline;
 
+typedef struct D3D11ComputePipeline
+{
+	ID3D11ComputeShader *computeShader;
+	uint64_t computeUniformBlockSize;
+	uint32_t numTextures;
+	uint32_t numBuffers;
+} D3D11ComputePipeline;
+
 typedef struct D3D11Buffer
 {
 	ID3D11Buffer *handle;
 	uint32_t size;
 	uint8_t isDynamic;
+	ID3D11UnorderedAccessView *uav;
 } D3D11Buffer;
 
 typedef struct D3D11UniformBuffer
@@ -444,6 +454,9 @@ typedef struct D3D11CommandBuffer
 	ID3D11DepthStencilView *dsView;
 	D3D11GraphicsPipeline *graphicsPipeline;
 
+	/* Compute Pass */
+	D3D11ComputePipeline *computePipeline;
+
 	/* State */
 	SDL_threadID threadID;
 	ID3D11Query *completionQuery;
@@ -451,6 +464,7 @@ typedef struct D3D11CommandBuffer
 	/* Uniforms */
 	D3D11UniformBuffer *vertexUniformBuffer;
 	D3D11UniformBuffer *fragmentUniformBuffer;
+	D3D11UniformBuffer *computeUniformBuffer;
 
 	D3D11UniformBuffer **boundUniformBuffers;
 	uint32_t boundUniformBufferCount;
@@ -830,7 +844,28 @@ static void D3D11_DispatchCompute(
 	uint32_t groupCountZ,
 	uint32_t computeParamOffset
 ) {
-	NOT_IMPLEMENTED
+	D3D11CommandBuffer* d3d11CommandBuffer = (D3D11CommandBuffer*)commandBuffer;
+	uint32_t computeOffsetInConstants = computeParamOffset / 16;
+	uint32_t computeBlockSizeInConstants = (uint32_t) (d3d11CommandBuffer->computePipeline->computeUniformBlockSize / 16);
+
+	if (d3d11CommandBuffer->computeUniformBuffer != NULL)
+	{
+		ID3D11DeviceContext1_CSSetConstantBuffers1(
+			d3d11CommandBuffer->context,
+			0,
+			1,
+			&d3d11CommandBuffer->computeUniformBuffer->d3d11Buffer->handle,
+			&computeOffsetInConstants,
+			&computeBlockSizeInConstants
+		);
+	}
+
+	ID3D11DeviceContext_Dispatch(
+		d3d11CommandBuffer->context,
+		groupCountX,
+		groupCountY,
+		groupCountZ
+	);
 }
 
 /* State Creation */
@@ -1064,8 +1099,16 @@ static Refresh_ComputePipeline* D3D11_CreateComputePipeline(
 	Refresh_Renderer *driverData,
 	Refresh_ComputeShaderInfo *computeShaderInfo
 ) {
-	NOT_IMPLEMENTED
-	return NULL;
+	D3D11Renderer* renderer = (D3D11Renderer*) driverData;
+	D3D11ComputePipeline* pipeline = (D3D11ComputePipeline*) SDL_malloc(sizeof(D3D11ComputePipeline));
+	D3D11ShaderModule* shaderModule = (D3D11ShaderModule*) computeShaderInfo->shaderModule;
+
+	pipeline->computeShader = (ID3D11ComputeShader*) shaderModule->shader;
+	pipeline->numTextures = computeShaderInfo->imageBindingCount;
+	pipeline->numBuffers = computeShaderInfo->bufferBindingCount;
+	pipeline->computeUniformBlockSize = computeShaderInfo->uniformBufferSize;
+
+	return (Refresh_ComputePipeline*) pipeline;
 }
 
 static inline uint32_t D3D11_INTERNAL_NextHighestAlignment(
@@ -1318,6 +1361,7 @@ static Refresh_Texture* D3D11_CreateTexture(
 	ID3D11ShaderResourceView *srv = NULL;
 	ID3D11RenderTargetView *rtv = NULL;
 	ID3D11DepthStencilView *dsv = NULL;
+	ID3D11UnorderedAccessView *uav = NULL;
 	D3D11Texture *d3d11Texture;
 	HRESULT res;
 
@@ -1404,6 +1448,32 @@ static Refresh_Texture* D3D11_CreateTexture(
 				return NULL;
 			}
 		}
+
+		/* Create the UAV, if applicable */
+		if (isCompute)
+		{
+			D3D11_UNORDERED_ACCESS_VIEW_DESC uavDesc;
+			uavDesc.Format = desc2D.Format;
+			uavDesc.ViewDimension = D3D11_UAV_DIMENSION_TEXTURE2D;
+			uavDesc.Texture2D.MipSlice = 0; /* FIXME: Is this right? */
+
+			res = ID3D11Device_CreateUnorderedAccessView(
+				renderer->device,
+				textureHandle,
+				&uavDesc,
+				&uav
+			);
+			if (FAILED(res))
+			{
+				ID3D11Resource_Release(textureHandle);
+				if (srv != NULL)
+				{
+					ID3D11ShaderResourceView_Release(srv);
+				}
+				D3D11_INTERNAL_LogError(renderer->device, "Could not create UAV for 2D texture", res);
+				return NULL;
+			}
+		}
 	}
 	else
 	{
@@ -1460,6 +1530,33 @@ static Refresh_Texture* D3D11_CreateTexture(
 				return NULL;
 			}
 		}
+
+		/* Create the UAV, if applicable */
+		if (isCompute)
+		{
+			D3D11_UNORDERED_ACCESS_VIEW_DESC uavDesc;
+			uavDesc.ViewDimension = D3D11_UAV_DIMENSION_TEXTURE3D;
+			uavDesc.Texture3D.MipSlice = 0;
+			uavDesc.Texture3D.FirstWSlice = 0; /* FIXME */
+			uavDesc.Texture3D.WSize = 0; /* FIXME */
+
+			res = ID3D11Device_CreateUnorderedAccessView(
+				renderer->device,
+				textureHandle,
+				&uavDesc,
+				&uav
+			);
+			if (FAILED(res))
+			{
+				ID3D11Resource_Release(textureHandle);
+				if (srv != NULL)
+				{
+					ID3D11ShaderResourceView_Release(srv);
+				}
+				D3D11_INTERNAL_LogError(renderer->device, "Could not create UAV for 3D texture", res);
+				return NULL;
+			}
+		}
 	}
 
 	/* Create the RTV or DSV, if applicable */
@@ -1482,6 +1579,7 @@ static Refresh_Texture* D3D11_CreateTexture(
 	d3d11Texture->isCube = textureCreateInfo->isCube;
 	d3d11Texture->targetView = isRenderTarget ? (ID3D11View*) rtv : (ID3D11View*) dsv;
 	d3d11Texture->shaderView = srv;
+	d3d11Texture->unorderedAccessView = uav;
 
 	return (Refresh_Texture*) d3d11Texture;
 }
@@ -1494,6 +1592,7 @@ static Refresh_Buffer* D3D11_CreateBuffer(
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11_BUFFER_DESC bufferDesc;
 	ID3D11Buffer *bufferHandle;
+	ID3D11UnorderedAccessView *uav = NULL;
 	D3D11Buffer *d3d11Buffer;
 	HRESULT res;
 
@@ -1528,10 +1627,34 @@ static Refresh_Buffer* D3D11_CreateBuffer(
 	);
 	ERROR_CHECK_RETURN("Could not create buffer", NULL);
 
+	/* Create a UAV for the buffer */
+	if (usageFlags & REFRESH_BUFFERUSAGE_COMPUTE_BIT)
+	{
+		D3D11_UNORDERED_ACCESS_VIEW_DESC uavDesc;
+		uavDesc.Format = DXGI_FORMAT_R8_UINT;
+		uavDesc.ViewDimension = D3D11_UAV_DIMENSION_BUFFER;
+		uavDesc.Buffer.FirstElement = 0;
+		uavDesc.Buffer.Flags = 0;
+		uavDesc.Buffer.NumElements = sizeInBytes;
+
+		res = ID3D11Device_CreateUnorderedAccessView(
+			renderer->device,
+			(ID3D11Resource*) bufferHandle,
+			&uavDesc,
+			&uav
+		);
+		if (FAILED(res))
+		{
+			ID3D11Buffer_Release(bufferHandle);
+			ERROR_CHECK_RETURN("Could not create UAV for buffer!", NULL);
+		}
+	}
+
 	d3d11Buffer = SDL_malloc(sizeof(D3D11Buffer));
 	d3d11Buffer->handle = bufferHandle;
 	d3d11Buffer->size = sizeInBytes;
 	d3d11Buffer->isDynamic = isDynamic;
+	d3d11Buffer->uav = uav;
 
 	return (Refresh_Buffer*) d3d11Buffer;
 }
@@ -1979,6 +2102,10 @@ static void D3D11_QueueDestroyTexture(
 	{
 		ID3D11View_Release(d3d11Texture->targetView);
 	}
+	if (d3d11Texture->unorderedAccessView)
+	{
+		ID3D11UnorderedAccessView_Release(d3d11Texture->unorderedAccessView);
+	}
 
 	ID3D11Resource_Release(d3d11Texture->handle);
 
@@ -1999,7 +2126,14 @@ static void D3D11_QueueDestroyBuffer(
 	Refresh_Buffer *buffer
 ) {
 	D3D11Buffer *d3d11Buffer = (D3D11Buffer*) buffer;
+
+	if (d3d11Buffer->uav)
+	{
+		ID3D11UnorderedAccessView_Release(d3d11Buffer->handle);
+	}
+
 	ID3D11Buffer_Release(d3d11Buffer->handle);
+
 	SDL_free(d3d11Buffer);
 }
 
@@ -2138,8 +2272,10 @@ static Refresh_CommandBuffer* D3D11_AcquireCommandBuffer(
 	commandBuffer->threadID = SDL_ThreadID();
 	commandBuffer->swapchainData = NULL;
 	commandBuffer->graphicsPipeline = NULL;
+	commandBuffer->computePipeline = NULL;
 	commandBuffer->vertexUniformBuffer = NULL;
 	commandBuffer->fragmentUniformBuffer = NULL;
+	commandBuffer->computeUniformBuffer = NULL;
 	commandBuffer->dsView = NULL;
 	for (i = 0; i < MAX_COLOR_TARGET_BINDINGS; i += 1)
 	{
@@ -2487,7 +2623,38 @@ static void D3D11_BindComputePipeline(
 	Refresh_CommandBuffer *commandBuffer,
 	Refresh_ComputePipeline *computePipeline
 ) {
-	NOT_IMPLEMENTED
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	D3D11CommandBuffer *d3d11CommandBuffer = (D3D11CommandBuffer*) commandBuffer;
+	D3D11ComputePipeline *pipeline = (D3D11ComputePipeline*) computePipeline;
+
+	d3d11CommandBuffer->computePipeline = pipeline;
+
+	if (d3d11CommandBuffer->computeUniformBuffer != NULL)
+	{
+		D3D11_INTERNAL_BindUniformBuffer(
+			d3d11CommandBuffer,
+			d3d11CommandBuffer->computeUniformBuffer
+		);
+	}
+
+	if (pipeline->computeUniformBlockSize == 0)
+	{
+		d3d11CommandBuffer->computeUniformBuffer = NULL;
+	}
+	else
+	{
+		d3d11CommandBuffer->computeUniformBuffer = D3D11_INTERNAL_AcquireUniformBufferFromPool(
+			renderer,
+			pipeline->computeUniformBlockSize
+		);
+	}
+
+	ID3D11DeviceContext_CSSetShader(
+		d3d11CommandBuffer->context,
+		pipeline->computeShader,
+		NULL,
+		0
+	);
 }
 
 static void D3D11_BindComputeBuffers(
@@ -2495,7 +2662,24 @@ static void D3D11_BindComputeBuffers(
 	Refresh_CommandBuffer *commandBuffer,
 	Refresh_Buffer **pBuffers
 ) {
-	NOT_IMPLEMENTED
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	D3D11CommandBuffer *d3d11CommandBuffer = (D3D11CommandBuffer*) commandBuffer;
+	ID3D11UnorderedAccessView* uavs[MAX_BUFFER_BINDINGS]; /* FIXME: Is this limit right? */
+
+	int32_t numBuffers = d3d11CommandBuffer->computePipeline->numBuffers;
+
+	for (int32_t i = 0; i < numBuffers; i += 1)
+	{
+		uavs[i] = ((D3D11Buffer*) pBuffers[i])->uav;
+	}
+
+	ID3D11DeviceContext_CSSetUnorderedAccessViews(
+		d3d11CommandBuffer->context,
+		0,
+		numBuffers,
+		uavs,
+		NULL
+	);
 }
 
 static void D3D11_BindComputeTextures(
@@ -2503,7 +2687,24 @@ static void D3D11_BindComputeTextures(
 	Refresh_CommandBuffer *commandBuffer,
 	Refresh_Texture **pTextures
 ) {
-	NOT_IMPLEMENTED
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	D3D11CommandBuffer *d3d11CommandBuffer = (D3D11CommandBuffer*) commandBuffer;
+	ID3D11UnorderedAccessView *uavs[MAX_TEXTURE_SAMPLERS]; /* FIXME: Is this limit right? */
+
+	int32_t numTextures = d3d11CommandBuffer->computePipeline->numTextures;
+
+	for (int32_t i = 0; i < numTextures; i += 1)
+	{
+		uavs[i] = ((D3D11Texture*) pTextures[i])->unorderedAccessView;
+	}
+
+	ID3D11DeviceContext_CSSetUnorderedAccessViews(
+		d3d11CommandBuffer->context,
+		0,
+		numTextures,
+		uavs,
+		NULL
+	);
 }
 
 /* Window and Swapchain Management */
