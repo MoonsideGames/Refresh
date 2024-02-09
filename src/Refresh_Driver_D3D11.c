@@ -432,9 +432,8 @@ typedef struct D3D11ComputePipeline
 typedef struct D3D11Buffer
 {
 	ID3D11Buffer *handle;
+	ID3D11UnorderedAccessView* uav;
 	uint32_t size;
-	uint8_t isDynamic;
-	ID3D11UnorderedAccessView *uav;
 } D3D11Buffer;
 
 typedef struct D3D11UniformBuffer
@@ -1648,26 +1647,23 @@ static Refresh_Buffer* D3D11_CreateBuffer(
 	D3D11Buffer *d3d11Buffer;
 	HRESULT res;
 
-	uint8_t isDynamic = 1;
-	uint32_t bindFlags = 0;
+	bufferDesc.BindFlags = 0;
 	if (usageFlags & REFRESH_BUFFERUSAGE_VERTEX_BIT)
 	{
-		bindFlags |= D3D11_BIND_VERTEX_BUFFER;
+		bufferDesc.BindFlags |= D3D11_BIND_VERTEX_BUFFER;
 	}
 	if (usageFlags & REFRESH_BUFFERUSAGE_INDEX_BIT)
 	{
-		bindFlags |= D3D11_BIND_INDEX_BUFFER;
+		bufferDesc.BindFlags |= D3D11_BIND_INDEX_BUFFER;
 	}
 	if ((usageFlags & REFRESH_BUFFERUSAGE_COMPUTE_BIT) || (usageFlags & REFRESH_BUFFERUSAGE_INDIRECT_BIT))
 	{
-		bindFlags |= D3D11_BIND_UNORDERED_ACCESS;
-		isDynamic = 0;
+		bufferDesc.BindFlags |= D3D11_BIND_UNORDERED_ACCESS;
 	}
-	bufferDesc.BindFlags = bindFlags;
 
 	bufferDesc.ByteWidth = sizeInBytes;
-	bufferDesc.Usage = isDynamic ? D3D11_USAGE_DYNAMIC : D3D11_USAGE_DEFAULT;
-	bufferDesc.CPUAccessFlags = isDynamic ? D3D11_CPU_ACCESS_WRITE : 0;
+	bufferDesc.Usage = D3D11_USAGE_DEFAULT;
+	bufferDesc.CPUAccessFlags = 0;
 	bufferDesc.MiscFlags = (usageFlags & REFRESH_BUFFERUSAGE_INDIRECT_BIT) ? D3D11_RESOURCE_MISC_DRAWINDIRECT_ARGS : 0;
 	bufferDesc.StructureByteStride = 0;
 
@@ -1705,7 +1701,6 @@ static Refresh_Buffer* D3D11_CreateBuffer(
 	d3d11Buffer = SDL_malloc(sizeof(D3D11Buffer));
 	d3d11Buffer->handle = bufferHandle;
 	d3d11Buffer->size = sizeInBytes;
-	d3d11Buffer->isDynamic = isDynamic;
 	d3d11Buffer->uav = uav;
 
 	return (Refresh_Buffer*) d3d11Buffer;
@@ -1807,56 +1802,56 @@ static void D3D11_INTERNAL_SetBufferData(
 	uint32_t offsetInBytes,
 	void* data,
 	uint32_t dataLength,
-	uint8_t noOverwrite
+	uint8_t isUniformBuffer
 ) {
 	D3D11_BOX dstBox;
 	D3D11_MAPPED_SUBRESOURCE subres;
 	HRESULT res;
 
-	/* Use UpdateSubresource for non-dynamic buffers (i.e. compute/indirect) */
-	if (!buffer->isDynamic)
+	if (isUniformBuffer)
 	{
-		dstBox.left = 0;
-		dstBox.right = dataLength;
+		res = ID3D11DeviceContext_Map(
+			commandBuffer->context,
+			(ID3D11Resource*) buffer->handle,
+			0,
+			D3D11_MAP_WRITE_DISCARD, /* FIXME: Use NoOverwrite for subsequent writes! */
+			0,
+			&subres
+		);
+		ERROR_CHECK_RETURN("Could not map buffer for writing!", );
+
+		SDL_memcpy(
+			(uint8_t*) subres.pData + offsetInBytes,
+			data,
+			dataLength
+		);
+
+		ID3D11DeviceContext_Unmap(
+			commandBuffer->context,
+			(ID3D11Resource*) buffer->handle,
+			0
+		);
+	}
+	else
+	{
+		dstBox.left = offsetInBytes;
+		dstBox.right = offsetInBytes + dataLength;
 		dstBox.top = 0;
 		dstBox.bottom = 1;
 		dstBox.front = 0;
 		dstBox.back = 1;
 
-		ID3D11DeviceContext_UpdateSubresource(
+		ID3D11DeviceContext1_UpdateSubresource1(
 			commandBuffer->context,
 			(ID3D11Resource*) buffer->handle,
 			0,
 			&dstBox,
 			data,
 			dataLength,
-			1
+			1,
+			dataLength == buffer->size ? D3D11_COPY_DISCARD : 0
 		);
-
-		return;
 	}
-
-	res = ID3D11DeviceContext_Map(
-		commandBuffer->context,
-		(ID3D11Resource*) buffer->handle,
-		0,
-		noOverwrite ? D3D11_MAP_WRITE_NO_OVERWRITE : D3D11_MAP_WRITE_DISCARD,
-		0,
-		&subres
-	);
-	ERROR_CHECK_RETURN("Could not map buffer for writing!", );
-
-	SDL_memcpy(
-		(uint8_t*) subres.pData + offsetInBytes,
-		data,
-		dataLength
-	);
-
-	ID3D11DeviceContext_Unmap(
-		commandBuffer->context,
-		(ID3D11Resource*) buffer->handle,
-		0
-	);
 }
 
 static void D3D11_SetBufferData(
@@ -1983,7 +1978,6 @@ static uint8_t D3D11_INTERNAL_CreateUniformBuffer(
 	uniformBuffer->d3d11Buffer = SDL_malloc(sizeof(D3D11Buffer));
 	uniformBuffer->d3d11Buffer->handle = bufferHandle;
 	uniformBuffer->d3d11Buffer->size = UBO_BUFFER_SIZE;
-	uniformBuffer->d3d11Buffer->isDynamic = 1;
 	uniformBuffer->d3d11Buffer->uav = NULL;
 
 	/* Add it to the available pool */
@@ -2080,7 +2074,7 @@ static uint32_t D3D11_PushVertexShaderUniforms(
 		d3d11CommandBuffer->vertexUniformBuffer->offset,
 		data,
 		dataLengthInBytes,
-		0 /* FIXME: Should be NoOverwrite! */
+		1
 	);
 
 	d3d11CommandBuffer->vertexUniformBuffer->offset += graphicsPipeline->vertexUniformBlockSize;
@@ -2119,7 +2113,7 @@ static uint32_t D3D11_PushFragmentShaderUniforms(
 		d3d11CommandBuffer->fragmentUniformBuffer->offset,
 		data,
 		dataLengthInBytes,
-		0 /* FIXME: Should be NoOverwrite! */
+		1
 	);
 
 	d3d11CommandBuffer->fragmentUniformBuffer->offset += graphicsPipeline->fragmentUniformBlockSize;
@@ -2158,7 +2152,7 @@ static uint32_t D3D11_PushComputeShaderUniforms(
 		d3d11CommandBuffer->computeUniformBuffer->offset,
 		data,
 		dataLengthInBytes,
-		0 /* FIXME: Should be NoOverwrite! */
+		1
 	);
 
 	d3d11CommandBuffer->computeUniformBuffer->offset += (uint32_t) computePipeline->computeUniformBlockSize; /* FIXME: Is this cast safe? */
