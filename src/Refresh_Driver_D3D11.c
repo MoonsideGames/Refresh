@@ -1816,7 +1816,7 @@ static void D3D11_SetTextureData(
 		data,
 		BytesPerRow(w, d3d11Texture->format),
 		BytesPerImage(w, h, d3d11Texture->format),
-		D3D11_COPY_DISCARD /* FIXME: Is this right? */
+		0 /* FIXME: Could DISCARD here if we know we're overwriting the whole image... */
 	);
 }
 
@@ -1838,7 +1838,49 @@ static void D3D11_SetTextureDataYUV(
 	uint32_t yStride,
 	uint32_t uvStride
 ) {
-	NOT_IMPLEMENTED
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	D3D11CommandBuffer *d3d11CommandBuffer = (D3D11CommandBuffer*) commandBuffer;
+	D3D11Texture *yTex = (D3D11Texture*) y;
+	D3D11Texture *uTex = (D3D11Texture*) u;
+	D3D11Texture *vTex = (D3D11Texture*) v;
+	D3D11_BOX yBox = { 0, 0, 0, yWidth, yHeight, 1 };
+	D3D11_BOX uvBox = { 0, 0, 0, uvWidth, uvHeight, 1 };
+
+	/* Y */
+	ID3D11DeviceContext1_UpdateSubresource1(
+		d3d11CommandBuffer->context,
+		yTex->handle,
+		0,
+		&yBox,
+		yDataPtr,
+		yStride,
+		0,
+		D3D11_COPY_DISCARD
+	);
+
+	/* U */
+	ID3D11DeviceContext1_UpdateSubresource1(
+		d3d11CommandBuffer->context,
+		uTex->handle,
+		0,
+		&uvBox,
+		uDataPtr,
+		uvStride,
+		0,
+		D3D11_COPY_DISCARD
+	);
+
+	/* V */
+	ID3D11DeviceContext1_UpdateSubresource1(
+		d3d11CommandBuffer->context,
+		vTex->handle,
+		0,
+		&uvBox,
+		vDataPtr,
+		uvStride,
+		0,
+		D3D11_COPY_DISCARD
+	);
 }
 
 static void D3D11_CopyTextureToTexture(
