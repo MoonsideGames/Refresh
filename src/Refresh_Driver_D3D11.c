@@ -1124,13 +1124,47 @@ static Refresh_ComputePipeline* D3D11_CreateComputePipeline(
 	Refresh_Renderer *driverData,
 	Refresh_ComputeShaderInfo *computeShaderInfo
 ) {
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11ComputePipeline* pipeline = (D3D11ComputePipeline*) SDL_malloc(sizeof(D3D11ComputePipeline));
 	D3D11ShaderModule* shaderModule = (D3D11ShaderModule*) computeShaderInfo->shaderModule;
+	ID3D10Blob *errorBlob;
+	HRESULT res;
 
-	pipeline->computeShader = (ID3D11ComputeShader*) shaderModule->shader;
 	pipeline->numTextures = computeShaderInfo->imageBindingCount;
 	pipeline->numBuffers = computeShaderInfo->bufferBindingCount;
 	pipeline->computeUniformBlockSize = computeShaderInfo->uniformBufferSize;
+
+	if (shaderModule->shader == NULL)
+	{
+		res = renderer->D3DCompileFunc(
+			shaderModule->shaderSource,
+			shaderModule->shaderSourceLength,
+			NULL,
+			NULL,
+			NULL,
+			"main", /* FIXME: Is this correct or should this be computeShaderInfo.entryPoint? */
+			"cs_5_0",
+			0,
+			0,
+			&shaderModule->blob,
+			&errorBlob
+		);
+		if (FAILED(res))
+		{
+			Refresh_LogError("Compute Shader Compile Error: %s", ID3D10Blob_GetBufferPointer(errorBlob));
+			return NULL;
+		}
+
+		res = ID3D11Device_CreateComputeShader(
+			renderer->device,
+			ID3D10Blob_GetBufferPointer(shaderModule->blob),
+			ID3D10Blob_GetBufferSize(shaderModule->blob),
+			NULL,
+			(ID3D11ComputeShader**) &shaderModule->shader
+		);
+		ERROR_CHECK_RETURN("Could not create compute shader", NULL); /* FIXME: This leaks the pipeline! */
+	}
+	pipeline->computeShader = (ID3D11ComputeShader*) shaderModule->shader;
 
 	return (Refresh_ComputePipeline*) pipeline;
 }
@@ -1196,10 +1230,6 @@ static Refresh_GraphicsPipeline* D3D11_CreateGraphicsPipeline(
 
 	if (vertShaderModule->shader == NULL)
 	{
-		/* FIXME:
-		 * Could we store a flag in the shaderc output to mark if a shader is vertex/fragment?
-		 * Then we could compile on shader module creation instead of at bind time.
-		 */
 		res = renderer->D3DCompileFunc(
 			vertShaderModule->shaderSource,
 			vertShaderModule->shaderSourceLength,
@@ -1226,7 +1256,7 @@ static Refresh_GraphicsPipeline* D3D11_CreateGraphicsPipeline(
 			NULL,
 			(ID3D11VertexShader**) &vertShaderModule->shader
 		);
-		ERROR_CHECK_RETURN("Could not create vertex shader", NULL);
+		ERROR_CHECK_RETURN("Could not create vertex shader", NULL); /* FIXME: This leaks the pipeline! */
 	}
 	pipeline->vertexShader = (ID3D11VertexShader*) vertShaderModule->shader;
 	pipeline->numVertexSamplers = pipelineCreateInfo->vertexShaderInfo.samplerBindingCount;
@@ -1291,7 +1321,7 @@ static Refresh_GraphicsPipeline* D3D11_CreateGraphicsPipeline(
 			NULL,
 			(ID3D11PixelShader**) &fragShaderModule->shader
 		);
-		ERROR_CHECK_RETURN("Could not create pixel shader", NULL);
+		ERROR_CHECK_RETURN("Could not create pixel shader", NULL); /* FIXME: This leaks the pipeline! */
 	}
 	pipeline->fragmentShader = (ID3D11PixelShader*) fragShaderModule->shader;
 	pipeline->numFragmentSamplers = pipelineCreateInfo->fragmentShaderInfo.samplerBindingCount;
@@ -1358,8 +1388,11 @@ static Refresh_ShaderModule* D3D11_CreateShaderModule(
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11ShaderModule *shaderModule = (D3D11ShaderModule*) SDL_malloc(sizeof(D3D11ShaderModule));
 
-	/* We don't know whether this is a vertex or fragment shader,
+	/* We don't know whether this is a vertex, fragment, or compute shader,
 	 * so wait to compile until we bind to a pipeline...
+	 *
+	 * FIXME: Could we store a flag in the shaderc output to mark if a shader is vertex/fragment/compute?
+	 * Then we could compile on shader module creation instead of at bind time.
 	 */
 	shaderModule->shader = NULL;
 	shaderModule->blob = NULL;
@@ -1419,11 +1452,7 @@ static Refresh_Texture* D3D11_CreateTexture(
 		desc2D.CPUAccessFlags = 0;
 		desc2D.Format = RefreshToD3D11_TextureFormat[textureCreateInfo->format];
 		desc2D.MipLevels = textureCreateInfo->levelCount;
-		desc2D.MiscFlags = (
-			(textureCreateInfo->usageFlags & REFRESH_TEXTUREUSAGE_COLOR_TARGET_BIT) ?
-				D3D11_RESOURCE_MISC_GENERATE_MIPS :
-				0
-		);
+		desc2D.MiscFlags = isRenderTarget ? D3D11_RESOURCE_MISC_GENERATE_MIPS : 0;
 		desc2D.SampleDesc.Count = RefreshToD3D11_SampleCount[textureCreateInfo->sampleCount];
 		desc2D.SampleDesc.Quality = 0;
 		desc2D.Usage = D3D11_USAGE_DEFAULT;
@@ -2218,7 +2247,7 @@ static void D3D11_QueueDestroyBuffer(
 
 	if (d3d11Buffer->uav)
 	{
-		ID3D11UnorderedAccessView_Release(d3d11Buffer->handle);
+		ID3D11UnorderedAccessView_Release(d3d11Buffer->uav);
 	}
 
 	ID3D11Buffer_Release(d3d11Buffer->handle);
