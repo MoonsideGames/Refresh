@@ -355,13 +355,24 @@ static D3D11_FILTER RefreshToD3D11_Filter(Refresh_SamplerStateCreateInfo *create
 
 /* Structs */
 
+typedef struct D3D11TargetView
+{
+	ID3D11View *view; /* ID3D11RenderTargetView* or ID3D11DepthStencilView* */
+	uint32_t level;
+	uint32_t depth;
+	uint32_t layer;
+} D3D11TargetView;
+
 typedef struct D3D11Texture
 {
 	/* D3D Handles */
 	ID3D11Resource *handle; /* ID3D11Texture2D* or ID3D11Texture3D* */
 	ID3D11ShaderResourceView *shaderView;
-	ID3D11View *targetView; /* ID3D11RenderTargetView* or ID3D11DepthStencilView* */
-	ID3D11UnorderedAccessView *unorderedAccessView;
+	ID3D11UnorderedAccessView *unorderedAccessView; /* FIXME: This needs to be a dynamic array! */
+
+	D3D11TargetView *targetViews;
+	uint32_t targetViewCount;
+	uint32_t targetViewCapacity;
 
 	/* Basic Info */
 	Refresh_TextureFormat format;
@@ -370,6 +381,7 @@ typedef struct D3D11Texture
 	uint32_t depth;
 	uint32_t levelCount;
 	uint8_t isCube;
+	uint8_t isRenderTarget;
 } D3D11Texture;
 
 typedef struct D3D11SwapchainData
@@ -1120,6 +1132,8 @@ static ID3D11InputLayout* D3D11_INTERNAL_FetchInputLayout(
 	return result;
 }
 
+/* Pipeline Creation */
+
 static Refresh_ComputePipeline* D3D11_CreateComputePipeline(
 	Refresh_Renderer *driverData,
 	Refresh_ComputeShaderInfo *computeShaderInfo
@@ -1336,6 +1350,8 @@ static Refresh_GraphicsPipeline* D3D11_CreateGraphicsPipeline(
 	return (Refresh_GraphicsPipeline*) pipeline;
 }
 
+/* Resource Creation */
+
 static Refresh_Sampler* D3D11_CreateSampler(
 	Refresh_Renderer *driverData,
 	Refresh_SamplerStateCreateInfo *samplerStateCreateInfo
@@ -1377,7 +1393,6 @@ static Refresh_Sampler* D3D11_CreateSampler(
 	);
 	ERROR_CHECK_RETURN("Could not create sampler state", NULL);
 
-	/* FIXME: Is there even a point to having a D3D11Sampler struct if it's just a wrapper? */
 	d3d11Sampler = (D3D11Sampler*) SDL_malloc(sizeof(D3D11Sampler));
 	d3d11Sampler->handle = samplerStateHandle;
 
@@ -1412,17 +1427,15 @@ static Refresh_Texture* D3D11_CreateTexture(
 	Refresh_TextureCreateInfo *textureCreateInfo
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
-	uint8_t isSampler, isCompute, isRenderTarget, isDepthStencil;
+	uint8_t isSampler, isCompute, isColorTarget, isDepthStencil;
 	DXGI_FORMAT format;
 	ID3D11Resource *textureHandle;
 	ID3D11ShaderResourceView *srv = NULL;
-	ID3D11RenderTargetView *rtv = NULL;
-	ID3D11DepthStencilView *dsv = NULL;
 	ID3D11UnorderedAccessView *uav = NULL;
 	D3D11Texture *d3d11Texture;
 	HRESULT res;
 
-	isRenderTarget = textureCreateInfo->usageFlags & REFRESH_TEXTUREUSAGE_COLOR_TARGET_BIT;
+	isColorTarget = textureCreateInfo->usageFlags & REFRESH_TEXTUREUSAGE_COLOR_TARGET_BIT;
 	isDepthStencil = textureCreateInfo->usageFlags & REFRESH_TEXTUREUSAGE_DEPTH_STENCIL_TARGET_BIT;
 	isSampler = textureCreateInfo->usageFlags & REFRESH_TEXTUREUSAGE_SAMPLER_BIT;
 	isCompute = textureCreateInfo->usageFlags & REFRESH_TEXTUREUSAGE_COMPUTE_BIT;
@@ -1445,7 +1458,7 @@ static Refresh_Texture* D3D11_CreateTexture(
 		{
 			desc2D.BindFlags |= D3D11_BIND_UNORDERED_ACCESS;
 		}
-		if (isRenderTarget)
+		if (isColorTarget)
 		{
 			desc2D.BindFlags |= D3D11_BIND_RENDER_TARGET;
 		}
@@ -1458,7 +1471,7 @@ static Refresh_Texture* D3D11_CreateTexture(
 		desc2D.CPUAccessFlags = 0;
 		desc2D.Format = format;
 		desc2D.MipLevels = textureCreateInfo->levelCount;
-		desc2D.MiscFlags = isRenderTarget ? D3D11_RESOURCE_MISC_GENERATE_MIPS : 0;
+		desc2D.MiscFlags = 0;
 		desc2D.SampleDesc.Count = RefreshToD3D11_SampleCount[textureCreateInfo->sampleCount];
 		desc2D.SampleDesc.Quality = 0;
 		desc2D.Usage = D3D11_USAGE_DEFAULT;
@@ -1529,40 +1542,6 @@ static Refresh_Texture* D3D11_CreateTexture(
 				return NULL;
 			}
 		}
-
-		/* Create the RTV, if applicable */
-		if (isRenderTarget)
-		{
-			D3D11_RENDER_TARGET_VIEW_DESC rtvDesc;
-			rtvDesc.Format = format;
-			rtvDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D; /* FIXME: MSAA? */
-			rtvDesc.Texture2D.MipSlice = 0; /* FIXME */
-
-			res = ID3D11Device_CreateRenderTargetView(
-				renderer->device,
-				textureHandle,
-				&rtvDesc,
-				&rtv
-			);
-			if (FAILED(res))
-			{
-				ID3D11Resource_Release(textureHandle);
-				if (srv != NULL)
-				{
-					ID3D11ShaderResourceView_Release(srv);
-				}
-				if (uav != NULL)
-				{
-					ID3D11UnorderedAccessView_Release(uav);
-				}
-				D3D11_INTERNAL_LogError(renderer->device, "Could not create RTV for 2D texture", res);
-				return NULL;
-			}
-		}
-		else if (isDepthStencil)
-		{
-			NOT_IMPLEMENTED
-		}
 	}
 	else
 	{
@@ -1581,7 +1560,7 @@ static Refresh_Texture* D3D11_CreateTexture(
 		{
 			desc3D.BindFlags |= D3D11_BIND_UNORDERED_ACCESS;
 		}
-		if (isRenderTarget)
+		if (isColorTarget)
 		{
 			desc3D.BindFlags |= D3D11_BIND_RENDER_TARGET;
 		}
@@ -1650,38 +1629,6 @@ static Refresh_Texture* D3D11_CreateTexture(
 				return NULL;
 			}
 		}
-
-		/* Create the RTV, if applicable */
-		if (isRenderTarget)
-		{
-			D3D11_RENDER_TARGET_VIEW_DESC rtvDesc;
-			rtvDesc.Format = format;
-			rtvDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE3D;
-			rtvDesc.Texture3D.MipSlice = 0; /* FIXME */
-			rtvDesc.Texture3D.FirstWSlice = 0; /* FIXME */
-			rtvDesc.Texture3D.WSize = -1; /* FIXME */
-
-			res = ID3D11Device_CreateRenderTargetView(
-				renderer->device,
-				textureHandle,
-				&rtvDesc,
-				&rtv
-			);
-			if (FAILED(res))
-			{
-				ID3D11Resource_Release(textureHandle);
-				if (srv != NULL)
-				{
-					ID3D11ShaderResourceView_Release(srv);
-				}
-				if (uav != NULL)
-				{
-					ID3D11UnorderedAccessView_Release(uav);
-				}
-				D3D11_INTERNAL_LogError(renderer->device, "Could not create RTV for 3D texture", res);
-				return NULL;
-			}
-		}
 	}
 
 	d3d11Texture = (D3D11Texture*) SDL_malloc(sizeof(D3D11Texture));
@@ -1692,9 +1639,23 @@ static Refresh_Texture* D3D11_CreateTexture(
 	d3d11Texture->depth = textureCreateInfo->depth;
 	d3d11Texture->levelCount = textureCreateInfo->levelCount;
 	d3d11Texture->isCube = textureCreateInfo->isCube;
-	d3d11Texture->targetView = isRenderTarget ? (ID3D11View*) rtv : (ID3D11View*) dsv;
+	d3d11Texture->isRenderTarget = isColorTarget | isDepthStencil;
 	d3d11Texture->shaderView = srv;
 	d3d11Texture->unorderedAccessView = uav;
+	d3d11Texture->targetViewCount = 0;
+
+	if (d3d11Texture->isRenderTarget)
+	{
+		d3d11Texture->targetViewCapacity = d3d11Texture->isCube ? 6 : 1;
+		d3d11Texture->targetViews = SDL_malloc(
+			sizeof(ID3D11RenderTargetView) * d3d11Texture->targetViewCount
+		);
+	}
+	else
+	{
+		d3d11Texture->targetViewCapacity = 0;
+		d3d11Texture->targetViews = NULL;
+	}
 
 	return (Refresh_Texture*) d3d11Texture;
 }
@@ -2286,9 +2247,13 @@ static void D3D11_QueueDestroyTexture(
 	{
 		ID3D11UnorderedAccessView_Release(d3d11Texture->unorderedAccessView);
 	}
-	if (d3d11Texture->targetView)
+	if (d3d11Texture->targetViewCount > 0)
 	{
-		ID3D11View_Release(d3d11Texture->targetView);
+		for (uint32_t i = 0; i < d3d11Texture->targetViewCount; i += 1)
+		{
+			ID3D11View_Release(d3d11Texture->targetViews[i].view);
+		}
+		SDL_free(d3d11Texture->targetViews);
 	}
 
 	ID3D11Resource_Release(d3d11Texture->handle);
@@ -2529,6 +2494,80 @@ static Refresh_CommandBuffer* D3D11_AcquireCommandBuffer(
 	return (Refresh_CommandBuffer*) commandBuffer;
 }
 
+static ID3D11RenderTargetView* D3D11_INTERNAL_FetchRTV(
+	D3D11Renderer *renderer,
+	Refresh_ColorAttachmentInfo *info
+) {
+	D3D11Texture *texture = (D3D11Texture*) info->texture;
+	D3D11TargetView *targetView;
+	D3D11_RENDER_TARGET_VIEW_DESC rtvDesc;
+	ID3D11RenderTargetView *rtv;
+	HRESULT res;
+
+	/* Does this target already exist? */
+	for (uint32_t i = 0; i < texture->targetViewCount; i += 1)
+	{
+		targetView = &texture->targetViews[i];
+
+		if (	targetView->depth == info->depth &&
+			targetView->layer == info->layer &&
+			targetView->level == info->level	)
+		{
+			return (ID3D11RenderTargetView*) targetView->view;
+		}
+	}
+
+	/* Let's create a new RTV! */
+	rtvDesc.Format = RefreshToD3D11_TextureFormat[texture->format];
+	if (texture->isCube)
+	{
+		rtvDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2DARRAY; /* FIXME: MSAA? */
+		rtvDesc.Texture2DArray.ArraySize = 6;
+		rtvDesc.Texture2DArray.FirstArraySlice = 0;
+		rtvDesc.Texture2DArray.MipSlice = info->level;
+	}
+	else if (texture->depth > 1)
+	{
+		rtvDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE3D;
+		rtvDesc.Texture3D.MipSlice = info->level;
+		rtvDesc.Texture3D.FirstWSlice = info->depth;
+		rtvDesc.Texture3D.WSize = 1;
+	}
+	else
+	{
+		rtvDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
+		rtvDesc.Texture2D.MipSlice = info->level;
+	}
+
+	res = ID3D11Device_CreateRenderTargetView(
+		renderer->device,
+		texture->handle,
+		&rtvDesc,
+		&rtv
+	);
+	ERROR_CHECK_RETURN("Could not create RTV!", NULL);
+
+	/* Create the D3D11TargetView to wrap our new RTV */
+	if (texture->targetViewCount == texture->targetViewCapacity)
+	{
+		texture->targetViewCapacity *= 2;
+		texture->targetViews = SDL_realloc(
+			texture->targetViews,
+			sizeof(D3D11TargetView) * texture->targetViewCapacity
+		);
+	}
+
+	targetView = &texture->targetViews[texture->targetViewCount];
+	targetView->depth = info->depth;
+	targetView->layer = info->layer;
+	targetView->level = info->level;
+	targetView->view = (ID3D11View*) rtv;
+
+	texture->targetViewCount += 1;
+
+	return rtv;
+}
+
 static void D3D11_BeginRenderPass(
 	Refresh_Renderer *driverData,
 	Refresh_CommandBuffer *commandBuffer,
@@ -2543,11 +2582,6 @@ static void D3D11_BeginRenderPass(
 	D3D11_VIEWPORT viewport;
 	D3D11_RECT scissorRect;
 
-	/* FIXME:
-	 * We need to unbind the RT textures on the Refresh side
-	 * if they're bound for sampling on the command buffer!
-	 */
-
 	/* Clear the bound RTs for the current command buffer */
 	for (uint32_t i = 0; i < MAX_COLOR_TARGET_BINDINGS; i += 1)
 	{
@@ -2558,15 +2592,19 @@ static void D3D11_BeginRenderPass(
 	/* Get RTVs for the color attachments */
 	for (uint32_t i = 0; i < colorAttachmentCount; i += 1)
 	{
-		/* FIXME: Cube RTs */
-
-		d3d11CommandBuffer->rtViews[i] = (ID3D11RenderTargetView*) ((D3D11Texture*) colorAttachmentInfos[i].texture)->targetView;
+		d3d11CommandBuffer->rtViews[i] = D3D11_INTERNAL_FetchRTV(
+			renderer,
+			&colorAttachmentInfos[i]
+		);
 	}
 
 	/* Get the DSV for the depth stencil attachment, if applicable */
 	if (depthStencilAttachmentInfo != NULL)
 	{
-		d3d11CommandBuffer->dsView = (ID3D11DepthStencilView*) ((D3D11Texture*) depthStencilAttachmentInfo->texture)->targetView;
+		NOT_IMPLEMENTED
+		//d3d11CommandBuffer->dsView = D3D11_INTERNAL_FetchDSV(
+		//	&depthStencilAttachmentInfo
+		//);
 	}
 
 	/* Actually set the RTs */
@@ -2589,7 +2627,7 @@ static void D3D11_BeginRenderPass(
 
 			ID3D11DeviceContext_ClearRenderTargetView(
 				d3d11CommandBuffer->context,
-				(ID3D11RenderTargetView*) ((D3D11Texture*) colorAttachmentInfos[i].texture)->targetView,
+				d3d11CommandBuffer->rtViews[i],
 				clearColors
 			);
 		}
@@ -2611,7 +2649,7 @@ static void D3D11_BeginRenderPass(
 		{
 			ID3D11DeviceContext_ClearDepthStencilView(
 				d3d11CommandBuffer->context,
-				(ID3D11DepthStencilView*) ((D3D11Texture*) depthStencilAttachmentInfo->texture)->targetView,
+				d3d11CommandBuffer->dsView,
 				dsClearFlags,
 				depthStencilAttachmentInfo->depthStencilClearValue.depth,
 				(uint8_t) depthStencilAttachmentInfo->depthStencilClearValue.stencil
@@ -2932,6 +2970,7 @@ static uint8_t D3D11_INTERNAL_InitializeSwapchainTexture(
 	ID3D11Texture2D *swapchainTexture;
 	D3D11_RENDER_TARGET_VIEW_DESC rtvDesc;
 	D3D11_TEXTURE2D_DESC textureDesc;
+	ID3D11RenderTargetView *rtv;
 	HRESULT res;
 
 	/* Clear all the texture data */
@@ -2955,7 +2994,7 @@ static uint8_t D3D11_INTERNAL_InitializeSwapchainTexture(
 		renderer->device,
 		(ID3D11Resource*) swapchainTexture,
 		&rtvDesc,
-		(ID3D11RenderTargetView**) &pTexture->targetView
+		&rtv
 	);
 	if (FAILED(res))
 	{
@@ -2964,16 +3003,22 @@ static uint8_t D3D11_INTERNAL_InitializeSwapchainTexture(
 		return 0;
 	}
 
-	/* Fill out the rest of the texture struct */
-	pTexture->handle = NULL;
+	/* Fill out the texture struct */
+	pTexture->handle = NULL; /* The texture does not "own" the swapchain texture, and it can change dynamically. */
 	pTexture->shaderView = NULL;
-	pTexture->depth = 1;
-	pTexture->isCube = 0;
+	pTexture->unorderedAccessView = NULL;
+	pTexture->targetViewCapacity = 1;
+	pTexture->targetViewCount = 1;
+	pTexture->targetViews = SDL_calloc(1, sizeof(D3D11TargetView));
+	pTexture->targetViews[0].view = (ID3D11View*) rtv;
 
 	ID3D11Texture2D_GetDesc(swapchainTexture, &textureDesc);
 	pTexture->levelCount = textureDesc.MipLevels;
 	pTexture->width = textureDesc.Width;
 	pTexture->height = textureDesc.Height;
+	pTexture->depth = 1;
+	pTexture->isCube = 0;
+	pTexture->isRenderTarget = 1;
 
 	/* Cleanup */
 	ID3D11Texture2D_Release(swapchainTexture);
@@ -3096,7 +3141,8 @@ static uint8_t D3D11_INTERNAL_ResizeSwapchain(
 	HRESULT res;
 
 	/* Release the old RTV */
-	ID3D11RenderTargetView_Release(swapchainData->texture.targetView);
+	ID3D11RenderTargetView_Release(swapchainData->texture.targetViews[0].view);
+	SDL_free(swapchainData->texture.targetViews);
 
 	/* Resize the swapchain */
 	res = IDXGISwapChain_ResizeBuffers(
@@ -3135,7 +3181,9 @@ static void D3D11_INTERNAL_DestroySwapchain(
 		return;
 	}
 
-	ID3D11RenderTargetView_Release(swapchainData->texture.targetView);
+	ID3D11RenderTargetView_Release(swapchainData->texture.targetViews[0].view);
+	SDL_free(swapchainData->texture.targetViews);
+
 	IDXGISwapChain_Release(swapchainData->swapchain);
 
 	windowData->swapchainData = NULL;
