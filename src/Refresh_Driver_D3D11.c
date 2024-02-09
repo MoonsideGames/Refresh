@@ -612,6 +612,43 @@ static inline uint32_t D3D11_INTERNAL_NextHighestAlignment(
 	return align * ((n + align - 1) / align);
 }
 
+static DXGI_FORMAT D3D11_INTERNAL_GetTypelessFormat(
+	DXGI_FORMAT typedFormat
+) {
+	switch (typedFormat)
+	{
+	case DXGI_FORMAT_D16_UNORM:
+		return DXGI_FORMAT_R16_TYPELESS;
+	case DXGI_FORMAT_D32_FLOAT:
+		return DXGI_FORMAT_R32_TYPELESS;
+	case DXGI_FORMAT_D24_UNORM_S8_UINT:
+		return DXGI_FORMAT_R24G8_TYPELESS;
+	case DXGI_FORMAT_D32_FLOAT_S8X24_UINT:
+		return DXGI_FORMAT_R32G8X24_TYPELESS;
+	default:
+		Refresh_LogError("Cannot get typeless DXGI format of format %d", typedFormat);
+		return 0;
+	}
+}
+
+static DXGI_FORMAT D3D11_INTERNAL_GetSampleableFormat(
+	DXGI_FORMAT format
+) {
+	switch (format)
+	{
+	case DXGI_FORMAT_R16_TYPELESS:
+		return DXGI_FORMAT_R16_UNORM;
+	case DXGI_FORMAT_R32_TYPELESS:
+		return DXGI_FORMAT_R32_FLOAT;
+	case DXGI_FORMAT_R24_UNORM_X8_TYPELESS:
+		return DXGI_FORMAT_R24_UNORM_X8_TYPELESS;
+	case DXGI_FORMAT_R32G8X24_TYPELESS:
+		return DXGI_FORMAT_R32_FLOAT_X8X24_TYPELESS;
+	default:
+		return format;
+	}
+}
+
 /* Quit */
 
 static void D3D11_DestroyDevice(
@@ -1442,6 +1479,10 @@ static Refresh_Texture* D3D11_CreateTexture(
 	isCompute = textureCreateInfo->usageFlags & REFRESH_TEXTUREUSAGE_COMPUTE_BIT;
 
 	format = RefreshToD3D11_TextureFormat[textureCreateInfo->format];
+	if (isDepthStencil)
+	{
+		format = D3D11_INTERNAL_GetTypelessFormat(format);
+	}
 
 	if (textureCreateInfo->depth <= 1)
 	{
@@ -1489,7 +1530,7 @@ static Refresh_Texture* D3D11_CreateTexture(
 		if (isSampler)
 		{
 			D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc;
-			srvDesc.Format = format;
+			srvDesc.Format = D3D11_INTERNAL_GetSampleableFormat(format);
 
 			if (textureCreateInfo->isCube)
 			{
@@ -2573,7 +2614,7 @@ static ID3D11DepthStencilView* D3D11_INTERNAL_FetchDSV(
 	D3D11Renderer* renderer,
 	Refresh_DepthStencilAttachmentInfo* info
 ) {
-	D3D11Texture *texture = (D3D11Texture*)info->texture;
+	D3D11Texture *texture = (D3D11Texture*) info->texture;
 	D3D11TargetView *targetView;
 	D3D11_DEPTH_STENCIL_VIEW_DESC dsvDesc;
 	ID3D11DepthStencilView *dsv;
@@ -2648,6 +2689,8 @@ static void D3D11_BeginRenderPass(
 	D3D11CommandBuffer *d3d11CommandBuffer = (D3D11CommandBuffer*) commandBuffer;
 	float clearColors[4];
 	D3D11_CLEAR_FLAG dsClearFlags;
+	uint32_t vpWidth = UINT_MAX;
+	uint32_t vpHeight = UINT_MAX;
 	D3D11_VIEWPORT viewport;
 	D3D11_RECT scissorRect;
 
@@ -2726,11 +2769,46 @@ static void D3D11_BeginRenderPass(
 		}
 	}
 
+	/* The viewport cannot be larger than the smallest attachment. */
+	for (uint32_t i = 0; i < colorAttachmentCount; i += 1)
+	{
+		D3D11Texture *texture = (D3D11Texture*) colorAttachmentInfos[i].texture;
+		uint32_t w = texture->width >> colorAttachmentInfos[i].level;
+		uint32_t h = texture->height >> colorAttachmentInfos[i].level;
+
+		if (w < vpWidth)
+		{
+			vpWidth = w;
+		}
+
+		if (h < vpHeight)
+		{
+			vpHeight = h;
+		}
+	}
+
+	if (depthStencilAttachmentInfo != NULL)
+	{
+		D3D11Texture *texture = (D3D11Texture*) depthStencilAttachmentInfo->texture;
+		uint32_t w = texture->width >> depthStencilAttachmentInfo->level;
+		uint32_t h = texture->height >> depthStencilAttachmentInfo->level;
+
+		if (w < vpWidth)
+		{
+			vpWidth = w;
+		}
+
+		if (h < vpHeight)
+		{
+			vpHeight = h;
+		}
+	}
+
 	/* Set default viewport and scissor state */
 	viewport.TopLeftX = 0;
 	viewport.TopLeftY = 0;
-	viewport.Width = (float) ((D3D11Texture*) colorAttachmentInfos[0].texture)->width;
-	viewport.Height = (float) ((D3D11Texture*) colorAttachmentInfos[0].texture)->height;
+	viewport.Width = (FLOAT) vpWidth;
+	viewport.Height = (FLOAT) vpHeight;
 	viewport.MinDepth = 0;
 	viewport.MaxDepth = 1;
 
