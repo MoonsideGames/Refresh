@@ -465,6 +465,7 @@ typedef struct D3D11CommandBuffer
 	/* State */
 	SDL_threadID threadID;
 	D3D11Fence *fence;
+	uint8_t autoReleaseFence;
 
 	/* Uniforms */
 	D3D11UniformBuffer *vertexUniformBuffer;
@@ -2359,6 +2360,7 @@ static Refresh_CommandBuffer* D3D11_AcquireCommandBuffer(
 	}
 
 	D3D11_INTERNAL_AcquireFence(renderer, commandBuffer);
+	commandBuffer->autoReleaseFence = 1;
 
 	SDL_UnlockMutex(renderer->acquireCommandBufferLock);
 
@@ -3129,6 +3131,26 @@ static void D3D11_SetSwapchainPresentMode(
 
 /* Submission and Fences */
 
+static void D3D11_INTERNAL_ReleaseFenceToPool(
+	D3D11Renderer *renderer,
+	D3D11Fence *fence
+) {
+	SDL_LockMutex(renderer->fenceLock);
+
+	if (renderer->availableFenceCount == renderer->availableFenceCapacity)
+	{
+		renderer->availableFenceCapacity *= 2;
+		renderer->availableFences = SDL_realloc(
+			renderer->availableFences,
+			renderer->availableFenceCapacity * sizeof(D3D11Fence*)
+		);
+	}
+	renderer->availableFences[renderer->availableFenceCount] = fence;
+	renderer->availableFenceCount += 1;
+
+	SDL_UnlockMutex(renderer->fenceLock);
+}
+
 static void D3D11_INTERNAL_CleanCommandBuffer(
 	D3D11Renderer *renderer,
 	D3D11CommandBuffer *commandBuffer
@@ -3153,20 +3175,11 @@ static void D3D11_INTERNAL_CleanCommandBuffer(
 
 	commandBuffer->boundUniformBufferCount = 0;
 
-	/* The fence is now available */
-	/* FIXME: Not if auto-release is false! */
-	SDL_LockMutex(renderer->fenceLock);
-	if (renderer->availableFenceCount == renderer->availableFenceCapacity)
+	/* The fence is now available (unless SubmitAndAcquireFence was called) */
+	if (commandBuffer->autoReleaseFence)
 	{
-		renderer->availableFenceCapacity *= 2;
-		renderer->availableFences = SDL_realloc(
-			renderer->availableFences,
-			renderer->availableFenceCapacity * sizeof(D3D11Fence*)
-		);
+		D3D11_INTERNAL_ReleaseFenceToPool(renderer, commandBuffer->fence);
 	}
-	renderer->availableFences[renderer->availableFenceCount] = commandBuffer->fence;
-	renderer->availableFenceCount += 1;
-	SDL_UnlockMutex(renderer->fenceLock);
 
 	/* Return command buffer to pool */
 	SDL_LockMutex(renderer->acquireCommandBufferLock);
@@ -3190,6 +3203,23 @@ static void D3D11_INTERNAL_CleanCommandBuffer(
 			renderer->submittedCommandBuffers[i] = renderer->submittedCommandBuffers[renderer->submittedCommandBufferCount - 1];
 			renderer->submittedCommandBufferCount -= 1;
 		}
+	}
+}
+
+static void D3D11_INTERNAL_WaitForFence(
+	D3D11Renderer *renderer,
+	D3D11Fence *fence
+) {
+	BOOL queryData;
+
+	while (S_OK != ID3D11DeviceContext_GetData(
+		renderer->immediateContext,
+		(ID3D11Asynchronous*) fence->handle,
+		&queryData,
+		sizeof(queryData),
+		0
+	)) {
+		/* Spin until we get a result back... */
 	}
 }
 
@@ -3280,8 +3310,13 @@ static Refresh_Fence* D3D11_SubmitAndAcquireFence(
 	Refresh_Renderer *driverData,
 	Refresh_CommandBuffer *commandBuffer
 ) {
-	NOT_IMPLEMENTED
-	return NULL;
+	D3D11CommandBuffer *d3d11CommandBuffer = (D3D11CommandBuffer*) commandBuffer;
+	D3D11Fence *fence = d3d11CommandBuffer->fence;
+
+	d3d11CommandBuffer->autoReleaseFence = 0;
+	D3D11_Submit(driverData, commandBuffer);
+
+	return (Refresh_Fence*) fence;
 }
 
 static void D3D11_Wait(
@@ -3289,7 +3324,6 @@ static void D3D11_Wait(
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11CommandBuffer *commandBuffer;
-	BOOL queryData;
 
 	/*
 	 * Wait for all submitted command buffers to complete.
@@ -3297,15 +3331,10 @@ static void D3D11_Wait(
 	 */
 	for (uint32_t i = 0; i < renderer->submittedCommandBufferCount; i += 1)
 	{
-		while (S_OK != ID3D11DeviceContext_GetData(
-			renderer->immediateContext,
-			(ID3D11Asynchronous*) renderer->submittedCommandBuffers[i]->fence->handle,
-			&queryData,
-			sizeof(queryData),
-			0
-		)) {
-			/* Spin until we get a result back... */
-		}
+		D3D11_INTERNAL_WaitForFence(
+			renderer,
+			renderer->submittedCommandBuffers[i]->fence
+		);
 	}
 
 	SDL_LockMutex(renderer->contextLock);
@@ -3325,22 +3354,69 @@ static void D3D11_WaitForFences(
 	uint32_t fenceCount,
 	Refresh_Fence **pFences
 ) {
-	NOT_IMPLEMENTED
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	D3D11Fence *fence;
+	BOOL queryData;
+	HRESULT res = S_FALSE;
+
+	if (waitAll)
+	{
+		for (uint32_t i = 0; i < fenceCount; i += 1)
+		{
+			fence = (D3D11Fence*) pFences[i];
+			D3D11_INTERNAL_WaitForFence(renderer, fence);
+		}
+	}
+	else
+	{
+		while (res != S_OK)
+		{
+			for (uint32_t i = 0; i < fenceCount; i += 1)
+			{
+				fence = (D3D11Fence*) pFences[i];
+				res = ID3D11DeviceContext_GetData(
+					renderer->immediateContext,
+					(ID3D11Asynchronous*) fence->handle,
+					&queryData,
+					sizeof(queryData),
+					0
+				);
+				if (res == S_OK)
+				{
+					break;
+				}
+			}
+		}
+	}
 }
 
 static int D3D11_QueryFence(
 	Refresh_Renderer *driverData,
 	Refresh_Fence *fence
 ) {
-	NOT_IMPLEMENTED
-	return 0;
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	D3D11Fence *d3d11Fence = (D3D11Fence*) fence;
+	BOOL queryData;
+
+	HRESULT res = ID3D11DeviceContext_GetData(
+		renderer->immediateContext,
+		(ID3D11Asynchronous*) d3d11Fence->handle,
+		&queryData,
+		sizeof(queryData),
+		0
+	);
+
+	return res == S_OK;
 }
 
 static void D3D11_ReleaseFence(
 	Refresh_Renderer *driverData,
 	Refresh_Fence *fence
 ) {
-	NOT_IMPLEMENTED
+	D3D11_INTERNAL_ReleaseFenceToPool(
+		(D3D11Renderer*) driverData,
+		(D3D11Fence*) fence
+	);
 }
 
 /* Device Creation */
