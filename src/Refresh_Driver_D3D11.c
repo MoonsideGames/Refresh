@@ -1690,7 +1690,7 @@ static Refresh_Texture* D3D11_CreateTexture(
 	{
 		d3d11Texture->targetViewCapacity = d3d11Texture->isCube ? 6 : 1;
 		d3d11Texture->targetViews = SDL_malloc(
-			sizeof(ID3D11RenderTargetView) * d3d11Texture->targetViewCount
+			sizeof(D3D11TargetView) * d3d11Texture->targetViewCapacity
 		);
 	}
 	else
@@ -2564,8 +2564,8 @@ static ID3D11RenderTargetView* D3D11_INTERNAL_FetchRTV(
 	if (texture->isCube)
 	{
 		rtvDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2DARRAY; /* FIXME: MSAA? */
-		rtvDesc.Texture2DArray.ArraySize = 6;
-		rtvDesc.Texture2DArray.FirstArraySlice = 0;
+		rtvDesc.Texture2DArray.ArraySize = 1;
+		rtvDesc.Texture2DArray.FirstArraySlice = info->layer;
 		rtvDesc.Texture2DArray.MipSlice = info->level;
 	}
 	else if (texture->depth > 1)
@@ -2590,7 +2590,7 @@ static ID3D11RenderTargetView* D3D11_INTERNAL_FetchRTV(
 	ERROR_CHECK_RETURN("Could not create RTV!", NULL);
 
 	/* Create the D3D11TargetView to wrap our new RTV */
-	if (texture->targetViewCount == texture->targetViewCapacity)
+	if (texture->targetViewCount >= texture->targetViewCapacity)
 	{
 		texture->targetViewCapacity *= 2;
 		texture->targetViews = SDL_realloc(
