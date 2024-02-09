@@ -1852,7 +1852,73 @@ static void D3D11_GetBufferData(
 	void* data,
 	uint32_t dataLengthInBytes
 ) {
-	NOT_IMPLEMENTED
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	D3D11Buffer *d3d11Buffer = (D3D11Buffer*) buffer;
+	D3D11_BUFFER_DESC stagingBufferDesc;
+	ID3D11Resource *stagingBuffer;
+	D3D11_BOX srcBox = { 0, 0, 0, dataLengthInBytes, 1, 1 };
+	D3D11_MAPPED_SUBRESOURCE mappedSubresource;
+	HRESULT res;
+
+	/* Create staging buffer */
+	stagingBufferDesc.ByteWidth = dataLengthInBytes;
+	stagingBufferDesc.Usage = D3D11_USAGE_STAGING;
+	stagingBufferDesc.BindFlags = 0;
+	stagingBufferDesc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+	stagingBufferDesc.MiscFlags = 0;
+	stagingBufferDesc.StructureByteStride = 0;
+
+	res = ID3D11Device_CreateBuffer(
+		renderer->device,
+		&stagingBufferDesc,
+		NULL,
+		(ID3D11Buffer**) &stagingBuffer
+	);
+	ERROR_CHECK_RETURN("Could not create staging buffer for readback", );
+
+	/* Copy data into staging buffer */
+	ID3D11DeviceContext_CopySubresourceRegion(
+		renderer->immediateContext,
+		stagingBuffer,
+		0,
+		0,
+		0,
+		0,
+		(ID3D11Resource*) d3d11Buffer->handle,
+		0,
+		&srcBox
+	);
+
+	/* Read from the staging buffer */
+	res = ID3D11DeviceContext_Map(
+		renderer->immediateContext,
+		stagingBuffer,
+		0,
+		D3D11_MAP_READ,
+		0,
+		&mappedSubresource
+	);
+	if (FAILED(res))
+	{
+		D3D11_INTERNAL_LogError(
+			renderer->device,
+			"Failed to map staging buffer for read!",
+			res
+		);
+		ID3D11Buffer_Release(stagingBuffer);
+		return;
+	}
+
+	SDL_memcpy(data, mappedSubresource.pData, dataLengthInBytes);
+
+	ID3D11DeviceContext_Unmap(
+		renderer->immediateContext,
+		stagingBuffer,
+		0
+	);
+
+	/* Clean up the staging buffer */
+	ID3D11Resource_Release(stagingBuffer);
 }
 
 /* Uniforms */
@@ -3741,7 +3807,7 @@ tryCreateDevice:
 	Refresh_LogInfo("D3D11 Adapter: %S", adapterDesc.Description);
 
 	/* Create mutexes */
-	renderer->contextLock = SDL_CreateMutex();
+	renderer->contextLock = SDL_CreateMutex(); /* FIXME: We should be using this *everywhere* the immediate context is accessed! */
 	renderer->acquireCommandBufferLock = SDL_CreateMutex();
 	renderer->uniformBufferLock = SDL_CreateMutex();
 	renderer->fenceLock = SDL_CreateMutex();
