@@ -521,7 +521,7 @@ typedef struct D3D11Renderer
 	SDL_mutex *contextLock;
 	SDL_mutex *acquireCommandBufferLock;
 	SDL_mutex *uniformBufferLock;
-	SDL_mutex *acquireFenceLock;
+	SDL_mutex *fenceLock;
 } D3D11Renderer;
 
 /* Logging */
@@ -652,7 +652,7 @@ static void D3D11_DestroyDevice(
 	SDL_DestroyMutex(renderer->acquireCommandBufferLock);
 	SDL_DestroyMutex(renderer->contextLock);
 	SDL_DestroyMutex(renderer->uniformBufferLock);
-	SDL_DestroyMutex(renderer->acquireFenceLock);
+	SDL_DestroyMutex(renderer->fenceLock);
 
 	/* Release the device and associated objects */
 	ID3D11DeviceContext_Release(renderer->immediateContext);
@@ -2267,57 +2267,71 @@ static D3D11CommandBuffer* D3D11_INTERNAL_GetInactiveCommandBufferFromPool(
 	return commandBuffer;
 }
 
-static void D3D11_INTERNAL_AllocateFences(
-	D3D11Renderer *renderer,
-	uint32_t allocateCount
+static uint8_t D3D11_INTERNAL_CreateFence(
+	D3D11Renderer *renderer
 ) {
-	D3D11Fence *fence;
 	D3D11_QUERY_DESC queryDesc;
+	ID3D11Query *queryHandle;
+	D3D11Fence* fence;
 	HRESULT res;
 
-	renderer->availableFenceCapacity += allocateCount;
-
-	renderer->availableFences = SDL_realloc(
-		renderer->availableFences,
-		sizeof(D3D11Fence*) * renderer->availableFenceCapacity
+	queryDesc.Query = D3D11_QUERY_EVENT;
+	queryDesc.MiscFlags = 0;
+	res = ID3D11Device_CreateQuery(
+		renderer->device,
+		&queryDesc,
+		&queryHandle
 	);
+	ERROR_CHECK_RETURN("Could not create query", 0);
 
-	for (uint32_t i = 0; i < allocateCount; i += 1)
+	fence = SDL_malloc(sizeof(D3D11Fence));
+	fence->handle = queryHandle;
+
+	/* Add it to the available pool */
+	if (renderer->availableFenceCount >= renderer->availableFenceCapacity)
 	{
-		fence = SDL_malloc(sizeof(D3D11Fence));
+		renderer->availableFenceCapacity *= 2;
 
-		queryDesc.Query = D3D11_QUERY_EVENT;
-		queryDesc.MiscFlags = 0;
-		res = ID3D11Device_CreateQuery(
-			renderer->device,
-			&queryDesc,
-			&fence->handle
+		renderer->availableFences = SDL_realloc(
+			renderer->availableFences,
+			sizeof(D3D11Fence*) * renderer->availableFenceCapacity
 		);
-		ERROR_CHECK("Could not create query"); /* FIXME: Should this return an error code? */
-
-		renderer->availableFences[renderer->availableFenceCount] = fence;
-		renderer->availableFenceCount += 1;
 	}
+
+	renderer->availableFences[renderer->availableFenceCount] = fence;
+	renderer->availableFenceCount += 1;
+
+	return 1;
 }
 
-static D3D11Fence* D3D11_INTERNAL_GetFenceFromPool(
-	D3D11Renderer* renderer
+static uint8_t D3D11_INTERNAL_AcquireFence(
+	D3D11Renderer *renderer,
+	D3D11CommandBuffer *commandBuffer
 ) {
 	D3D11Fence *fence;
 
-	SDL_LockMutex(renderer->acquireFenceLock);
+	/* Acquire a fence from the pool */
+	SDL_LockMutex(renderer->fenceLock);
 
 	if (renderer->availableFenceCount == 0)
 	{
-		D3D11_INTERNAL_AllocateFences(renderer, renderer->availableFenceCapacity);
+		if (!D3D11_INTERNAL_CreateFence(renderer))
+		{
+			SDL_UnlockMutex(renderer->fenceLock);
+			Refresh_LogError("Failed to create fence!");
+			return 0;
+		}
 	}
 
 	fence = renderer->availableFences[renderer->availableFenceCount - 1];
 	renderer->availableFenceCount -= 1;
 
-	SDL_UnlockMutex(renderer->acquireFenceLock);
+	SDL_UnlockMutex(renderer->fenceLock);
 
-	return fence;
+	/* Associate the fence with the command buffer */
+	commandBuffer->fence = fence;
+
+	return 1;
 }
 
 static Refresh_CommandBuffer* D3D11_AcquireCommandBuffer(
@@ -2344,9 +2358,7 @@ static Refresh_CommandBuffer* D3D11_AcquireCommandBuffer(
 		commandBuffer->rtViews[i] = NULL;
 	}
 
-	SDL_LockMutex(renderer->acquireFenceLock);
-	commandBuffer->fence = D3D11_INTERNAL_GetFenceFromPool(renderer);
-	SDL_UnlockMutex(renderer->acquireFenceLock);
+	D3D11_INTERNAL_AcquireFence(renderer, commandBuffer);
 
 	SDL_UnlockMutex(renderer->acquireCommandBufferLock);
 
@@ -3121,8 +3133,6 @@ static void D3D11_INTERNAL_CleanCommandBuffer(
 	D3D11Renderer *renderer,
 	D3D11CommandBuffer *commandBuffer
 ) {
-	/* FIXME: All kinds of stuff should go here... */
-
 	/* Bound uniform buffers are now available */
 	SDL_LockMutex(renderer->uniformBufferLock);
 	for (uint32_t i = 0; i < commandBuffer->boundUniformBufferCount; i += 1)
@@ -3145,7 +3155,7 @@ static void D3D11_INTERNAL_CleanCommandBuffer(
 
 	/* The fence is now available */
 	/* FIXME: Not if auto-release is false! */
-	SDL_LockMutex(renderer->acquireFenceLock);
+	SDL_LockMutex(renderer->fenceLock);
 	if (renderer->availableFenceCount == renderer->availableFenceCapacity)
 	{
 		renderer->availableFenceCapacity *= 2;
@@ -3154,14 +3164,12 @@ static void D3D11_INTERNAL_CleanCommandBuffer(
 			renderer->availableFenceCapacity * sizeof(D3D11Fence*)
 		);
 	}
-
 	renderer->availableFences[renderer->availableFenceCount] = commandBuffer->fence;
 	renderer->availableFenceCount += 1;
-	SDL_UnlockMutex(renderer->acquireFenceLock);
+	SDL_UnlockMutex(renderer->fenceLock);
 
 	/* Return command buffer to pool */
 	SDL_LockMutex(renderer->acquireCommandBufferLock);
-
 	if (renderer->availableCommandBufferCount == renderer->availableCommandBufferCapacity)
 	{
 		renderer->availableCommandBufferCapacity += 1;
@@ -3170,10 +3178,8 @@ static void D3D11_INTERNAL_CleanCommandBuffer(
 			renderer->availableCommandBufferCapacity * sizeof(D3D11CommandBuffer*)
 		);
 	}
-
 	renderer->availableCommandBuffers[renderer->availableCommandBufferCount] = commandBuffer;
 	renderer->availableCommandBufferCount += 1;
-
 	SDL_UnlockMutex(renderer->acquireCommandBufferLock);
 
 	/* Remove this command buffer from the submitted list */
@@ -3661,7 +3667,7 @@ tryCreateDevice:
 	renderer->contextLock = SDL_CreateMutex();
 	renderer->acquireCommandBufferLock = SDL_CreateMutex();
 	renderer->uniformBufferLock = SDL_CreateMutex();
-	renderer->acquireFenceLock = SDL_CreateMutex();
+	renderer->fenceLock = SDL_CreateMutex();
 
 	/* Initialize miscellaneous renderer members */
 	renderer->debugMode = (flags & D3D11_CREATE_DEVICE_DEBUG);
@@ -3674,7 +3680,8 @@ tryCreateDevice:
 	renderer->availableUniformBuffers = SDL_malloc(sizeof(D3D11UniformBuffer*) * renderer->availableUniformBufferCapacity);
 
 	/* Create fence pool */
-	D3D11_INTERNAL_AllocateFences(renderer, 2);
+	renderer->availableFenceCapacity = 2;
+	renderer->availableFences = SDL_malloc(sizeof(D3D11Fence*) * renderer->availableFenceCapacity);
 
 	/* Create the Refresh Device */
 	result = (Refresh_Device*) SDL_malloc(sizeof(Refresh_Device));
