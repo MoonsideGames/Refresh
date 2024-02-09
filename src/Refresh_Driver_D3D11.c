@@ -973,26 +973,26 @@ static ID3D11DepthStencilState* D3D11_INTERNAL_FetchDepthStencilState(
 	 */
 	dsDesc.DepthEnable = depthStencilState.depthTestEnable;
 	dsDesc.StencilEnable = depthStencilState.stencilTestEnable;
-	dsDesc.DepthFunc = depthStencilState.compareOp;
+	dsDesc.DepthFunc = RefreshToD3D11_CompareOp[depthStencilState.compareOp];
 	dsDesc.DepthWriteMask = (
 		depthStencilState.depthWriteEnable ?
 			D3D11_DEPTH_WRITE_MASK_ALL :
 			D3D11_DEPTH_WRITE_MASK_ZERO
 	);
 
-	dsDesc.BackFace.StencilFunc = depthStencilState.backStencilState.compareOp;
-	dsDesc.BackFace.StencilDepthFailOp = depthStencilState.backStencilState.depthFailOp;
-	dsDesc.BackFace.StencilFailOp = depthStencilState.backStencilState.failOp;
-	dsDesc.BackFace.StencilPassOp = depthStencilState.backStencilState.passOp;
+	dsDesc.BackFace.StencilFunc = RefreshToD3D11_CompareOp[depthStencilState.backStencilState.compareOp];
+	dsDesc.BackFace.StencilDepthFailOp = RefreshToD3D11_CompareOp[depthStencilState.backStencilState.depthFailOp];
+	dsDesc.BackFace.StencilFailOp = RefreshToD3D11_CompareOp[depthStencilState.backStencilState.failOp];
+	dsDesc.BackFace.StencilPassOp = RefreshToD3D11_CompareOp[depthStencilState.backStencilState.passOp];
 
-	dsDesc.FrontFace.StencilFunc = depthStencilState.frontStencilState.compareOp;
-	dsDesc.FrontFace.StencilDepthFailOp = depthStencilState.frontStencilState.depthFailOp;
-	dsDesc.FrontFace.StencilFailOp = depthStencilState.frontStencilState.failOp;
-	dsDesc.FrontFace.StencilPassOp = depthStencilState.frontStencilState.passOp;
+	dsDesc.FrontFace.StencilFunc = RefreshToD3D11_CompareOp[depthStencilState.frontStencilState.compareOp];
+	dsDesc.FrontFace.StencilDepthFailOp = RefreshToD3D11_CompareOp[depthStencilState.frontStencilState.depthFailOp];
+	dsDesc.FrontFace.StencilFailOp = RefreshToD3D11_CompareOp[depthStencilState.frontStencilState.failOp];
+	dsDesc.FrontFace.StencilPassOp = RefreshToD3D11_CompareOp[depthStencilState.frontStencilState.passOp];
 
 	/* FIXME: D3D11 doesn't have separate read/write masks for each stencil side. What should we do? */
-	dsDesc.StencilReadMask = depthStencilState.backStencilState.compareMask;
-	dsDesc.StencilWriteMask = depthStencilState.backStencilState.writeMask;
+	dsDesc.StencilReadMask = depthStencilState.frontStencilState.compareMask;
+	dsDesc.StencilWriteMask = depthStencilState.frontStencilState.writeMask;
 
 	/* FIXME: What do we do with these?
 	 *	depthStencilState.depthBoundsTestEnable
@@ -1233,7 +1233,8 @@ static Refresh_GraphicsPipeline* D3D11_CreateGraphicsPipeline(
 	pipeline->depthStencilAttachmentFormat = RefreshToD3D11_TextureFormat[
 		pipelineCreateInfo->attachmentInfo.depthStencilFormat
 	];
-	pipeline->stencilRef = pipelineCreateInfo->depthStencilState.backStencilState.reference; /* FIXME: Should we use front or back? */
+	/* FIXME: D3D11 doesn't have separate references for each stencil side. What should we do? */
+	pipeline->stencilRef = pipelineCreateInfo->depthStencilState.frontStencilState.reference;
 
 	/* Rasterizer */
 
@@ -1471,7 +1472,7 @@ static Refresh_Texture* D3D11_CreateTexture(
 		desc2D.CPUAccessFlags = 0;
 		desc2D.Format = format;
 		desc2D.MipLevels = textureCreateInfo->levelCount;
-		desc2D.MiscFlags = 0;
+		desc2D.MiscFlags = textureCreateInfo->isCube ? D3D11_RESOURCE_MISC_TEXTURECUBE : 0;
 		desc2D.SampleDesc.Count = RefreshToD3D11_SampleCount[textureCreateInfo->sampleCount];
 		desc2D.SampleDesc.Quality = 0;
 		desc2D.Usage = D3D11_USAGE_DEFAULT;
@@ -2568,6 +2569,74 @@ static ID3D11RenderTargetView* D3D11_INTERNAL_FetchRTV(
 	return rtv;
 }
 
+static ID3D11DepthStencilView* D3D11_INTERNAL_FetchDSV(
+	D3D11Renderer* renderer,
+	Refresh_DepthStencilAttachmentInfo* info
+) {
+	D3D11Texture *texture = (D3D11Texture*)info->texture;
+	D3D11TargetView *targetView;
+	D3D11_DEPTH_STENCIL_VIEW_DESC dsvDesc;
+	ID3D11DepthStencilView *dsv;
+	HRESULT res;
+
+	/* Does this target already exist? */
+	for (uint32_t i = 0; i < texture->targetViewCount; i += 1)
+	{
+		targetView = &texture->targetViews[i];
+
+		if (	targetView->depth == info->depth &&
+			targetView->layer == info->layer &&
+			targetView->level == info->level	)
+		{
+			return (ID3D11DepthStencilView*) targetView->view;
+		}
+	}
+
+	/* Let's create a new DSV! */
+	dsvDesc.Format = RefreshToD3D11_TextureFormat[texture->format];
+	dsvDesc.Flags = 0;
+	if (texture->isCube)
+	{
+		dsvDesc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2DARRAY; /* FIXME: MSAA? */
+		dsvDesc.Texture2DArray.ArraySize = 6;
+		dsvDesc.Texture2DArray.FirstArraySlice = 0;
+		dsvDesc.Texture2DArray.MipSlice = info->level;
+	}
+	else
+	{
+		dsvDesc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
+		dsvDesc.Texture2D.MipSlice = info->level;
+	}
+
+	res = ID3D11Device_CreateDepthStencilView(
+		renderer->device,
+		texture->handle,
+		&dsvDesc,
+		&dsv
+	);
+	ERROR_CHECK_RETURN("Could not create DSV!", NULL);
+
+	/* Create the D3D11TargetView to wrap our new DSV */
+	if (texture->targetViewCount == texture->targetViewCapacity)
+	{
+		texture->targetViewCapacity *= 2;
+		texture->targetViews = SDL_realloc(
+			texture->targetViews,
+			sizeof(D3D11TargetView) * texture->targetViewCapacity
+		);
+	}
+
+	targetView = &texture->targetViews[texture->targetViewCount];
+	targetView->depth = info->depth;
+	targetView->layer = info->layer;
+	targetView->level = info->level;
+	targetView->view = (ID3D11View*) dsv;
+
+	texture->targetViewCount += 1;
+
+	return dsv;
+}
+
 static void D3D11_BeginRenderPass(
 	Refresh_Renderer *driverData,
 	Refresh_CommandBuffer *commandBuffer,
@@ -2601,10 +2670,10 @@ static void D3D11_BeginRenderPass(
 	/* Get the DSV for the depth stencil attachment, if applicable */
 	if (depthStencilAttachmentInfo != NULL)
 	{
-		NOT_IMPLEMENTED
-		//d3d11CommandBuffer->dsView = D3D11_INTERNAL_FetchDSV(
-		//	&depthStencilAttachmentInfo
-		//);
+		d3d11CommandBuffer->dsView = D3D11_INTERNAL_FetchDSV(
+			renderer,
+			depthStencilAttachmentInfo
+		);
 	}
 
 	/* Actually set the RTs */
