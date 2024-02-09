@@ -1132,7 +1132,6 @@ static Refresh_ComputePipeline* D3D11_CreateComputePipeline(
 
 	pipeline->numTextures = computeShaderInfo->imageBindingCount;
 	pipeline->numBuffers = computeShaderInfo->bufferBindingCount;
-	pipeline->computeUniformBlockSize = computeShaderInfo->uniformBufferSize;
 
 	if (shaderModule->shader == NULL)
 	{
@@ -1165,6 +1164,10 @@ static Refresh_ComputePipeline* D3D11_CreateComputePipeline(
 		ERROR_CHECK_RETURN("Could not create compute shader", NULL); /* FIXME: This leaks the pipeline! */
 	}
 	pipeline->computeShader = (ID3D11ComputeShader*) shaderModule->shader;
+	pipeline->computeUniformBlockSize = D3D11_INTERNAL_NextHighestAlignment(
+		(uint32_t) computeShaderInfo->uniformBufferSize,
+		256
+	);
 
 	return (Refresh_ComputePipeline*) pipeline;
 }
@@ -2130,8 +2133,37 @@ static uint32_t D3D11_PushComputeShaderUniforms(
 	void *data,
 	uint32_t dataLengthInBytes
 ) {
-	NOT_IMPLEMENTED
-	return 0;
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	D3D11CommandBuffer *d3d11CommandBuffer = (D3D11CommandBuffer*) commandBuffer;
+	D3D11ComputePipeline *computePipeline = d3d11CommandBuffer->computePipeline;
+	uint32_t offset;
+
+	if (d3d11CommandBuffer->computeUniformBuffer->offset + computePipeline->computeUniformBlockSize >= UBO_BUFFER_SIZE)
+	{
+		/* Out of space! Get a new uniform buffer. */
+		D3D11_INTERNAL_AcquireUniformBuffer(
+			renderer,
+			d3d11CommandBuffer,
+			&d3d11CommandBuffer->computeUniformBuffer,
+			computePipeline->computeUniformBlockSize
+		);
+	}
+
+	offset = d3d11CommandBuffer->computeUniformBuffer->offset;
+
+	D3D11_INTERNAL_SetBufferData(
+		renderer,
+		d3d11CommandBuffer,
+		d3d11CommandBuffer->computeUniformBuffer->d3d11Buffer,
+		d3d11CommandBuffer->computeUniformBuffer->offset,
+		data,
+		dataLengthInBytes,
+		0 /* FIXME: Should be NoOverwrite! */
+	);
+
+	d3d11CommandBuffer->computeUniformBuffer->offset += (uint32_t) computePipeline->computeUniformBlockSize; /* FIXME: Is this cast safe? */
+
+	return offset;
 }
 
 /* Samplers */
