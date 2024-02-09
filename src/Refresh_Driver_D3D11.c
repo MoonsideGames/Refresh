@@ -2183,7 +2183,8 @@ static void D3D11_QueueDestroyComputePipeline(
 	Refresh_Renderer *driverData,
 	Refresh_ComputePipeline *computePipeline
 ) {
-	NOT_IMPLEMENTED
+	D3D11ComputePipeline *d3d11ComputePipeline = (D3D11ComputePipeline*) computePipeline;
+	SDL_free(d3d11ComputePipeline);
 }
 
 static void D3D11_QueueDestroyGraphicsPipeline(
@@ -2191,22 +2192,22 @@ static void D3D11_QueueDestroyGraphicsPipeline(
 	Refresh_GraphicsPipeline *graphicsPipeline
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
-	D3D11GraphicsPipeline *d3dGraphicsPipeline = (D3D11GraphicsPipeline*) graphicsPipeline;
+	D3D11GraphicsPipeline *d3d11GraphicsPipeline = (D3D11GraphicsPipeline*) graphicsPipeline;
 
-	ID3D11BlendState_Release(d3dGraphicsPipeline->colorAttachmentBlendState);
-	ID3D11DepthStencilState_Release(d3dGraphicsPipeline->depthStencilState);
-	ID3D11RasterizerState_Release(d3dGraphicsPipeline->rasterizerState);
+	ID3D11BlendState_Release(d3d11GraphicsPipeline->colorAttachmentBlendState);
+	ID3D11DepthStencilState_Release(d3d11GraphicsPipeline->depthStencilState);
+	ID3D11RasterizerState_Release(d3d11GraphicsPipeline->rasterizerState);
 
-	if (d3dGraphicsPipeline->inputLayout)
+	if (d3d11GraphicsPipeline->inputLayout)
 	{
-		ID3D11InputLayout_Release(d3dGraphicsPipeline->inputLayout);
+		ID3D11InputLayout_Release(d3d11GraphicsPipeline->inputLayout);
 	}
-	if (d3dGraphicsPipeline->vertexStrides)
+	if (d3d11GraphicsPipeline->vertexStrides)
 	{
-		SDL_free(d3dGraphicsPipeline->vertexStrides);
+		SDL_free(d3d11GraphicsPipeline->vertexStrides);
 	}
 
-	SDL_free(d3dGraphicsPipeline);
+	SDL_free(d3d11GraphicsPipeline);
 }
 
 /* Graphics State */
