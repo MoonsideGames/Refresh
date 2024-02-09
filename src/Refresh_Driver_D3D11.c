@@ -1413,6 +1413,7 @@ static Refresh_Texture* D3D11_CreateTexture(
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	uint8_t isSampler, isCompute, isRenderTarget, isDepthStencil;
+	DXGI_FORMAT format;
 	ID3D11Resource *textureHandle;
 	ID3D11ShaderResourceView *srv = NULL;
 	ID3D11RenderTargetView *rtv = NULL;
@@ -1425,6 +1426,8 @@ static Refresh_Texture* D3D11_CreateTexture(
 	isDepthStencil = textureCreateInfo->usageFlags & REFRESH_TEXTUREUSAGE_DEPTH_STENCIL_TARGET_BIT;
 	isSampler = textureCreateInfo->usageFlags & REFRESH_TEXTUREUSAGE_SAMPLER_BIT;
 	isCompute = textureCreateInfo->usageFlags & REFRESH_TEXTUREUSAGE_COMPUTE_BIT;
+
+	format = RefreshToD3D11_TextureFormat[textureCreateInfo->format];
 
 	if (textureCreateInfo->depth <= 1)
 	{
@@ -1453,7 +1456,7 @@ static Refresh_Texture* D3D11_CreateTexture(
 
 		desc2D.ArraySize = textureCreateInfo->isCube ? 6 : 1;
 		desc2D.CPUAccessFlags = 0;
-		desc2D.Format = RefreshToD3D11_TextureFormat[textureCreateInfo->format];
+		desc2D.Format = format;
 		desc2D.MipLevels = textureCreateInfo->levelCount;
 		desc2D.MiscFlags = isRenderTarget ? D3D11_RESOURCE_MISC_GENERATE_MIPS : 0;
 		desc2D.SampleDesc.Count = RefreshToD3D11_SampleCount[textureCreateInfo->sampleCount];
@@ -1472,7 +1475,7 @@ static Refresh_Texture* D3D11_CreateTexture(
 		if (isSampler)
 		{
 			D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc;
-			srvDesc.Format = desc2D.Format;
+			srvDesc.Format = format;
 
 			if (textureCreateInfo->isCube)
 			{
@@ -1505,9 +1508,9 @@ static Refresh_Texture* D3D11_CreateTexture(
 		if (isCompute)
 		{
 			D3D11_UNORDERED_ACCESS_VIEW_DESC uavDesc;
-			uavDesc.Format = desc2D.Format;
+			uavDesc.Format = format;
 			uavDesc.ViewDimension = D3D11_UAV_DIMENSION_TEXTURE2D;
-			uavDesc.Texture2D.MipSlice = 0; /* FIXME: Is this right? */
+			uavDesc.Texture2D.MipSlice = 0; /* FIXME */
 
 			res = ID3D11Device_CreateUnorderedAccessView(
 				renderer->device,
@@ -1525,6 +1528,40 @@ static Refresh_Texture* D3D11_CreateTexture(
 				D3D11_INTERNAL_LogError(renderer->device, "Could not create UAV for 2D texture", res);
 				return NULL;
 			}
+		}
+
+		/* Create the RTV, if applicable */
+		if (isRenderTarget)
+		{
+			D3D11_RENDER_TARGET_VIEW_DESC rtvDesc;
+			rtvDesc.Format = format;
+			rtvDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D; /* FIXME: MSAA? */
+			rtvDesc.Texture2D.MipSlice = 0; /* FIXME */
+
+			res = ID3D11Device_CreateRenderTargetView(
+				renderer->device,
+				textureHandle,
+				&rtvDesc,
+				&rtv
+			);
+			if (FAILED(res))
+			{
+				ID3D11Resource_Release(textureHandle);
+				if (srv != NULL)
+				{
+					ID3D11ShaderResourceView_Release(srv);
+				}
+				if (uav != NULL)
+				{
+					ID3D11UnorderedAccessView_Release(uav);
+				}
+				D3D11_INTERNAL_LogError(renderer->device, "Could not create RTV for 2D texture", res);
+				return NULL;
+			}
+		}
+		else if (isDepthStencil)
+		{
+			NOT_IMPLEMENTED
 		}
 	}
 	else
@@ -1544,9 +1581,13 @@ static Refresh_Texture* D3D11_CreateTexture(
 		{
 			desc3D.BindFlags |= D3D11_BIND_UNORDERED_ACCESS;
 		}
+		if (isRenderTarget)
+		{
+			desc3D.BindFlags |= D3D11_BIND_RENDER_TARGET;
+		}
 
 		desc3D.CPUAccessFlags = 0;
-		desc3D.Format = RefreshToD3D11_TextureFormat[textureCreateInfo->format];
+		desc3D.Format = format;
 		desc3D.MipLevels = textureCreateInfo->levelCount;
 		desc3D.MiscFlags = 0;
 		desc3D.Usage = D3D11_USAGE_DEFAULT;
@@ -1563,8 +1604,7 @@ static Refresh_Texture* D3D11_CreateTexture(
 		if (isSampler)
 		{
 			D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc;
-
-			srvDesc.Format = desc3D.Format;
+			srvDesc.Format = format;
 			srvDesc.ViewDimension = D3D10_SRV_DIMENSION_TEXTURE3D;
 			srvDesc.Texture3D.MipLevels = desc3D.MipLevels;
 			srvDesc.Texture3D.MostDetailedMip = 0;
@@ -1587,10 +1627,11 @@ static Refresh_Texture* D3D11_CreateTexture(
 		if (isCompute)
 		{
 			D3D11_UNORDERED_ACCESS_VIEW_DESC uavDesc;
+			uavDesc.Format = format;
 			uavDesc.ViewDimension = D3D11_UAV_DIMENSION_TEXTURE3D;
-			uavDesc.Texture3D.MipSlice = 0;
+			uavDesc.Texture3D.MipSlice = 0; /* FIXME */
 			uavDesc.Texture3D.FirstWSlice = 0; /* FIXME */
-			uavDesc.Texture3D.WSize = 0; /* FIXME */
+			uavDesc.Texture3D.WSize = -1; /* FIXME */
 
 			res = ID3D11Device_CreateUnorderedAccessView(
 				renderer->device,
@@ -1609,16 +1650,38 @@ static Refresh_Texture* D3D11_CreateTexture(
 				return NULL;
 			}
 		}
-	}
 
-	/* Create the RTV or DSV, if applicable */
-	if (isRenderTarget)
-	{
-		NOT_IMPLEMENTED
-	}
-	else if (isDepthStencil)
-	{
-		NOT_IMPLEMENTED
+		/* Create the RTV, if applicable */
+		if (isRenderTarget)
+		{
+			D3D11_RENDER_TARGET_VIEW_DESC rtvDesc;
+			rtvDesc.Format = format;
+			rtvDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE3D;
+			rtvDesc.Texture3D.MipSlice = 0; /* FIXME */
+			rtvDesc.Texture3D.FirstWSlice = 0; /* FIXME */
+			rtvDesc.Texture3D.WSize = -1; /* FIXME */
+
+			res = ID3D11Device_CreateRenderTargetView(
+				renderer->device,
+				textureHandle,
+				&rtvDesc,
+				&rtv
+			);
+			if (FAILED(res))
+			{
+				ID3D11Resource_Release(textureHandle);
+				if (srv != NULL)
+				{
+					ID3D11ShaderResourceView_Release(srv);
+				}
+				if (uav != NULL)
+				{
+					ID3D11UnorderedAccessView_Release(uav);
+				}
+				D3D11_INTERNAL_LogError(renderer->device, "Could not create RTV for 3D texture", res);
+				return NULL;
+			}
+		}
 	}
 
 	d3d11Texture = (D3D11Texture*) SDL_malloc(sizeof(D3D11Texture));
@@ -2219,13 +2282,13 @@ static void D3D11_QueueDestroyTexture(
 	{
 		ID3D11ShaderResourceView_Release(d3d11Texture->shaderView);
 	}
-	if (d3d11Texture->targetView)
-	{
-		ID3D11View_Release(d3d11Texture->targetView);
-	}
 	if (d3d11Texture->unorderedAccessView)
 	{
 		ID3D11UnorderedAccessView_Release(d3d11Texture->unorderedAccessView);
+	}
+	if (d3d11Texture->targetView)
+	{
+		ID3D11View_Release(d3d11Texture->targetView);
 	}
 
 	ID3D11Resource_Release(d3d11Texture->handle);
