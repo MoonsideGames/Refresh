@@ -582,7 +582,7 @@ static void D3D11_INTERNAL_LogError(
 	Refresh_LogError("%s! Error Code: %s (0x%08X)", msg, wszMsgBuff, res);
 }
 
-/* Subresources */
+/* Helper Functions */
 
 static inline uint32_t D3D11_INTERNAL_CalcSubresource(
 	uint32_t mipLevel,
@@ -590,6 +590,13 @@ static inline uint32_t D3D11_INTERNAL_CalcSubresource(
 	uint32_t numLevels
 ) {
 	return mipLevel + (arraySlice * numLevels);
+}
+
+static inline uint32_t D3D11_INTERNAL_NextHighestAlignment(
+	uint32_t n,
+	uint32_t align
+) {
+	return align * ((n + align - 1) / align);
 }
 
 /* Quit */
@@ -896,7 +903,6 @@ static ID3D11BlendState* D3D11_INTERNAL_FetchBlendState(
 ) {
 	ID3D11BlendState *result;
 	D3D11_BLEND_DESC blendDesc;
-	uint32_t i;
 	HRESULT res;
 
 	/* Create a new blend state.
@@ -907,7 +913,7 @@ static ID3D11BlendState* D3D11_INTERNAL_FetchBlendState(
 	blendDesc.AlphaToCoverageEnable = FALSE;
 	blendDesc.IndependentBlendEnable = TRUE;
 
-	for (i = 0; i < numColorAttachments; i += 1)
+	for (uint32_t i = 0; i < numColorAttachments; i += 1)
 	{
 		blendDesc.RenderTarget[i].BlendEnable = colorAttachments[i].blendState.blendEnable;
 		blendDesc.RenderTarget[i].BlendOp = RefreshToD3D11_BlendOp[
@@ -1028,8 +1034,7 @@ static uint32_t D3D11_INTERNAL_FindIndexOfVertexBinding(
 	const Refresh_VertexBinding *bindings,
 	uint32_t numBindings
 ) {
-	uint32_t i;
-	for (i = 0; i < numBindings; i += 1)
+	for (uint32_t i = 0; i < numBindings; i += 1)
 	{
 		if (bindings[i].binding == targetBinding)
 		{
@@ -1049,7 +1054,7 @@ static ID3D11InputLayout* D3D11_INTERNAL_FetchInputLayout(
 ) {
 	ID3D11InputLayout *result = NULL;
 	D3D11_INPUT_ELEMENT_DESC *elementDescs;
-	uint32_t i, bindingIndex;
+	uint32_t bindingIndex;
 	HRESULT res;
 
 	/* Don't bother creating/fetching an input layout if there are no attributes. */
@@ -1065,7 +1070,7 @@ static ID3D11InputLayout* D3D11_INTERNAL_FetchInputLayout(
 	);
 
 	/* Create the array of input elements */
-	for (i = 0; i < inputState.vertexAttributeCount; i += 1)
+	for (uint32_t i = 0; i < inputState.vertexAttributeCount; i += 1)
 	{
 		elementDescs[i].AlignedByteOffset = inputState.vertexAttributes[i].offset;
 		elementDescs[i].Format = RefreshToD3D11_VertexFormat[
@@ -1118,7 +1123,6 @@ static Refresh_ComputePipeline* D3D11_CreateComputePipeline(
 	Refresh_Renderer *driverData,
 	Refresh_ComputeShaderInfo *computeShaderInfo
 ) {
-	D3D11Renderer* renderer = (D3D11Renderer*) driverData;
 	D3D11ComputePipeline* pipeline = (D3D11ComputePipeline*) SDL_malloc(sizeof(D3D11ComputePipeline));
 	D3D11ShaderModule* shaderModule = (D3D11ShaderModule*) computeShaderInfo->shaderModule;
 
@@ -1128,13 +1132,6 @@ static Refresh_ComputePipeline* D3D11_CreateComputePipeline(
 	pipeline->computeUniformBlockSize = computeShaderInfo->uniformBufferSize;
 
 	return (Refresh_ComputePipeline*) pipeline;
-}
-
-static inline uint32_t D3D11_INTERNAL_NextHighestAlignment(
-	uint32_t n,
-	uint32_t align
-) {
-	return align * ((n + align - 1) / align);
 }
 
 static Refresh_GraphicsPipeline* D3D11_CreateGraphicsPipeline(
@@ -1148,7 +1145,7 @@ static Refresh_GraphicsPipeline* D3D11_CreateGraphicsPipeline(
 	ID3D10Blob *errorBlob;
 	HRESULT res;
 
-	/* Color */
+	/* Blend */
 
 	pipeline->colorAttachmentBlendState = D3D11_INTERNAL_FetchBlendState(
 		renderer,
@@ -1169,9 +1166,11 @@ static Refresh_GraphicsPipeline* D3D11_CreateGraphicsPipeline(
 	pipeline->blendConstants[2] = pipelineCreateInfo->blendConstants[2];
 	pipeline->blendConstants[3] = pipelineCreateInfo->blendConstants[3];
 
+	/* Multisample */
+
 	pipeline->multisampleState = pipelineCreateInfo->multisampleState;
 
-	/* Depth stencil */
+	/* Depth-Stencil */
 
 	pipeline->depthStencilState = D3D11_INTERNAL_FetchDepthStencilState(
 		renderer,
@@ -1192,7 +1191,7 @@ static Refresh_GraphicsPipeline* D3D11_CreateGraphicsPipeline(
 		pipelineCreateInfo->rasterizerState
 	);
 
-	/* Vertex shader */
+	/* Vertex Shader */
 
 	if (vertShaderModule->shader == NULL)
 	{
@@ -1344,6 +1343,7 @@ static Refresh_Sampler* D3D11_CreateSampler(
 	);
 	ERROR_CHECK_RETURN("Could not create sampler state", NULL);
 
+	/* FIXME: Is there even a point to having a D3D11Sampler struct if it's just a wrapper? */
 	d3d11Sampler = (D3D11Sampler*) SDL_malloc(sizeof(D3D11Sampler));
 	d3d11Sampler->handle = samplerStateHandle;
 
@@ -1678,7 +1678,7 @@ static Refresh_Buffer* D3D11_CreateBuffer(
 	return (Refresh_Buffer*) d3d11Buffer;
 }
 
-/* Setters */
+/* Texture Data */
 
 static void D3D11_SetTextureData(
 	Refresh_Renderer *driverData,
@@ -1765,6 +1765,8 @@ static void D3D11_CopyTextureToBuffer(
 	NOT_IMPLEMENTED
 }
 
+/* Buffer Data */
+
 static void D3D11_INTERNAL_SetBufferData(
 	D3D11Renderer *renderer,
 	D3D11CommandBuffer *commandBuffer,
@@ -1843,22 +1845,16 @@ static void D3D11_SetBufferData(
 	);
 }
 
-static void D3D11_INTERNAL_BindUniformBuffer(
-	D3D11CommandBuffer *commandBuffer,
-	D3D11UniformBuffer *uniformBuffer
+static void D3D11_GetBufferData(
+	Refresh_Renderer *driverData,
+	Refresh_Buffer *buffer,
+	void* data,
+	uint32_t dataLengthInBytes
 ) {
-	if (commandBuffer->boundUniformBufferCount >= commandBuffer->boundUniformBufferCapacity)
-	{
-		commandBuffer->boundUniformBufferCapacity *= 2;
-		commandBuffer->boundUniformBuffers = SDL_realloc(
-			commandBuffer->boundUniformBuffers,
-			sizeof(D3D11UniformBuffer*) * commandBuffer->boundUniformBufferCapacity
-		);
-	}
-
-	commandBuffer->boundUniformBuffers[commandBuffer->boundUniformBufferCount] = uniformBuffer;
-	commandBuffer->boundUniformBufferCount += 1;
+	NOT_IMPLEMENTED
 }
+
+/* Uniforms */
 
 static uint8_t D3D11_INTERNAL_CreateUniformBuffer(
 	D3D11Renderer *renderer
@@ -1888,6 +1884,8 @@ static uint8_t D3D11_INTERNAL_CreateUniformBuffer(
 	uniformBuffer->d3d11Buffer = SDL_malloc(sizeof(D3D11Buffer));
 	uniformBuffer->d3d11Buffer->handle = bufferHandle;
 	uniformBuffer->d3d11Buffer->size = UBO_BUFFER_SIZE;
+	uniformBuffer->d3d11Buffer->isDynamic = 1;
+	uniformBuffer->d3d11Buffer->uav = NULL;
 
 	/* Add it to the available pool */
 	if (renderer->availableUniformBufferCount >= renderer->availableUniformBufferCapacity)
@@ -1906,12 +1904,15 @@ static uint8_t D3D11_INTERNAL_CreateUniformBuffer(
 	return 1;
 }
 
-static D3D11UniformBuffer* D3D11_INTERNAL_AcquireUniformBufferFromPool(
+static uint8_t D3D11_INTERNAL_AcquireUniformBuffer(
 	D3D11Renderer *renderer,
+	D3D11CommandBuffer *commandBuffer,
+	D3D11UniformBuffer **uniformBufferToBind,
 	uint64_t blockSize
 ) {
 	D3D11UniformBuffer *uniformBuffer;
 
+	/* Acquire a uniform buffer from the pool */
 	SDL_LockMutex(renderer->uniformBufferLock);
 
 	if (renderer->availableUniformBufferCount == 0)
@@ -1920,7 +1921,7 @@ static D3D11UniformBuffer* D3D11_INTERNAL_AcquireUniformBufferFromPool(
 		{
 			SDL_UnlockMutex(renderer->uniformBufferLock);
 			Refresh_LogError("Failed to create uniform buffer!");
-			return NULL;
+			return 0;
 		}
 	}
 
@@ -1929,9 +1930,24 @@ static D3D11UniformBuffer* D3D11_INTERNAL_AcquireUniformBufferFromPool(
 
 	SDL_UnlockMutex(renderer->uniformBufferLock);
 
+	/* Reset the uniform buffer */
 	uniformBuffer->offset = 0;
 
-	return uniformBuffer;
+	/* Bind the uniform buffer to the command buffer */
+	if (commandBuffer->boundUniformBufferCount >= commandBuffer->boundUniformBufferCapacity)
+	{
+		commandBuffer->boundUniformBufferCapacity *= 2;
+		commandBuffer->boundUniformBuffers = SDL_realloc(
+			commandBuffer->boundUniformBuffers,
+			sizeof(D3D11UniformBuffer*) * commandBuffer->boundUniformBufferCapacity
+		);
+	}
+	commandBuffer->boundUniformBuffers[commandBuffer->boundUniformBufferCount] = uniformBuffer;
+	commandBuffer->boundUniformBufferCount += 1;
+
+	*uniformBufferToBind = uniformBuffer;
+
+	return 1;
 }
 
 static uint32_t D3D11_PushVertexShaderUniforms(
@@ -1947,13 +1963,11 @@ static uint32_t D3D11_PushVertexShaderUniforms(
 
 	if (d3d11CommandBuffer->vertexUniformBuffer->offset + graphicsPipeline->vertexUniformBlockSize >= UBO_BUFFER_SIZE)
 	{
-		/* We're out of space in this buffer, bind the old one and acquire a new one */
-		D3D11_INTERNAL_BindUniformBuffer(
-			d3d11CommandBuffer,
-			d3d11CommandBuffer->vertexUniformBuffer
-		);
-		d3d11CommandBuffer->vertexUniformBuffer = D3D11_INTERNAL_AcquireUniformBufferFromPool(
+		/* Out of space! Get a new uniform buffer. */
+		D3D11_INTERNAL_AcquireUniformBuffer(
 			renderer,
+			d3d11CommandBuffer,
+			&d3d11CommandBuffer->vertexUniformBuffer,
 			graphicsPipeline->vertexUniformBlockSize
 		);
 	}
@@ -1988,13 +2002,11 @@ static uint32_t D3D11_PushFragmentShaderUniforms(
 
 	if (d3d11CommandBuffer->fragmentUniformBuffer->offset + graphicsPipeline->fragmentUniformBlockSize >= UBO_BUFFER_SIZE)
 	{
-		/* We're out of space in this buffer, bind the old one and acquire a new one */
-		D3D11_INTERNAL_BindUniformBuffer(
-			d3d11CommandBuffer,
-			d3d11CommandBuffer->fragmentUniformBuffer
-		);
-		d3d11CommandBuffer->fragmentUniformBuffer = D3D11_INTERNAL_AcquireUniformBufferFromPool(
+		/* Out of space! Get a new uniform buffer. */
+		D3D11_INTERNAL_AcquireUniformBuffer(
 			renderer,
+			d3d11CommandBuffer,
+			&d3d11CommandBuffer->fragmentUniformBuffer,
 			graphicsPipeline->fragmentUniformBlockSize
 		);
 	}
@@ -2025,6 +2037,8 @@ static uint32_t D3D11_PushComputeShaderUniforms(
 	NOT_IMPLEMENTED
 	return 0;
 }
+
+/* Samplers */
 
 static void D3D11_BindVertexSamplers(
 	Refresh_Renderer *driverData,
@@ -2092,17 +2106,6 @@ static void D3D11_BindFragmentSamplers(
 		numFragmentSamplers,
 		d3d11Samplers
 	);
-}
-
-/* Getters */
-
-static void D3D11_GetBufferData(
-	Refresh_Renderer *driverData,
-	Refresh_Buffer *buffer,
-	void *data,
-	uint32_t dataLengthInBytes
-) {
-	NOT_IMPLEMENTED
 }
 
 /* Disposal */
@@ -2322,7 +2325,6 @@ static Refresh_CommandBuffer* D3D11_AcquireCommandBuffer(
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11CommandBuffer *commandBuffer;
-	uint32_t i;
 
 	SDL_LockMutex(renderer->acquireCommandBufferLock);
 
@@ -2337,7 +2339,7 @@ static Refresh_CommandBuffer* D3D11_AcquireCommandBuffer(
 	commandBuffer->computeUniformBuffer = NULL;
 	commandBuffer->dsView = NULL;
 
-	for (i = 0; i < MAX_COLOR_TARGET_BINDINGS; i += 1)
+	for (uint32_t i = 0; i < MAX_COLOR_TARGET_BINDINGS; i += 1)
 	{
 		commandBuffer->rtViews[i] = NULL;
 	}
@@ -2364,7 +2366,6 @@ static void D3D11_BeginRenderPass(
 	D3D11_CLEAR_FLAG dsClearFlags;
 	D3D11_VIEWPORT viewport;
 	D3D11_RECT scissorRect;
-	uint32_t i;
 
 	/* FIXME:
 	 * We need to unbind the RT textures on the Refresh side
@@ -2372,14 +2373,14 @@ static void D3D11_BeginRenderPass(
 	 */
 
 	/* Clear the bound RTs for the current command buffer */
-	for (i = 0; i < MAX_COLOR_TARGET_BINDINGS; i += 1)
+	for (uint32_t i = 0; i < MAX_COLOR_TARGET_BINDINGS; i += 1)
 	{
 		d3d11CommandBuffer->rtViews[i] = NULL;
 	}
 	d3d11CommandBuffer->dsView = NULL;
 
 	/* Get RTVs for the color attachments */
-	for (i = 0; i < colorAttachmentCount; i += 1)
+	for (uint32_t i = 0; i < colorAttachmentCount; i += 1)
 	{
 		/* FIXME: Cube RTs */
 
@@ -2401,7 +2402,7 @@ static void D3D11_BeginRenderPass(
 	);
 
 	/* Perform load ops on the RTs */
-	for (i = 0; i < colorAttachmentCount; i += 1)
+	for (uint32_t i = 0; i < colorAttachmentCount; i += 1)
 	{
 		if (colorAttachmentInfos[i].loadOp == REFRESH_LOADOP_CLEAR)
 		{
@@ -2474,23 +2475,9 @@ static void D3D11_EndRenderPass(
 ) {
 	D3D11CommandBuffer *d3d11CommandBuffer = (D3D11CommandBuffer*) commandBuffer;
 
-	if (d3d11CommandBuffer->vertexUniformBuffer != NULL)
-	{
-		D3D11_INTERNAL_BindUniformBuffer(
-			d3d11CommandBuffer,
-			d3d11CommandBuffer->vertexUniformBuffer
-		);
-	}
 	d3d11CommandBuffer->vertexUniformBuffer = NULL;
-
-	if (d3d11CommandBuffer->fragmentUniformBuffer != NULL)
-	{
-		D3D11_INTERNAL_BindUniformBuffer(
-			d3d11CommandBuffer,
-			d3d11CommandBuffer->fragmentUniformBuffer
-		);
-	}
 	d3d11CommandBuffer->fragmentUniformBuffer = NULL;
+	d3d11CommandBuffer->computeUniformBuffer = NULL;
 
 	/* FIXME: Resolve MSAA here! */
 	/* FIXME: Anything else we need to do...? */
@@ -2507,31 +2494,17 @@ static void D3D11_BindGraphicsPipeline(
 
 	d3d11CommandBuffer->graphicsPipeline = pipeline;
 
-	if (d3d11CommandBuffer->vertexUniformBuffer != NULL)
-	{
-		D3D11_INTERNAL_BindUniformBuffer(
-			d3d11CommandBuffer,
-			d3d11CommandBuffer->vertexUniformBuffer
-		);
-	}
-
 	if (pipeline->vertexUniformBlockSize == 0)
 	{
 		d3d11CommandBuffer->vertexUniformBuffer = NULL;
 	}
 	else
 	{
-		d3d11CommandBuffer->vertexUniformBuffer = D3D11_INTERNAL_AcquireUniformBufferFromPool(
+		D3D11_INTERNAL_AcquireUniformBuffer(
 			renderer,
-			pipeline->vertexUniformBlockSize
-		);
-	}
-
-	if (d3d11CommandBuffer->fragmentUniformBuffer != NULL)
-	{
-		D3D11_INTERNAL_BindUniformBuffer(
 			d3d11CommandBuffer,
-			d3d11CommandBuffer->fragmentUniformBuffer
+			&d3d11CommandBuffer->vertexUniformBuffer,
+			pipeline->vertexUniformBlockSize
 		);
 	}
 
@@ -2541,8 +2514,10 @@ static void D3D11_BindGraphicsPipeline(
 	}
 	else
 	{
-		d3d11CommandBuffer->fragmentUniformBuffer = D3D11_INTERNAL_AcquireUniformBufferFromPool(
+		D3D11_INTERNAL_AcquireUniformBuffer(
 			renderer,
+			d3d11CommandBuffer,
+			&d3d11CommandBuffer->fragmentUniformBuffer,
 			pipeline->fragmentUniformBlockSize
 		);
 	}
@@ -2693,22 +2668,16 @@ static void D3D11_BindComputePipeline(
 
 	d3d11CommandBuffer->computePipeline = pipeline;
 
-	if (d3d11CommandBuffer->computeUniformBuffer != NULL)
-	{
-		D3D11_INTERNAL_BindUniformBuffer(
-			d3d11CommandBuffer,
-			d3d11CommandBuffer->computeUniformBuffer
-		);
-	}
-
 	if (pipeline->computeUniformBlockSize == 0)
 	{
 		d3d11CommandBuffer->computeUniformBuffer = NULL;
 	}
 	else
 	{
-		d3d11CommandBuffer->computeUniformBuffer = D3D11_INTERNAL_AcquireUniformBufferFromPool(
+		D3D11_INTERNAL_AcquireUniformBuffer(
 			renderer,
+			d3d11CommandBuffer,
+			&d3d11CommandBuffer->computeUniformBuffer,
 			pipeline->computeUniformBlockSize
 		);
 	}
@@ -3049,7 +3018,6 @@ static void D3D11_UnclaimWindow(
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11WindowData *windowData = D3D11_INTERNAL_FetchWindowData(windowHandle);
-	uint32_t i;
 
 	if (windowData == NULL)
 	{
@@ -3065,7 +3033,7 @@ static void D3D11_UnclaimWindow(
 		);
 	}
 
-	for (i = 0; i < renderer->claimedWindowCount; i += 1)
+	for (uint32_t i = 0; i < renderer->claimedWindowCount; i += 1)
 	{
 		if (renderer->claimedWindows[i]->windowHandle == windowHandle)
 		{
