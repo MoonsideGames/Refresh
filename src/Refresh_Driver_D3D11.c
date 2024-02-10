@@ -389,12 +389,13 @@ typedef struct D3D11SwapchainData
 {
 	IDXGISwapChain *swapchain;
 	D3D11Texture texture;
+	Refresh_PresentMode presentMode;
 } D3D11SwapchainData;
 
+/* FIXME: Why do we have WindowData separate from SwapchainData? */
 typedef struct D3D11WindowData
 {
 	void* windowHandle;
-	uint8_t allowTearing;
 	D3D11SwapchainData *swapchainData;
 } D3D11WindowData;
 
@@ -517,7 +518,8 @@ typedef struct D3D11Renderer
 	void *d3dcompiler_dll;
 
 	uint8_t debugMode;
-	D3D_FEATURE_LEVEL featureLevel; /* FIXME: Do we need this? */
+	BOOL supportsTearing;
+
 	PFN_D3DCOMPILE D3DCompileFunc;
 
 	D3D11WindowData **claimedWindows;
@@ -3296,12 +3298,14 @@ static uint8_t D3D11_INTERNAL_InitializeSwapchainTexture(
 
 static uint8_t D3D11_INTERNAL_CreateSwapchain(
 	D3D11Renderer *renderer,
-	D3D11WindowData *windowData
+	D3D11WindowData *windowData,
+	Refresh_PresentMode presentMode
 ) {
 	SDL_SysWMinfo info;
 	HWND dxgiHandle;
 	int width, height;
 	DXGI_SWAP_CHAIN_DESC swapchainDesc;
+	IDXGIFactory4 *factory4;
 	IDXGIFactory1 *pParent;
 	IDXGISwapChain *swapchain;
 	D3D11SwapchainData *swapchainData;
@@ -3328,11 +3332,35 @@ static uint8_t D3D11_INTERNAL_CreateSwapchain(
 	swapchainDesc.SampleDesc.Count = 1;
 	swapchainDesc.SampleDesc.Quality = 0;
 	swapchainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-	swapchainDesc.BufferCount = 3;
+	swapchainDesc.BufferCount = 2;
 	swapchainDesc.OutputWindow = dxgiHandle;
 	swapchainDesc.Windowed = 1;
-	swapchainDesc.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
-	swapchainDesc.Flags = 0;
+
+	if (renderer->supportsTearing)
+	{
+		swapchainDesc.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;
+		swapchainDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
+	}
+	else
+	{
+		swapchainDesc.Flags = 0;
+
+		/* For Windows 10+, use a better form of discard swap behavior */
+		res = IDXGIFactory1_QueryInterface(
+			renderer->factory,
+			&D3D_IID_IDXGIFactory4,
+			&factory4
+		);
+		if (SUCCEEDED(res))
+		{
+			swapchainDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
+			IDXGIFactory4_Release(factory4);
+		}
+		else
+		{
+			swapchainDesc.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
+		}
+	}
 
 	/* Create the swapchain! */
 	res = IDXGIFactory1_CreateSwapChain(
@@ -3341,7 +3369,7 @@ static uint8_t D3D11_INTERNAL_CreateSwapchain(
 		&swapchainDesc,
 		&swapchain
 	);
-	ERROR_CHECK("Could not create swapchain");
+	ERROR_CHECK("Could not create swapchain", 0);
 
 	/*
 	 * The swapchain's parent is a separate factory from the factory that
@@ -3385,6 +3413,7 @@ static uint8_t D3D11_INTERNAL_CreateSwapchain(
 	/* Create the swapchain data */
 	swapchainData = (D3D11SwapchainData*) SDL_malloc(sizeof(D3D11SwapchainData));
 	swapchainData->swapchain = swapchain;
+	swapchainData->presentMode = presentMode;
 
 	if (!D3D11_INTERNAL_InitializeSwapchainTexture(
 		renderer,
@@ -3415,11 +3444,11 @@ static uint8_t D3D11_INTERNAL_ResizeSwapchain(
 	/* Resize the swapchain */
 	res = IDXGISwapChain_ResizeBuffers(
 		swapchainData->swapchain,
-		0,			/* Keep buffer count the same */
+		0, /* Keep buffer count the same */
 		width,
 		height,
-		DXGI_FORMAT_UNKNOWN,	/* Keep the old format */
-		0
+		DXGI_FORMAT_UNKNOWN, /* Keep the old format */
+		renderer->supportsTearing ? DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING : 0
 	);
 	ERROR_CHECK_RETURN("Could not resize swapchain buffers", 0);
 
@@ -3470,9 +3499,8 @@ static uint8_t D3D11_ClaimWindow(
 	{
 		windowData = (D3D11WindowData*) SDL_malloc(sizeof(D3D11WindowData));
 		windowData->windowHandle = windowHandle;
-		windowData->allowTearing = presentMode == REFRESH_PRESENTMODE_IMMEDIATE;
 
-		if (D3D11_INTERNAL_CreateSwapchain(renderer, windowData))
+		if (D3D11_INTERNAL_CreateSwapchain(renderer, windowData, presentMode))
 		{
 			SDL_SetWindowData((SDL_Window*) windowHandle, WINDOW_DATA, windowData);
 
@@ -3604,7 +3632,9 @@ static void D3D11_SetSwapchainPresentMode(
 	void *windowHandle,
 	Refresh_PresentMode presentMode
 ) {
-	NOT_IMPLEMENTED
+	D3D11WindowData *windowData = D3D11_INTERNAL_FetchWindowData(windowHandle);
+	D3D11SwapchainData *swapchainData = windowData->swapchainData;
+	swapchainData->presentMode = presentMode;
 }
 
 /* Submission and Fences */
@@ -3737,7 +3767,7 @@ static void D3D11_Submit(
 	ID3D11CommandList_Release(commandList);
 
 	/* Mark the command buffer as submitted */
-	if (renderer->submittedCommandBufferCount + 1 >= renderer->submittedCommandBufferCapacity)
+	if (renderer->submittedCommandBufferCount >= renderer->submittedCommandBufferCapacity)
 	{
 		renderer->submittedCommandBufferCapacity = renderer->submittedCommandBufferCount + 1;
 
@@ -3753,10 +3783,24 @@ static void D3D11_Submit(
 	/* Present, if applicable */
 	if (d3d11CommandBuffer->swapchainData)
 	{
+		uint32_t syncInterval = 1;
+		if (d3d11CommandBuffer->swapchainData->presentMode == REFRESH_PRESENTMODE_IMMEDIATE)
+		{
+			syncInterval = 0;
+		}
+
+		uint32_t presentFlags = 0;
+		if (	renderer->supportsTearing &&
+			(d3d11CommandBuffer->swapchainData->presentMode == REFRESH_PRESENTMODE_IMMEDIATE ||
+			 d3d11CommandBuffer->swapchainData->presentMode == REFRESH_PRESENTMODE_FIFO_RELAXED)
+		) {
+			presentFlags = DXGI_PRESENT_ALLOW_TEARING;
+		}
+
 		IDXGISwapChain_Present(
 			d3d11CommandBuffer->swapchainData->swapchain,
-			1, /* FIXME: Assumes vsync! */
-			0
+			syncInterval,
+			presentFlags
 		);
 	}
 
@@ -4040,6 +4084,7 @@ static Refresh_Device* D3D11_CreateDevice(
 	PFN_CREATE_DXGI_FACTORY1 CreateDXGIFactoryFunc;
 	PFN_D3D11_CREATE_DEVICE D3D11CreateDeviceFunc;
 	D3D_FEATURE_LEVEL levels[] = { D3D_FEATURE_LEVEL_11_1 };
+	IDXGIFactory5 *factory5;
 	IDXGIFactory6 *factory6;
 	uint32_t flags;
 	DXGI_ADAPTER_DESC1 adapterDesc;
@@ -4094,7 +4139,28 @@ static Refresh_Device* D3D11_CreateDevice(
 	);
 	ERROR_CHECK_RETURN("Could not create DXGIFactory", NULL);
 
-	/* Get the default adapter */
+	/* Check for explicit tearing support */
+	res = IDXGIFactory1_QueryInterface(
+		renderer->factory,
+		&D3D_IID_IDXGIFactory5,
+		(void**) &factory5
+	);
+	if (SUCCEEDED(res))
+	{
+		res = IDXGIFactory5_CheckFeatureSupport(
+			factory5,
+			DXGI_FEATURE_PRESENT_ALLOW_TEARING,
+			&renderer->supportsTearing,
+			sizeof(renderer->supportsTearing)
+		);
+		if (FAILED(res))
+		{
+			renderer->supportsTearing = FALSE;
+		}
+		IDXGIFactory5_Release(factory5);
+	}
+
+	/* Select the appropriate device for rendering */
 	res = IDXGIAdapter1_QueryInterface(
 		renderer->factory,
 		&D3D_IID_IDXGIFactory6,
@@ -4109,6 +4175,7 @@ static Refresh_Device* D3D11_CreateDevice(
 			&D3D_IID_IDXGIAdapter1,
 			&renderer->adapter
 		);
+		IDXGIFactory6_Release(factory6);
 	}
 	else
 	{
@@ -4166,7 +4233,7 @@ tryCreateDevice:
 		SDL_arraysize(levels),
 		D3D11_SDK_VERSION,
 		&d3d11Device,
-		&renderer->featureLevel,
+		NULL,
 		&renderer->immediateContext
 	);
 	if (FAILED(res) && debugMode)
