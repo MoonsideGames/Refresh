@@ -2649,7 +2649,14 @@ static ID3D11RenderTargetView* D3D11_INTERNAL_FetchRTV(
 
 	/* Let's create a new RTV! */
 	rtvDesc.Format = RefreshToD3D11_TextureFormat[texture->format];
-	if (texture->depth > 1)
+	if (texture->isCube && !isMultisample)
+	{
+		rtvDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2DARRAY;
+		rtvDesc.Texture2DArray.FirstArraySlice = info->layer;
+		rtvDesc.Texture2DArray.ArraySize = 1;
+		rtvDesc.Texture2DArray.MipSlice = info->level;
+	}
+	else if (texture->depth > 1)
 	{
 		rtvDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE3D;
 		rtvDesc.Texture3D.MipSlice = info->level;
