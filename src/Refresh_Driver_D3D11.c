@@ -368,6 +368,7 @@ typedef struct D3D11Texture
 	/* D3D Handles */
 	ID3D11Resource *handle; /* ID3D11Texture2D* or ID3D11Texture3D* */
 	ID3D11ShaderResourceView *shaderView;
+	ID3D11Resource *msaaHandle;
 	ID3D11UnorderedAccessView *unorderedAccessView; /* FIXME: This needs to be a dynamic array! */
 
 	D3D11TargetView *targetViews;
@@ -460,6 +461,14 @@ typedef struct D3D11Fence
 	ID3D11Query *handle;
 } D3D11Fence;
 
+typedef struct D3D11TargetBinding
+{
+	D3D11Texture *texture;
+	uint32_t layer;
+} D3D11TargetBinding;
+
+static const D3D11TargetBinding NullTargetBinding = { NULL, 0 };
+
 typedef struct D3D11CommandBuffer
 {
 	/* D3D11 Object References */
@@ -467,8 +476,8 @@ typedef struct D3D11CommandBuffer
 	D3D11SwapchainData *swapchainData;
 
 	/* Render Pass */
-	ID3D11RenderTargetView *rtViews[MAX_COLOR_TARGET_BINDINGS];
-	ID3D11DepthStencilView *dsView;
+	D3D11TargetBinding colorTargets[MAX_COLOR_TARGET_BINDINGS];
+	D3D11TargetBinding depthStencilTarget;
 	D3D11GraphicsPipeline *graphicsPipeline;
 
 	/* Compute Pass */
@@ -1465,9 +1474,10 @@ static Refresh_Texture* D3D11_CreateTexture(
 	Refresh_TextureCreateInfo *textureCreateInfo
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
-	uint8_t isSampler, isCompute, isColorTarget, isDepthStencil;
+	uint8_t isColorTarget, isDepthStencil, isSampler, isCompute, isMultisample;
 	DXGI_FORMAT format;
 	ID3D11Resource *textureHandle;
+	ID3D11Resource *msaaHandle = NULL;
 	ID3D11ShaderResourceView *srv = NULL;
 	ID3D11UnorderedAccessView *uav = NULL;
 	D3D11Texture *d3d11Texture;
@@ -1477,6 +1487,7 @@ static Refresh_Texture* D3D11_CreateTexture(
 	isDepthStencil = textureCreateInfo->usageFlags & REFRESH_TEXTUREUSAGE_DEPTH_STENCIL_TARGET_BIT;
 	isSampler = textureCreateInfo->usageFlags & REFRESH_TEXTUREUSAGE_SAMPLER_BIT;
 	isCompute = textureCreateInfo->usageFlags & REFRESH_TEXTUREUSAGE_COMPUTE_BIT;
+	isMultisample = textureCreateInfo->sampleCount > 1;
 
 	format = RefreshToD3D11_TextureFormat[textureCreateInfo->format];
 	if (isDepthStencil)
@@ -1487,9 +1498,6 @@ static Refresh_Texture* D3D11_CreateTexture(
 	if (textureCreateInfo->depth <= 1)
 	{
 		D3D11_TEXTURE2D_DESC desc2D;
-
-		desc2D.Width = textureCreateInfo->width;
-		desc2D.Height = textureCreateInfo->height;
 
 		desc2D.BindFlags = 0;
 		if (isSampler)
@@ -1509,12 +1517,14 @@ static Refresh_Texture* D3D11_CreateTexture(
 			desc2D.BindFlags |= D3D11_BIND_DEPTH_STENCIL;
 		}
 
+		desc2D.Width = textureCreateInfo->width;
+		desc2D.Height = textureCreateInfo->height;
 		desc2D.ArraySize = textureCreateInfo->isCube ? 6 : 1;
 		desc2D.CPUAccessFlags = 0;
 		desc2D.Format = format;
 		desc2D.MipLevels = textureCreateInfo->levelCount;
 		desc2D.MiscFlags = textureCreateInfo->isCube ? D3D11_RESOURCE_MISC_TEXTURECUBE : 0;
-		desc2D.SampleDesc.Count = RefreshToD3D11_SampleCount[textureCreateInfo->sampleCount];
+		desc2D.SampleDesc.Count = 1;
 		desc2D.SampleDesc.Quality = 0;
 		desc2D.Usage = D3D11_USAGE_DEFAULT;
 
@@ -1584,14 +1594,41 @@ static Refresh_Texture* D3D11_CreateTexture(
 				return NULL;
 			}
 		}
+
+		/* Create the MSAA handle, if applicable */
+		if (isMultisample)
+		{
+			desc2D.MiscFlags = 0;
+			desc2D.MipLevels = 1;
+			desc2D.ArraySize = 1;
+			desc2D.SampleDesc.Count = RefreshToD3D11_SampleCount[textureCreateInfo->sampleCount];
+			desc2D.SampleDesc.Quality = D3D11_STANDARD_MULTISAMPLE_PATTERN;
+
+			res = ID3D11Device_CreateTexture2D(
+				renderer->device,
+				&desc2D,
+				NULL,
+				(ID3D11Texture2D**) &msaaHandle
+			);
+			if (FAILED(res))
+			{
+				ID3D11Resource_Release(textureHandle);
+				if (srv != NULL)
+				{
+					ID3D11ShaderResourceView_Release(srv);
+				}
+				if (uav != NULL)
+				{
+					ID3D11UnorderedAccessView_Release(uav);
+				}
+				D3D11_INTERNAL_LogError(renderer->device, "Could not create MSAA texture", res);
+				return NULL;
+			}
+		}
 	}
 	else
 	{
 		D3D11_TEXTURE3D_DESC desc3D;
-
-		desc3D.Width = textureCreateInfo->width;
-		desc3D.Height = textureCreateInfo->height;
-		desc3D.Depth = textureCreateInfo->depth;
 
 		desc3D.BindFlags = 0;
 		if (isSampler)
@@ -1607,6 +1644,9 @@ static Refresh_Texture* D3D11_CreateTexture(
 			desc3D.BindFlags |= D3D11_BIND_RENDER_TARGET;
 		}
 
+		desc3D.Width = textureCreateInfo->width;
+		desc3D.Height = textureCreateInfo->height;
+		desc3D.Depth = textureCreateInfo->depth;
 		desc3D.CPUAccessFlags = 0;
 		desc3D.Format = format;
 		desc3D.MipLevels = textureCreateInfo->levelCount;
@@ -1675,6 +1715,7 @@ static Refresh_Texture* D3D11_CreateTexture(
 
 	d3d11Texture = (D3D11Texture*) SDL_malloc(sizeof(D3D11Texture));
 	d3d11Texture->handle = textureHandle;
+	d3d11Texture->msaaHandle = msaaHandle;
 	d3d11Texture->format = textureCreateInfo->format;
 	d3d11Texture->width = textureCreateInfo->width;
 	d3d11Texture->height = textureCreateInfo->height;
@@ -2339,6 +2380,10 @@ static void D3D11_QueueDestroyTexture(
 		}
 		SDL_free(d3d11Texture->targetViews);
 	}
+	if (d3d11Texture->msaaHandle)
+	{
+		ID3D11Resource_Release(d3d11Texture->msaaHandle);
+	}
 
 	ID3D11Resource_Release(d3d11Texture->handle);
 
@@ -2563,12 +2608,12 @@ static Refresh_CommandBuffer* D3D11_AcquireCommandBuffer(
 	commandBuffer->vertexUniformBuffer = NULL;
 	commandBuffer->fragmentUniformBuffer = NULL;
 	commandBuffer->computeUniformBuffer = NULL;
-	commandBuffer->dsView = NULL;
 
 	for (uint32_t i = 0; i < MAX_COLOR_TARGET_BINDINGS; i += 1)
 	{
-		commandBuffer->rtViews[i] = NULL;
+		commandBuffer->colorTargets[i] = NullTargetBinding;
 	}
+	commandBuffer->depthStencilTarget = NullTargetBinding;
 
 	D3D11_INTERNAL_AcquireFence(renderer, commandBuffer);
 	commandBuffer->autoReleaseFence = 1;
@@ -2584,6 +2629,7 @@ static ID3D11RenderTargetView* D3D11_INTERNAL_FetchRTV(
 ) {
 	D3D11Texture *texture = (D3D11Texture*) info->texture;
 	D3D11TargetView *targetView;
+	uint8_t isMultisample = texture->msaaHandle != NULL;
 	D3D11_RENDER_TARGET_VIEW_DESC rtvDesc;
 	ID3D11RenderTargetView *rtv;
 	HRESULT res;
@@ -2603,14 +2649,7 @@ static ID3D11RenderTargetView* D3D11_INTERNAL_FetchRTV(
 
 	/* Let's create a new RTV! */
 	rtvDesc.Format = RefreshToD3D11_TextureFormat[texture->format];
-	if (texture->isCube)
-	{
-		rtvDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2DARRAY; /* FIXME: MSAA? */
-		rtvDesc.Texture2DArray.ArraySize = 1;
-		rtvDesc.Texture2DArray.FirstArraySlice = info->layer;
-		rtvDesc.Texture2DArray.MipSlice = info->level;
-	}
-	else if (texture->depth > 1)
+	if (texture->depth > 1)
 	{
 		rtvDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE3D;
 		rtvDesc.Texture3D.MipSlice = info->level;
@@ -2619,13 +2658,20 @@ static ID3D11RenderTargetView* D3D11_INTERNAL_FetchRTV(
 	}
 	else
 	{
-		rtvDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
-		rtvDesc.Texture2D.MipSlice = info->level;
+		if (isMultisample)
+		{
+			rtvDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2DMS;
+		}
+		else
+		{
+			rtvDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
+			rtvDesc.Texture2D.MipSlice = info->level;
+		}
 	}
 
 	res = ID3D11Device_CreateRenderTargetView(
 		renderer->device,
-		texture->handle,
+		isMultisample ? texture->msaaHandle : texture->handle,
 		&rtvDesc,
 		&rtv
 	);
@@ -2658,6 +2704,7 @@ static ID3D11DepthStencilView* D3D11_INTERNAL_FetchDSV(
 ) {
 	D3D11Texture *texture = (D3D11Texture*) info->texture;
 	D3D11TargetView *targetView;
+	uint8_t isMultisample = texture->msaaHandle != NULL;
 	D3D11_DEPTH_STENCIL_VIEW_DESC dsvDesc;
 	ID3D11DepthStencilView *dsv;
 	HRESULT res;
@@ -2678,12 +2725,9 @@ static ID3D11DepthStencilView* D3D11_INTERNAL_FetchDSV(
 	/* Let's create a new DSV! */
 	dsvDesc.Format = RefreshToD3D11_TextureFormat[texture->format];
 	dsvDesc.Flags = 0;
-	if (texture->isCube)
+	if (isMultisample)
 	{
-		dsvDesc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2DARRAY; /* FIXME: MSAA? */
-		dsvDesc.Texture2DArray.ArraySize = 6;
-		dsvDesc.Texture2DArray.FirstArraySlice = 0;
-		dsvDesc.Texture2DArray.MipSlice = info->level;
+		dsvDesc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2DMS;
 	}
 	else
 	{
@@ -2693,7 +2737,7 @@ static ID3D11DepthStencilView* D3D11_INTERNAL_FetchDSV(
 
 	res = ID3D11Device_CreateDepthStencilView(
 		renderer->device,
-		texture->handle,
+		isMultisample ? texture->msaaHandle : texture->handle,
 		&dsvDesc,
 		&dsv
 	);
@@ -2729,24 +2773,27 @@ static void D3D11_BeginRenderPass(
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11CommandBuffer *d3d11CommandBuffer = (D3D11CommandBuffer*) commandBuffer;
-	float clearColors[4];
-	D3D11_CLEAR_FLAG dsClearFlags;
+	ID3D11RenderTargetView* rtvs[MAX_COLOR_TARGET_BINDINGS];
+	ID3D11DepthStencilView *dsv = NULL;
 	uint32_t vpWidth = UINT_MAX;
 	uint32_t vpHeight = UINT_MAX;
 	D3D11_VIEWPORT viewport;
 	D3D11_RECT scissorRect;
 
-	/* Clear the bound RTs for the current command buffer */
+	/* Clear the bound targets for the current command buffer */
 	for (uint32_t i = 0; i < MAX_COLOR_TARGET_BINDINGS; i += 1)
 	{
-		d3d11CommandBuffer->rtViews[i] = NULL;
+		d3d11CommandBuffer->colorTargets[i] = NullTargetBinding;
 	}
-	d3d11CommandBuffer->dsView = NULL;
+	d3d11CommandBuffer->depthStencilTarget = NullTargetBinding;
 
-	/* Get RTVs for the color attachments */
+	/* Set up the new color target bindings */
 	for (uint32_t i = 0; i < colorAttachmentCount; i += 1)
 	{
-		d3d11CommandBuffer->rtViews[i] = D3D11_INTERNAL_FetchRTV(
+		d3d11CommandBuffer->colorTargets[i].texture = (D3D11Texture*) colorAttachmentInfos[i].texture;
+		d3d11CommandBuffer->colorTargets[i].layer = colorAttachmentInfos[i].layer;
+
+		rtvs[i] = D3D11_INTERNAL_FetchRTV(
 			renderer,
 			&colorAttachmentInfos[i]
 		);
@@ -2755,7 +2802,10 @@ static void D3D11_BeginRenderPass(
 	/* Get the DSV for the depth stencil attachment, if applicable */
 	if (depthStencilAttachmentInfo != NULL)
 	{
-		d3d11CommandBuffer->dsView = D3D11_INTERNAL_FetchDSV(
+		d3d11CommandBuffer->depthStencilTarget.texture = (D3D11Texture*) depthStencilAttachmentInfo->texture;
+		d3d11CommandBuffer->depthStencilTarget.layer = depthStencilAttachmentInfo->layer;
+
+		dsv = D3D11_INTERNAL_FetchDSV(
 			renderer,
 			depthStencilAttachmentInfo
 		);
@@ -2765,8 +2815,8 @@ static void D3D11_BeginRenderPass(
 	ID3D11DeviceContext_OMSetRenderTargets(
 		d3d11CommandBuffer->context,
 		colorAttachmentCount,
-		d3d11CommandBuffer->rtViews,
-		d3d11CommandBuffer->dsView
+		rtvs,
+		dsv
 	);
 
 	/* Perform load ops on the RTs */
@@ -2774,22 +2824,24 @@ static void D3D11_BeginRenderPass(
 	{
 		if (colorAttachmentInfos[i].loadOp == REFRESH_LOADOP_CLEAR)
 		{
-			clearColors[0] = colorAttachmentInfos[i].clearColor.x;
-			clearColors[1] = colorAttachmentInfos[i].clearColor.y;
-			clearColors[2] = colorAttachmentInfos[i].clearColor.z;
-			clearColors[3] = colorAttachmentInfos[i].clearColor.w;
-
+			float clearColors[] =
+			{
+				colorAttachmentInfos[i].clearColor.x,
+				colorAttachmentInfos[i].clearColor.y,
+				colorAttachmentInfos[i].clearColor.z,
+				colorAttachmentInfos[i].clearColor.w
+			};
 			ID3D11DeviceContext_ClearRenderTargetView(
 				d3d11CommandBuffer->context,
-				d3d11CommandBuffer->rtViews[i],
+				rtvs[i],
 				clearColors
 			);
 		}
 	}
 
-	if (d3d11CommandBuffer->dsView != NULL)
+	if (depthStencilAttachmentInfo != NULL)
 	{
-		dsClearFlags = 0;
+		D3D11_CLEAR_FLAG dsClearFlags = 0;
 		if (depthStencilAttachmentInfo->loadOp == REFRESH_LOADOP_CLEAR)
 		{
 			dsClearFlags |= D3D11_CLEAR_DEPTH;
@@ -2803,7 +2855,7 @@ static void D3D11_BeginRenderPass(
 		{
 			ID3D11DeviceContext_ClearDepthStencilView(
 				d3d11CommandBuffer->context,
-				d3d11CommandBuffer->dsView,
+				dsv,
 				dsClearFlags,
 				depthStencilAttachmentInfo->depthStencilClearValue.depth,
 				(uint8_t) depthStencilAttachmentInfo->depthStencilClearValue.stencil
@@ -2882,8 +2934,28 @@ static void D3D11_EndRenderPass(
 	d3d11CommandBuffer->fragmentUniformBuffer = NULL;
 	d3d11CommandBuffer->computeUniformBuffer = NULL;
 
-	/* FIXME: Resolve MSAA here! */
-	/* FIXME: Anything else we need to do...? */
+	/* Resolve MSAA color render targets */
+	for (uint32_t i = 0; i < MAX_COLOR_TARGET_BINDINGS; i += 1)
+	{
+		D3D11Texture *texture = d3d11CommandBuffer->colorTargets[i].texture;
+		if (texture != NULL && texture->msaaHandle != NULL)
+		{
+			uint32_t subresource = D3D11_INTERNAL_CalcSubresource(
+				0, /* FIXME: Is this right? */
+				d3d11CommandBuffer->colorTargets[i].layer,
+				texture->levelCount
+			);
+
+			ID3D11DeviceContext_ResolveSubresource(
+				d3d11CommandBuffer->context,
+				texture->handle,
+				subresource,
+				texture->msaaHandle,
+				0,
+				RefreshToD3D11_TextureFormat[texture->format]
+			);
+		}
+	}
 }
 
 static void D3D11_BindGraphicsPipeline(
