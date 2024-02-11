@@ -1038,11 +1038,10 @@ static ID3D11DepthStencilState* D3D11_INTERNAL_FetchDepthStencilState(
 	dsDesc.StencilReadMask = depthStencilState.frontStencilState.compareMask;
 	dsDesc.StencilWriteMask = depthStencilState.frontStencilState.writeMask;
 
-	/* FIXME: What do we do with these?
-	 *	depthStencilState.depthBoundsTestEnable
-	 *	depthStencilState.maxDepthBounds
-	 *	depthStencilState.minDepthBounds
-	 */
+	if (depthStencilState.depthBoundsTestEnable)
+	{
+		Refresh_LogWarn("D3D11 does not support Depth Bounds tests!");
+	}
 
 	res = ID3D11Device_CreateDepthStencilState(
 		renderer->device,
@@ -1067,9 +1066,9 @@ static ID3D11RasterizerState* D3D11_INTERNAL_FetchRasterizerState(
 	 */
 	rasterizerDesc.AntialiasedLineEnable = FALSE;
 	rasterizerDesc.CullMode = RefreshToD3D11_CullMode[rasterizerState.cullMode];
-	rasterizerDesc.DepthBias = (INT) rasterizerState.depthBiasConstantFactor; /* FIXME: Is this cast correct? */
+	rasterizerDesc.DepthBias = (INT) rasterizerState.depthBiasConstantFactor;
 	rasterizerDesc.DepthBiasClamp = rasterizerState.depthBiasClamp;
-	rasterizerDesc.DepthClipEnable = TRUE; /* FIXME: Do we want this...? */
+	rasterizerDesc.DepthClipEnable = TRUE;
 	rasterizerDesc.FillMode = (rasterizerState.fillMode == REFRESH_FILLMODE_FILL) ? D3D11_FILL_SOLID : D3D11_FILL_WIREFRAME;
 	rasterizerDesc.FrontCounterClockwise = (rasterizerState.frontFace == REFRESH_FRONTFACE_COUNTER_CLOCKWISE);
 	rasterizerDesc.MultisampleEnable = TRUE; /* only applies to MSAA render targets */
@@ -1183,14 +1182,12 @@ static Refresh_ComputePipeline* D3D11_CreateComputePipeline(
 	Refresh_ComputeShaderInfo *computeShaderInfo
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
-	D3D11ComputePipeline* pipeline = (D3D11ComputePipeline*) SDL_malloc(sizeof(D3D11ComputePipeline));
-	D3D11ShaderModule* shaderModule = (D3D11ShaderModule*) computeShaderInfo->shaderModule;
+	D3D11ShaderModule *shaderModule = (D3D11ShaderModule*) computeShaderInfo->shaderModule;
 	ID3D10Blob *errorBlob;
+	D3D11ComputePipeline *pipeline;
 	HRESULT res;
 
-	pipeline->numTextures = computeShaderInfo->imageBindingCount;
-	pipeline->numBuffers = computeShaderInfo->bufferBindingCount;
-
+	/* First, compile the shader since we didn't do that when creating the shader module */
 	if (shaderModule->shader == NULL)
 	{
 		res = renderer->D3DCompileFunc(
@@ -1199,7 +1196,7 @@ static Refresh_ComputePipeline* D3D11_CreateComputePipeline(
 			NULL,
 			NULL,
 			NULL,
-			"main", /* FIXME: Is this correct or should this be computeShaderInfo.entryPoint? */
+			"main",
 			"cs_5_0",
 			0,
 			0,
@@ -1219,8 +1216,13 @@ static Refresh_ComputePipeline* D3D11_CreateComputePipeline(
 			NULL,
 			(ID3D11ComputeShader**) &shaderModule->shader
 		);
-		ERROR_CHECK_RETURN("Could not create compute shader", NULL); /* FIXME: This leaks the pipeline! */
+		ERROR_CHECK_RETURN("Could not create compute shader", NULL);
 	}
+
+	/* Allocate and set up the pipeline */
+	pipeline = SDL_malloc(sizeof(D3D11ComputePipeline));
+	pipeline->numTextures = computeShaderInfo->imageBindingCount;
+	pipeline->numBuffers = computeShaderInfo->bufferBindingCount;
 	pipeline->computeShader = (ID3D11ComputeShader*) shaderModule->shader;
 	pipeline->computeUniformBlockSize = D3D11_INTERNAL_NextHighestAlignment(
 		(uint32_t) computeShaderInfo->uniformBufferSize,
@@ -1235,11 +1237,77 @@ static Refresh_GraphicsPipeline* D3D11_CreateGraphicsPipeline(
 	Refresh_GraphicsPipelineCreateInfo *pipelineCreateInfo
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
-	D3D11GraphicsPipeline *pipeline = (D3D11GraphicsPipeline*) SDL_malloc(sizeof(D3D11GraphicsPipeline));
 	D3D11ShaderModule *vertShaderModule = (D3D11ShaderModule*) pipelineCreateInfo->vertexShaderInfo.shaderModule;
 	D3D11ShaderModule *fragShaderModule = (D3D11ShaderModule*) pipelineCreateInfo->fragmentShaderInfo.shaderModule;
 	ID3D10Blob *errorBlob;
+	D3D11GraphicsPipeline *pipeline;
 	HRESULT res;
+
+	/* First, compile the shaders since we didn't do that when creating the shader modules */
+	if (vertShaderModule->shader == NULL)
+	{
+		res = renderer->D3DCompileFunc(
+			vertShaderModule->shaderSource,
+			vertShaderModule->shaderSourceLength,
+			NULL,
+			NULL,
+			NULL,
+			"main",
+			"vs_5_0",
+			0,
+			0,
+			&vertShaderModule->blob,
+			&errorBlob
+		);
+		if (FAILED(res))
+		{
+			Refresh_LogError("Vertex Shader Compile Error: %s", ID3D10Blob_GetBufferPointer(errorBlob));
+			return NULL;
+		}
+
+		res = ID3D11Device_CreateVertexShader(
+			renderer->device,
+			ID3D10Blob_GetBufferPointer(vertShaderModule->blob),
+			ID3D10Blob_GetBufferSize(vertShaderModule->blob),
+			NULL,
+			(ID3D11VertexShader**) &vertShaderModule->shader
+		);
+		ERROR_CHECK_RETURN("Could not create vertex shader", NULL);
+	}
+
+	if (fragShaderModule->shader == NULL)
+	{
+		res = renderer->D3DCompileFunc(
+			fragShaderModule->shaderSource,
+			fragShaderModule->shaderSourceLength,
+			NULL,
+			NULL,
+			NULL,
+			"main",
+			"ps_5_0",
+			0,
+			0,
+			&fragShaderModule->blob,
+			&errorBlob
+		);
+		if (FAILED(res))
+		{
+			Refresh_LogError("Fragment Shader Compile Error: %s", ID3D10Blob_GetBufferPointer(errorBlob));
+			return NULL;
+		}
+
+		res = ID3D11Device_CreatePixelShader(
+			renderer->device,
+			ID3D10Blob_GetBufferPointer(fragShaderModule->blob),
+			ID3D10Blob_GetBufferSize(fragShaderModule->blob),
+			NULL,
+			(ID3D11PixelShader**) &fragShaderModule->shader
+		);
+		ERROR_CHECK_RETURN("Could not create pixel shader", NULL);
+	}
+
+	/* Allocate and set up the pipeline */
+	pipeline = SDL_malloc(sizeof(D3D11GraphicsPipeline));
 
 	/* Blend */
 
@@ -1290,36 +1358,6 @@ static Refresh_GraphicsPipeline* D3D11_CreateGraphicsPipeline(
 
 	/* Vertex Shader */
 
-	if (vertShaderModule->shader == NULL)
-	{
-		res = renderer->D3DCompileFunc(
-			vertShaderModule->shaderSource,
-			vertShaderModule->shaderSourceLength,
-			NULL,
-			NULL,
-			NULL,
-			"main", /* FIXME: Is this correct or should this be vertexShaderInfo.entryPoint? */
-			"vs_5_0",
-			0,
-			0,
-			&vertShaderModule->blob,
-			&errorBlob
-		);
-		if (FAILED(res))
-		{
-			Refresh_LogError("Vertex Shader Compile Error: %s", ID3D10Blob_GetBufferPointer(errorBlob));
-			return NULL;
-		}
-
-		res = ID3D11Device_CreateVertexShader(
-			renderer->device,
-			ID3D10Blob_GetBufferPointer(vertShaderModule->blob),
-			ID3D10Blob_GetBufferSize(vertShaderModule->blob),
-			NULL,
-			(ID3D11VertexShader**) &vertShaderModule->shader
-		);
-		ERROR_CHECK_RETURN("Could not create vertex shader", NULL); /* FIXME: This leaks the pipeline! */
-	}
 	pipeline->vertexShader = (ID3D11VertexShader*) vertShaderModule->shader;
 	pipeline->numVertexSamplers = pipelineCreateInfo->vertexShaderInfo.samplerBindingCount;
 	pipeline->vertexUniformBlockSize = D3D11_INTERNAL_NextHighestAlignment(
@@ -1355,36 +1393,6 @@ static Refresh_GraphicsPipeline* D3D11_CreateGraphicsPipeline(
 
 	/* Fragment Shader */
 
-	if (fragShaderModule->shader == NULL)
-	{
-		res = renderer->D3DCompileFunc(
-			fragShaderModule->shaderSource,
-			fragShaderModule->shaderSourceLength,
-			NULL,
-			NULL,
-			NULL,
-			"main", /* FIXME: Is this correct or should this be fragmentShaderInfo.entryPoint? */
-			"ps_5_0",
-			0,
-			0,
-			&fragShaderModule->blob,
-			&errorBlob
-		);
-		if (FAILED(res))
-		{
-			Refresh_LogError("Fragment Shader Compile Error: %s", ID3D10Blob_GetBufferPointer(errorBlob));
-			return NULL;
-		}
-
-		res = ID3D11Device_CreatePixelShader(
-			renderer->device,
-			ID3D10Blob_GetBufferPointer(fragShaderModule->blob),
-			ID3D10Blob_GetBufferSize(fragShaderModule->blob),
-			NULL,
-			(ID3D11PixelShader**) &fragShaderModule->shader
-		);
-		ERROR_CHECK_RETURN("Could not create pixel shader", NULL); /* FIXME: This leaks the pipeline! */
-	}
 	pipeline->fragmentShader = (ID3D11PixelShader*) fragShaderModule->shader;
 	pipeline->numFragmentSamplers = pipelineCreateInfo->fragmentShaderInfo.samplerBindingCount;
 	pipeline->fragmentUniformBlockSize = D3D11_INTERNAL_NextHighestAlignment(
