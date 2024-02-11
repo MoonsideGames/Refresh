@@ -3003,8 +3003,7 @@ static uint8_t VULKAN_INTERNAL_BindMemoryForBuffer(
 	else
 	{
 		ignoredMemoryPropertyFlags =
-			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-			VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
 	}
 
 	if (preferDeviceLocal)
@@ -3044,20 +3043,13 @@ static uint8_t VULKAN_INTERNAL_BindMemoryForBuffer(
 	}
 
 	/* Bind failed, try again if originally preferred device local */
-	if (bindResult != 1 && preferDeviceLocal)
+	if (bindResult != 1)
 	{
 		memoryTypeIndex = 0;
 
-		requiredMemoryPropertyFlags = 0;
-
-		if (requireHostVisible)
-		{
-			requiredMemoryPropertyFlags =
-				VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-				VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-		}
-
-		ignoredMemoryPropertyFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+		requiredMemoryPropertyFlags =
+			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+			VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
 
 		/* Follow-up for the warning logged by FindMemoryType */
 		if (!renderer->unifiedMemoryWarning)
@@ -4283,8 +4275,7 @@ static VulkanBufferContainer* VULKAN_INTERNAL_CreateBufferContainer(
 	VulkanRenderer *renderer,
 	uint32_t sizeInBytes,
 	VulkanResourceAccessType resourceAccessType,
-	VkBufferUsageFlags usageFlags,
-	uint8_t dedicated
+	VkBufferUsageFlags usageFlags
 ) {
 	VulkanBufferContainer* bufferContainer;
 	VulkanBuffer* buffer;
@@ -4299,7 +4290,7 @@ static VulkanBufferContainer* VULKAN_INTERNAL_CreateBufferContainer(
 		usageFlags,
 		0,
 		1,
-		dedicated
+		0
 	);
 
 	if (buffer == NULL)
@@ -7130,8 +7121,7 @@ static Refresh_Buffer* VULKAN_CreateBuffer(
 		(VulkanRenderer*) driverData,
 		sizeInBytes,
 		resourceAccessType,
-		vulkanUsageFlags,
-		0
+		vulkanUsageFlags
 	);
 }
 
@@ -7213,7 +7203,7 @@ static VulkanTransferBuffer* VULKAN_INTERNAL_AcquireTransferBuffer(
 		RESOURCE_ACCESS_TRANSFER_READ_WRITE,
 		VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
 		1,
-		1,
+		0,
 		1
 	);
 	transferBuffer->fromPool = 0;
@@ -12133,7 +12123,7 @@ static Refresh_Device* VULKAN_CreateDevice(
 			RESOURCE_ACCESS_TRANSFER_READ_WRITE,
 			VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
 			1,
-			1,
+			0,
 			1
 		);
 
