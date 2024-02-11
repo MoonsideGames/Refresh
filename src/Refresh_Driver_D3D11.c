@@ -369,7 +369,7 @@ typedef struct D3D11Texture
 	ID3D11Resource *handle; /* ID3D11Texture2D* or ID3D11Texture3D* */
 	ID3D11ShaderResourceView *shaderView;
 	ID3D11Resource *msaaHandle;
-	ID3D11UnorderedAccessView *unorderedAccessView; /* FIXME: This needs to be a dynamic array! */
+	ID3D11UnorderedAccessView *unorderedAccessView; /* API FIXME: This needs to be a dynamic array! */
 
 	D3D11TargetView *targetViews;
 	uint32_t targetViewCount;
@@ -1034,7 +1034,7 @@ static ID3D11DepthStencilState* D3D11_INTERNAL_FetchDepthStencilState(
 	dsDesc.FrontFace.StencilFailOp = RefreshToD3D11_CompareOp[depthStencilState.frontStencilState.failOp];
 	dsDesc.FrontFace.StencilPassOp = RefreshToD3D11_CompareOp[depthStencilState.frontStencilState.passOp];
 
-	/* FIXME: D3D11 doesn't have separate read/write masks for each stencil side. What should we do? */
+	/* API FIXME: D3D11 doesn't have separate read/write masks for each stencil side. What should we do? */
 	dsDesc.StencilReadMask = depthStencilState.frontStencilState.compareMask;
 	dsDesc.StencilWriteMask = depthStencilState.frontStencilState.writeMask;
 
@@ -1277,7 +1277,7 @@ static Refresh_GraphicsPipeline* D3D11_CreateGraphicsPipeline(
 	pipeline->depthStencilAttachmentFormat = RefreshToD3D11_TextureFormat[
 		pipelineCreateInfo->attachmentInfo.depthStencilFormat
 	];
-	/* FIXME: D3D11 doesn't have separate references for each stencil side. What should we do? */
+	/* API FIXME: D3D11 doesn't have separate references for each stencil side. What should we do? */
 	pipeline->stencilRef = pipelineCreateInfo->depthStencilState.frontStencilState.reference;
 
 	/* Rasterizer */
@@ -2282,7 +2282,8 @@ static uint32_t D3D11_PushComputeShaderUniforms(
 		dataLengthInBytes
 	);
 
-	d3d11CommandBuffer->computeUniformBuffer->offset += (uint32_t) computePipeline->computeUniformBlockSize; /* FIXME: Is this cast safe? */
+	d3d11CommandBuffer->computeUniformBuffer->offset +=
+		(uint32_t) computePipeline->computeUniformBlockSize; /* API FIXME: Is this cast safe? */
 
 	return offset;
 }
