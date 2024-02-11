@@ -1544,12 +1544,13 @@ static Refresh_Texture* D3D11_CreateTexture(
 		}
 
 		/* Create the UAV, if applicable */
+		/* API FIXME: Create these dynamically as needed per mip level! */
 		if (isCompute)
 		{
 			D3D11_UNORDERED_ACCESS_VIEW_DESC uavDesc;
 			uavDesc.Format = format;
 			uavDesc.ViewDimension = D3D11_UAV_DIMENSION_TEXTURE2D;
-			uavDesc.Texture2D.MipSlice = 0; /* FIXME */
+			uavDesc.Texture2D.MipSlice = 0;
 
 			res = ID3D11Device_CreateUnorderedAccessView(
 				renderer->device,
@@ -1659,14 +1660,15 @@ static Refresh_Texture* D3D11_CreateTexture(
 		}
 
 		/* Create the UAV, if applicable */
+		/* API FIXME: Create these dynamically as needed per mip level! */
 		if (isCompute)
 		{
 			D3D11_UNORDERED_ACCESS_VIEW_DESC uavDesc;
 			uavDesc.Format = format;
 			uavDesc.ViewDimension = D3D11_UAV_DIMENSION_TEXTURE3D;
-			uavDesc.Texture3D.MipSlice = 0; /* FIXME */
-			uavDesc.Texture3D.FirstWSlice = 0; /* FIXME */
-			uavDesc.Texture3D.WSize = -1; /* FIXME */
+			uavDesc.Texture3D.MipSlice = 0;
+			uavDesc.Texture3D.FirstWSlice = 0;
+			uavDesc.Texture3D.WSize = -1;
 
 			res = ID3D11Device_CreateUnorderedAccessView(
 				renderer->device,
