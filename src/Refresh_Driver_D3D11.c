@@ -385,18 +385,12 @@ typedef struct D3D11Texture
 	uint8_t isRenderTarget;
 } D3D11Texture;
 
-typedef struct D3D11SwapchainData
-{
-	IDXGISwapChain *swapchain;
-	D3D11Texture texture;
-	Refresh_PresentMode presentMode;
-} D3D11SwapchainData;
-
-/* FIXME: Why do we have WindowData separate from SwapchainData? */
 typedef struct D3D11WindowData
 {
 	void* windowHandle;
-	D3D11SwapchainData *swapchainData;
+	IDXGISwapChain *swapchain;
+	D3D11Texture texture;
+	Refresh_PresentMode presentMode;
 } D3D11WindowData;
 
 typedef struct D3D11ShaderModule
@@ -472,9 +466,11 @@ static const D3D11TargetBinding NullTargetBinding = { NULL, 0 };
 
 typedef struct D3D11CommandBuffer
 {
-	/* D3D11 Object References */
+	/* Deferred Context */
 	ID3D11DeviceContext1 *context;
-	D3D11SwapchainData *swapchainData;
+
+	/* Window */
+	D3D11WindowData *windowData;
 
 	/* Render Pass */
 	D3D11TargetBinding colorTargets[MAX_COLOR_TARGET_BINDINGS];
@@ -546,6 +542,7 @@ typedef struct D3D11Renderer
 	SDL_mutex *acquireCommandBufferLock;
 	SDL_mutex *uniformBufferLock;
 	SDL_mutex *fenceLock;
+	SDL_mutex *windowLock;
 } D3D11Renderer;
 
 /* Logging */
@@ -677,9 +674,6 @@ static void D3D11_DestroyDevice(
 	}
 	SDL_free(renderer->claimedWindows);
 
-	/* FIXME: Copied this from Vulkan, is it actually necessary? */
-	D3D11_Wait(device->driverData);
-
 	/* Release command buffer infrastructure */
 	for (uint32_t i = 0; i < renderer->availableCommandBufferCount; i += 1)
 	{
@@ -715,6 +709,7 @@ static void D3D11_DestroyDevice(
 	SDL_DestroyMutex(renderer->contextLock);
 	SDL_DestroyMutex(renderer->uniformBufferLock);
 	SDL_DestroyMutex(renderer->fenceLock);
+	SDL_DestroyMutex(renderer->windowLock);
 
 	/* Release the device and associated objects */
 	ID3D11DeviceContext_Release(renderer->immediateContext);
@@ -2606,7 +2601,7 @@ static Refresh_CommandBuffer* D3D11_AcquireCommandBuffer(
 	SDL_LockMutex(renderer->acquireCommandBufferLock);
 
 	commandBuffer = D3D11_INTERNAL_GetInactiveCommandBufferFromPool(renderer);
-	commandBuffer->swapchainData = NULL;
+	commandBuffer->windowData = NULL;
 	commandBuffer->graphicsPipeline = NULL;
 	commandBuffer->computePipeline = NULL;
 	commandBuffer->vertexUniformBuffer = NULL;
@@ -2951,7 +2946,7 @@ static void D3D11_EndRenderPass(
 		if (texture != NULL && texture->msaaHandle != NULL)
 		{
 			uint32_t subresource = D3D11_INTERNAL_CalcSubresource(
-				0, /* FIXME: Is this right? */
+				0, /* FIXME: This should probably the color target's mip level */
 				d3d11CommandBuffer->colorTargets[i].layer,
 				texture->levelCount
 			);
@@ -3308,7 +3303,6 @@ static uint8_t D3D11_INTERNAL_CreateSwapchain(
 	DXGI_SWAP_CHAIN_DESC swapchainDesc;
 	IDXGIFactory1 *pParent;
 	IDXGISwapChain *swapchain;
-	D3D11SwapchainData *swapchainData;
 	HRESULT res;
 
 	/* Get the DXGI handle */
@@ -3400,40 +3394,35 @@ static uint8_t D3D11_INTERNAL_CreateSwapchain(
 		IDXGIFactory1_Release(pParent);
 	}
 
-	/* Create the swapchain data */
-	swapchainData = (D3D11SwapchainData*) SDL_malloc(sizeof(D3D11SwapchainData));
-	swapchainData->swapchain = swapchain;
-	swapchainData->presentMode = presentMode;
+	/* Initialize the swapchain data */
+	windowData->swapchain = swapchain;
+	windowData->presentMode = presentMode;
 
 	if (!D3D11_INTERNAL_InitializeSwapchainTexture(
 		renderer,
 		swapchain,
-		&swapchainData->texture
+		&windowData->texture
 	)) {
-		SDL_free(swapchainData);
 		IDXGISwapChain_Release(swapchain);
 		return 0;
 	}
 
-	windowData->swapchainData = swapchainData;
 	return 1;
 }
 
 static uint8_t D3D11_INTERNAL_ResizeSwapchain(
 	D3D11Renderer *renderer,
-	D3D11SwapchainData *swapchainData,
+	D3D11WindowData *windowData,
 	int32_t width,
 	int32_t height
 ) {
-	HRESULT res;
-
 	/* Release the old RTV */
-	ID3D11RenderTargetView_Release(swapchainData->texture.targetViews[0].view);
-	SDL_free(swapchainData->texture.targetViews);
+	ID3D11RenderTargetView_Release(windowData->texture.targetViews[0].view);
+	SDL_free(windowData->texture.targetViews);
 
 	/* Resize the swapchain */
-	res = IDXGISwapChain_ResizeBuffers(
-		swapchainData->swapchain,
+	HRESULT res = IDXGISwapChain_ResizeBuffers(
+		windowData->swapchain,
 		0, /* Keep buffer count the same */
 		width,
 		height,
@@ -3445,36 +3434,9 @@ static uint8_t D3D11_INTERNAL_ResizeSwapchain(
 	/* Create the Refresh-side texture for the swapchain */
 	return D3D11_INTERNAL_InitializeSwapchainTexture(
 		renderer,
-		swapchainData->swapchain,
-		&swapchainData->texture
+		windowData->swapchain,
+		&windowData->texture
 	);
-}
-
-static void D3D11_INTERNAL_DestroySwapchain(
-	D3D11Renderer *renderer,
-	D3D11WindowData *windowData
-) {
-	D3D11SwapchainData *swapchainData;
-
-	if (windowData == NULL)
-	{
-		return;
-	}
-
-	swapchainData = windowData->swapchainData;
-
-	if (swapchainData == NULL)
-	{
-		return;
-	}
-
-	ID3D11RenderTargetView_Release(swapchainData->texture.targetViews[0].view);
-	SDL_free(swapchainData->texture.targetViews);
-
-	IDXGISwapChain_Release(swapchainData->swapchain);
-
-	windowData->swapchainData = NULL;
-	SDL_free(swapchainData);
 }
 
 static uint8_t D3D11_ClaimWindow(
@@ -3494,6 +3456,8 @@ static uint8_t D3D11_ClaimWindow(
 		{
 			SDL_SetWindowData((SDL_Window*) windowHandle, WINDOW_DATA, windowData);
 
+			SDL_LockMutex(renderer->windowLock);
+
 			if (renderer->claimedWindowCount >= renderer->claimedWindowCapacity)
 			{
 				renderer->claimedWindowCapacity *= 2;
@@ -3502,9 +3466,10 @@ static uint8_t D3D11_ClaimWindow(
 					renderer->claimedWindowCapacity * sizeof(D3D11WindowData*)
 				);
 			}
-
 			renderer->claimedWindows[renderer->claimedWindowCount] = windowData;
 			renderer->claimedWindowCount += 1;
+
+			SDL_UnlockMutex(renderer->windowLock);
 
 			return 1;
 		}
@@ -3534,15 +3499,13 @@ static void D3D11_UnclaimWindow(
 		return;
 	}
 
-	if (windowData->swapchainData != NULL)
-	{
-		D3D11_Wait(driverData);
-		D3D11_INTERNAL_DestroySwapchain(
-			(D3D11Renderer*) driverData,
-			windowData
-		);
-	}
+	D3D11_Wait(driverData);
 
+	ID3D11RenderTargetView_Release(windowData->texture.targetViews[0].view);
+	SDL_free(windowData->texture.targetViews);
+	IDXGISwapChain_Release(windowData->swapchain);
+
+	SDL_LockMutex(renderer->windowLock);
 	for (uint32_t i = 0; i < renderer->claimedWindowCount; i += 1)
 	{
 		if (renderer->claimedWindows[i]->windowHandle == windowHandle)
@@ -3552,6 +3515,7 @@ static void D3D11_UnclaimWindow(
 			break;
 		}
 	}
+	SDL_UnlockMutex(renderer->windowLock);
 
 	SDL_free(windowData);
 	SDL_SetWindowData((SDL_Window*) windowHandle, WINDOW_DATA, NULL);
@@ -3567,7 +3531,6 @@ static Refresh_Texture* D3D11_AcquireSwapchainTexture(
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11CommandBuffer *d3d11CommandBuffer = (D3D11CommandBuffer*) commandBuffer;
 	D3D11WindowData *windowData;
-	D3D11SwapchainData *swapchainData;
 	DXGI_SWAP_CHAIN_DESC swapchainDesc;
 	int w, h;
 	HRESULT res;
@@ -3578,21 +3541,15 @@ static Refresh_Texture* D3D11_AcquireSwapchainTexture(
 		return NULL;
 	}
 
-	swapchainData = windowData->swapchainData;
-	if (swapchainData == NULL)
-	{
-		return NULL;
-	}
-
 	/* Check for window size changes and resize the swapchain if needed. */
-	IDXGISwapChain_GetDesc(swapchainData->swapchain, &swapchainDesc);
+	IDXGISwapChain_GetDesc(windowData->swapchain, &swapchainDesc);
 	SDL_GetWindowSize((SDL_Window*) windowHandle, &w, &h);
 
 	if (w != swapchainDesc.BufferDesc.Width || h != swapchainDesc.BufferDesc.Height)
 	{
 		res = D3D11_INTERNAL_ResizeSwapchain(
 			renderer,
-			swapchainData,
+			windowData,
 			w,
 			h
 		);
@@ -3600,14 +3557,14 @@ static Refresh_Texture* D3D11_AcquireSwapchainTexture(
 	}
 
 	/* Let the command buffer know it's associated with this swapchain. */
-	d3d11CommandBuffer->swapchainData = swapchainData;
+	d3d11CommandBuffer->windowData = windowData;
 
 	/* Send the dimensions to the out parameters. */
-	*pWidth = swapchainData->texture.width;
-	*pHeight = swapchainData->texture.height;
+	*pWidth = windowData->texture.width;
+	*pHeight = windowData->texture.height;
 
 	/* Return the swapchain texture */
-	return (Refresh_Texture*) &swapchainData->texture;
+	return (Refresh_Texture*) &windowData->texture;
 }
 
 static Refresh_TextureFormat D3D11_GetSwapchainFormat(
@@ -3623,8 +3580,7 @@ static void D3D11_SetSwapchainPresentMode(
 	Refresh_PresentMode presentMode
 ) {
 	D3D11WindowData *windowData = D3D11_INTERNAL_FetchWindowData(windowHandle);
-	D3D11SwapchainData *swapchainData = windowData->swapchainData;
-	swapchainData->presentMode = presentMode;
+	windowData->presentMode = presentMode;
 }
 
 /* Submission and Fences */
@@ -3776,25 +3732,26 @@ static void D3D11_Submit(
 	renderer->submittedCommandBufferCount += 1;
 
 	/* Present, if applicable */
-	if (d3d11CommandBuffer->swapchainData)
+	if (d3d11CommandBuffer->windowData)
 	{
 		/* FIXME: Is there some way to emulate FIFO_RELAXED? */
 
 		uint32_t syncInterval = 1;
-		if (	d3d11CommandBuffer->swapchainData->presentMode == REFRESH_PRESENTMODE_IMMEDIATE ||
-			(renderer->supportsFlipDiscard && d3d11CommandBuffer->swapchainData->presentMode == REFRESH_PRESENTMODE_MAILBOX)
+		if (	d3d11CommandBuffer->windowData->presentMode == REFRESH_PRESENTMODE_IMMEDIATE ||
+			(renderer->supportsFlipDiscard && d3d11CommandBuffer->windowData->presentMode == REFRESH_PRESENTMODE_MAILBOX)
 		) {
 			syncInterval = 0;
 		}
 
 		uint32_t presentFlags = 0;
-		if (renderer->supportsTearing && d3d11CommandBuffer->swapchainData->presentMode == REFRESH_PRESENTMODE_IMMEDIATE)
+		if (	renderer->supportsTearing &&
+			d3d11CommandBuffer->windowData->presentMode == REFRESH_PRESENTMODE_IMMEDIATE	)
 		{
 			presentFlags = DXGI_PRESENT_ALLOW_TEARING;
 		}
 
 		IDXGISwapChain_Present(
-			d3d11CommandBuffer->swapchainData->swapchain,
+			d3d11CommandBuffer->windowData->swapchain,
 			syncInterval,
 			presentFlags
 		);
@@ -4306,6 +4263,7 @@ tryCreateDevice:
 	renderer->acquireCommandBufferLock = SDL_CreateMutex();
 	renderer->uniformBufferLock = SDL_CreateMutex();
 	renderer->fenceLock = SDL_CreateMutex();
+	renderer->windowLock = SDL_CreateMutex();
 
 	/* Initialize miscellaneous renderer members */
 	renderer->debugMode = (flags & D3D11_CREATE_DEVICE_DEBUG);
@@ -4315,11 +4273,21 @@ tryCreateDevice:
 
 	/* Create uniform buffer pool */
 	renderer->availableUniformBufferCapacity = 2;
-	renderer->availableUniformBuffers = SDL_malloc(sizeof(D3D11UniformBuffer*) * renderer->availableUniformBufferCapacity);
+	renderer->availableUniformBuffers = SDL_malloc(
+		sizeof(D3D11UniformBuffer*) * renderer->availableUniformBufferCapacity
+	);
 
 	/* Create fence pool */
 	renderer->availableFenceCapacity = 2;
-	renderer->availableFences = SDL_malloc(sizeof(D3D11Fence*) * renderer->availableFenceCapacity);
+	renderer->availableFences = SDL_malloc(
+		sizeof(D3D11Fence*) * renderer->availableFenceCapacity
+	);
+
+	/* Create claimed window list */
+	renderer->claimedWindowCapacity = 1;
+	renderer->claimedWindows = SDL_malloc(
+		sizeof(D3D11WindowData*) * renderer->claimedWindowCapacity
+	);
 
 	/* Create the Refresh Device */
 	result = (Refresh_Device*) SDL_malloc(sizeof(Refresh_Device));
