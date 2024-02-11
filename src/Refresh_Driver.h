@@ -211,6 +211,22 @@ static inline int32_t BytesPerImage(
 #define MAX_COLOR_TARGET_BINDINGS	4
 #define MAX_PRESENT_COUNT			16
 
+/* Internal Shader Module Create Info */
+
+typedef enum Refresh_Driver_ShaderType
+{
+	REFRESH_DRIVER_SHADERTYPE_VERTEX,
+	REFRESH_DRIVER_SHADERTYPE_FRAGMENT,
+	REFRESH_DRIVER_SHADERTYPE_COMPUTE
+} Refresh_Driver_ShaderType;
+
+typedef struct Refresh_Driver_ShaderModuleCreateInfo
+{
+	size_t codeSize;
+	const uint32_t* byteCode;
+	Refresh_Driver_ShaderType type;
+} Refresh_Driver_ShaderModuleCreateInfo;
+
 /* Refresh_Device Definition */
 
 typedef struct Refresh_Renderer Refresh_Renderer;
@@ -240,7 +256,7 @@ struct Refresh_Device
 
 	Refresh_ShaderModule* (*CreateShaderModule)(
 		Refresh_Renderer *driverData,
-		Refresh_ShaderModuleCreateInfo *shaderModuleCreateInfo
+		Refresh_Driver_ShaderModuleCreateInfo *shaderModuleCreateInfo
 	);
 
 	Refresh_Texture* (*CreateTexture)(

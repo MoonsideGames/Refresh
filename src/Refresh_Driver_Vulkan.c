@@ -6670,7 +6670,7 @@ static Refresh_Sampler* VULKAN_CreateSampler(
 
 static Refresh_ShaderModule* VULKAN_CreateShaderModule(
 	Refresh_Renderer *driverData,
-	Refresh_ShaderModuleCreateInfo *shaderModuleCreateInfo
+	Refresh_Driver_ShaderModuleCreateInfo *shaderModuleCreateInfo
 ) {
 	VulkanShaderModule *vulkanShaderModule = SDL_malloc(sizeof(VulkanShaderModule));
 	VkResult vulkanResult;

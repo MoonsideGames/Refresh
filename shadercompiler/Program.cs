@@ -194,6 +194,17 @@ partial class Program
 				// Magic
 				writer.Write(new char[] { 'R', 'F', 'S', 'H'});
 
+				// Type
+				uint shaderTypeIndex;
+				switch (shaderType)
+				{
+					default:
+					case ".vert": shaderTypeIndex = 0; break;
+					case ".frag": shaderTypeIndex = 1; break;
+					case ".comp": shaderTypeIndex = 2; break;
+				}
+				writer.Write(shaderTypeIndex);
+
 				if (data.vulkan)
 				{
 					string inputPath = Path.Combine(tempDir, $"{shaderName}.spv");

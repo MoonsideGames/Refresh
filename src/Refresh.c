@@ -242,7 +242,7 @@ Refresh_ShaderModule* Refresh_CreateShaderModule(
 	Refresh_Device *device,
 	Refresh_ShaderModuleCreateInfo *shaderModuleCreateInfo
 ) {
-	Refresh_ShaderModuleCreateInfo driverSpecificCreateInfo = { 0, NULL };
+	Refresh_Driver_ShaderModuleCreateInfo driverSpecificCreateInfo = { 0, NULL, 0 };
 	uint8_t *bytes;
 	uint32_t i, size;
 
@@ -252,12 +252,24 @@ Refresh_ShaderModule* Refresh_CreateShaderModule(
 	bytes = (uint8_t*) shaderModuleCreateInfo->byteCode;
 	if (bytes[0] != 'R' || bytes[1] != 'F' || bytes[2] != 'S' || bytes[3] != 'H')
 	{
-		Refresh_LogError("Cannot parse malformed Refresh shader blob!");
+		Refresh_LogError("Cannot parse malformed Refresh shader blob: Incorrect magic number");
+		return NULL;
+	}
+
+	/* get the type of shader */
+	driverSpecificCreateInfo.type = (Refresh_Driver_ShaderType) *((uint32_t*) &bytes[4]);
+	if (	driverSpecificCreateInfo.type < 0 ||
+		driverSpecificCreateInfo.type > REFRESH_DRIVER_SHADERTYPE_COMPUTE	)
+	{
+		Refresh_LogError(
+			"Cannot parse malformed Refresh shader blob: Unknown shader type (%d)",
+			driverSpecificCreateInfo.type
+		);
 		return NULL;
 	}
 
 	/* find the code for the selected backend */
-	i = 4;
+	i = 8;
 	while (i < shaderModuleCreateInfo->codeSize)
 	{
 		size = *((uint32_t*) &bytes[i + 1]);
@@ -1074,9 +1086,7 @@ int Refresh_QueryFence(
 	Refresh_Device *device,
 	Refresh_Fence *fence
 ) {
-	if (device == NULL) {
-		return 0;
-	}
+	if (device == NULL) { return 0; }
 
 	return device->QueryFence(
 		device->driverData,
