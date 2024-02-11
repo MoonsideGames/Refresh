@@ -1434,7 +1434,6 @@ static Refresh_ShaderModule* D3D11_CreateShaderModule(
 		}
 	}
 
-
 	/* Allocate and set up the shader module */
 	shaderModule = (D3D11ShaderModule*) SDL_malloc(sizeof(D3D11ShaderModule));
 	shaderModule->shader = shader;
@@ -1748,8 +1747,17 @@ static Refresh_Buffer* D3D11_CreateBuffer(
 	bufferDesc.ByteWidth = sizeInBytes;
 	bufferDesc.Usage = D3D11_USAGE_DEFAULT;
 	bufferDesc.CPUAccessFlags = 0;
-	bufferDesc.MiscFlags = (usageFlags & REFRESH_BUFFERUSAGE_INDIRECT_BIT) ? D3D11_RESOURCE_MISC_DRAWINDIRECT_ARGS : 0;
 	bufferDesc.StructureByteStride = 0;
+
+	bufferDesc.MiscFlags = 0;
+	if (usageFlags & REFRESH_BUFFERUSAGE_INDIRECT_BIT)
+	{
+		bufferDesc.MiscFlags |= D3D11_RESOURCE_MISC_DRAWINDIRECT_ARGS;
+	}
+	if (usageFlags & REFRESH_BUFFERUSAGE_COMPUTE_BIT)
+	{
+		bufferDesc.MiscFlags |= D3D11_RESOURCE_MISC_BUFFER_ALLOW_RAW_VIEWS;
+	}
 
 	res = ID3D11Device_CreateBuffer(
 		renderer->device,
@@ -1763,11 +1771,11 @@ static Refresh_Buffer* D3D11_CreateBuffer(
 	if (usageFlags & REFRESH_BUFFERUSAGE_COMPUTE_BIT)
 	{
 		D3D11_UNORDERED_ACCESS_VIEW_DESC uavDesc;
-		uavDesc.Format = DXGI_FORMAT_R8_UINT;
+		uavDesc.Format = DXGI_FORMAT_R32_TYPELESS;
 		uavDesc.ViewDimension = D3D11_UAV_DIMENSION_BUFFER;
 		uavDesc.Buffer.FirstElement = 0;
-		uavDesc.Buffer.Flags = 0;
-		uavDesc.Buffer.NumElements = sizeInBytes;
+		uavDesc.Buffer.Flags = D3D11_BUFFER_UAV_FLAG_RAW;
+		uavDesc.Buffer.NumElements = sizeInBytes / sizeof(uint32_t);
 
 		res = ID3D11Device_CreateUnorderedAccessView(
 			renderer->device,
