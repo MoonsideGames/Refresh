@@ -3655,17 +3655,17 @@ static void D3D11_INTERNAL_WaitForFence(
 
 	SDL_LockMutex(renderer->contextLock);
 
-	res = ID3D11DeviceContext_GetData(
-		renderer->immediateContext,
-		(ID3D11Asynchronous*) fence->handle,
-		&queryData,
-		sizeof(queryData),
-		0
-	);
-	while (res != S_OK)
+	do
 	{
-		/* Spin until we get a result back... */
+		res = ID3D11DeviceContext_GetData(
+			renderer->immediateContext,
+			(ID3D11Asynchronous*)fence->handle,
+			&queryData,
+			sizeof(queryData),
+			0
+		);
 	}
+	while (res != S_OK); /* Spin until we get a result back... */
 
 	SDL_UnlockMutex(renderer->contextLock);
 }
