@@ -318,7 +318,7 @@ static Refresh_Sampler* TEMPLATE_CreateSampler(
 
 static Refresh_ShaderModule* TEMPLATE_CreateShaderModule(
 	Refresh_Renderer *driverData,
-	Refresh_ShaderModuleCreateInfo *shaderModuleCreateInfo
+	Refresh_Driver_ShaderModuleCreateInfo *shaderModuleCreateInfo
 ) {
 	NOT_IMPLEMENTED
 }

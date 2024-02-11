@@ -397,8 +397,6 @@ typedef struct D3D11ShaderModule
 {
 	ID3D11DeviceChild *shader; /* ID3D11VertexShader, ID3D11PixelShader, ID3D11ComputeShader */
 	ID3D10Blob *blob;
-	char *shaderSource;
-	size_t shaderSourceLength;
 } D3D11ShaderModule;
 
 typedef struct D3D11GraphicsPipeline
@@ -1183,44 +1181,8 @@ static Refresh_ComputePipeline* D3D11_CreateComputePipeline(
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11ShaderModule *shaderModule = (D3D11ShaderModule*) computeShaderInfo->shaderModule;
-	ID3D10Blob *errorBlob;
-	D3D11ComputePipeline *pipeline;
-	HRESULT res;
 
-	/* First, compile the shader since we didn't do that when creating the shader module */
-	if (shaderModule->shader == NULL)
-	{
-		res = renderer->D3DCompileFunc(
-			shaderModule->shaderSource,
-			shaderModule->shaderSourceLength,
-			NULL,
-			NULL,
-			NULL,
-			"main",
-			"cs_5_0",
-			0,
-			0,
-			&shaderModule->blob,
-			&errorBlob
-		);
-		if (FAILED(res))
-		{
-			Refresh_LogError("Compute Shader Compile Error: %s", ID3D10Blob_GetBufferPointer(errorBlob));
-			return NULL;
-		}
-
-		res = ID3D11Device_CreateComputeShader(
-			renderer->device,
-			ID3D10Blob_GetBufferPointer(shaderModule->blob),
-			ID3D10Blob_GetBufferSize(shaderModule->blob),
-			NULL,
-			(ID3D11ComputeShader**) &shaderModule->shader
-		);
-		ERROR_CHECK_RETURN("Could not create compute shader", NULL);
-	}
-
-	/* Allocate and set up the pipeline */
-	pipeline = SDL_malloc(sizeof(D3D11ComputePipeline));
+	D3D11ComputePipeline *pipeline = SDL_malloc(sizeof(D3D11ComputePipeline));
 	pipeline->numTextures = computeShaderInfo->imageBindingCount;
 	pipeline->numBuffers = computeShaderInfo->bufferBindingCount;
 	pipeline->computeShader = (ID3D11ComputeShader*) shaderModule->shader;
@@ -1239,75 +1201,8 @@ static Refresh_GraphicsPipeline* D3D11_CreateGraphicsPipeline(
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11ShaderModule *vertShaderModule = (D3D11ShaderModule*) pipelineCreateInfo->vertexShaderInfo.shaderModule;
 	D3D11ShaderModule *fragShaderModule = (D3D11ShaderModule*) pipelineCreateInfo->fragmentShaderInfo.shaderModule;
-	ID3D10Blob *errorBlob;
-	D3D11GraphicsPipeline *pipeline;
-	HRESULT res;
 
-	/* First, compile the shaders since we didn't do that when creating the shader modules */
-	if (vertShaderModule->shader == NULL)
-	{
-		res = renderer->D3DCompileFunc(
-			vertShaderModule->shaderSource,
-			vertShaderModule->shaderSourceLength,
-			NULL,
-			NULL,
-			NULL,
-			"main",
-			"vs_5_0",
-			0,
-			0,
-			&vertShaderModule->blob,
-			&errorBlob
-		);
-		if (FAILED(res))
-		{
-			Refresh_LogError("Vertex Shader Compile Error: %s", ID3D10Blob_GetBufferPointer(errorBlob));
-			return NULL;
-		}
-
-		res = ID3D11Device_CreateVertexShader(
-			renderer->device,
-			ID3D10Blob_GetBufferPointer(vertShaderModule->blob),
-			ID3D10Blob_GetBufferSize(vertShaderModule->blob),
-			NULL,
-			(ID3D11VertexShader**) &vertShaderModule->shader
-		);
-		ERROR_CHECK_RETURN("Could not create vertex shader", NULL);
-	}
-
-	if (fragShaderModule->shader == NULL)
-	{
-		res = renderer->D3DCompileFunc(
-			fragShaderModule->shaderSource,
-			fragShaderModule->shaderSourceLength,
-			NULL,
-			NULL,
-			NULL,
-			"main",
-			"ps_5_0",
-			0,
-			0,
-			&fragShaderModule->blob,
-			&errorBlob
-		);
-		if (FAILED(res))
-		{
-			Refresh_LogError("Fragment Shader Compile Error: %s", ID3D10Blob_GetBufferPointer(errorBlob));
-			return NULL;
-		}
-
-		res = ID3D11Device_CreatePixelShader(
-			renderer->device,
-			ID3D10Blob_GetBufferPointer(fragShaderModule->blob),
-			ID3D10Blob_GetBufferSize(fragShaderModule->blob),
-			NULL,
-			(ID3D11PixelShader**) &fragShaderModule->shader
-		);
-		ERROR_CHECK_RETURN("Could not create pixel shader", NULL);
-	}
-
-	/* Allocate and set up the pipeline */
-	pipeline = SDL_malloc(sizeof(D3D11GraphicsPipeline));
+	D3D11GraphicsPipeline *pipeline = SDL_malloc(sizeof(D3D11GraphicsPipeline));
 
 	/* Blend */
 
@@ -1454,23 +1349,96 @@ static Refresh_Sampler* D3D11_CreateSampler(
 
 static Refresh_ShaderModule* D3D11_CreateShaderModule(
 	Refresh_Renderer *driverData,
-	Refresh_ShaderModuleCreateInfo *shaderModuleCreateInfo
+	Refresh_Driver_ShaderModuleCreateInfo *shaderModuleCreateInfo
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
-	D3D11ShaderModule *shaderModule = (D3D11ShaderModule*) SDL_malloc(sizeof(D3D11ShaderModule));
+	D3D11ShaderModule* shaderModule;
+	Refresh_Driver_ShaderType shaderType = shaderModuleCreateInfo->type;
+	const char *profileNames[] = { "vs_5_0", "ps_5_0", "cs_5_0" };
+	ID3D10Blob *blob, *errorBlob;
+	ID3D11DeviceChild *shader = NULL;
+	HRESULT res;
 
-	/* We don't know whether this is a vertex, fragment, or compute shader,
-	 * so wait to compile until we bind to a pipeline...
-	 *
-	 * FIXME: Could we store a flag in the shaderc output to mark if a shader is vertex/fragment/compute?
-	 * Then we could compile on shader module creation instead of at bind time.
-	 */
-	shaderModule->shader = NULL;
-	shaderModule->blob = NULL;
+	/* Compile HLSL to DXBC */
+	res = renderer->D3DCompileFunc(
+		shaderModuleCreateInfo->byteCode,
+		shaderModuleCreateInfo->codeSize,
+		NULL,
+		NULL,
+		NULL,
+		"main", /* API FIXME: Intentionally ignoring entryPointName because it MUST be "main" anyway */
+		profileNames[shaderType],
+		0,
+		0,
+		&blob,
+		&errorBlob
+	);
+	if (FAILED(res))
+	{
+		Refresh_LogError(
+			"D3DCompile Error (%s): %s",
+			profileNames[shaderType],
+			ID3D10Blob_GetBufferPointer(errorBlob)
+		);
+		ID3D10Blob_Release(errorBlob);
+		return NULL;
+	}
 
-	shaderModule->shaderSourceLength = shaderModuleCreateInfo->codeSize;
-	shaderModule->shaderSource = (char*) SDL_malloc(shaderModule->shaderSourceLength);
-	SDL_memcpy(shaderModule->shaderSource, shaderModuleCreateInfo->byteCode, shaderModuleCreateInfo->codeSize);
+	/* Actually create the shader */
+	if (shaderType == REFRESH_DRIVER_SHADERTYPE_VERTEX)
+	{
+		res = ID3D11Device_CreateVertexShader(
+			renderer->device,
+			ID3D10Blob_GetBufferPointer(blob),
+			ID3D10Blob_GetBufferSize(blob),
+			NULL,
+			(ID3D11VertexShader**) &shader
+		);
+		if (FAILED(res))
+		{
+			D3D11_INTERNAL_LogError(renderer->device, "Could not compile vertex shader", res);
+			ID3D10Blob_Release(blob);
+			return NULL;
+		}
+	}
+	else if (shaderType == REFRESH_DRIVER_SHADERTYPE_FRAGMENT)
+	{
+		res = ID3D11Device_CreatePixelShader(
+			renderer->device,
+			ID3D10Blob_GetBufferPointer(blob),
+			ID3D10Blob_GetBufferSize(blob),
+			NULL,
+			(ID3D11PixelShader**) &shader
+		);
+		if (FAILED(res))
+		{
+			D3D11_INTERNAL_LogError(renderer->device, "Could not compile pixel shader", res);
+			ID3D10Blob_Release(blob);
+			return NULL;
+		}
+	}
+	else if (shaderType == REFRESH_DRIVER_SHADERTYPE_COMPUTE)
+	{
+		res = ID3D11Device_CreateComputeShader(
+			renderer->device,
+			ID3D10Blob_GetBufferPointer(blob),
+			ID3D10Blob_GetBufferSize(blob),
+			NULL,
+			(ID3D11ComputeShader**) &shader
+		);
+		if (FAILED(res))
+		{
+			D3D11_INTERNAL_LogError(renderer->device, "Could not compile compute shader", res);
+			ID3D10Blob_Release(blob);
+			return NULL;
+		}
+	}
+
+
+	/* Allocate and set up the shader module */
+	shaderModule = (D3D11ShaderModule*) SDL_malloc(sizeof(D3D11ShaderModule));
+	shaderModule->shader = shader;
+	shaderModule->blob = blob;
 
 	return (Refresh_ShaderModule*) shaderModule;
 }
@@ -2440,7 +2408,6 @@ static void D3D11_QueueDestroyShaderModule(
 		ID3D10Blob_Release(d3dShaderModule->blob);
 	}
 
-	SDL_free(d3dShaderModule->shaderSource);
 	SDL_free(d3dShaderModule);
 }
 
