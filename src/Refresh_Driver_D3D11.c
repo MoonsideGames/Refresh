@@ -519,6 +519,7 @@ typedef struct D3D11Renderer
 
 	uint8_t debugMode;
 	BOOL supportsTearing;
+	uint8_t supportsFlipDiscard;
 
 	PFN_D3DCOMPILE D3DCompileFunc;
 
@@ -3305,7 +3306,6 @@ static uint8_t D3D11_INTERNAL_CreateSwapchain(
 	HWND dxgiHandle;
 	int width, height;
 	DXGI_SWAP_CHAIN_DESC swapchainDesc;
-	IDXGIFactory4 *factory4;
 	IDXGIFactory1 *pParent;
 	IDXGISwapChain *swapchain;
 	D3D11SwapchainData *swapchainData;
@@ -3339,27 +3339,17 @@ static uint8_t D3D11_INTERNAL_CreateSwapchain(
 	if (renderer->supportsTearing)
 	{
 		swapchainDesc.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;
+		/* We know this is supported because tearing support implies DXGI 1.5+ */
 		swapchainDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
 	}
 	else
 	{
 		swapchainDesc.Flags = 0;
-
-		/* For Windows 10+, use a better form of discard swap behavior */
-		res = IDXGIFactory1_QueryInterface(
-			renderer->factory,
-			&D3D_IID_IDXGIFactory4,
-			&factory4
+		swapchainDesc.SwapEffect = (
+			renderer->supportsFlipDiscard ?
+				DXGI_SWAP_EFFECT_FLIP_DISCARD :
+				DXGI_SWAP_EFFECT_DISCARD
 		);
-		if (SUCCEEDED(res))
-		{
-			swapchainDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
-			IDXGIFactory4_Release(factory4);
-		}
-		else
-		{
-			swapchainDesc.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
-		}
 	}
 
 	/* Create the swapchain! */
@@ -3369,7 +3359,7 @@ static uint8_t D3D11_INTERNAL_CreateSwapchain(
 		&swapchainDesc,
 		&swapchain
 	);
-	ERROR_CHECK("Could not create swapchain", 0);
+	ERROR_CHECK_RETURN("Could not create swapchain", 0);
 
 	/*
 	 * The swapchain's parent is a separate factory from the factory that
@@ -3783,17 +3773,18 @@ static void D3D11_Submit(
 	/* Present, if applicable */
 	if (d3d11CommandBuffer->swapchainData)
 	{
+		/* FIXME: Is there some way to emulate FIFO_RELAXED? */
+
 		uint32_t syncInterval = 1;
-		if (d3d11CommandBuffer->swapchainData->presentMode == REFRESH_PRESENTMODE_IMMEDIATE)
-		{
+		if (	d3d11CommandBuffer->swapchainData->presentMode == REFRESH_PRESENTMODE_IMMEDIATE ||
+			(renderer->supportsFlipDiscard && d3d11CommandBuffer->swapchainData->presentMode == REFRESH_PRESENTMODE_MAILBOX)
+		) {
 			syncInterval = 0;
 		}
 
 		uint32_t presentFlags = 0;
-		if (	renderer->supportsTearing &&
-			(d3d11CommandBuffer->swapchainData->presentMode == REFRESH_PRESENTMODE_IMMEDIATE ||
-			 d3d11CommandBuffer->swapchainData->presentMode == REFRESH_PRESENTMODE_FIFO_RELAXED)
-		) {
+		if (renderer->supportsTearing && d3d11CommandBuffer->swapchainData->presentMode == REFRESH_PRESENTMODE_IMMEDIATE)
+		{
 			presentFlags = DXGI_PRESENT_ALLOW_TEARING;
 		}
 
@@ -4084,6 +4075,7 @@ static Refresh_Device* D3D11_CreateDevice(
 	PFN_CREATE_DXGI_FACTORY1 CreateDXGIFactoryFunc;
 	PFN_D3D11_CREATE_DEVICE D3D11CreateDeviceFunc;
 	D3D_FEATURE_LEVEL levels[] = { D3D_FEATURE_LEVEL_11_1 };
+	IDXGIFactory4 *factory4;
 	IDXGIFactory5 *factory5;
 	IDXGIFactory6 *factory6;
 	uint32_t flags;
@@ -4138,6 +4130,18 @@ static Refresh_Device* D3D11_CreateDevice(
 		&renderer->factory
 	);
 	ERROR_CHECK_RETURN("Could not create DXGIFactory", NULL);
+
+	/* Check for flip-model discard support (supported on Windows 10+) */
+	res = IDXGIFactory1_QueryInterface(
+		renderer->factory,
+		&D3D_IID_IDXGIFactory4,
+		&factory4
+	);
+	if (SUCCEEDED(res))
+	{
+		renderer->supportsFlipDiscard = 1;
+		IDXGIFactory4_Release(factory4);
+	}
 
 	/* Check for explicit tearing support */
 	res = IDXGIFactory1_QueryInterface(
