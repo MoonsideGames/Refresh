@@ -196,110 +196,7 @@ void Refresh_DestroyDevice(Refresh_Device *device)
 	device->DestroyDevice(device);
 }
 
-void Refresh_DrawIndexedPrimitives(
-	Refresh_Device *device,
-	Refresh_CommandBuffer *commandBuffer,
-	uint32_t baseVertex,
-	uint32_t startIndex,
-	uint32_t primitiveCount,
-	uint32_t vertexParamOffset,
-	uint32_t fragmentParamOffset
-) {
-	NULL_RETURN(device);
-	device->DrawIndexedPrimitives(
-		device->driverData,
-		commandBuffer,
-		baseVertex,
-		startIndex,
-		primitiveCount,
-		vertexParamOffset,
-		fragmentParamOffset
-	);
-}
-
-void Refresh_DrawInstancedPrimitives(
-	Refresh_Device *device,
-	Refresh_CommandBuffer *commandBuffer,
-	uint32_t baseVertex,
-	uint32_t startIndex,
-	uint32_t primitiveCount,
-	uint32_t instanceCount,
-	uint32_t vertexParamOffset,
-	uint32_t fragmentParamOffset
-) {
-	NULL_RETURN(device);
-	device->DrawInstancedPrimitives(
-		device->driverData,
-		commandBuffer,
-		baseVertex,
-		startIndex,
-		primitiveCount,
-		instanceCount,
-		vertexParamOffset,
-		fragmentParamOffset
-	);
-}
-
-void Refresh_DrawPrimitives(
-	Refresh_Device *device,
-	Refresh_CommandBuffer *commandBuffer,
-	uint32_t vertexStart,
-	uint32_t primitiveCount,
-	uint32_t vertexParamOffset,
-	uint32_t fragmentParamOffset
-) {
-	NULL_RETURN(device);
-	device->DrawPrimitives(
-		device->driverData,
-		commandBuffer,
-		vertexStart,
-		primitiveCount,
-		vertexParamOffset,
-		fragmentParamOffset
-	);
-}
-
-void Refresh_DrawPrimitivesIndirect(
-	Refresh_Device *device,
-	Refresh_CommandBuffer *commandBuffer,
-	Refresh_Buffer *buffer,
-	uint32_t offsetInBytes,
-	uint32_t drawCount,
-	uint32_t stride,
-	uint32_t vertexParamOffset,
-	uint32_t fragmentParamOffset
-) {
-	NULL_RETURN(device);
-	device->DrawPrimitivesIndirect(
-		device->driverData,
-		commandBuffer,
-		buffer,
-		offsetInBytes,
-		drawCount,
-		stride,
-		vertexParamOffset,
-		fragmentParamOffset
-	);
-}
-
-void Refresh_DispatchCompute(
-	Refresh_Device *device,
-	Refresh_CommandBuffer *commandBuffer,
-	uint32_t groupCountX,
-	uint32_t groupCountY,
-	uint32_t groupCountZ,
-	uint32_t computeParamOffset
-) {
-	NULL_RETURN(device);
-	device->DispatchCompute(
-		device->driverData,
-		commandBuffer,
-		groupCountX,
-		groupCountY,
-		groupCountZ,
-		computeParamOffset
-	);
-}
+/* State Creation */
 
 Refresh_ComputePipeline* Refresh_CreateComputePipeline(
 	Refresh_Device *device,
@@ -398,215 +295,31 @@ Refresh_Texture* Refresh_CreateTexture(
 	);
 }
 
-Refresh_Buffer* Refresh_CreateBuffer(
+Refresh_GpuBuffer* Refresh_CreateGpuBuffer(
 	Refresh_Device *device,
 	Refresh_BufferUsageFlags usageFlags,
 	uint32_t sizeInBytes
 ) {
 	NULL_RETURN_NULL(device);
-	return device->CreateBuffer(
+	return device->CreateGpuBuffer(
 		device->driverData,
 		usageFlags,
 		sizeInBytes
 	);
 }
 
-void Refresh_SetTextureData(
+Refresh_CpuBuffer* Refresh_CreateCpuBuffer(
 	Refresh_Device *device,
-	Refresh_CommandBuffer *commandBuffer,
-	Refresh_TextureSlice *textureSlice,
-	void *data,
-	uint32_t dataLengthInBytes
+	uint32_t sizeInBytes
 ) {
-	NULL_RETURN(device);
-	device->SetTextureData(
+	NULL_RETURN_NULL(device);
+	return device->CreateCpuBuffer(
 		device->driverData,
-		commandBuffer,
-		textureSlice,
-		data,
-		dataLengthInBytes
+		sizeInBytes
 	);
 }
 
-void Refresh_SetTextureDataYUV(
-	Refresh_Device *device,
-	Refresh_CommandBuffer* commandBuffer,
-	Refresh_Texture *y,
-	Refresh_Texture *u,
-	Refresh_Texture *v,
-	uint32_t yWidth,
-	uint32_t yHeight,
-	uint32_t uvWidth,
-	uint32_t uvHeight,
-	void *yDataPtr,
-	void *uDataPtr,
-	void *vDataPtr,
-	uint32_t yDataLength,
-	uint32_t uvDataLength,
-	uint32_t yStride,
-	uint32_t uvStride
-) {
-	NULL_RETURN(device);
-	device->SetTextureDataYUV(
-		device->driverData,
-		commandBuffer,
-		y,
-		u,
-		v,
-		yWidth,
-		yHeight,
-		uvWidth,
-		uvHeight,
-		yDataPtr,
-		uDataPtr,
-		vDataPtr,
-		yDataLength,
-		uvDataLength,
-		yStride,
-		uvStride
-	);
-}
-
-void Refresh_CopyTextureToTexture(
-	Refresh_Device *device,
-	Refresh_CommandBuffer *commandBuffer,
-	Refresh_TextureSlice *sourceTextureSlice,
-	Refresh_TextureSlice *destinationTextureSlice,
-	Refresh_Filter filter
-) {
-	NULL_RETURN(device);
-	device->CopyTextureToTexture(
-		device->driverData,
-		commandBuffer,
-		sourceTextureSlice,
-		destinationTextureSlice,
-		filter
-	);
-}
-
-void Refresh_CopyTextureToBuffer(
-	Refresh_Device *device,
-	Refresh_CommandBuffer *commandBuffer,
-	Refresh_TextureSlice *textureSlice,
-	Refresh_Buffer *buffer
-) {
-	NULL_RETURN(device);
-	device->CopyTextureToBuffer(
-		device->driverData,
-		commandBuffer,
-		textureSlice,
-		buffer
-	);
-}
-
-void Refresh_SetBufferData(
-	Refresh_Device *device,
-	Refresh_CommandBuffer *commandBuffer,
-	Refresh_Buffer *buffer,
-	uint32_t offsetInBytes,
-	void* data,
-	uint32_t dataLength
-) {
-	NULL_RETURN(device);
-	device->SetBufferData(
-		device->driverData,
-		commandBuffer,
-		buffer,
-		offsetInBytes,
-		data,
-		dataLength
-	);
-}
-
-uint32_t Refresh_PushVertexShaderUniforms(
-	Refresh_Device *device,
-	Refresh_CommandBuffer *commandBuffer,
-	void *data,
-	uint32_t dataLengthInBytes
-) {
-	if (device == NULL) { return 0; }
-	return device->PushVertexShaderUniforms(
-		device->driverData,
-		commandBuffer,
-		data,
-		dataLengthInBytes
-	);
-}
-
-uint32_t Refresh_PushFragmentShaderUniforms(
-	Refresh_Device *device,
-	Refresh_CommandBuffer *commandBuffer,
-	void *data,
-	uint32_t dataLengthInBytes
-) {
-	if (device == NULL) { return 0; }
-	return device->PushFragmentShaderUniforms(
-		device->driverData,
-		commandBuffer,
-		data,
-		dataLengthInBytes
-	);
-}
-
-uint32_t Refresh_PushComputeShaderUniforms(
-	Refresh_Device *device,
-	Refresh_CommandBuffer *commandBuffer,
-	void *data,
-	uint32_t dataLengthInBytes
-) {
-	if (device == NULL) { return 0; }
-	return device->PushComputeShaderUniforms(
-		device->driverData,
-		commandBuffer,
-		data,
-		dataLengthInBytes
-	);
-}
-
-void Refresh_BindVertexSamplers(
-	Refresh_Device *device,
-	Refresh_CommandBuffer *commandBuffer,
-	Refresh_Texture **pTextures,
-	Refresh_Sampler **pSamplers
-) {
-	NULL_RETURN(device);
-	device->BindVertexSamplers(
-		device->driverData,
-		commandBuffer,
-		pTextures,
-		pSamplers
-	);
-}
-
-void Refresh_BindFragmentSamplers(
-	Refresh_Device *device,
-	Refresh_CommandBuffer *commandBuffer,
-	Refresh_Texture **pTextures,
-	Refresh_Sampler **pSamplers
-) {
-	NULL_RETURN(device);
-	device->BindFragmentSamplers(
-		device->driverData,
-		commandBuffer,
-		pTextures,
-		pSamplers
-	);
-}
-
-void Refresh_GetBufferData(
-	Refresh_Device *device,
-	Refresh_Buffer *buffer,
-	void *data,
-	uint32_t dataLengthInBytes
-) {
-	NULL_RETURN(device);
-	device->GetBufferData(
-		device->driverData,
-		buffer,
-		data,
-		dataLengthInBytes
-	);
-}
+/* Disposal */
 
 void Refresh_QueueDestroyTexture(
 	Refresh_Device *device,
@@ -630,12 +343,23 @@ void Refresh_QueueDestroySampler(
 	);
 }
 
-void Refresh_QueueDestroyBuffer(
+void Refresh_QueueDestroyGpuBuffer(
 	Refresh_Device *device,
-	Refresh_Buffer *buffer
+	Refresh_GpuBuffer *buffer
 ) {
 	NULL_RETURN(device);
-	device->QueueDestroyBuffer(
+	device->QueueDestroyGpuBuffer(
+		device->driverData,
+		buffer
+	);
+}
+
+void Refresh_QueueDestroyCpuBuffer(
+	Refresh_Device *device,
+	Refresh_CpuBuffer *buffer
+) {
+	NULL_RETURN(device);
+	device->QueueDestroyCpuBuffer(
 		device->driverData,
 		buffer
 	);
@@ -674,6 +398,8 @@ void Refresh_QueueDestroyGraphicsPipeline(
 	);
 }
 
+/* Render Pass */
+
 void Refresh_BeginRenderPass(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
@@ -691,14 +417,16 @@ void Refresh_BeginRenderPass(
 	);
 }
 
-void Refresh_EndRenderPass(
+void Refresh_BindGraphicsPipeline(
 	Refresh_Device *device,
-	Refresh_CommandBuffer *commandBuffer
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_GraphicsPipeline *graphicsPipeline
 ) {
 	NULL_RETURN(device);
-	device->EndRenderPass(
+	device->BindGraphicsPipeline(
 		device->driverData,
-		commandBuffer
+		commandBuffer,
+		graphicsPipeline
 	);
 }
 
@@ -728,25 +456,12 @@ void Refresh_SetScissor(
 	);
 }
 
-void Refresh_BindGraphicsPipeline(
-	Refresh_Device *device,
-	Refresh_CommandBuffer *commandBuffer,
-	Refresh_GraphicsPipeline *graphicsPipeline
-) {
-	NULL_RETURN(device);
-	device->BindGraphicsPipeline(
-		device->driverData,
-		commandBuffer,
-		graphicsPipeline
-	);
-}
-
 void Refresh_BindVertexBuffers(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
 	uint32_t firstBinding,
 	uint32_t bindingCount,
-	Refresh_Buffer **pBuffers,
+	Refresh_GpuBuffer **pBuffers,
 	uint64_t *pOffsets
 ) {
 	NULL_RETURN(device);
@@ -763,7 +478,7 @@ void Refresh_BindVertexBuffers(
 void Refresh_BindIndexBuffer(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
-	Refresh_Buffer *buffer,
+	Refresh_GpuBuffer *buffer,
 	uint64_t offset,
 	Refresh_IndexElementSize indexElementSize
 ) {
@@ -774,6 +489,174 @@ void Refresh_BindIndexBuffer(
 		buffer,
 		offset,
 		indexElementSize
+	);
+}
+
+void Refresh_BindVertexSamplers(
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_Texture **pTextures,
+	Refresh_Sampler **pSamplers
+) {
+	NULL_RETURN(device);
+	device->BindVertexSamplers(
+		device->driverData,
+		commandBuffer,
+		pTextures,
+		pSamplers
+	);
+}
+
+void Refresh_BindFragmentSamplers(
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_Texture **pTextures,
+	Refresh_Sampler **pSamplers
+) {
+	NULL_RETURN(device);
+	device->BindFragmentSamplers(
+		device->driverData,
+		commandBuffer,
+		pTextures,
+		pSamplers
+	);
+}
+
+uint32_t Refresh_PushVertexShaderUniforms(
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer,
+	void *data,
+	uint32_t dataLengthInBytes
+) {
+	if (device == NULL) { return 0; }
+	return device->PushVertexShaderUniforms(
+		device->driverData,
+		commandBuffer,
+		data,
+		dataLengthInBytes
+	);
+}
+
+uint32_t Refresh_PushFragmentShaderUniforms(
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer,
+	void *data,
+	uint32_t dataLengthInBytes
+) {
+	if (device == NULL) { return 0; }
+	return device->PushFragmentShaderUniforms(
+		device->driverData,
+		commandBuffer,
+		data,
+		dataLengthInBytes
+	);
+}
+
+void Refresh_DrawInstancedPrimitives(
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer,
+	uint32_t baseVertex,
+	uint32_t startIndex,
+	uint32_t primitiveCount,
+	uint32_t instanceCount,
+	uint32_t vertexParamOffset,
+	uint32_t fragmentParamOffset
+) {
+	NULL_RETURN(device);
+	device->DrawInstancedPrimitives(
+		device->driverData,
+		commandBuffer,
+		baseVertex,
+		startIndex,
+		primitiveCount,
+		instanceCount,
+		vertexParamOffset,
+		fragmentParamOffset
+	);
+}
+
+void Refresh_DrawIndexedPrimitives(
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer,
+	uint32_t baseVertex,
+	uint32_t startIndex,
+	uint32_t primitiveCount,
+	uint32_t vertexParamOffset,
+	uint32_t fragmentParamOffset
+) {
+	NULL_RETURN(device);
+	device->DrawIndexedPrimitives(
+		device->driverData,
+		commandBuffer,
+		baseVertex,
+		startIndex,
+		primitiveCount,
+		vertexParamOffset,
+		fragmentParamOffset
+	);
+}
+
+void Refresh_DrawPrimitives(
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer,
+	uint32_t vertexStart,
+	uint32_t primitiveCount,
+	uint32_t vertexParamOffset,
+	uint32_t fragmentParamOffset
+) {
+	NULL_RETURN(device);
+	device->DrawPrimitives(
+		device->driverData,
+		commandBuffer,
+		vertexStart,
+		primitiveCount,
+		vertexParamOffset,
+		fragmentParamOffset
+	);
+}
+
+void Refresh_DrawPrimitivesIndirect(
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_GpuBuffer *buffer,
+	uint32_t offsetInBytes,
+	uint32_t drawCount,
+	uint32_t stride,
+	uint32_t vertexParamOffset,
+	uint32_t fragmentParamOffset
+) {
+	NULL_RETURN(device);
+	device->DrawPrimitivesIndirect(
+		device->driverData,
+		commandBuffer,
+		buffer,
+		offsetInBytes,
+		drawCount,
+		stride,
+		vertexParamOffset,
+		fragmentParamOffset
+	);
+}
+
+void Refresh_EndRenderPass(
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer
+) {
+	NULL_RETURN(device);
+	device->EndRenderPass(
+		device->driverData,
+		commandBuffer
+	);
+}
+
+/* Compute Pass */
+
+void Refresh_BeginComputePass(
+	Refresh_Device *device
+) {
+	NULL_RETURN(device);
+	device->BeginComputePass(
+		device->driverData
 	);
 }
 
@@ -793,7 +676,7 @@ void Refresh_BindComputePipeline(
 void Refresh_BindComputeBuffers(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
-	Refresh_Buffer **pBuffers
+	Refresh_GpuBuffer **pBuffers
 ) {
 	NULL_RETURN(device);
 	device->BindComputeBuffers(
@@ -806,15 +689,257 @@ void Refresh_BindComputeBuffers(
 void Refresh_BindComputeTextures(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
-	Refresh_Texture **pTextures
+	Refresh_Texture **pTextures,
+	uint32_t **pLevels
 ) {
 	NULL_RETURN(device);
 	device->BindComputeTextures(
 		device->driverData,
 		commandBuffer,
-		pTextures
+		pTextures,
+		pLevels
 	);
 }
+
+uint32_t Refresh_PushComputeShaderUniforms(
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer,
+	void *data,
+	uint32_t dataLengthInBytes
+) {
+	if (device == NULL) { return 0; }
+	return device->PushComputeShaderUniforms(
+		device->driverData,
+		commandBuffer,
+		data,
+		dataLengthInBytes
+	);
+}
+
+void Refresh_DispatchCompute(
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer,
+	uint32_t groupCountX,
+	uint32_t groupCountY,
+	uint32_t groupCountZ,
+	uint32_t computeParamOffset
+) {
+	NULL_RETURN(device);
+	device->DispatchCompute(
+		device->driverData,
+		commandBuffer,
+		groupCountX,
+		groupCountY,
+		groupCountZ,
+		computeParamOffset
+	);
+}
+
+void Refresh_EndComputePass(
+	Refresh_Device *device
+) {
+	NULL_RETURN(device);
+	device->EndComputePass(
+		device->driverData
+	);
+}
+
+/* CpuBuffer Map */
+
+void* Refresh_MapCpuBuffer(
+	Refresh_Device *device,
+	Refresh_CpuBuffer *buffer,
+	uint32_t offsetInBytes,
+	uint32_t sizeInBytes
+) {
+	NULL_RETURN_NULL(device);
+	return device->MapCpuBuffer(
+		device->driverData,
+		buffer,
+		offsetInBytes,
+		sizeInBytes
+	);
+}
+
+void Refresh_UnmapCpuBuffer(
+	Refresh_Device *device,
+	Refresh_CpuBuffer *buffer
+) {
+	NULL_RETURN(device);
+	device->UnmapCpuBuffer(
+		device->driverData,
+		buffer
+	);
+}
+
+/* Copy Pass */
+
+void Refresh_BeginCopyPass(
+	Refresh_Device *device
+) {
+	NULL_RETURN(device);
+	device->BeginCopyPass(
+		device->driverData
+	);
+}
+
+void Refresh_UploadToTexture(
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_CpuBuffer *cpuBuffer,
+	Refresh_BufferImageCopy *copyParams,
+	Refresh_TextureSlice *textureSlice
+) {
+	NULL_RETURN(device);
+	device->UploadToTexture(
+		device->driverData,
+		commandBuffer,
+		cpuBuffer,
+		copyParams,
+		textureSlice
+	);
+}
+
+void Refresh_UploadToBuffer(
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_CpuBuffer *cpuBuffer,
+	Refresh_GpuBuffer *gpuBuffer,
+	Refresh_BufferCopy *copyParams
+) {
+	NULL_RETURN(device);
+	device->UploadToBuffer(
+		device->driverData,
+		commandBuffer,
+		cpuBuffer,
+		gpuBuffer,
+		copyParams
+	);
+}
+
+void Refresh_DownloadFromTexture(
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_TextureSlice *textureSlice,
+	Refresh_CpuBuffer *cpuBuffer,
+	Refresh_BufferImageCopy *copyParams
+) {
+	NULL_RETURN(device);
+	device->DownloadFromTexture(
+		device->driverData,
+		commandBuffer,
+		textureSlice,
+		cpuBuffer,
+		copyParams
+	);
+}
+
+void Refresh_DownloadFromBuffer(
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_GpuBuffer *gpuBuffer,
+	Refresh_CpuBuffer *cpuBuffer,
+	Refresh_BufferCopy *copyParams
+) {
+	NULL_RETURN(device);
+	device->DownloadFromBuffer(
+		device->driverData,
+		commandBuffer,
+		gpuBuffer,
+		cpuBuffer,
+		copyParams
+	);
+}
+
+void Refresh_CopyTextureToTexture(
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_TextureSlice *sourceTextureSlice,
+	Refresh_TextureSlice *destinationTextureSlice
+) {
+	NULL_RETURN(device);
+	device->CopyTextureToTexture(
+		device->driverData,
+		commandBuffer,
+		sourceTextureSlice,
+		destinationTextureSlice
+	);
+}
+
+void Refresh_CopyTextureToBuffer(
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_TextureSlice *textureSlice,
+	Refresh_GpuBuffer *buffer,
+	Refresh_BufferImageCopy *copyParameters
+) {
+	NULL_RETURN(device);
+	device->CopyTextureToBuffer(
+		device->driverData,
+		commandBuffer,
+		textureSlice,
+		buffer,
+		copyParameters
+	);
+}
+
+void Refresh_CopyBufferToTexture(
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_GpuBuffer *buffer,
+	Refresh_BufferImageCopy *copyParams,
+	Refresh_TextureSlice *textureSlice
+) {
+	NULL_RETURN(device);
+	device->CopyBufferToTexture(
+		device->driverData,
+		commandBuffer,
+		buffer,
+		copyParams,
+		textureSlice
+	);
+}
+
+void Refresh_CopyBufferToBuffer(
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_GpuBuffer *source,
+	Refresh_GpuBuffer *destination,
+	Refresh_BufferCopy *copyParams
+) {
+	NULL_RETURN(device);
+	device->CopyBufferToBuffer(
+		device->driverData,
+		commandBuffer,
+		source,
+		destination,
+		copyParams
+	);
+}
+
+void Refresh_GenerateMipmaps(
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_Texture *texture
+) {
+	NULL_RETURN(device);
+	device->GenerateMipmaps(
+		device->driverData,
+		commandBuffer,
+		texture
+	);
+}
+
+void Refresh_EndCopyPass(
+	Refresh_Device *device
+) {
+	NULL_RETURN(device);
+	device->EndCopyPass(
+		device->driverData
+	);
+}
+
+/* Submission/Presentation */
 
 uint8_t Refresh_ClaimWindow(
 	Refresh_Device *device,
@@ -835,6 +960,30 @@ void Refresh_UnclaimWindow(
 ) {
 	NULL_RETURN(device);
 	device->UnclaimWindow(
+		device->driverData,
+		windowHandle
+	);
+}
+
+void Refresh_SetSwapchainPresentMode(
+	Refresh_Device *device,
+	void *windowHandle,
+	Refresh_PresentMode presentMode
+) {
+	NULL_RETURN(device);
+	device->SetSwapchainPresentMode(
+		device->driverData,
+		windowHandle,
+		presentMode
+	);
+}
+
+Refresh_TextureFormat Refresh_GetSwapchainFormat(
+	Refresh_Device *device,
+	void *windowHandle
+) {
+	if (device == NULL) { return 0; }
+	return device->GetSwapchainFormat(
 		device->driverData,
 		windowHandle
 	);
@@ -863,30 +1012,6 @@ Refresh_Texture* Refresh_AcquireSwapchainTexture(
 		windowHandle,
 		pWidth,
 		pHeight
-	);
-}
-
-Refresh_TextureFormat Refresh_GetSwapchainFormat(
-	Refresh_Device *device,
-	void *windowHandle
-) {
-	if (device == NULL) { return 0; }
-	return device->GetSwapchainFormat(
-		device->driverData,
-		windowHandle
-	);
-}
-
-void Refresh_SetSwapchainPresentMode(
-	Refresh_Device *device,
-	void *windowHandle,
-	Refresh_PresentMode presentMode
-) {
-	NULL_RETURN(device);
-	device->SetSwapchainPresentMode(
-		device->driverData,
-		windowHandle,
-		presentMode
 	);
 }
 
