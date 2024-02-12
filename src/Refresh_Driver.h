@@ -290,14 +290,14 @@ struct Refresh_Device
 		uint32_t firstBinding,
 		uint32_t bindingCount,
 		Refresh_GpuBuffer **pBuffers,
-		uint64_t *pOffsets
+		uint32_t *pOffsets
 	);
 
 	void (*BindIndexBuffer)(
 		Refresh_Renderer *driverData,
 		Refresh_CommandBuffer *commandBuffer,
 		Refresh_GpuBuffer *buffer,
-		uint64_t offset,
+		uint32_t offset,
 		Refresh_IndexElementSize indexElementSize
 	);
 

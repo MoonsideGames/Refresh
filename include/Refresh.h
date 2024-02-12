@@ -373,7 +373,7 @@ typedef struct Refresh_TextureSlice
 {
 	Refresh_Texture *texture;
 	uint32_t mipLevel;
-	uint32_t baseLayer; /* either 0-5 for cubemap or 0-n for 3D texture */
+	uint32_t baseLayer;
 	uint32_t layerCount;
 	uint32_t x;
 	uint32_t y;
@@ -495,7 +495,7 @@ typedef struct Refresh_GraphicsShaderInfo
 {
 	Refresh_ShaderModule *shaderModule;
 	const char* entryPointName;
-	uint64_t uniformBufferSize;
+	uint32_t uniformBufferSize;
 	uint32_t samplerBindingCount;
 } Refresh_GraphicsShaderInfo;
 
@@ -503,7 +503,7 @@ typedef struct Refresh_ComputeShaderInfo
 {
 	Refresh_ShaderModule* shaderModule;
 	const char* entryPointName;
-	uint64_t uniformBufferSize;
+	uint32_t uniformBufferSize;
 	uint32_t bufferBindingCount;
 	uint32_t imageBindingCount;
 } Refresh_ComputeShaderInfo;
@@ -816,7 +816,7 @@ REFRESHAPI void Refresh_BindVertexBuffers(
 	uint32_t firstBinding,
 	uint32_t bindingCount,
 	Refresh_GpuBuffer **pBuffers,
-	uint64_t *pOffsets
+	uint32_t *pOffsets
 );
 
 /* Binds an index buffer for use with subsequent draw calls. */
@@ -824,7 +824,7 @@ REFRESHAPI void Refresh_BindIndexBuffer(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
 	Refresh_GpuBuffer *buffer,
-	uint64_t offset,
+	uint32_t offset,
 	Refresh_IndexElementSize indexElementSize
 );
 
