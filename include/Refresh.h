@@ -626,7 +626,7 @@ REFRESHAPI Refresh_Backend Refresh_SelectBackend(Refresh_Backend preferredBacken
 /* Device */
 
 /* Create a rendering context for use on the calling thread.
- * You MUST have called Refresh_SelectDriver prior to calling this function.
+ * You MUST have called Refresh_SelectBackend prior to calling this function.
  *
  * debugMode: Enable debug mode properties.
  */
@@ -977,6 +977,7 @@ REFRESHAPI void Refresh_EndRenderPass(
 	Refresh_CommandBuffer *commandBuffer
 );
 
+/* Compute Pass */
 
 /* Begins a compute pass. */
 REFRESHAPI void Refresh_BeginComputePass(Refresh_Device *device);
@@ -1081,8 +1082,8 @@ REFRESHAPI void Refresh_BeginCopyPass(Refresh_Device *device);
 
 /* CPU-to-GPU copies occur on the GPU timeline.
  *
- * You MUST NOT alter the data until the command buffer
- * has finished execution.
+ * You MUST NOT alter the data in the CpuBuffer
+ * until the command buffer has finished execution.
  *
  * You MAY assume that the copy has finished for subsequent commands.
  */
@@ -1107,7 +1108,7 @@ REFRESHAPI void Refresh_UploadToBuffer(
 
 /* GPU-to-CPU copies occur on the GPU timeline.
  *
- * You may NOT assume that the data in the CpuBuffer is valid
+ * You may NOT assume that the data in the CpuBuffer is fully copied
  * until the command buffer has finished execution.
  */
 
