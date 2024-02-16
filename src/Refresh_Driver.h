@@ -447,8 +447,8 @@ struct Refresh_Device
 		Refresh_Renderer *driverData,
 		Refresh_CommandBuffer *commandBuffer,
 		Refresh_CpuBuffer *cpuBuffer,
-		Refresh_BufferImageCopy *copyParams,
-		Refresh_TextureSlice *textureSlice
+		Refresh_TextureSlice *textureSlice,
+		Refresh_BufferImageCopy *copyParams
 	);
 
 	void (*UploadToBuffer)(
@@ -494,8 +494,8 @@ struct Refresh_Device
 		Refresh_Renderer *driverData,
 		Refresh_CommandBuffer *commandBuffer,
 		Refresh_GpuBuffer *buffer,
-		Refresh_BufferImageCopy *copyParams,
-		Refresh_TextureSlice *textureSlice
+		Refresh_TextureSlice *textureSlice,
+		Refresh_BufferImageCopy *copyParams
 	);
 
 	void (*CopyBufferToBuffer)(

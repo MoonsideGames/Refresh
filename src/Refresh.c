@@ -793,16 +793,16 @@ void Refresh_UploadToTexture(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
 	Refresh_CpuBuffer *cpuBuffer,
-	Refresh_BufferImageCopy *copyParams,
-	Refresh_TextureSlice *textureSlice
+	Refresh_TextureSlice *textureSlice,
+	Refresh_BufferImageCopy *copyParams
 ) {
 	NULL_RETURN(device);
 	device->UploadToTexture(
 		device->driverData,
 		commandBuffer,
 		cpuBuffer,
-		copyParams,
-		textureSlice
+		textureSlice,
+		copyParams
 	);
 }
 
@@ -893,16 +893,16 @@ void Refresh_CopyBufferToTexture(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
 	Refresh_GpuBuffer *buffer,
-	Refresh_BufferImageCopy *copyParams,
-	Refresh_TextureSlice *textureSlice
+	Refresh_TextureSlice *textureSlice,
+	Refresh_BufferImageCopy *copyParams
 ) {
 	NULL_RETURN(device);
 	device->CopyBufferToTexture(
 		device->driverData,
 		commandBuffer,
 		buffer,
-		copyParams,
-		textureSlice
+		textureSlice,
+		copyParams
 	);
 }
 
