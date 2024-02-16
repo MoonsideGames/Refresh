@@ -1065,6 +1065,8 @@ REFRESHAPI void Refresh_EndComputePass(
 
 /* Maps a CpuBuffer to host memory. Returns a pointer that can be copied to.
  *
+ * NOTE: Mapping a CpuBuffer that is already mapped is an error.
+ *
  * offsetInBytes: The offset of the buffer to map.
  * sizeInBytes: The number of bytes of memory to map.
  */
@@ -1102,8 +1104,8 @@ REFRESHAPI void Refresh_UploadToTexture(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
 	Refresh_CpuBuffer *cpuBuffer,
-	Refresh_BufferImageCopy *copyParams,
-	Refresh_TextureSlice *textureSlice
+	Refresh_TextureSlice *textureSlice,
+	Refresh_BufferImageCopy *copyParams
 );
 
 /* Uploads data from a CpuBuffer to a GpuBuffer. */
@@ -1165,8 +1167,8 @@ REFRESHAPI void Refresh_CopyBufferToTexture(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
 	Refresh_GpuBuffer *buffer,
-	Refresh_BufferImageCopy *copyParams,
-	Refresh_TextureSlice *textureSlice
+	Refresh_TextureSlice *textureSlice,
+	Refresh_BufferImageCopy *copyParams
 );
 
 /* Copies data from a buffer to a buffer. */
