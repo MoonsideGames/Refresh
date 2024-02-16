@@ -588,50 +588,61 @@ struct Refresh_Device
 	result->func = name##_##func;
 #define ASSIGN_DRIVER(name) \
 	ASSIGN_DRIVER_FUNC(DestroyDevice, name) \
-	ASSIGN_DRIVER_FUNC(DrawIndexedPrimitives, name) \
-	ASSIGN_DRIVER_FUNC(DrawInstancedPrimitives, name) \
-	ASSIGN_DRIVER_FUNC(DrawPrimitives, name) \
-	ASSIGN_DRIVER_FUNC(DrawPrimitivesIndirect, name) \
-	ASSIGN_DRIVER_FUNC(DispatchCompute, name) \
 	ASSIGN_DRIVER_FUNC(CreateComputePipeline, name) \
 	ASSIGN_DRIVER_FUNC(CreateGraphicsPipeline, name) \
 	ASSIGN_DRIVER_FUNC(CreateSampler, name) \
 	ASSIGN_DRIVER_FUNC(CreateShaderModule, name) \
 	ASSIGN_DRIVER_FUNC(CreateTexture, name) \
-	ASSIGN_DRIVER_FUNC(CreateBuffer, name) \
-	ASSIGN_DRIVER_FUNC(SetTextureData, name) \
-	ASSIGN_DRIVER_FUNC(SetTextureDataYUV, name) \
-	ASSIGN_DRIVER_FUNC(CopyTextureToTexture, name) \
-	ASSIGN_DRIVER_FUNC(CopyTextureToBuffer, name) \
-	ASSIGN_DRIVER_FUNC(SetBufferData, name) \
-	ASSIGN_DRIVER_FUNC(PushVertexShaderUniforms, name) \
-	ASSIGN_DRIVER_FUNC(PushFragmentShaderUniforms, name) \
-	ASSIGN_DRIVER_FUNC(PushComputeShaderUniforms, name) \
-	ASSIGN_DRIVER_FUNC(BindVertexSamplers, name) \
-	ASSIGN_DRIVER_FUNC(BindFragmentSamplers, name) \
-	ASSIGN_DRIVER_FUNC(GetBufferData, name) \
+	ASSIGN_DRIVER_FUNC(CreateGpuBuffer, name) \
+	ASSIGN_DRIVER_FUNC(CreateCpuBuffer, name) \
 	ASSIGN_DRIVER_FUNC(QueueDestroyTexture, name) \
 	ASSIGN_DRIVER_FUNC(QueueDestroySampler, name) \
-	ASSIGN_DRIVER_FUNC(QueueDestroyBuffer, name) \
+	ASSIGN_DRIVER_FUNC(QueueDestroyGpuBuffer, name) \
+	ASSIGN_DRIVER_FUNC(QueueDestroyCpuBuffer, name) \
 	ASSIGN_DRIVER_FUNC(QueueDestroyShaderModule, name) \
 	ASSIGN_DRIVER_FUNC(QueueDestroyComputePipeline, name) \
 	ASSIGN_DRIVER_FUNC(QueueDestroyGraphicsPipeline, name) \
 	ASSIGN_DRIVER_FUNC(BeginRenderPass, name) \
-	ASSIGN_DRIVER_FUNC(EndRenderPass, name) \
+	ASSIGN_DRIVER_FUNC(BindGraphicsPipeline, name) \
 	ASSIGN_DRIVER_FUNC(SetViewport, name) \
 	ASSIGN_DRIVER_FUNC(SetScissor, name) \
-	ASSIGN_DRIVER_FUNC(BindGraphicsPipeline, name) \
 	ASSIGN_DRIVER_FUNC(BindVertexBuffers, name) \
 	ASSIGN_DRIVER_FUNC(BindIndexBuffer, name) \
+	ASSIGN_DRIVER_FUNC(BindVertexSamplers, name) \
+	ASSIGN_DRIVER_FUNC(BindFragmentSamplers, name) \
+	ASSIGN_DRIVER_FUNC(PushVertexShaderUniforms, name) \
+	ASSIGN_DRIVER_FUNC(PushFragmentShaderUniforms, name) \
+	ASSIGN_DRIVER_FUNC(DrawInstancedPrimitives, name) \
+	ASSIGN_DRIVER_FUNC(DrawIndexedPrimitives, name) \
+	ASSIGN_DRIVER_FUNC(DrawPrimitives, name) \
+	ASSIGN_DRIVER_FUNC(DrawPrimitivesIndirect, name) \
+	ASSIGN_DRIVER_FUNC(EndRenderPass, name) \
+	ASSIGN_DRIVER_FUNC(BeginComputePass, name) \
 	ASSIGN_DRIVER_FUNC(BindComputePipeline, name) \
 	ASSIGN_DRIVER_FUNC(BindComputeBuffers, name) \
 	ASSIGN_DRIVER_FUNC(BindComputeTextures, name) \
+	ASSIGN_DRIVER_FUNC(PushComputeShaderUniforms, name) \
+	ASSIGN_DRIVER_FUNC(DispatchCompute, name) \
+	ASSIGN_DRIVER_FUNC(EndComputePass, name) \
+	ASSIGN_DRIVER_FUNC(MapCpuBuffer, name) \
+	ASSIGN_DRIVER_FUNC(UnmapCpuBuffer, name) \
+	ASSIGN_DRIVER_FUNC(BeginCopyPass, name) \
+	ASSIGN_DRIVER_FUNC(UploadToTexture, name) \
+	ASSIGN_DRIVER_FUNC(UploadToBuffer, name) \
+	ASSIGN_DRIVER_FUNC(DownloadFromTexture, name) \
+	ASSIGN_DRIVER_FUNC(DownloadFromBuffer, name) \
+	ASSIGN_DRIVER_FUNC(CopyTextureToTexture, name) \
+	ASSIGN_DRIVER_FUNC(CopyTextureToBuffer, name) \
+	ASSIGN_DRIVER_FUNC(CopyBufferToTexture, name) \
+	ASSIGN_DRIVER_FUNC(CopyBufferToBuffer, name) \
+	ASSIGN_DRIVER_FUNC(GenerateMipmaps, name) \
+	ASSIGN_DRIVER_FUNC(EndCopyPass, name) \
 	ASSIGN_DRIVER_FUNC(ClaimWindow, name) \
 	ASSIGN_DRIVER_FUNC(UnclaimWindow, name) \
+	ASSIGN_DRIVER_FUNC(SetSwapchainPresentMode, name) \
+	ASSIGN_DRIVER_FUNC(GetSwapchainFormat, name) \
 	ASSIGN_DRIVER_FUNC(AcquireCommandBuffer, name) \
 	ASSIGN_DRIVER_FUNC(AcquireSwapchainTexture, name) \
-	ASSIGN_DRIVER_FUNC(GetSwapchainFormat, name) \
-	ASSIGN_DRIVER_FUNC(SetSwapchainPresentMode, name) \
 	ASSIGN_DRIVER_FUNC(Submit, name) \
 	ASSIGN_DRIVER_FUNC(SubmitAndAcquireFence, name) \
 	ASSIGN_DRIVER_FUNC(Wait, name) \
