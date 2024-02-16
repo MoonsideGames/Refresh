@@ -816,7 +816,7 @@ REFRESHAPI void Refresh_BindVertexBuffers(
 	uint32_t firstBinding,
 	uint32_t bindingCount,
 	Refresh_GpuBuffer **pBuffers,
-	uint32_t *pOffsets
+	uint64_t *pOffsets
 );
 
 /* Binds an index buffer for use with subsequent draw calls. */
@@ -824,7 +824,7 @@ REFRESHAPI void Refresh_BindIndexBuffer(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
 	Refresh_GpuBuffer *buffer,
-	uint32_t offset,
+	uint64_t offset,
 	Refresh_IndexElementSize indexElementSize
 );
 
@@ -1159,7 +1159,7 @@ REFRESHAPI void Refresh_CopyTextureToBuffer(
 	Refresh_CommandBuffer *commandBuffer,
 	Refresh_TextureSlice *textureSlice,
 	Refresh_GpuBuffer *buffer,
-	Refresh_BufferImageCopy *copyParameters
+	Refresh_BufferImageCopy *copyParams
 );
 
 /* Copies data from a buffer to a texture slice. */
