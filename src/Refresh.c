@@ -652,11 +652,13 @@ void Refresh_EndRenderPass(
 /* Compute Pass */
 
 void Refresh_BeginComputePass(
-	Refresh_Device *device
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer
 ) {
 	NULL_RETURN(device);
 	device->BeginComputePass(
-		device->driverData
+		device->driverData,
+		commandBuffer
 	);
 }
 
@@ -736,11 +738,13 @@ void Refresh_DispatchCompute(
 }
 
 void Refresh_EndComputePass(
-	Refresh_Device *device
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer
 ) {
 	NULL_RETURN(device);
 	device->EndComputePass(
-		device->driverData
+		device->driverData,
+		commandBuffer
 	);
 }
 
@@ -775,11 +779,13 @@ void Refresh_UnmapCpuBuffer(
 /* Copy Pass */
 
 void Refresh_BeginCopyPass(
-	Refresh_Device *device
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer
 ) {
 	NULL_RETURN(device);
 	device->BeginCopyPass(
-		device->driverData
+		device->driverData,
+		commandBuffer
 	);
 }
 
@@ -931,11 +937,13 @@ void Refresh_GenerateMipmaps(
 }
 
 void Refresh_EndCopyPass(
-	Refresh_Device *device
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer
 ) {
 	NULL_RETURN(device);
 	device->EndCopyPass(
-		device->driverData
+		device->driverData,
+		commandBuffer
 	);
 }
 
