@@ -980,7 +980,10 @@ REFRESHAPI void Refresh_EndRenderPass(
 /* Compute Pass */
 
 /* Begins a compute pass. */
-REFRESHAPI void Refresh_BeginComputePass(Refresh_Device *device);
+REFRESHAPI void Refresh_BeginComputePass(
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer
+);
 
 /* Binds a compute pipeline to the compute bind point. */
 REFRESHAPI void Refresh_BindComputePipeline(
@@ -1053,7 +1056,10 @@ REFRESHAPI void Refresh_DispatchCompute(
 );
 
 /* Ends the current compute pass. */
-REFRESHAPI void Refresh_EndComputePass(Refresh_Device *device);
+REFRESHAPI void Refresh_EndComputePass(
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer
+);
 
 /* CpuBuffer Map */
 
@@ -1078,7 +1084,10 @@ REFRESHAPI void Refresh_UnmapCpuBuffer(
 /* Copy Pass */
 
 /* Begins a copy pass. */
-REFRESHAPI void Refresh_BeginCopyPass(Refresh_Device *device);
+REFRESHAPI void Refresh_BeginCopyPass(
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer
+);
 
 /* CPU-to-GPU copies occur on the GPU timeline.
  *
@@ -1176,7 +1185,10 @@ REFRESHAPI void Refresh_GenerateMipmaps(
 	Refresh_Texture *texture
 );
 
-REFRESHAPI void Refresh_EndCopyPass(Refresh_Device *device);
+REFRESHAPI void Refresh_EndCopyPass(
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer
+);
 
 /* Ends a copy pass. */
 

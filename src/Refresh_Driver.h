@@ -378,7 +378,8 @@ struct Refresh_Device
 	/* Compute Pass */
 
 	void (*BeginComputePass)(
-		Refresh_Renderer *driverData
+		Refresh_Renderer *driverData,
+		Refresh_CommandBuffer *commandBuffer
 	);
 
 	void (*BindComputePipeline)(
@@ -417,7 +418,8 @@ struct Refresh_Device
 	);
 
 	void (*EndComputePass)(
-		Refresh_Renderer *driverData
+		Refresh_Renderer *driverData,
+		Refresh_CommandBuffer *commandBuffer
 	);
 
 	/* CpuBuffer map/unmap */
@@ -437,7 +439,8 @@ struct Refresh_Device
 	/* Copy Pass */
 
 	void (*BeginCopyPass)(
-		Refresh_Renderer *driverData
+		Refresh_Renderer *driverData,
+		Refresh_CommandBuffer *commandBuffer
 	);
 
 	void (*UploadToTexture)(
@@ -510,7 +513,8 @@ struct Refresh_Device
 	);
 
 	void (*EndCopyPass)(
-		Refresh_Renderer *driverData
+		Refresh_Renderer *driverData,
+		Refresh_CommandBuffer *commandBuffer
 	);
 
 	/* Submission/Presentation */
