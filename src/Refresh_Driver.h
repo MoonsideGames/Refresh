@@ -290,14 +290,14 @@ struct Refresh_Device
 		uint32_t firstBinding,
 		uint32_t bindingCount,
 		Refresh_GpuBuffer **pBuffers,
-		uint32_t *pOffsets
+		uint64_t *pOffsets
 	);
 
 	void (*BindIndexBuffer)(
 		Refresh_Renderer *driverData,
 		Refresh_CommandBuffer *commandBuffer,
 		Refresh_GpuBuffer *buffer,
-		uint32_t offset,
+		uint64_t offset,
 		Refresh_IndexElementSize indexElementSize
 	);
 
@@ -487,7 +487,7 @@ struct Refresh_Device
 		Refresh_CommandBuffer *commandBuffer,
 		Refresh_TextureSlice *textureSlice,
 		Refresh_GpuBuffer *buffer,
-		Refresh_BufferImageCopy *copyParameters
+		Refresh_BufferImageCopy *copyParams
 	);
 
 	void (*CopyBufferToTexture)(
