@@ -315,14 +315,14 @@ struct Refresh_Device
 		Refresh_Sampler **pSamplers
 	);
 
-	uint32_t (*PushVertexShaderUniforms)(
+	void (*PushVertexShaderUniforms)(
 		Refresh_Renderer *driverData,
 		Refresh_CommandBuffer *commandBuffer,
 		void *data,
 		uint32_t dataLengthInBytes
 	);
 
-	uint32_t (*PushFragmentShaderUniforms)(
+	void (*PushFragmentShaderUniforms)(
 		Refresh_Renderer *driverData,
 		Refresh_CommandBuffer *commandBuffer,
 		void *data,
@@ -335,9 +335,7 @@ struct Refresh_Device
 		uint32_t baseVertex,
 		uint32_t startIndex,
 		uint32_t primitiveCount,
-		uint32_t instanceCount,
-		uint32_t vertexParamOffset,
-		uint32_t fragmentParamOffset
+		uint32_t instanceCount
 	);
 
 	void (*DrawIndexedPrimitives)(
@@ -345,18 +343,14 @@ struct Refresh_Device
 		Refresh_CommandBuffer *commandBuffer,
 		uint32_t baseVertex,
 		uint32_t startIndex,
-		uint32_t primitiveCount,
-		uint32_t vertexParamOffset,
-		uint32_t fragmentParamOffset
+		uint32_t primitiveCount
 	);
 
 	void (*DrawPrimitives)(
 		Refresh_Renderer *driverData,
 		Refresh_CommandBuffer *commandBuffer,
 		uint32_t vertexStart,
-		uint32_t primitiveCount,
-		uint32_t vertexParamOffset,
-		uint32_t fragmentParamOffset
+		uint32_t primitiveCount
 	);
 
 	void (*DrawPrimitivesIndirect)(
@@ -365,9 +359,7 @@ struct Refresh_Device
 		Refresh_GpuBuffer *buffer,
 		uint32_t offsetInBytes,
 		uint32_t drawCount,
-		uint32_t stride,
-		uint32_t vertexParamOffset,
-		uint32_t fragmentParamOffset
+		uint32_t stride
 	);
 
 	void (*EndRenderPass)(
@@ -401,7 +393,7 @@ struct Refresh_Device
 		uint32_t **pLevels
 	);
 
-	uint32_t (*PushComputeShaderUniforms)(
+	void (*PushComputeShaderUniforms)(
 		Refresh_Renderer *driverData,
 		Refresh_CommandBuffer *commandBuffer,
 		void *data,
@@ -413,8 +405,7 @@ struct Refresh_Device
 		Refresh_CommandBuffer *commandBuffer,
 		uint32_t groupCountX,
 		uint32_t groupCountY,
-		uint32_t groupCountZ,
-		uint32_t computeParamOffset
+		uint32_t groupCountZ
 	);
 
 	void (*EndComputePass)(

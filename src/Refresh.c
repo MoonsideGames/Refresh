@@ -522,14 +522,14 @@ void Refresh_BindFragmentSamplers(
 	);
 }
 
-uint32_t Refresh_PushVertexShaderUniforms(
+void Refresh_PushVertexShaderUniforms(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
 	void *data,
 	uint32_t dataLengthInBytes
 ) {
-	if (device == NULL) { return 0; }
-	return device->PushVertexShaderUniforms(
+	NULL_RETURN(device);
+	device->PushVertexShaderUniforms(
 		device->driverData,
 		commandBuffer,
 		data,
@@ -537,14 +537,14 @@ uint32_t Refresh_PushVertexShaderUniforms(
 	);
 }
 
-uint32_t Refresh_PushFragmentShaderUniforms(
+void Refresh_PushFragmentShaderUniforms(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
 	void *data,
 	uint32_t dataLengthInBytes
 ) {
-	if (device == NULL) { return 0; }
-	return device->PushFragmentShaderUniforms(
+	NULL_RETURN(device);
+	device->PushFragmentShaderUniforms(
 		device->driverData,
 		commandBuffer,
 		data,
@@ -558,9 +558,7 @@ void Refresh_DrawInstancedPrimitives(
 	uint32_t baseVertex,
 	uint32_t startIndex,
 	uint32_t primitiveCount,
-	uint32_t instanceCount,
-	uint32_t vertexParamOffset,
-	uint32_t fragmentParamOffset
+	uint32_t instanceCount
 ) {
 	NULL_RETURN(device);
 	device->DrawInstancedPrimitives(
@@ -569,9 +567,7 @@ void Refresh_DrawInstancedPrimitives(
 		baseVertex,
 		startIndex,
 		primitiveCount,
-		instanceCount,
-		vertexParamOffset,
-		fragmentParamOffset
+		instanceCount
 	);
 }
 
@@ -580,9 +576,7 @@ void Refresh_DrawIndexedPrimitives(
 	Refresh_CommandBuffer *commandBuffer,
 	uint32_t baseVertex,
 	uint32_t startIndex,
-	uint32_t primitiveCount,
-	uint32_t vertexParamOffset,
-	uint32_t fragmentParamOffset
+	uint32_t primitiveCount
 ) {
 	NULL_RETURN(device);
 	device->DrawIndexedPrimitives(
@@ -590,9 +584,7 @@ void Refresh_DrawIndexedPrimitives(
 		commandBuffer,
 		baseVertex,
 		startIndex,
-		primitiveCount,
-		vertexParamOffset,
-		fragmentParamOffset
+		primitiveCount
 	);
 }
 
@@ -600,18 +592,14 @@ void Refresh_DrawPrimitives(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
 	uint32_t vertexStart,
-	uint32_t primitiveCount,
-	uint32_t vertexParamOffset,
-	uint32_t fragmentParamOffset
+	uint32_t primitiveCount
 ) {
 	NULL_RETURN(device);
 	device->DrawPrimitives(
 		device->driverData,
 		commandBuffer,
 		vertexStart,
-		primitiveCount,
-		vertexParamOffset,
-		fragmentParamOffset
+		primitiveCount
 	);
 }
 
@@ -621,9 +609,7 @@ void Refresh_DrawPrimitivesIndirect(
 	Refresh_GpuBuffer *buffer,
 	uint32_t offsetInBytes,
 	uint32_t drawCount,
-	uint32_t stride,
-	uint32_t vertexParamOffset,
-	uint32_t fragmentParamOffset
+	uint32_t stride
 ) {
 	NULL_RETURN(device);
 	device->DrawPrimitivesIndirect(
@@ -632,9 +618,7 @@ void Refresh_DrawPrimitivesIndirect(
 		buffer,
 		offsetInBytes,
 		drawCount,
-		stride,
-		vertexParamOffset,
-		fragmentParamOffset
+		stride
 	);
 }
 
@@ -703,14 +687,14 @@ void Refresh_BindComputeTextures(
 	);
 }
 
-uint32_t Refresh_PushComputeShaderUniforms(
+void Refresh_PushComputeShaderUniforms(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
 	void *data,
 	uint32_t dataLengthInBytes
 ) {
-	if (device == NULL) { return 0; }
-	return device->PushComputeShaderUniforms(
+	NULL_RETURN(device);
+	device->PushComputeShaderUniforms(
 		device->driverData,
 		commandBuffer,
 		data,
@@ -723,8 +707,7 @@ void Refresh_DispatchCompute(
 	Refresh_CommandBuffer *commandBuffer,
 	uint32_t groupCountX,
 	uint32_t groupCountY,
-	uint32_t groupCountZ,
-	uint32_t computeParamOffset
+	uint32_t groupCountZ
 ) {
 	NULL_RETURN(device);
 	device->DispatchCompute(
@@ -732,8 +715,7 @@ void Refresh_DispatchCompute(
 		commandBuffer,
 		groupCountX,
 		groupCountY,
-		groupCountZ,
-		computeParamOffset
+		groupCountZ
 	);
 }
 
