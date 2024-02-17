@@ -1043,28 +1043,6 @@ REFRESHAPI void Refresh_EndComputePass(
 	Refresh_CommandBuffer *commandBuffer
 );
 
-/* CpuBuffer Map */
-
-/* Maps a CpuBuffer to host memory. Returns a pointer that can be copied to.
- *
- * NOTE: Mapping a CpuBuffer that is already mapped is an error.
- *
- * offsetInBytes: The offset of the buffer to map.
- * sizeInBytes: The number of bytes of memory to map.
- */
-REFRESHAPI void* Refresh_MapCpuBuffer(
-	Refresh_Device *device,
-	Refresh_CpuBuffer *buffer,
-	uint32_t offsetInBytes,
-	uint32_t sizeInBytes
-);
-
-/* Unmaps a mapped CpuBuffer. Call this when you are done copying data. */
-REFRESHAPI void Refresh_UnmapCpuBuffer(
-	Refresh_Device *device,
-	Refresh_CpuBuffer *buffer
-);
-
 /* Copy Pass */
 
 /* Begins a copy pass. */

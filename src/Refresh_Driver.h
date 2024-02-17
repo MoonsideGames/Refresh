@@ -413,20 +413,6 @@ struct Refresh_Device
 		Refresh_CommandBuffer *commandBuffer
 	);
 
-	/* CpuBuffer map/unmap */
-
-	void* (*MapCpuBuffer)(
-		Refresh_Renderer *driverData,
-		Refresh_CpuBuffer *buffer,
-		uint32_t offsetInBytes,
-		uint32_t sizeInBytes
-	);
-
-	void (*UnmapCpuBuffer)(
-		Refresh_Renderer *driverData,
-		Refresh_CpuBuffer *buffer
-	);
-
 	/* Copy Pass */
 
 	void (*BeginCopyPass)(
