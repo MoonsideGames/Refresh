@@ -860,17 +860,17 @@ REFRESHAPI void Refresh_BindFragmentSamplers(
 	Refresh_Sampler **pSamplers
 );
 
-/* Pushes vertex shader params to the device.
- * Returns a starting offset value to be used with draw calls.
+/* Pushes vertex shader uniforms to the device.
+ * This uniform data will be used with subsequent draw calls.
  *
  * NOTE:
- * 		A pipeline must be bound.
+ * 		A graphics pipeline must be bound.
  * 		Will use the block size of the currently bound vertex shader.
  *
  * data: 				The client data to write into the buffer.
  * dataLengthInBytes: 	The length of the data to write.
  */
-REFRESHAPI uint32_t Refresh_PushVertexShaderUniforms(
+REFRESHAPI void Refresh_PushVertexShaderUniforms(
 	Refresh_Device *device,
 	Refresh_CommandBuffer * commandBuffer,
 	void *data,
@@ -878,7 +878,7 @@ REFRESHAPI uint32_t Refresh_PushVertexShaderUniforms(
 );
 
 /* Pushes fragment shader params to the device.
- * Returns a starting offset value to be used with draw calls.
+ * This uniform data will be used with subsequent draw calls.
  *
  * NOTE:
  * 		A graphics pipeline must be bound.
@@ -887,7 +887,7 @@ REFRESHAPI uint32_t Refresh_PushVertexShaderUniforms(
  * data: 				The client data to write into the buffer.
  * dataLengthInBytes: 	The length of the data to write.
  */
-REFRESHAPI uint32_t Refresh_PushFragmentShaderUniforms(
+REFRESHAPI void Refresh_PushFragmentShaderUniforms(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
 	void *data,
@@ -902,8 +902,6 @@ REFRESHAPI uint32_t Refresh_PushFragmentShaderUniforms(
  * startIndex:          The starting offset to read from the index buffer.
  * primitiveCount:      The number of primitives to draw.
  * instanceCount:       The number of instances that will be drawn.
- * vertexParamOffset:   The offset of the vertex shader param data.
- * fragmentParamOffset: The offset of the fragment shader param data.
  */
 REFRESHAPI void Refresh_DrawInstancedPrimitives(
 	Refresh_Device *device,
@@ -911,9 +909,7 @@ REFRESHAPI void Refresh_DrawInstancedPrimitives(
 	uint32_t baseVertex,
 	uint32_t startIndex,
 	uint32_t primitiveCount,
-	uint32_t instanceCount,
-	uint32_t vertexParamOffset,
-	uint32_t fragmentParamOffset
+	uint32_t instanceCount
 );
 
 /* Draws data from vertex/index buffers.
@@ -921,33 +917,25 @@ REFRESHAPI void Refresh_DrawInstancedPrimitives(
  * baseVertex:          The starting offset to read from the vertex buffer.
  * startIndex:          The starting offset to read from the index buffer.
  * primitiveCount:      The number of primitives to draw.
- * vertexParamOffset:   The offset of the vertex shader param data.
- * fragmentParamOffset: The offset of the fragment shader param data.
  */
 REFRESHAPI void Refresh_DrawIndexedPrimitives(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
 	uint32_t baseVertex,
 	uint32_t startIndex,
-	uint32_t primitiveCount,
-	uint32_t vertexParamOffset,
-	uint32_t fragmentParamOffset
+	uint32_t primitiveCount
 );
 
 /* Draws data from vertex buffers.
  *
  * vertexStart:			The starting offset to read from the vertex buffer.
  * primitiveCount:		The number of primitives to draw.
- * vertexParamOffset:	The offset of the vertex shader param data.
- * fragmentParamOffset:	The offset of the fragment shader param data.
  */
 REFRESHAPI void Refresh_DrawPrimitives(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
 	uint32_t vertexStart,
-	uint32_t primitiveCount,
-	uint32_t vertexParamOffset,
-	uint32_t fragmentParamOffset
+	uint32_t primitiveCount
 );
 
 /* Similar to Refresh_DrawPrimitives, but draw parameters are set from a buffer.
@@ -957,8 +945,6 @@ REFRESHAPI void Refresh_DrawPrimitives(
  * offsetInBytes:       The offset to start reading from the draw buffer.
  * drawCount:           The number of draw parameter sets that should be read from the draw buffer.
  * stride:              The byte stride between sets of draw parameters.
- * vertexParamOffset:   The offset of the vertex shader param data.
- * fragmentParamOffset:	The offset of the fragment shader param data.
  */
 REFRESHAPI void Refresh_DrawPrimitivesIndirect(
 	Refresh_Device *device,
@@ -966,9 +952,7 @@ REFRESHAPI void Refresh_DrawPrimitivesIndirect(
 	Refresh_GpuBuffer *buffer,
 	uint32_t offsetInBytes,
 	uint32_t drawCount,
-	uint32_t stride,
-	uint32_t vertexParamOffset,
-	uint32_t fragmentParamOffset
+	uint32_t stride
 );
 
 /* Ends the current render pass. */
@@ -1023,7 +1007,7 @@ REFRESHAPI void Refresh_BindComputeTextures(
 );
 
 /* Pushes compute shader params to the device.
- * Returns a starting offset value to be used with draw calls.
+ * This uniform data will be used with subsequent dispatch calls.
  *
  * NOTE:
  * 	A compute pipeline must be bound.
@@ -1032,7 +1016,7 @@ REFRESHAPI void Refresh_BindComputeTextures(
  * data:				The client data to write into the buffer.
  * dataLengthInBytes:	The length of the data to write.
  */
-REFRESHAPI uint32_t Refresh_PushComputeShaderUniforms(
+REFRESHAPI void Refresh_PushComputeShaderUniforms(
 	Refresh_Device *device,
 	Refresh_CommandBuffer * commandBuffer,
 	void *data,
@@ -1044,15 +1028,13 @@ REFRESHAPI uint32_t Refresh_PushComputeShaderUniforms(
  * groupCountX:			Number of local workgroups to dispatch in the X dimension.
  * groupCountY:			Number of local workgroups to dispatch in the Y dimension.
  * groupCountZ:			Number of local workgroups to dispatch in the Z dimension.
- * computeParamOffset:	The offset of the compute shader param data.
  */
 REFRESHAPI void Refresh_DispatchCompute(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
 	uint32_t groupCountX,
 	uint32_t groupCountY,
-	uint32_t groupCountZ,
-	uint32_t computeParamOffset
+	uint32_t groupCountZ
 );
 
 /* Ends the current compute pass. */
