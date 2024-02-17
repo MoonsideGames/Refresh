@@ -216,7 +216,8 @@ struct Refresh_Device
 
 	Refresh_CpuBuffer* (*CreateCpuBuffer)(
 		Refresh_Renderer *driverData,
-		uint32_t sizeInBytes
+		uint32_t sizeInBytes,
+		void **pDataPtr
 	);
 
 	/* Disposal */
@@ -605,8 +606,6 @@ struct Refresh_Device
 	ASSIGN_DRIVER_FUNC(PushComputeShaderUniforms, name) \
 	ASSIGN_DRIVER_FUNC(DispatchCompute, name) \
 	ASSIGN_DRIVER_FUNC(EndComputePass, name) \
-	ASSIGN_DRIVER_FUNC(MapCpuBuffer, name) \
-	ASSIGN_DRIVER_FUNC(UnmapCpuBuffer, name) \
 	ASSIGN_DRIVER_FUNC(BeginCopyPass, name) \
 	ASSIGN_DRIVER_FUNC(UploadToTexture, name) \
 	ASSIGN_DRIVER_FUNC(UploadToBuffer, name) \

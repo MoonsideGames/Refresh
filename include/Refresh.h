@@ -685,10 +685,12 @@ REFRESHAPI Refresh_GpuBuffer* Refresh_CreateGpuBuffer(
 /* Creates a CpuBuffer.
  *
  * sizeInBytes: The length of the buffer.
+ * pDataPtr: On success, contains a pointer that can be used to copy to/from the buffer.
  */
 REFRESHAPI Refresh_CpuBuffer* Refresh_CreateCpuBuffer(
 	Refresh_Device *device,
-	uint32_t sizeInBytes
+	uint32_t sizeInBytes,
+	void **pDataPtr
 );
 
 /* Disposal */
