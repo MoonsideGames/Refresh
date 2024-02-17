@@ -730,34 +730,6 @@ void Refresh_EndComputePass(
 	);
 }
 
-/* CpuBuffer Map */
-
-void* Refresh_MapCpuBuffer(
-	Refresh_Device *device,
-	Refresh_CpuBuffer *buffer,
-	uint32_t offsetInBytes,
-	uint32_t sizeInBytes
-) {
-	NULL_RETURN_NULL(device);
-	return device->MapCpuBuffer(
-		device->driverData,
-		buffer,
-		offsetInBytes,
-		sizeInBytes
-	);
-}
-
-void Refresh_UnmapCpuBuffer(
-	Refresh_Device *device,
-	Refresh_CpuBuffer *buffer
-) {
-	NULL_RETURN(device);
-	device->UnmapCpuBuffer(
-		device->driverData,
-		buffer
-	);
-}
-
 /* Copy Pass */
 
 void Refresh_BeginCopyPass(
