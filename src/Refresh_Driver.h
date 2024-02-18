@@ -414,6 +414,23 @@ struct Refresh_Device
 		Refresh_CommandBuffer *commandBuffer
 	);
 
+	/* CpuBuffer Set/Get */
+
+	void (*SetData)(
+		Refresh_Renderer *driverData,
+		void* data,
+		Refresh_CpuBuffer *cpuBuffer,
+		Refresh_BufferCopy *copyParams,
+		Refresh_SetDataOptions option
+	);
+
+	void (*GetData)(
+		Refresh_Renderer *driverData,
+		Refresh_CpuBuffer *cpuBuffer,
+		void* data,
+		Refresh_BufferCopy *copyParams
+	);
+
 	/* Copy Pass */
 
 	void (*BeginCopyPass)(
@@ -606,6 +623,8 @@ struct Refresh_Device
 	ASSIGN_DRIVER_FUNC(PushComputeShaderUniforms, name) \
 	ASSIGN_DRIVER_FUNC(DispatchCompute, name) \
 	ASSIGN_DRIVER_FUNC(EndComputePass, name) \
+	ASSIGN_DRIVER_FUNC(SetData, name) \
+	ASSIGN_DRIVER_FUNC(GetData, name) \
 	ASSIGN_DRIVER_FUNC(BeginCopyPass, name) \
 	ASSIGN_DRIVER_FUNC(UploadToTexture, name) \
 	ASSIGN_DRIVER_FUNC(UploadToBuffer, name) \
