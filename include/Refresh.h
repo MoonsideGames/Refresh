@@ -1054,13 +1054,13 @@ REFRESHAPI void Refresh_EndComputePass(
 /* Immediately copies data from a pointer into a CpuBuffer.
  *
  * option:
- * 	DISCARD:
+ *  DISCARD:
  *    If this CpuBuffer has been used in a copy command that has not completed,
  *    preserves the data in the issued copy commands at the cost of increased memory usage.
  *    Otherwise it simply overwrites.
  *    It is not recommended to use this option with large CpuBuffers.
  *
- * 	OVERWRITE:
+ *  OVERWRITE:
  *    Overwrites the data regardless of whether a copy has been issued.
  *    Use this option with great care, as it can cause data races to occur!
  */
