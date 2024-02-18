@@ -327,6 +327,12 @@ typedef enum Refresh_BorderColor
 	REFRESH_BORDERCOLOR_INT_OPAQUE_WHITE
 } Refresh_BorderColor;
 
+typedef enum Refresh_SetDataOptions
+{
+	REFRESH_SETDATAOPTIONS_DISCARD,
+	REFRESH_SETDATAOPTIONS_OVERWRITE
+} Refresh_SetDataOptions;
+
 typedef enum Refresh_Backend
 {
 	REFRESH_BACKEND_DONTCARE,
@@ -685,12 +691,10 @@ REFRESHAPI Refresh_GpuBuffer* Refresh_CreateGpuBuffer(
 /* Creates a CpuBuffer.
  *
  * sizeInBytes: The length of the buffer.
- * pDataPtr: On success, contains a pointer that can be used to copy to/from the buffer.
  */
 REFRESHAPI Refresh_CpuBuffer* Refresh_CreateCpuBuffer(
 	Refresh_Device *device,
-	uint32_t sizeInBytes,
-	void **pDataPtr
+	uint32_t sizeInBytes
 );
 
 /* Disposal */
@@ -1045,6 +1049,37 @@ REFRESHAPI void Refresh_EndComputePass(
 	Refresh_CommandBuffer *commandBuffer
 );
 
+/* CpuBuffer Set/Get */
+
+/* Immediately copies data from a pointer into a CpuBuffer.
+ *
+ * option:
+ * 	DISCARD:
+ *    If this CpuBuffer has been used in a copy command that has not completed,
+ *    preserves the data in the issued copy commands at the cost of increased memory usage.
+ *    Otherwise it simply overwrites.
+ *    It is not recommended to use this option with large CpuBuffers.
+ *
+ * 	OVERWRITE:
+ *    Overwrites the data regardless of whether a copy has been issued.
+ *    Use this option with great care, as it can cause data races to occur!
+ */
+REFRESHAPI void Refresh_SetData(
+	Refresh_Device *device,
+	void* data,
+	Refresh_CpuBuffer *cpuBuffer,
+	Refresh_BufferCopy *copyParams,
+	Refresh_SetDataOptions option
+);
+
+/* Immediately copies data from a CpuBuffer into a pointer. */
+REFRESHAPI void Refresh_GetData(
+	Refresh_Device *device,
+	Refresh_CpuBuffer *cpuBuffer,
+	void* data,
+	Refresh_BufferCopy *copyParams
+);
+
 /* Copy Pass */
 
 /* Begins a copy pass. */
@@ -1054,9 +1089,6 @@ REFRESHAPI void Refresh_BeginCopyPass(
 );
 
 /* CPU-to-GPU copies occur on the GPU timeline.
- *
- * You MUST NOT alter the data in the CpuBuffer
- * until the command buffer has finished execution.
  *
  * You MAY assume that the copy has finished for subsequent commands.
  */

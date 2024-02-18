@@ -732,6 +732,40 @@ void Refresh_EndComputePass(
 	);
 }
 
+/* CpuBuffer Set/Get */
+
+void Refresh_SetData(
+	Refresh_Device *device,
+	void* data,
+	Refresh_CpuBuffer *cpuBuffer,
+	Refresh_BufferCopy *copyParams,
+	Refresh_SetDataOptions option
+) {
+	NULL_RETURN(device);
+	device->SetData(
+		device->driverData,
+		data,
+		cpuBuffer,
+		copyParams,
+		option
+	);
+}
+
+void Refresh_GetData(
+	Refresh_Device *device,
+	Refresh_CpuBuffer *cpuBuffer,
+	void* data,
+	Refresh_BufferCopy *copyParams
+) {
+	NULL_RETURN(device);
+	device->GetData(
+		device->driverData,
+		cpuBuffer,
+		data,
+		copyParams
+	);
+}
+
 /* Copy Pass */
 
 void Refresh_BeginCopyPass(
