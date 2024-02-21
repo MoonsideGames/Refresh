@@ -216,8 +216,7 @@ struct Refresh_Device
 
 	Refresh_CpuBuffer* (*CreateCpuBuffer)(
 		Refresh_Renderer *driverData,
-		uint32_t sizeInBytes,
-		void **pDataPtr
+		uint32_t sizeInBytes
 	);
 
 	/* Disposal */
