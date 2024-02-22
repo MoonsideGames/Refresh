@@ -329,7 +329,7 @@ typedef enum Refresh_BorderColor
 
 typedef enum Refresh_SetDataOptions
 {
-	REFRESH_SETDATAOPTIONS_DISCARD,
+	REFRESH_SETDATAOPTIONS_SAFEDISCARD,
 	REFRESH_SETDATAOPTIONS_OVERWRITE
 } Refresh_SetDataOptions;
 
@@ -1054,10 +1054,10 @@ REFRESHAPI void Refresh_EndComputePass(
 /* Immediately copies data from a pointer into a CpuBuffer.
  *
  * option:
- *  DISCARD:
+ *  SAFEDISCARD:
  *    If this CpuBuffer has been used in a copy command that has not completed,
- *    preserves the data in the issued copy commands at the cost of increased memory usage.
- *    Otherwise it simply overwrites.
+ *    the issued copy commands will still be valid at the cost of increased memory usage.
+ *    Otherwise the data will overwrite.
  *    It is not recommended to use this option with large CpuBuffers.
  *
  *  OVERWRITE:
