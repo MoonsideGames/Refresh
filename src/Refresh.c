@@ -310,14 +310,12 @@ Refresh_GpuBuffer* Refresh_CreateGpuBuffer(
 
 Refresh_CpuBuffer* Refresh_CreateCpuBuffer(
 	Refresh_Device *device,
-	uint32_t sizeInBytes,
-	void **pDataPtr
+	uint32_t sizeInBytes
 ) {
 	NULL_RETURN_NULL(device);
 	return device->CreateCpuBuffer(
 		device->driverData,
-		sizeInBytes,
-		pDataPtr
+		sizeInBytes
 	);
 }
 
