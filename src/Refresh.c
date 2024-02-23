@@ -345,23 +345,23 @@ void Refresh_QueueDestroySampler(
 
 void Refresh_QueueDestroyGpuBuffer(
 	Refresh_Device *device,
-	Refresh_GpuBuffer *buffer
+	Refresh_GpuBuffer *gpuBuffer
 ) {
 	NULL_RETURN(device);
 	device->QueueDestroyGpuBuffer(
 		device->driverData,
-		buffer
+		gpuBuffer
 	);
 }
 
 void Refresh_QueueDestroyTransferBuffer(
 	Refresh_Device *device,
-	Refresh_TransferBuffer *buffer
+	Refresh_TransferBuffer *transferBuffer
 ) {
 	NULL_RETURN(device);
 	device->QueueDestroyTransferBuffer(
 		device->driverData,
-		buffer
+		transferBuffer
 	);
 }
 
@@ -478,7 +478,7 @@ void Refresh_BindVertexBuffers(
 void Refresh_BindIndexBuffer(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
-	Refresh_GpuBuffer *buffer,
+	Refresh_GpuBuffer *gpuBuffer,
 	uint64_t offset,
 	Refresh_IndexElementSize indexElementSize
 ) {
@@ -486,7 +486,7 @@ void Refresh_BindIndexBuffer(
 	device->BindIndexBuffer(
 		device->driverData,
 		commandBuffer,
-		buffer,
+		gpuBuffer,
 		offset,
 		indexElementSize
 	);
@@ -606,7 +606,7 @@ void Refresh_DrawPrimitives(
 void Refresh_DrawPrimitivesIndirect(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
-	Refresh_GpuBuffer *buffer,
+	Refresh_GpuBuffer *gpuBuffer,
 	uint32_t offsetInBytes,
 	uint32_t drawCount,
 	uint32_t stride
@@ -615,7 +615,7 @@ void Refresh_DrawPrimitivesIndirect(
 	device->DrawPrimitivesIndirect(
 		device->driverData,
 		commandBuffer,
-		buffer,
+		gpuBuffer,
 		offsetInBytes,
 		drawCount,
 		stride
@@ -864,7 +864,7 @@ void Refresh_CopyTextureToBuffer(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
 	Refresh_TextureSlice *textureSlice,
-	Refresh_GpuBuffer *buffer,
+	Refresh_GpuBuffer *gpuBuffer,
 	Refresh_BufferImageCopy *copyParameters
 ) {
 	NULL_RETURN(device);
@@ -872,7 +872,7 @@ void Refresh_CopyTextureToBuffer(
 		device->driverData,
 		commandBuffer,
 		textureSlice,
-		buffer,
+		gpuBuffer,
 		copyParameters
 	);
 }
@@ -880,7 +880,7 @@ void Refresh_CopyTextureToBuffer(
 void Refresh_CopyBufferToTexture(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
-	Refresh_GpuBuffer *buffer,
+	Refresh_GpuBuffer *gpuBuffer,
 	Refresh_TextureSlice *textureSlice,
 	Refresh_BufferImageCopy *copyParams
 ) {
@@ -888,7 +888,7 @@ void Refresh_CopyBufferToTexture(
 	device->CopyBufferToTexture(
 		device->driverData,
 		commandBuffer,
-		buffer,
+		gpuBuffer,
 		textureSlice,
 		copyParams
 	);

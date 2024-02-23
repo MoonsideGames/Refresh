@@ -233,12 +233,12 @@ struct Refresh_Device
 
 	void (*QueueDestroyGpuBuffer)(
 		Refresh_Renderer *driverData,
-		Refresh_GpuBuffer *buffer
+		Refresh_GpuBuffer *gpuBuffer
 	);
 
 	void (*QueueDestroyTransferBuffer)(
 		Refresh_Renderer *driverData,
-		Refresh_TransferBuffer *buffer
+		Refresh_TransferBuffer *transferBuffer
 	);
 
 	void (*QueueDestroyShaderModule)(
@@ -296,7 +296,7 @@ struct Refresh_Device
 	void (*BindIndexBuffer)(
 		Refresh_Renderer *driverData,
 		Refresh_CommandBuffer *commandBuffer,
-		Refresh_GpuBuffer *buffer,
+		Refresh_GpuBuffer *gpuBuffer,
 		uint64_t offset,
 		Refresh_IndexElementSize indexElementSize
 	);
@@ -356,7 +356,7 @@ struct Refresh_Device
 	void (*DrawPrimitivesIndirect)(
 		Refresh_Renderer *driverData,
 		Refresh_CommandBuffer *commandBuffer,
-		Refresh_GpuBuffer *buffer,
+		Refresh_GpuBuffer *gpuBuffer,
 		uint32_t offsetInBytes,
 		uint32_t drawCount,
 		uint32_t stride
@@ -480,14 +480,14 @@ struct Refresh_Device
 		Refresh_Renderer *driverData,
 		Refresh_CommandBuffer *commandBuffer,
 		Refresh_TextureSlice *textureSlice,
-		Refresh_GpuBuffer *buffer,
+		Refresh_GpuBuffer *gpuBuffer,
 		Refresh_BufferImageCopy *copyParams
 	);
 
 	void (*CopyBufferToTexture)(
 		Refresh_Renderer *driverData,
 		Refresh_CommandBuffer *commandBuffer,
-		Refresh_GpuBuffer *buffer,
+		Refresh_GpuBuffer *gpuBuffer,
 		Refresh_TextureSlice *textureSlice,
 		Refresh_BufferImageCopy *copyParams
 	);
