@@ -232,6 +232,32 @@ uint8_t* Refresh_Image_Load(
 	return result;
 }
 
+uint8_t Refresh_Image_Info(
+	uint8_t *bufferPtr,
+	int32_t bufferLength,
+	int32_t *w,
+	int32_t *h,
+	int32_t *len
+) {
+	int32_t format;
+	int32_t result;
+
+	result = stbi_info_from_memory(
+		bufferPtr,
+		bufferLength,
+		w,
+		h,
+		&format
+	);
+
+	if (result == 0)
+	{
+		SDL_LogWarn(SDL_LOG_CATEGORY_ERROR, "Image info failed: %s", stbi_failure_reason());
+	}
+
+	return (uint8_t) result;
+}
+
 void Refresh_Image_Free(uint8_t *mem)
 {
 	SDL_SIMDFree(mem);
