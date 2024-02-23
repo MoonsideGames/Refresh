@@ -730,7 +730,7 @@ REFRESHAPI void Refresh_QueueDestroySampler(
  */
 REFRESHAPI void Refresh_QueueDestroyGpuBuffer(
 	Refresh_Device *device,
-	Refresh_GpuBuffer *buffer
+	Refresh_GpuBuffer *gpuBuffer
 );
 
 /* Sends a buffer to be destroyed by the renderer. Note that we call it
@@ -740,7 +740,7 @@ REFRESHAPI void Refresh_QueueDestroyGpuBuffer(
  */
 REFRESHAPI void Refresh_QueueDestroyTransferBuffer(
 	Refresh_Device *device,
-	Refresh_TransferBuffer *buffer
+	Refresh_TransferBuffer *transferBuffer
 );
 
 /* Sends a shader module to be destroyed by the renderer. Note that we call it
@@ -829,7 +829,7 @@ REFRESHAPI void Refresh_BindVertexBuffers(
 REFRESHAPI void Refresh_BindIndexBuffer(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
-	Refresh_GpuBuffer *buffer,
+	Refresh_GpuBuffer *gpuBuffer,
 	uint64_t offset,
 	Refresh_IndexElementSize indexElementSize
 );
@@ -955,7 +955,7 @@ REFRESHAPI void Refresh_DrawPrimitives(
 REFRESHAPI void Refresh_DrawPrimitivesIndirect(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
-	Refresh_GpuBuffer *buffer,
+	Refresh_GpuBuffer *gpuBuffer,
 	uint32_t offsetInBytes,
 	uint32_t drawCount,
 	uint32_t stride
@@ -1152,7 +1152,7 @@ REFRESHAPI void Refresh_CopyTextureToBuffer(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
 	Refresh_TextureSlice *textureSlice,
-	Refresh_GpuBuffer *buffer,
+	Refresh_GpuBuffer *gpuBuffer,
 	Refresh_BufferImageCopy *copyParams
 );
 
@@ -1160,7 +1160,7 @@ REFRESHAPI void Refresh_CopyTextureToBuffer(
 REFRESHAPI void Refresh_CopyBufferToTexture(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
-	Refresh_GpuBuffer *buffer,
+	Refresh_GpuBuffer *gpuBuffer,
 	Refresh_TextureSlice *textureSlice,
 	Refresh_BufferImageCopy *copyParams
 );
