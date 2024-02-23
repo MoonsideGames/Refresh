@@ -70,7 +70,7 @@ REFRESHAPI uint32_t Refresh_LinkedVersion(void);
 
 typedef struct Refresh_Device Refresh_Device;
 typedef struct Refresh_GpuBuffer Refresh_GpuBuffer;
-typedef struct Refresh_CpuBuffer Refresh_CpuBuffer;
+typedef struct Refresh_TransferBuffer Refresh_TransferBuffer;
 typedef struct Refresh_Texture Refresh_Texture;
 typedef struct Refresh_Sampler Refresh_Sampler;
 typedef struct Refresh_ShaderModule Refresh_ShaderModule;
@@ -688,11 +688,11 @@ REFRESHAPI Refresh_GpuBuffer* Refresh_CreateGpuBuffer(
 	uint32_t sizeInBytes
 );
 
-/* Creates a CpuBuffer.
+/* Creates a TransferBuffer.
  *
  * sizeInBytes: The length of the buffer.
  */
-REFRESHAPI Refresh_CpuBuffer* Refresh_CreateCpuBuffer(
+REFRESHAPI Refresh_TransferBuffer* Refresh_CreateTransferBuffer(
 	Refresh_Device *device,
 	uint32_t sizeInBytes
 );
@@ -736,11 +736,11 @@ REFRESHAPI void Refresh_QueueDestroyGpuBuffer(
 /* Sends a buffer to be destroyed by the renderer. Note that we call it
  * "QueueDestroy" because it may not be immediately destroyed by the renderer.
  *
- * buffer: The Refresh_CpuBuffer to be destroyed.
+ * buffer: The Refresh_TransferBuffer to be destroyed.
  */
-REFRESHAPI void Refresh_QueueDestroyCpuBuffer(
+REFRESHAPI void Refresh_QueueDestroyTransferBuffer(
 	Refresh_Device *device,
-	Refresh_CpuBuffer *buffer
+	Refresh_TransferBuffer *buffer
 );
 
 /* Sends a shader module to be destroyed by the renderer. Note that we call it
@@ -1049,16 +1049,16 @@ REFRESHAPI void Refresh_EndComputePass(
 	Refresh_CommandBuffer *commandBuffer
 );
 
-/* CpuBuffer Set/Get */
+/* TransferBuffer Set/Get */
 
-/* Immediately copies data from a pointer into a CpuBuffer.
+/* Immediately copies data from a pointer into a TransferBuffer.
  *
  * option:
  *  SAFEDISCARD:
- *    If this CpuBuffer has been used in a copy command that has not completed,
+ *    If this TransferBuffer has been used in a copy command that has not completed,
  *    the issued copy commands will still be valid at the cost of increased memory usage.
  *    Otherwise the data will overwrite.
- *    It is not recommended to use this option with large CpuBuffers.
+ *    It is not recommended to use this option with large TransferBuffers.
  *
  *  OVERWRITE:
  *    Overwrites the data regardless of whether a copy has been issued.
@@ -1067,15 +1067,15 @@ REFRESHAPI void Refresh_EndComputePass(
 REFRESHAPI void Refresh_SetData(
 	Refresh_Device *device,
 	void* data,
-	Refresh_CpuBuffer *cpuBuffer,
+	Refresh_TransferBuffer *transferBuffer,
 	Refresh_BufferCopy *copyParams,
 	Refresh_SetDataOptions option
 );
 
-/* Immediately copies data from a CpuBuffer into a pointer. */
+/* Immediately copies data from a TransferBuffer into a pointer. */
 REFRESHAPI void Refresh_GetData(
 	Refresh_Device *device,
-	Refresh_CpuBuffer *cpuBuffer,
+	Refresh_TransferBuffer *transferBuffer,
 	void* data,
 	Refresh_BufferCopy *copyParams
 );
@@ -1093,36 +1093,36 @@ REFRESHAPI void Refresh_BeginCopyPass(
  * You MAY assume that the copy has finished for subsequent commands.
  */
 
-/* Uploads data from a CpuBuffer to a texture. */
+/* Uploads data from a TransferBuffer to a texture. */
 REFRESHAPI void Refresh_UploadToTexture(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
-	Refresh_CpuBuffer *cpuBuffer,
+	Refresh_TransferBuffer *transferBuffer,
 	Refresh_TextureSlice *textureSlice,
 	Refresh_BufferImageCopy *copyParams
 );
 
-/* Uploads data from a CpuBuffer to a GpuBuffer. */
+/* Uploads data from a TransferBuffer to a GpuBuffer. */
 REFRESHAPI void Refresh_UploadToBuffer(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
-	Refresh_CpuBuffer *cpuBuffer,
+	Refresh_TransferBuffer *transferBuffer,
 	Refresh_GpuBuffer *gpuBuffer,
 	Refresh_BufferCopy *copyParams
 );
 
 /* GPU-to-CPU copies occur on the GPU timeline.
  *
- * You may NOT assume that the data in the CpuBuffer is fully copied
+ * You may NOT assume that the data in the TransferBuffer is fully copied
  * until the command buffer has finished execution.
  */
 
-/* Downloads data from a texture to a CpuBuffer. */
+/* Downloads data from a texture to a TransferBuffer. */
 REFRESHAPI void Refresh_DownloadFromTexture(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
 	Refresh_TextureSlice *textureSlice,
-	Refresh_CpuBuffer *cpuBuffer,
+	Refresh_TransferBuffer *transferBuffer,
 	Refresh_BufferImageCopy *copyParams
 );
 
@@ -1131,7 +1131,7 @@ REFRESHAPI void Refresh_DownloadFromBuffer(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
 	Refresh_GpuBuffer *gpuBuffer,
-	Refresh_CpuBuffer *cpuBuffer,
+	Refresh_TransferBuffer *transferBuffer,
 	Refresh_BufferCopy *copyParams
 );
 

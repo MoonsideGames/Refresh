@@ -214,7 +214,7 @@ struct Refresh_Device
 		uint32_t sizeInBytes
 	);
 
-	Refresh_CpuBuffer* (*CreateCpuBuffer)(
+	Refresh_TransferBuffer* (*CreateTransferBuffer)(
 		Refresh_Renderer *driverData,
 		uint32_t sizeInBytes
 	);
@@ -236,9 +236,9 @@ struct Refresh_Device
 		Refresh_GpuBuffer *buffer
 	);
 
-	void (*QueueDestroyCpuBuffer)(
+	void (*QueueDestroyTransferBuffer)(
 		Refresh_Renderer *driverData,
-		Refresh_CpuBuffer *buffer
+		Refresh_TransferBuffer *buffer
 	);
 
 	void (*QueueDestroyShaderModule)(
@@ -413,19 +413,19 @@ struct Refresh_Device
 		Refresh_CommandBuffer *commandBuffer
 	);
 
-	/* CpuBuffer Set/Get */
+	/* TransferBuffer Set/Get */
 
 	void (*SetData)(
 		Refresh_Renderer *driverData,
 		void* data,
-		Refresh_CpuBuffer *cpuBuffer,
+		Refresh_TransferBuffer *transferBuffer,
 		Refresh_BufferCopy *copyParams,
 		Refresh_SetDataOptions option
 	);
 
 	void (*GetData)(
 		Refresh_Renderer *driverData,
-		Refresh_CpuBuffer *cpuBuffer,
+		Refresh_TransferBuffer *transferBuffer,
 		void* data,
 		Refresh_BufferCopy *copyParams
 	);
@@ -440,7 +440,7 @@ struct Refresh_Device
 	void (*UploadToTexture)(
 		Refresh_Renderer *driverData,
 		Refresh_CommandBuffer *commandBuffer,
-		Refresh_CpuBuffer *cpuBuffer,
+		Refresh_TransferBuffer *transferBuffer,
 		Refresh_TextureSlice *textureSlice,
 		Refresh_BufferImageCopy *copyParams
 	);
@@ -448,7 +448,7 @@ struct Refresh_Device
 	void (*UploadToBuffer)(
 		Refresh_Renderer *driverData,
 		Refresh_CommandBuffer *commandBuffer,
-		Refresh_CpuBuffer *cpuBuffer,
+		Refresh_TransferBuffer *transferBuffer,
 		Refresh_GpuBuffer *gpuBuffer,
 		Refresh_BufferCopy *copyParams
 	);
@@ -457,7 +457,7 @@ struct Refresh_Device
 		Refresh_Renderer *driverData,
 		Refresh_CommandBuffer *commandBuffer,
 		Refresh_TextureSlice *textureSlice,
-		Refresh_CpuBuffer *cpuBuffer,
+		Refresh_TransferBuffer *transferBuffer,
 		Refresh_BufferImageCopy *copyParams
 	);
 
@@ -465,7 +465,7 @@ struct Refresh_Device
 		Refresh_Renderer *driverData,
 		Refresh_CommandBuffer *commandBuffer,
 		Refresh_GpuBuffer *gpuBuffer,
-		Refresh_CpuBuffer *cpuBuffer,
+		Refresh_TransferBuffer *transferBuffer,
 		Refresh_BufferCopy *copyParams
 	);
 
@@ -592,11 +592,11 @@ struct Refresh_Device
 	ASSIGN_DRIVER_FUNC(CreateShaderModule, name) \
 	ASSIGN_DRIVER_FUNC(CreateTexture, name) \
 	ASSIGN_DRIVER_FUNC(CreateGpuBuffer, name) \
-	ASSIGN_DRIVER_FUNC(CreateCpuBuffer, name) \
+	ASSIGN_DRIVER_FUNC(CreateTransferBuffer, name) \
 	ASSIGN_DRIVER_FUNC(QueueDestroyTexture, name) \
 	ASSIGN_DRIVER_FUNC(QueueDestroySampler, name) \
 	ASSIGN_DRIVER_FUNC(QueueDestroyGpuBuffer, name) \
-	ASSIGN_DRIVER_FUNC(QueueDestroyCpuBuffer, name) \
+	ASSIGN_DRIVER_FUNC(QueueDestroyTransferBuffer, name) \
 	ASSIGN_DRIVER_FUNC(QueueDestroyShaderModule, name) \
 	ASSIGN_DRIVER_FUNC(QueueDestroyComputePipeline, name) \
 	ASSIGN_DRIVER_FUNC(QueueDestroyGraphicsPipeline, name) \

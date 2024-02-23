@@ -308,12 +308,12 @@ Refresh_GpuBuffer* Refresh_CreateGpuBuffer(
 	);
 }
 
-Refresh_CpuBuffer* Refresh_CreateCpuBuffer(
+Refresh_TransferBuffer* Refresh_CreateTransferBuffer(
 	Refresh_Device *device,
 	uint32_t sizeInBytes
 ) {
 	NULL_RETURN_NULL(device);
-	return device->CreateCpuBuffer(
+	return device->CreateTransferBuffer(
 		device->driverData,
 		sizeInBytes
 	);
@@ -354,12 +354,12 @@ void Refresh_QueueDestroyGpuBuffer(
 	);
 }
 
-void Refresh_QueueDestroyCpuBuffer(
+void Refresh_QueueDestroyTransferBuffer(
 	Refresh_Device *device,
-	Refresh_CpuBuffer *buffer
+	Refresh_TransferBuffer *buffer
 ) {
 	NULL_RETURN(device);
-	device->QueueDestroyCpuBuffer(
+	device->QueueDestroyTransferBuffer(
 		device->driverData,
 		buffer
 	);
@@ -730,12 +730,12 @@ void Refresh_EndComputePass(
 	);
 }
 
-/* CpuBuffer Set/Get */
+/* TransferBuffer Set/Get */
 
 void Refresh_SetData(
 	Refresh_Device *device,
 	void* data,
-	Refresh_CpuBuffer *cpuBuffer,
+	Refresh_TransferBuffer *transferBuffer,
 	Refresh_BufferCopy *copyParams,
 	Refresh_SetDataOptions option
 ) {
@@ -743,7 +743,7 @@ void Refresh_SetData(
 	device->SetData(
 		device->driverData,
 		data,
-		cpuBuffer,
+		transferBuffer,
 		copyParams,
 		option
 	);
@@ -751,14 +751,14 @@ void Refresh_SetData(
 
 void Refresh_GetData(
 	Refresh_Device *device,
-	Refresh_CpuBuffer *cpuBuffer,
+	Refresh_TransferBuffer *transferBuffer,
 	void* data,
 	Refresh_BufferCopy *copyParams
 ) {
 	NULL_RETURN(device);
 	device->GetData(
 		device->driverData,
-		cpuBuffer,
+		transferBuffer,
 		data,
 		copyParams
 	);
@@ -780,7 +780,7 @@ void Refresh_BeginCopyPass(
 void Refresh_UploadToTexture(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
-	Refresh_CpuBuffer *cpuBuffer,
+	Refresh_TransferBuffer *transferBuffer,
 	Refresh_TextureSlice *textureSlice,
 	Refresh_BufferImageCopy *copyParams
 ) {
@@ -788,7 +788,7 @@ void Refresh_UploadToTexture(
 	device->UploadToTexture(
 		device->driverData,
 		commandBuffer,
-		cpuBuffer,
+		transferBuffer,
 		textureSlice,
 		copyParams
 	);
@@ -797,7 +797,7 @@ void Refresh_UploadToTexture(
 void Refresh_UploadToBuffer(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
-	Refresh_CpuBuffer *cpuBuffer,
+	Refresh_TransferBuffer *transferBuffer,
 	Refresh_GpuBuffer *gpuBuffer,
 	Refresh_BufferCopy *copyParams
 ) {
@@ -805,7 +805,7 @@ void Refresh_UploadToBuffer(
 	device->UploadToBuffer(
 		device->driverData,
 		commandBuffer,
-		cpuBuffer,
+		transferBuffer,
 		gpuBuffer,
 		copyParams
 	);
@@ -815,7 +815,7 @@ void Refresh_DownloadFromTexture(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
 	Refresh_TextureSlice *textureSlice,
-	Refresh_CpuBuffer *cpuBuffer,
+	Refresh_TransferBuffer *transferBuffer,
 	Refresh_BufferImageCopy *copyParams
 ) {
 	NULL_RETURN(device);
@@ -823,7 +823,7 @@ void Refresh_DownloadFromTexture(
 		device->driverData,
 		commandBuffer,
 		textureSlice,
-		cpuBuffer,
+		transferBuffer,
 		copyParams
 	);
 }
@@ -832,7 +832,7 @@ void Refresh_DownloadFromBuffer(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
 	Refresh_GpuBuffer *gpuBuffer,
-	Refresh_CpuBuffer *cpuBuffer,
+	Refresh_TransferBuffer *transferBuffer,
 	Refresh_BufferCopy *copyParams
 ) {
 	NULL_RETURN(device);
@@ -840,7 +840,7 @@ void Refresh_DownloadFromBuffer(
 		device->driverData,
 		commandBuffer,
 		gpuBuffer,
-		cpuBuffer,
+		transferBuffer,
 		copyParams
 	);
 }
