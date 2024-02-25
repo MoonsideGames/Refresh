@@ -730,7 +730,7 @@ struct VulkanBuffer
 
 	uint8_t requireHostVisible;
 	uint8_t preferDeviceLocal;
-	uint8_t requireHostLocal;
+	uint8_t preferHostLocal;
 	uint8_t preserveContentsOnDefrag;
 
 	SDL_atomic_t referenceCount; /* Tracks command buffer usage */
@@ -1715,7 +1715,8 @@ typedef struct VulkanRenderer
 	VkPhysicalDeviceProperties2 physicalDeviceProperties;
 	VkPhysicalDeviceDriverPropertiesKHR physicalDeviceDriverProperties;
 	VkDevice logicalDevice;
-	uint8_t unifiedMemoryWarning;
+	uint8_t integratedMemoryNotification;
+	uint8_t outOfDeviceLocalMemoryWarning;
 
 	uint8_t supportsDebugUtils;
 	uint8_t debugMode;
@@ -2920,7 +2921,7 @@ static uint8_t VULKAN_INTERNAL_BindMemoryForImage(
 			Refresh_LogWarn("RenderTarget is allocated in host memory, pre-allocate your targets!");
 		}
 
-		Refresh_LogWarn("Out of device local memory, falling back to host memory");
+		Refresh_LogWarn("Out of device-local memory, allocating textures on host-local memory!");
 
 		while (VULKAN_INTERNAL_FindImageMemoryRequirements(
 			renderer,
@@ -2959,7 +2960,7 @@ static uint8_t VULKAN_INTERNAL_BindMemoryForBuffer(
 	VkBuffer buffer,
 	VkDeviceSize size,
 	uint8_t requireHostVisible,
-	uint8_t requireHostLocal,
+	uint8_t preferHostLocal,
 	uint8_t preferDeviceLocal,
 	uint8_t dedicatedAllocation,
 	VulkanMemoryUsedRegion** usedRegion
@@ -2981,7 +2982,7 @@ static uint8_t VULKAN_INTERNAL_BindMemoryForBuffer(
 			VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
 	}
 
-	if (requireHostLocal)
+	if (preferHostLocal)
 	{
 		ignoredMemoryPropertyFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
 	}
@@ -3020,11 +3021,12 @@ static uint8_t VULKAN_INTERNAL_BindMemoryForBuffer(
 		}
 	}
 
-	/* Bind failed, try again with fallback flags */
+	/* Bind failed, try again without preferred flags */
 	if (bindResult != 1)
 	{
 		memoryTypeIndex = 0;
 		requiredMemoryPropertyFlags = 0;
+		ignoredMemoryPropertyFlags = 0;
 
 		if (requireHostVisible)
 		{
@@ -3033,16 +3035,16 @@ static uint8_t VULKAN_INTERNAL_BindMemoryForBuffer(
 				VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
 		}
 
-		if (requireHostLocal)
+		if (preferHostLocal && !renderer->integratedMemoryNotification)
 		{
-			ignoredMemoryPropertyFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+			Refresh_LogInfo("Integrated memory detected, allocating TransferBuffers on device-local memory!");
+			renderer->integratedMemoryNotification = 1;
 		}
 
-		/* Follow-up for the warning logged by FindMemoryType */
-		if (!renderer->unifiedMemoryWarning)
+		if (preferDeviceLocal && !renderer->outOfDeviceLocalMemoryWarning)
 		{
-			Refresh_LogWarn("No unified memory found, falling back to host memory");
-			renderer->unifiedMemoryWarning = 1;
+			Refresh_LogWarn("Out of device-local memory, allocating GpuBuffers on host-local memory, expect degraded performance!");
+			renderer->outOfDeviceLocalMemoryWarning = 1;
 		}
 
 		while (VULKAN_INTERNAL_FindBufferMemoryRequirements(
@@ -4173,7 +4175,7 @@ static VulkanBuffer* VULKAN_INTERNAL_CreateBuffer(
 	VulkanResourceAccessType resourceAccessType,
 	VkBufferUsageFlags usage,
 	uint8_t requireHostVisible,
-	uint8_t requireHostLocal,
+	uint8_t preferHostLocal,
 	uint8_t preferDeviceLocal,
 	uint8_t dedicatedAllocation,
 	uint8_t preserveContentsOnDefrag
@@ -4189,7 +4191,7 @@ static VulkanBuffer* VULKAN_INTERNAL_CreateBuffer(
 	buffer->resourceAccessType = resourceAccessType;
 	buffer->usage = usage;
 	buffer->requireHostVisible = requireHostVisible;
-	buffer->requireHostLocal = requireHostLocal;
+	buffer->preferHostLocal = preferHostLocal;
 	buffer->preferDeviceLocal = preferDeviceLocal;
 	buffer->preserveContentsOnDefrag = preserveContentsOnDefrag;
 	buffer->markedForDestroy = 0;
@@ -4216,7 +4218,7 @@ static VulkanBuffer* VULKAN_INTERNAL_CreateBuffer(
 		buffer->buffer,
 		buffer->size,
 		buffer->requireHostVisible,
-		buffer->requireHostLocal,
+		buffer->preferHostLocal,
 		buffer->preferDeviceLocal,
 		dedicatedAllocation,
 		&buffer->usedRegion
@@ -4336,7 +4338,7 @@ static VulkanBufferContainer* VULKAN_INTERNAL_CreateBufferContainer(
 	VulkanResourceAccessType resourceAccessType,
 	VkBufferUsageFlags usageFlags,
 	uint8_t requireHostVisible,
-	uint8_t requireHostLocal,
+	uint8_t preferHostLocal,
 	uint8_t preferDeviceLocal,
 	uint8_t dedicatedAllocation,
 	uint8_t preserveContentsOnDefrag
@@ -4353,7 +4355,7 @@ static VulkanBufferContainer* VULKAN_INTERNAL_CreateBufferContainer(
 		resourceAccessType,
 		usageFlags,
 		requireHostVisible,
-		requireHostLocal,
+		preferHostLocal,
 		preferDeviceLocal,
 		dedicatedAllocation,
 		preserveContentsOnDefrag
@@ -10277,7 +10279,7 @@ static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 					RESOURCE_ACCESS_NONE,
 					currentRegion->vulkanBuffer->usage,
 					currentRegion->vulkanBuffer->requireHostVisible,
-					currentRegion->vulkanBuffer->requireHostLocal,
+					currentRegion->vulkanBuffer->preferHostLocal,
 					currentRegion->vulkanBuffer->preferDeviceLocal,
 					0,
 					currentRegion->vulkanBuffer->preserveContentsOnDefrag
