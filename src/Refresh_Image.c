@@ -218,7 +218,7 @@ uint8_t* Refresh_Image_Load(
 	 * -flibit
 	 */
 	pixels = result;
-	*len = (*w) * (*h) *4;
+	*len = (*w) * (*h) * 4;
 	for (i = 0; i < *len; i += 4, pixels += 4)
 	{
 		if (pixels[3] == 0)
@@ -254,6 +254,8 @@ uint8_t Refresh_Image_Info(
 	{
 		SDL_LogWarn(SDL_LOG_CATEGORY_ERROR, "Image info failed: %s", stbi_failure_reason());
 	}
+
+	*len = (*w) * (*h) * 4;
 
 	return (uint8_t) result;
 }
