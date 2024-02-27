@@ -76,12 +76,9 @@ typedef struct VulkanExtensions
 #define STARTING_ALLOCATION_SIZE 64000000 	    /* 64MB */
 #define MAX_ALLOCATION_SIZE 256000000 		    /* 256MB */
 #define ALLOCATION_INCREMENT 16000000           /* 16MB */
-#define TRANSFER_BUFFER_STARTING_SIZE 8000000 	/* 8MB */
-#define POOLED_TRANSFER_BUFFER_SIZE 16000000    /* 16MB */
 #define UBO_BUFFER_SIZE 16777216 				/* 16MB */
 #define MAX_UBO_SECTION_SIZE 4096 			        /* 4KB */
 #define DESCRIPTOR_POOL_STARTING_SIZE 128
-#define DEFRAG_TIME 200
 #define WINDOW_DATA "Refresh_VulkanWindowData"
 
 #define IDENTITY_SWIZZLE 		\
@@ -1619,10 +1616,10 @@ typedef struct VulkanCommandBuffer
 	uint32_t usedFramebufferCount;
 	uint32_t usedFramebufferCapacity;
 
-	/* Shader modules have references tracked by pipelines */
-
 	VkFence inFlightFence;
 	uint8_t autoReleaseFence;
+
+	uint8_t isDefrag; /* Whether this CB was created for defragging */
 } VulkanCommandBuffer;
 
 struct VulkanCommandPool
@@ -1808,9 +1805,11 @@ typedef struct VulkanRenderer
 	SDL_mutex *framebufferFetchLock;
 	SDL_mutex *renderTargetFetchLock;
 
-	uint8_t needDefrag;
-	uint64_t defragTimestamp;
 	uint8_t defragInProgress;
+
+	VulkanMemoryAllocation **allocationsToDefrag;
+	uint32_t allocationsToDefragCount;
+	uint32_t allocationsToDefragCapacity;
 
 #define VULKAN_INSTANCE_FUNCTION(ext, ret, func, params) \
 		vkfntype_##func func;
@@ -2126,6 +2125,45 @@ static void VULKAN_INTERNAL_MakeMemoryUnavailable(
 	}
 }
 
+static void VULKAN_INTERNAL_MarkAllocationsForDefrag(
+	VulkanRenderer *renderer
+) {
+	uint32_t memoryType, allocationIndex;
+	VulkanMemorySubAllocator *currentAllocator;
+
+	for (memoryType = 0; memoryType < VK_MAX_MEMORY_TYPES; memoryType += 1)
+	{
+		currentAllocator = &renderer->memoryAllocator->subAllocators[memoryType];
+
+		for (allocationIndex = 0; allocationIndex < currentAllocator->allocationCount; allocationIndex += 1)
+		{
+			if (currentAllocator->allocations[allocationIndex]->availableForAllocation == 1)
+			{
+				if (currentAllocator->allocations[allocationIndex]->freeRegionCount > 1)
+				{
+					EXPAND_ARRAY_IF_NEEDED(
+						renderer->allocationsToDefrag,
+						VulkanMemoryAllocation*,
+						renderer->allocationsToDefragCount + 1,
+						renderer->allocationsToDefragCapacity,
+						renderer->allocationsToDefragCapacity * 2
+					);
+
+					renderer->allocationsToDefrag[renderer->allocationsToDefragCount] =
+						currentAllocator->allocations[allocationIndex];
+
+					renderer->allocationsToDefragCount += 1;
+
+					VULKAN_INTERNAL_MakeMemoryUnavailable(
+						renderer,
+						currentAllocator->allocations[allocationIndex]
+					);
+				}
+			}
+		}
+	}
+}
+
 static void VULKAN_INTERNAL_RemoveMemoryFreeRegion(
 	VulkanRenderer *renderer,
 	VulkanMemoryFreeRegion *freeRegion
@@ -2346,12 +2384,6 @@ static void VULKAN_INTERNAL_RemoveMemoryUsedRegion(
 		usedRegion->offset,
 		usedRegion->size
 	);
-
-	if (!usedRegion->allocation->dedicated)
-	{
-		renderer->needDefrag = 1;
-		renderer->defragTimestamp = SDL_GetTicks64() + DEFRAG_TIME; /* reset timer so we batch defrags */
-	}
 
 	SDL_free(usedRegion);
 
@@ -2761,6 +2793,15 @@ static uint8_t VULKAN_INTERNAL_BindResourceMemory(
 
 	/* No suitable free regions exist, allocate a new memory region */
 
+	if (
+		!shouldAllocDedicated &&
+		renderer->allocationsToDefragCount == 0 &&
+		!renderer->defragInProgress
+	) {
+		/* Mark currently fragmented allocations for defrag */
+		VULKAN_INTERNAL_MarkAllocationsForDefrag(renderer);
+	}
+
 	if (shouldAllocDedicated)
 	{
 		allocationSize = requiredSize;
@@ -3078,30 +3119,6 @@ static uint8_t VULKAN_INTERNAL_BindMemoryForBuffer(
 	}
 
 	return bindResult;
-}
-
-static uint8_t VULKAN_INTERNAL_FindAllocationToDefragment(
-	VulkanRenderer *renderer,
-	VulkanMemorySubAllocator *allocator,
-	uint32_t *allocationIndexToDefrag
-) {
-	uint32_t i, j;
-
-	for (i = 0; i < VK_MAX_MEMORY_TYPES; i += 1)
-	{
-		*allocator = renderer->memoryAllocator->subAllocators[i];
-
-		for (j = 0; j < allocator->allocationCount; j += 1)
-		{
-			if (allocator->allocations[j]->availableForAllocation == 1 && allocator->allocations[j]->freeRegionCount > 1)
-			{
-				*allocationIndexToDefrag = j;
-				return 1;
-			}
-		}
-	}
-
-	return 0;
 }
 
 /* Memory Barriers */
@@ -9405,6 +9422,8 @@ static Refresh_CommandBuffer* VULKAN_AcquireCommandBuffer(
 	commandBuffer->renderPassColorTargetCount = 0;
 	commandBuffer->autoReleaseFence = 1;
 
+	commandBuffer->isDefrag = 0;
+
 	/* Reset the command buffer here to avoid resets being called
 	 * from a separate thread than where the command buffer was acquired
 	 */
@@ -9975,6 +9994,13 @@ static void VULKAN_INTERNAL_CleanCommandBuffer(
 	commandBuffer->waitSemaphoreCount = 0;
 	commandBuffer->signalSemaphoreCount = 0;
 
+	/* Reset defrag state */
+
+	if (commandBuffer->isDefrag)
+	{
+		renderer->defragInProgress = 0;
+	}
+
 	/* Return command buffer to pool */
 
 	SDL_LockMutex(renderer->acquireCommandBufferLock);
@@ -10210,16 +10236,12 @@ static void VULKAN_Submit(
 	}
 
 	/* Check pending destroys */
-
 	VULKAN_INTERNAL_PerformPendingDestroys(renderer);
 
 	/* Defrag! */
-	if (renderer->needDefrag && !renderer->defragInProgress)
+	if (renderer->allocationsToDefragCount > 0 && !renderer->defragInProgress)
 	{
-		if (SDL_GetTicks64() >= renderer->defragTimestamp)
-		{
-			VULKAN_INTERNAL_DefragmentMemory(renderer);
-		}
+		VULKAN_INTERNAL_DefragmentMemory(renderer);
 	}
 
 	SDL_UnlockMutex(renderer->submitLock);
@@ -10228,9 +10250,7 @@ static void VULKAN_Submit(
 static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 	VulkanRenderer *renderer
 ) {
-	VulkanMemorySubAllocator allocator;
 	VulkanMemoryAllocation *allocation;
-	uint32_t allocationIndexToDefrag;
 	VulkanMemoryUsedRegion *currentRegion;
 	VulkanBuffer* newBuffer;
 	VulkanTexture* newTexture;
@@ -10243,131 +10263,124 @@ static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 
 	SDL_LockMutex(renderer->allocatorLock);
 
-	renderer->needDefrag = 0;
 	renderer->defragInProgress = 1;
 
 	commandBuffer = (VulkanCommandBuffer*) VULKAN_AcquireCommandBuffer((Refresh_Renderer *) renderer);
+	commandBuffer->isDefrag = 1;
 
-	if (VULKAN_INTERNAL_FindAllocationToDefragment(
-		renderer,
-		&allocator,
-		&allocationIndexToDefrag
-	)) {
-		allocation = allocator.allocations[allocationIndexToDefrag];
+	allocation = renderer->allocationsToDefrag[renderer->allocationsToDefragCount - 1];
+	renderer->allocationsToDefragCount -= 1;
 
-		VULKAN_INTERNAL_MakeMemoryUnavailable(
-			renderer,
-			allocation
-		);
+	/* For each used region in the allocation
+	 * create a new resource, copy the data
+	 * and re-point the resource containers
+	 */
+	for (i = 0; i < allocation->usedRegionCount; i += 1)
+	{
+		currentRegion = allocation->usedRegions[i];
+		copyResourceAccessType = RESOURCE_ACCESS_NONE;
 
-		/* For each used region in the allocation
-		 * create a new resource, copy the data
-		 * and re-point the resource containers
-		 */
-		for (i = 0; i < allocation->usedRegionCount; i += 1)
+		if (currentRegion->isBuffer && !currentRegion->vulkanBuffer->markedForDestroy)
 		{
-			currentRegion = allocation->usedRegions[i];
-			copyResourceAccessType = RESOURCE_ACCESS_NONE;
+			currentRegion->vulkanBuffer->usage |= VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 
-			if (currentRegion->isBuffer && !currentRegion->vulkanBuffer->markedForDestroy)
+			newBuffer = VULKAN_INTERNAL_CreateBuffer(
+				renderer,
+				currentRegion->vulkanBuffer->size,
+				RESOURCE_ACCESS_NONE,
+				currentRegion->vulkanBuffer->usage,
+				currentRegion->vulkanBuffer->requireHostVisible,
+				currentRegion->vulkanBuffer->preferHostLocal,
+				currentRegion->vulkanBuffer->preferDeviceLocal,
+				0,
+				currentRegion->vulkanBuffer->preserveContentsOnDefrag
+			);
+
+			if (newBuffer == NULL)
 			{
-				currentRegion->vulkanBuffer->usage |= VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-
-				newBuffer = VULKAN_INTERNAL_CreateBuffer(
-					renderer,
-					currentRegion->vulkanBuffer->size,
-					RESOURCE_ACCESS_NONE,
-					currentRegion->vulkanBuffer->usage,
-					currentRegion->vulkanBuffer->requireHostVisible,
-					currentRegion->vulkanBuffer->preferHostLocal,
-					currentRegion->vulkanBuffer->preferDeviceLocal,
-					0,
-					currentRegion->vulkanBuffer->preserveContentsOnDefrag
-				);
-
-				if (newBuffer == NULL)
-				{
-					Refresh_LogError("Failed to create defrag buffer!");
-					return 0;
-				}
-
-				/* Copy buffer contents if necessary */
-				if (currentRegion->vulkanBuffer->preserveContentsOnDefrag)
-				{
-					originalResourceAccessType = currentRegion->vulkanBuffer->resourceAccessType;
-
-					VULKAN_INTERNAL_BufferMemoryBarrier(
-						renderer,
-						commandBuffer->commandBuffer,
-						RESOURCE_ACCESS_TRANSFER_READ,
-						currentRegion->vulkanBuffer
-					);
-
-					VULKAN_INTERNAL_BufferMemoryBarrier(
-						renderer,
-						commandBuffer->commandBuffer,
-						RESOURCE_ACCESS_TRANSFER_WRITE,
-						newBuffer
-					);
-
-					bufferCopy.srcOffset = 0;
-					bufferCopy.dstOffset = 0;
-					bufferCopy.size = currentRegion->resourceSize;
-
-					renderer->vkCmdCopyBuffer(
-						commandBuffer->commandBuffer,
-						currentRegion->vulkanBuffer->buffer,
-						newBuffer->buffer,
-						1,
-						&bufferCopy
-					);
-
-					VULKAN_INTERNAL_BufferMemoryBarrier(
-						renderer,
-						commandBuffer->commandBuffer,
-						originalResourceAccessType,
-						newBuffer
-					);
-
-					VULKAN_INTERNAL_TrackBuffer(renderer, commandBuffer, currentRegion->vulkanBuffer);
-					VULKAN_INTERNAL_TrackBuffer(renderer, commandBuffer, newBuffer);
-				}
-
-				/* re-point original container to new buffer */
-				if (currentRegion->vulkanBuffer->container != NULL)
-				{
-					newBuffer->container = currentRegion->vulkanBuffer->container;
-					newBuffer->container->vulkanBuffer = newBuffer;
-					currentRegion->vulkanBuffer->container = NULL;
-				}
-
-				VULKAN_INTERNAL_QueueDestroyBuffer(renderer, currentRegion->vulkanBuffer);
-
-				renderer->needDefrag = 1;
+				Refresh_LogError("Failed to create defrag buffer!");
+				return 0;
 			}
-			else if (!currentRegion->vulkanTexture->markedForDestroy)
-			{
-				newTexture = VULKAN_INTERNAL_CreateTexture(
+
+			originalResourceAccessType = currentRegion->vulkanBuffer->resourceAccessType;
+
+			/* Copy buffer contents if necessary */
+			if (
+				originalResourceAccessType != RESOURCE_ACCESS_NONE &&
+				currentRegion->vulkanBuffer->preserveContentsOnDefrag
+			) {
+				VULKAN_INTERNAL_BufferMemoryBarrier(
 					renderer,
-					currentRegion->vulkanTexture->dimensions.width,
-					currentRegion->vulkanTexture->dimensions.height,
-					currentRegion->vulkanTexture->depth,
-					currentRegion->vulkanTexture->isCube,
-					currentRegion->vulkanTexture->levelCount,
-					currentRegion->vulkanTexture->sampleCount,
-					currentRegion->vulkanTexture->format,
-					currentRegion->vulkanTexture->aspectFlags,
-					currentRegion->vulkanTexture->usageFlags
+					commandBuffer->commandBuffer,
+					RESOURCE_ACCESS_TRANSFER_READ,
+					currentRegion->vulkanBuffer
 				);
 
-				if (newTexture == NULL)
-				{
-					Refresh_LogError("Failed to create defrag texture!");
-					return 0;
-				}
+				VULKAN_INTERNAL_BufferMemoryBarrier(
+					renderer,
+					commandBuffer->commandBuffer,
+					RESOURCE_ACCESS_TRANSFER_WRITE,
+					newBuffer
+				);
 
-				originalResourceAccessType = currentRegion->vulkanTexture->resourceAccessType;
+				bufferCopy.srcOffset = 0;
+				bufferCopy.dstOffset = 0;
+				bufferCopy.size = currentRegion->resourceSize;
 
+				renderer->vkCmdCopyBuffer(
+					commandBuffer->commandBuffer,
+					currentRegion->vulkanBuffer->buffer,
+					newBuffer->buffer,
+					1,
+					&bufferCopy
+				);
+
+				VULKAN_INTERNAL_BufferMemoryBarrier(
+					renderer,
+					commandBuffer->commandBuffer,
+					originalResourceAccessType,
+					newBuffer
+				);
+
+				VULKAN_INTERNAL_TrackBuffer(renderer, commandBuffer, currentRegion->vulkanBuffer);
+				VULKAN_INTERNAL_TrackBuffer(renderer, commandBuffer, newBuffer);
+			}
+
+			/* re-point original container to new buffer */
+			if (currentRegion->vulkanBuffer->container != NULL)
+			{
+				newBuffer->container = currentRegion->vulkanBuffer->container;
+				newBuffer->container->vulkanBuffer = newBuffer;
+				currentRegion->vulkanBuffer->container = NULL;
+			}
+
+			VULKAN_INTERNAL_QueueDestroyBuffer(renderer, currentRegion->vulkanBuffer);
+		}
+		else if (!currentRegion->vulkanTexture->markedForDestroy)
+		{
+			originalResourceAccessType = currentRegion->vulkanTexture->resourceAccessType;
+
+			newTexture = VULKAN_INTERNAL_CreateTexture(
+				renderer,
+				currentRegion->vulkanTexture->dimensions.width,
+				currentRegion->vulkanTexture->dimensions.height,
+				currentRegion->vulkanTexture->depth,
+				currentRegion->vulkanTexture->isCube,
+				currentRegion->vulkanTexture->levelCount,
+				currentRegion->vulkanTexture->sampleCount,
+				currentRegion->vulkanTexture->format,
+				currentRegion->vulkanTexture->aspectFlags,
+				currentRegion->vulkanTexture->usageFlags
+			);
+
+			if (newTexture == NULL)
+			{
+				Refresh_LogError("Failed to create defrag texture!");
+				return 0;
+			}
+
+			if (originalResourceAccessType != RESOURCE_ACCESS_NONE)
+			{
 				VULKAN_INTERNAL_ImageMemoryBarrier(
 					renderer,
 					commandBuffer->commandBuffer,
@@ -10447,29 +10460,23 @@ static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 
 				VULKAN_INTERNAL_TrackTexture(renderer, commandBuffer, currentRegion->vulkanTexture);
 				VULKAN_INTERNAL_TrackTexture(renderer, commandBuffer, newTexture);
-
-				/* re-point original container to new texture */
-				newTexture->container = currentRegion->vulkanTexture->container;
-				newTexture->container->vulkanTexture = newTexture;
-				currentRegion->vulkanTexture->container = NULL;
-
-				VULKAN_INTERNAL_QueueDestroyTexture(renderer, currentRegion->vulkanTexture);
-
-				renderer->needDefrag = 1;
 			}
+
+			/* re-point original container to new texture */
+			newTexture->container = currentRegion->vulkanTexture->container;
+			newTexture->container->vulkanTexture = newTexture;
+			currentRegion->vulkanTexture->container = NULL;
+
+			VULKAN_INTERNAL_QueueDestroyTexture(renderer, currentRegion->vulkanTexture);
 		}
 	}
 
 	SDL_UnlockMutex(renderer->allocatorLock);
 
-	renderer->defragTimestamp = SDL_GetTicks64() + DEFRAG_TIME;
-
 	VULKAN_Submit(
 		(Refresh_Renderer*) renderer,
 		(Refresh_CommandBuffer*) commandBuffer
 	);
-
-	renderer->defragInProgress = 0;
 
 	return 1;
 }
@@ -11848,9 +11855,15 @@ static Refresh_Device* VULKAN_CreateDevice(
 		renderer->framebuffersToDestroyCapacity
 	);
 
-	renderer->needDefrag = 0;
-	renderer->defragTimestamp = 0;
+	/* Defrag state */
+
 	renderer->defragInProgress = 0;
+
+	renderer->allocationsToDefragCount = 0;
+	renderer->allocationsToDefragCapacity = 4;
+	renderer->allocationsToDefrag = SDL_malloc(
+		renderer->allocationsToDefragCapacity * sizeof(VulkanMemoryAllocation*)
+	);
 
 	return result;
 }
