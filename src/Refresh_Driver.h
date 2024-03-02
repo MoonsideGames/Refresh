@@ -289,30 +289,26 @@ struct Refresh_Device
 		Refresh_CommandBuffer *commandBuffer,
 		uint32_t firstBinding,
 		uint32_t bindingCount,
-		Refresh_GpuBuffer **pBuffers,
-		uint64_t *pOffsets
+		Refresh_BufferBinding *pBindings
 	);
 
 	void (*BindIndexBuffer)(
 		Refresh_Renderer *driverData,
 		Refresh_CommandBuffer *commandBuffer,
-		Refresh_GpuBuffer *gpuBuffer,
-		uint64_t offset,
+		Refresh_BufferBinding *pBinding,
 		Refresh_IndexElementSize indexElementSize
 	);
 
 	void (*BindVertexSamplers)(
 		Refresh_Renderer *driverData,
 		Refresh_CommandBuffer *commandBuffer,
-		Refresh_Texture **pTextures,
-		Refresh_Sampler **pSamplers
+		Refresh_TextureSamplerBinding *pBindings
 	);
 
 	void (*BindFragmentSamplers)(
 		Refresh_Renderer *driverData,
 		Refresh_CommandBuffer *commandBuffer,
-		Refresh_Texture **pTextures,
-		Refresh_Sampler **pSamplers
+		Refresh_TextureSamplerBinding *pBindings
 	);
 
 	void (*PushVertexShaderUniforms)(
@@ -383,14 +379,13 @@ struct Refresh_Device
 	void (*BindComputeBuffers)(
 		Refresh_Renderer *driverData,
 		Refresh_CommandBuffer *commandBuffer,
-		Refresh_GpuBuffer **pBuffers
+		Refresh_ComputeBufferBinding *pBindings
 	);
 
 	void (*BindComputeTextures)(
 		Refresh_Renderer *driverData,
 		Refresh_CommandBuffer *commandBuffer,
-		Refresh_Texture **pTextures,
-		uint32_t **pLevels
+		Refresh_ComputeTextureBinding *pBindings
 	);
 
 	void (*PushComputeShaderUniforms)(
@@ -415,15 +410,15 @@ struct Refresh_Device
 
 	/* TransferBuffer Set/Get */
 
-	void (*SetData)(
+	void (*SetTransferData)(
 		Refresh_Renderer *driverData,
 		void* data,
 		Refresh_TransferBuffer *transferBuffer,
 		Refresh_BufferCopy *copyParams,
-		Refresh_SetDataOptions option
+		Refresh_TransferOptions transferOption
 	);
 
-	void (*GetData)(
+	void (*GetTransferData)(
 		Refresh_Renderer *driverData,
 		Refresh_TransferBuffer *transferBuffer,
 		void* data,
@@ -441,8 +436,9 @@ struct Refresh_Device
 		Refresh_Renderer *driverData,
 		Refresh_CommandBuffer *commandBuffer,
 		Refresh_TransferBuffer *transferBuffer,
-		Refresh_TextureSlice *textureSlice,
-		Refresh_BufferImageCopy *copyParams
+		Refresh_TextureRegion *textureSlice,
+		Refresh_BufferImageCopy *copyParams,
+		Refresh_WriteOptions writeOption
 	);
 
 	void (*UploadToBuffer)(
@@ -450,15 +446,17 @@ struct Refresh_Device
 		Refresh_CommandBuffer *commandBuffer,
 		Refresh_TransferBuffer *transferBuffer,
 		Refresh_GpuBuffer *gpuBuffer,
-		Refresh_BufferCopy *copyParams
+		Refresh_BufferCopy *copyParams,
+		Refresh_WriteOptions writeOption
 	);
 
 	void (*DownloadFromTexture)(
 		Refresh_Renderer *driverData,
 		Refresh_CommandBuffer *commandBuffer,
-		Refresh_TextureSlice *textureSlice,
+		Refresh_TextureRegion *textureSlice,
 		Refresh_TransferBuffer *transferBuffer,
-		Refresh_BufferImageCopy *copyParams
+		Refresh_BufferImageCopy *copyParams,
+		Refresh_TransferOptions transferOption
 	);
 
 	void (*DownloadFromBuffer)(
@@ -466,30 +464,34 @@ struct Refresh_Device
 		Refresh_CommandBuffer *commandBuffer,
 		Refresh_GpuBuffer *gpuBuffer,
 		Refresh_TransferBuffer *transferBuffer,
-		Refresh_BufferCopy *copyParams
+		Refresh_BufferCopy *copyParams,
+		Refresh_TransferOptions transferOption
 	);
 
 	void (*CopyTextureToTexture)(
 		Refresh_Renderer *driverData,
 		Refresh_CommandBuffer *commandBuffer,
-		Refresh_TextureSlice *source,
-		Refresh_TextureSlice *destination
+		Refresh_TextureRegion *source,
+		Refresh_TextureRegion *destination,
+		Refresh_WriteOptions writeOption
 	);
 
 	void (*CopyTextureToBuffer)(
 		Refresh_Renderer *driverData,
 		Refresh_CommandBuffer *commandBuffer,
-		Refresh_TextureSlice *textureSlice,
+		Refresh_TextureRegion *textureSlice,
 		Refresh_GpuBuffer *gpuBuffer,
-		Refresh_BufferImageCopy *copyParams
+		Refresh_BufferImageCopy *copyParams,
+		Refresh_WriteOptions writeOption
 	);
 
 	void (*CopyBufferToTexture)(
 		Refresh_Renderer *driverData,
 		Refresh_CommandBuffer *commandBuffer,
 		Refresh_GpuBuffer *gpuBuffer,
-		Refresh_TextureSlice *textureSlice,
-		Refresh_BufferImageCopy *copyParams
+		Refresh_TextureRegion *textureSlice,
+		Refresh_BufferImageCopy *copyParams,
+		Refresh_WriteOptions writeOption
 	);
 
 	void (*CopyBufferToBuffer)(
@@ -497,7 +499,8 @@ struct Refresh_Device
 		Refresh_CommandBuffer *commandBuffer,
 		Refresh_GpuBuffer *source,
 		Refresh_GpuBuffer *destination,
-		Refresh_BufferCopy *copyParams
+		Refresh_BufferCopy *copyParams,
+		Refresh_WriteOptions writeOption
 	);
 
 	void (*GenerateMipmaps)(
@@ -622,8 +625,8 @@ struct Refresh_Device
 	ASSIGN_DRIVER_FUNC(PushComputeShaderUniforms, name) \
 	ASSIGN_DRIVER_FUNC(DispatchCompute, name) \
 	ASSIGN_DRIVER_FUNC(EndComputePass, name) \
-	ASSIGN_DRIVER_FUNC(SetData, name) \
-	ASSIGN_DRIVER_FUNC(GetData, name) \
+	ASSIGN_DRIVER_FUNC(SetTransferData, name) \
+	ASSIGN_DRIVER_FUNC(GetTransferData, name) \
 	ASSIGN_DRIVER_FUNC(BeginCopyPass, name) \
 	ASSIGN_DRIVER_FUNC(UploadToTexture, name) \
 	ASSIGN_DRIVER_FUNC(UploadToBuffer, name) \

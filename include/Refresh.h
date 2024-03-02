@@ -327,11 +327,17 @@ typedef enum Refresh_BorderColor
 	REFRESH_BORDERCOLOR_INT_OPAQUE_WHITE
 } Refresh_BorderColor;
 
-typedef enum Refresh_SetDataOptions
+typedef enum Refresh_TransferOptions
 {
-	REFRESH_SETDATAOPTIONS_SAFEDISCARD,
-	REFRESH_SETDATAOPTIONS_OVERWRITE
-} Refresh_SetDataOptions;
+	REFRESH_TRANSFEROPTIONS_SAFEDISCARD,
+	REFRESH_TRANSFEROPTIONS_OVERWRITE
+} Refresh_TransferOptions;
+
+typedef enum Refresh_WriteOptions
+{
+	REFRESH_WRITEOPTIONS_SAFEDISCARD,
+	REFRESH_WRITEOPTIONS_SAFEOVERWRITE
+} Refresh_WriteOptions;
 
 typedef enum Refresh_Backend
 {
@@ -379,15 +385,19 @@ typedef struct Refresh_TextureSlice
 {
 	Refresh_Texture *texture;
 	uint32_t mipLevel;
-	uint32_t baseLayer;
-	uint32_t layerCount;
+	uint32_t layer;
+} Refresh_TextureSlice;
+
+typedef struct Refresh_TextureRegion
+{
+	Refresh_TextureSlice textureSlice;
 	uint32_t x;
 	uint32_t y;
 	uint32_t z;
 	uint32_t w;
 	uint32_t h;
 	uint32_t d;
-} Refresh_TextureSlice;
+} Refresh_TextureRegion;
 
 typedef struct Refresh_BufferImageCopy
 {
@@ -489,6 +499,7 @@ typedef struct Refresh_TextureCreateInfo
 	uint32_t height;
 	uint32_t depth;
 	uint8_t isCube;
+	uint32_t layerCount;
 	uint32_t levelCount;
 	Refresh_SampleCount sampleCount;
 	Refresh_TextureFormat format;
@@ -572,29 +583,90 @@ typedef struct Refresh_GraphicsPipelineCreateInfo
 
 /* Render pass structures */
 
+/* These structures define how textures will be read/written in a render pass.
+ *
+ * loadOp: Determines what is done with the texture slice at the beginning of the render pass.
+ *
+ *   LOAD:
+ *     Loads the data currently in the texture slice.
+ *
+ *   CLEAR:
+ *     Clears the texture slice to a single color.
+ *
+ *   DONT_CARE:
+ *     The driver will do whatever it wants with the texture slice memory.
+ *     This is a good option if you know that every single pixel will be touched in the render pass.
+ *
+ * storeOp: Determines what is done with the texture slice at the end of the render pass.
+ *
+ *   STORE:
+ *     Stores the results of the render pass in the texture slice.
+ *
+ *   DONT_CARE:
+ *     The driver will do whatever it wants with the texture slice memory.
+ *     This is often a good option for depth/stencil textures.
+ *
+ *
+ * writeOption is ignored if loadOp is LOAD and is implicitly assumed to be SAFEOVERWRITE.
+ * Interleaving LOAD and SAFEDISCARD successively on the same texture (not slice!) is undefined behavior.
+ *
+ * writeOption:
+ *  SAFEDISCARD:
+ *    If this texture slice has been used in commands that have not completed,
+ *    this option will prevent a data dependency at the cost of increased memory usage.
+ *    You may NOT assume that any of the previous texture data is retained.
+ *    If the texture slice was not in use, this option is equivalent to SAFEOVERWRITE.
+ *    This is a good option to prevent stalls when frequently reusing a texture slice in rendering.
+ *
+ *  SAFEOVERWRITE:
+ *    Overwrites the data safely using a GPU memory barrier.
+ */
+
 typedef struct Refresh_ColorAttachmentInfo
 {
-	Refresh_Texture *texture; /* We can't use TextureSlice because render passes take a single rectangle. */
-	uint32_t depth;
-	uint32_t layer;
-	uint32_t level;
-	Refresh_Vec4 clearColor; /* Can be ignored by RenderPass */
+	Refresh_TextureSlice textureSlice;
+	Refresh_Vec4 clearColor; /* Can be ignored by RenderPass if CLEAR is not used */
 	Refresh_LoadOp loadOp;
 	Refresh_StoreOp storeOp;
+	Refresh_WriteOptions writeOption;
 } Refresh_ColorAttachmentInfo;
 
 typedef struct Refresh_DepthStencilAttachmentInfo
 {
-	Refresh_Texture *texture; /* We can't use TextureSlice because render passes take a single rectangle. */
-	uint32_t depth;
-	uint32_t layer;
-	uint32_t level;
-	Refresh_DepthStencilValue depthStencilClearValue; /* Can be ignored by RenderPass */
+	Refresh_TextureSlice textureSlice;
+	Refresh_DepthStencilValue depthStencilClearValue; /* Can be ignored by RenderPass if CLEAR is not used */
 	Refresh_LoadOp loadOp;
 	Refresh_StoreOp storeOp;
 	Refresh_LoadOp stencilLoadOp;
 	Refresh_StoreOp stencilStoreOp;
+	Refresh_WriteOptions writeOption;
 } Refresh_DepthStencilAttachmentInfo;
+
+/* Binding structs */
+
+typedef struct Refresh_BufferBinding
+{
+	Refresh_GpuBuffer *gpuBuffer;
+	uint32_t offset;
+} Refresh_BufferBinding;
+
+typedef struct Refresh_TextureSamplerBinding
+{
+	Refresh_Texture *texture;
+	Refresh_Sampler *sampler;
+} Refresh_TextureSamplerBinding;
+
+typedef struct Refresh_ComputeBufferBinding
+{
+	Refresh_GpuBuffer *gpuBuffer;
+	Refresh_WriteOptions writeOption;
+} Refresh_ComputeBufferBinding;
+
+typedef struct Refresh_ComputeTextureBinding
+{
+	Refresh_TextureSlice textureSlice;
+	Refresh_WriteOptions writeOption;
+} Refresh_ComputeTextureBinding;
 
 /* Functions */
 
@@ -821,49 +893,43 @@ REFRESHAPI void Refresh_BindVertexBuffers(
 	Refresh_CommandBuffer *commandBuffer,
 	uint32_t firstBinding,
 	uint32_t bindingCount,
-	Refresh_GpuBuffer **pBuffers,
-	uint64_t *pOffsets
+	Refresh_BufferBinding *pBindings
 );
 
 /* Binds an index buffer for use with subsequent draw calls. */
 REFRESHAPI void Refresh_BindIndexBuffer(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
-	Refresh_GpuBuffer *gpuBuffer,
-	uint64_t offset,
+	Refresh_BufferBinding *pBinding,
 	Refresh_IndexElementSize indexElementSize
 );
 
 /* Sets textures/samplers for use with the currently bound vertex shader.
  *
  * NOTE:
- * 		The length of the passed arrays must be equal to the number
+ * 		The length of the bindings array must be equal to the number
  * 		of sampler bindings specified by the pipeline.
  *
- * textures:	A pointer to an array of textures.
- * samplers:	A pointer to an array of samplers.
+ * pBindings:  A pointer to an array of TextureSamplerBindings.
  */
 REFRESHAPI void Refresh_BindVertexSamplers(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
-	Refresh_Texture **pTextures,
-	Refresh_Sampler **pSamplers
+	Refresh_TextureSamplerBinding *pBindings
 );
 
 /* Sets textures/samplers for use with the currently bound fragment shader.
  *
  * NOTE:
- *		The length of the passed arrays must be equal to the number
+ *		The length of the bindings array must be equal to the number
  * 		of sampler bindings specified by the pipeline.
  *
- * textures: 	A pointer to an array of textures.
- * samplers:	A pointer to an array of samplers.
+ * pBindings:  A pointer to an array of TextureSamplerBindings.
  */
 REFRESHAPI void Refresh_BindFragmentSamplers(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
-	Refresh_Texture **pTextures,
-	Refresh_Sampler **pSamplers
+	Refresh_TextureSamplerBinding *pBindings
 );
 
 /* Pushes vertex shader uniforms to the device.
@@ -984,32 +1050,28 @@ REFRESHAPI void Refresh_BindComputePipeline(
 
 /* Binds buffers for use with the currently bound compute pipeline.
  *
- * pBuffers: An array of buffers to bind.
- * 	Length must be equal to the number of buffers
- * 	specified by the compute pipeline.
+ * pBindings:
+ *   An array of ComputeBufferBinding structs.
+ *   Length must be equal to the number of buffers
+ *   specified by the compute pipeline.
  */
 REFRESHAPI void Refresh_BindComputeBuffers(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
-	Refresh_GpuBuffer **pBuffers
+	Refresh_ComputeBufferBinding *pBindings
 );
 
 /* Binds textures for use with the currently bound compute pipeline.
  *
- * pTextures: An array of textures to bind.
- * 	Length must be equal to the number of buffers
- * 	specified by the compute pipeline.
- *
- * pLevels: An array of levels to bind,
- *   corresponding to the indices in pTextures.
- *   Length must be equal to the number of buffers
+ * pBindings:
+ *   An array of ComputeTextureBinding structs.
+ *   Length must be equal to the number of textures
  *   specified by the compute pipeline.
  */
 REFRESHAPI void Refresh_BindComputeTextures(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
-	Refresh_Texture **pTextures,
-	uint32_t **pLevels
+	Refresh_ComputeTextureBinding *pBindings
 );
 
 /* Pushes compute shader params to the device.
@@ -1053,27 +1115,29 @@ REFRESHAPI void Refresh_EndComputePass(
 
 /* Immediately copies data from a pointer into a TransferBuffer.
  *
- * option:
+ * transferOption:
  *  SAFEDISCARD:
- *    If this TransferBuffer has been used in a copy command that has not completed,
- *    the issued copy commands will still be valid at the cost of increased memory usage.
- *    Otherwise the data will overwrite.
+ *    If this TransferBuffer has been used in commands that have not completed,
+ *    the issued commands will still be valid at the cost of increased memory usage.
+ *    You may NOT assume that any of the previous data is retained.
+ *    If the TransferBuffer was not in use, this option is equivalent to OVERWRITE.
+ *    This is a good option to prevent stalls when frequently updating data.
  *    It is not recommended to use this option with large TransferBuffers.
  *
  *  OVERWRITE:
- *    Overwrites the data regardless of whether a copy has been issued.
+ *    Overwrites the data regardless of whether a command has been issued.
  *    Use this option with great care, as it can cause data races to occur!
  */
-REFRESHAPI void Refresh_SetData(
+REFRESHAPI void Refresh_SetTransferData(
 	Refresh_Device *device,
 	void* data,
 	Refresh_TransferBuffer *transferBuffer,
 	Refresh_BufferCopy *copyParams,
-	Refresh_SetDataOptions option
+	Refresh_TransferOptions transferOption
 );
 
 /* Immediately copies data from a TransferBuffer into a pointer. */
-REFRESHAPI void Refresh_GetData(
+REFRESHAPI void Refresh_GetTransferData(
 	Refresh_Device *device,
 	Refresh_TransferBuffer *transferBuffer,
 	void* data,
@@ -1093,13 +1157,28 @@ REFRESHAPI void Refresh_BeginCopyPass(
  * You MAY assume that the copy has finished for subsequent commands.
  */
 
+/*
+ * writeOption:
+ *  SAFEDISCARD:
+ *    If the destination resource has been used in commands that have not completed,
+ *    this option will prevent a data dependency at the cost of increased memory usage.
+ *    You may NOT assume that any of the previous data is retained.
+ *    If the destination resource was not in use, this option is equivalent to SAFEOVERWRITE.
+ * 	  This is a good option to prevent stalls on resources with frequent updates.
+ *    It is not recommended to use this option with large resources.
+ *
+ *  SAFEOVERWRITE:
+ *    Overwrites the data safely using a GPU memory barrier.
+ */
+
 /* Uploads data from a TransferBuffer to a texture. */
 REFRESHAPI void Refresh_UploadToTexture(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
 	Refresh_TransferBuffer *transferBuffer,
-	Refresh_TextureSlice *textureSlice,
-	Refresh_BufferImageCopy *copyParams
+	Refresh_TextureRegion *textureRegion,
+	Refresh_BufferImageCopy *copyParams,
+	Refresh_WriteOptions writeOption
 );
 
 /* Uploads data from a TransferBuffer to a GpuBuffer. */
@@ -1108,7 +1187,8 @@ REFRESHAPI void Refresh_UploadToBuffer(
 	Refresh_CommandBuffer *commandBuffer,
 	Refresh_TransferBuffer *transferBuffer,
 	Refresh_GpuBuffer *gpuBuffer,
-	Refresh_BufferCopy *copyParams
+	Refresh_BufferCopy *copyParams,
+	Refresh_WriteOptions writeOption
 );
 
 /* GPU-to-CPU copies occur on the GPU timeline.
@@ -1117,13 +1197,28 @@ REFRESHAPI void Refresh_UploadToBuffer(
  * until the command buffer has finished execution.
  */
 
+/*
+ * transferOption:
+ *  SAFEDISCARD:
+ *    If this TransferBuffer has been used in commands that have not completed,
+ *    the issued commands will still be valid at the cost of increased memory usage.
+ *    You may NOT assume that any of the previous data is retained.
+ *    If the TransferBuffer was not in use, this option is equivalent to OVERWRITE.
+ *    It is not recommended to use this option with large TransferBuffers.
+ *
+ *  OVERWRITE:
+ *    Overwrites the data regardless of whether a command has been issued.
+ *    Use this option with great care, as it can cause data races to occur!
+ */
+
 /* Downloads data from a texture to a TransferBuffer. */
 REFRESHAPI void Refresh_DownloadFromTexture(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
-	Refresh_TextureSlice *textureSlice,
+	Refresh_TextureRegion *textureRegion,
 	Refresh_TransferBuffer *transferBuffer,
-	Refresh_BufferImageCopy *copyParams
+	Refresh_BufferImageCopy *copyParams,
+	Refresh_TransferOptions transferOption
 );
 
 /* Downloads data from a GpuBuffer object. */
@@ -1132,28 +1227,45 @@ REFRESHAPI void Refresh_DownloadFromBuffer(
 	Refresh_CommandBuffer *commandBuffer,
 	Refresh_GpuBuffer *gpuBuffer,
 	Refresh_TransferBuffer *transferBuffer,
-	Refresh_BufferCopy *copyParams
+	Refresh_BufferCopy *copyParams,
+	Refresh_TransferOptions transferOption
 );
 
 /* GPU-to-GPU copies occur on the GPU timeline,
  * and you may assume the copy has finished in subsequent commands.
  */
 
+/*
+ * writeOption:
+ *  SAFEDISCARD:
+ *    If the destination resource has been used in commands that have not completed,
+ *    this option will prevent a data dependency at the cost of increased memory usage.
+ *    You may NOT assume that any of the previous data is retained.
+ *    If the destination resource was not in use, this option is equivalent to SAFEOVERWRITE.
+ * 	  This is a good option to prevent stalls on resources with frequent updates.
+ *    It is not recommended to use this option with large resources.
+ *
+ *  SAFEOVERWRITE:
+ *    Overwrites the data safely using a GPU memory barrier.
+ */
+
 /* Performs a texture-to-texture copy. */
 REFRESHAPI void Refresh_CopyTextureToTexture(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
-	Refresh_TextureSlice *source,
-	Refresh_TextureSlice *destination
+	Refresh_TextureRegion *source,
+	Refresh_TextureRegion *destination,
+	Refresh_WriteOptions writeOption
 );
 
 /* Copies image data from a texture slice into a buffer. */
 REFRESHAPI void Refresh_CopyTextureToBuffer(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
-	Refresh_TextureSlice *textureSlice,
+	Refresh_TextureRegion *textureRegion,
 	Refresh_GpuBuffer *gpuBuffer,
-	Refresh_BufferImageCopy *copyParams
+	Refresh_BufferImageCopy *copyParams,
+	Refresh_WriteOptions writeOption
 );
 
 /* Copies data from a buffer to a texture slice. */
@@ -1161,8 +1273,9 @@ REFRESHAPI void Refresh_CopyBufferToTexture(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
 	Refresh_GpuBuffer *gpuBuffer,
-	Refresh_TextureSlice *textureSlice,
-	Refresh_BufferImageCopy *copyParams
+	Refresh_TextureRegion *textureRegion,
+	Refresh_BufferImageCopy *copyParams,
+	Refresh_WriteOptions writeOption
 );
 
 /* Copies data from a buffer to a buffer. */
@@ -1171,7 +1284,8 @@ REFRESHAPI void Refresh_CopyBufferToBuffer(
 	Refresh_CommandBuffer *commandBuffer,
 	Refresh_GpuBuffer *source,
 	Refresh_GpuBuffer *destination,
-	Refresh_BufferCopy *copyParams
+	Refresh_BufferCopy *copyParams,
+	Refresh_WriteOptions writeOption
 );
 
 /* Generate mipmaps for the given texture. */
