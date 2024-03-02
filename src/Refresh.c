@@ -461,8 +461,7 @@ void Refresh_BindVertexBuffers(
 	Refresh_CommandBuffer *commandBuffer,
 	uint32_t firstBinding,
 	uint32_t bindingCount,
-	Refresh_GpuBuffer **pBuffers,
-	uint64_t *pOffsets
+	Refresh_BufferBinding *pBindings
 ) {
 	NULL_RETURN(device);
 	device->BindVertexBuffers(
@@ -470,24 +469,21 @@ void Refresh_BindVertexBuffers(
 		commandBuffer,
 		firstBinding,
 		bindingCount,
-		pBuffers,
-		pOffsets
+		pBindings
 	);
 }
 
 void Refresh_BindIndexBuffer(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
-	Refresh_GpuBuffer *gpuBuffer,
-	uint64_t offset,
+	Refresh_BufferBinding *pBinding,
 	Refresh_IndexElementSize indexElementSize
 ) {
 	NULL_RETURN(device);
 	device->BindIndexBuffer(
 		device->driverData,
 		commandBuffer,
-		gpuBuffer,
-		offset,
+		pBinding,
 		indexElementSize
 	);
 }
@@ -495,30 +491,26 @@ void Refresh_BindIndexBuffer(
 void Refresh_BindVertexSamplers(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
-	Refresh_Texture **pTextures,
-	Refresh_Sampler **pSamplers
+	Refresh_TextureSamplerBinding *pBindings
 ) {
 	NULL_RETURN(device);
 	device->BindVertexSamplers(
 		device->driverData,
 		commandBuffer,
-		pTextures,
-		pSamplers
+		pBindings
 	);
 }
 
 void Refresh_BindFragmentSamplers(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
-	Refresh_Texture **pTextures,
-	Refresh_Sampler **pSamplers
+	Refresh_TextureSamplerBinding *pBindings
 ) {
 	NULL_RETURN(device);
 	device->BindFragmentSamplers(
 		device->driverData,
 		commandBuffer,
-		pTextures,
-		pSamplers
+		pBindings
 	);
 }
 
@@ -662,28 +654,26 @@ void Refresh_BindComputePipeline(
 void Refresh_BindComputeBuffers(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
-	Refresh_GpuBuffer **pBuffers
+	Refresh_ComputeBufferBinding *pBindings
 ) {
 	NULL_RETURN(device);
 	device->BindComputeBuffers(
 		device->driverData,
 		commandBuffer,
-		pBuffers
+		pBindings
 	);
 }
 
 void Refresh_BindComputeTextures(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
-	Refresh_Texture **pTextures,
-	uint32_t **pLevels
+	Refresh_ComputeTextureBinding *pBindings
 ) {
 	NULL_RETURN(device);
 	device->BindComputeTextures(
 		device->driverData,
 		commandBuffer,
-		pTextures,
-		pLevels
+		pBindings
 	);
 }
 
@@ -732,31 +722,31 @@ void Refresh_EndComputePass(
 
 /* TransferBuffer Set/Get */
 
-void Refresh_SetData(
+void Refresh_SetTransferData(
 	Refresh_Device *device,
 	void* data,
 	Refresh_TransferBuffer *transferBuffer,
 	Refresh_BufferCopy *copyParams,
-	Refresh_SetDataOptions option
+	Refresh_TransferOptions transferOption
 ) {
 	NULL_RETURN(device);
-	device->SetData(
+	device->SetTransferData(
 		device->driverData,
 		data,
 		transferBuffer,
 		copyParams,
-		option
+		transferOption
 	);
 }
 
-void Refresh_GetData(
+void Refresh_GetTransferData(
 	Refresh_Device *device,
 	Refresh_TransferBuffer *transferBuffer,
 	void* data,
 	Refresh_BufferCopy *copyParams
 ) {
 	NULL_RETURN(device);
-	device->GetData(
+	device->GetTransferData(
 		device->driverData,
 		transferBuffer,
 		data,
@@ -781,16 +771,18 @@ void Refresh_UploadToTexture(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
 	Refresh_TransferBuffer *transferBuffer,
-	Refresh_TextureSlice *textureSlice,
-	Refresh_BufferImageCopy *copyParams
+	Refresh_TextureRegion *textureRegion,
+	Refresh_BufferImageCopy *copyParams,
+	Refresh_WriteOptions writeOption
 ) {
 	NULL_RETURN(device);
 	device->UploadToTexture(
 		device->driverData,
 		commandBuffer,
 		transferBuffer,
-		textureSlice,
-		copyParams
+		textureRegion,
+		copyParams,
+		writeOption
 	);
 }
 
@@ -799,7 +791,8 @@ void Refresh_UploadToBuffer(
 	Refresh_CommandBuffer *commandBuffer,
 	Refresh_TransferBuffer *transferBuffer,
 	Refresh_GpuBuffer *gpuBuffer,
-	Refresh_BufferCopy *copyParams
+	Refresh_BufferCopy *copyParams,
+	Refresh_WriteOptions writeOption
 ) {
 	NULL_RETURN(device);
 	device->UploadToBuffer(
@@ -807,24 +800,27 @@ void Refresh_UploadToBuffer(
 		commandBuffer,
 		transferBuffer,
 		gpuBuffer,
-		copyParams
+		copyParams,
+		writeOption
 	);
 }
 
 void Refresh_DownloadFromTexture(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
-	Refresh_TextureSlice *textureSlice,
+	Refresh_TextureRegion *textureRegion,
 	Refresh_TransferBuffer *transferBuffer,
-	Refresh_BufferImageCopy *copyParams
+	Refresh_BufferImageCopy *copyParams,
+	Refresh_TransferOptions transferOption
 ) {
 	NULL_RETURN(device);
 	device->DownloadFromTexture(
 		device->driverData,
 		commandBuffer,
-		textureSlice,
+		textureRegion,
 		transferBuffer,
-		copyParams
+		copyParams,
+		transferOption
 	);
 }
 
@@ -833,7 +829,8 @@ void Refresh_DownloadFromBuffer(
 	Refresh_CommandBuffer *commandBuffer,
 	Refresh_GpuBuffer *gpuBuffer,
 	Refresh_TransferBuffer *transferBuffer,
-	Refresh_BufferCopy *copyParams
+	Refresh_BufferCopy *copyParams,
+	Refresh_TransferOptions transferOption
 ) {
 	NULL_RETURN(device);
 	device->DownloadFromBuffer(
@@ -841,39 +838,44 @@ void Refresh_DownloadFromBuffer(
 		commandBuffer,
 		gpuBuffer,
 		transferBuffer,
-		copyParams
+		copyParams,
+		transferOption
 	);
 }
 
 void Refresh_CopyTextureToTexture(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
-	Refresh_TextureSlice *sourceTextureSlice,
-	Refresh_TextureSlice *destinationTextureSlice
+	Refresh_TextureRegion *source,
+	Refresh_TextureRegion *destination,
+	Refresh_WriteOptions writeOption
 ) {
 	NULL_RETURN(device);
 	device->CopyTextureToTexture(
 		device->driverData,
 		commandBuffer,
-		sourceTextureSlice,
-		destinationTextureSlice
+		source,
+		destination,
+		writeOption
 	);
 }
 
 void Refresh_CopyTextureToBuffer(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
-	Refresh_TextureSlice *textureSlice,
+	Refresh_TextureRegion *textureRegion,
 	Refresh_GpuBuffer *gpuBuffer,
-	Refresh_BufferImageCopy *copyParameters
+	Refresh_BufferImageCopy *copyParameters,
+	Refresh_WriteOptions writeOption
 ) {
 	NULL_RETURN(device);
 	device->CopyTextureToBuffer(
 		device->driverData,
 		commandBuffer,
-		textureSlice,
+		textureRegion,
 		gpuBuffer,
-		copyParameters
+		copyParameters,
+		writeOption
 	);
 }
 
@@ -881,16 +883,18 @@ void Refresh_CopyBufferToTexture(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
 	Refresh_GpuBuffer *gpuBuffer,
-	Refresh_TextureSlice *textureSlice,
-	Refresh_BufferImageCopy *copyParams
+	Refresh_TextureRegion *textureRegion,
+	Refresh_BufferImageCopy *copyParams,
+	Refresh_WriteOptions writeOption
 ) {
 	NULL_RETURN(device);
 	device->CopyBufferToTexture(
 		device->driverData,
 		commandBuffer,
 		gpuBuffer,
-		textureSlice,
-		copyParams
+		textureRegion,
+		copyParams,
+		writeOption
 	);
 }
 
@@ -899,7 +903,8 @@ void Refresh_CopyBufferToBuffer(
 	Refresh_CommandBuffer *commandBuffer,
 	Refresh_GpuBuffer *source,
 	Refresh_GpuBuffer *destination,
-	Refresh_BufferCopy *copyParams
+	Refresh_BufferCopy *copyParams,
+	Refresh_WriteOptions writeOption
 ) {
 	NULL_RETURN(device);
 	device->CopyBufferToBuffer(
@@ -907,7 +912,8 @@ void Refresh_CopyBufferToBuffer(
 		commandBuffer,
 		source,
 		destination,
-		copyParams
+		copyParams,
+		writeOption
 	);
 }
 
