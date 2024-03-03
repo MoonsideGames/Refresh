@@ -72,21 +72,14 @@
 		return ret; \
 	}
 
-#define EXPAND_ELEMENTS_IF_NEEDED(arr, initialValue, type)	\
-	if (arr->count == arr->capacity)			\
-	{							\
-		if (arr->capacity == 0)				\
-		{						\
-			arr->capacity = initialValue;		\
-		}						\
-		else						\
-		{						\
-			arr->capacity *= 2;			\
-		}						\
-		arr->elements = (type*) SDL_realloc(		\
-			arr->elements,				\
-			arr->capacity * sizeof(type)		\
-		);						\
+#define EXPAND_ARRAY_IF_NEEDED(arr, elementType, newCount, capacity, newCapacity)	\
+	if (newCount >= capacity)							\
+	{										\
+		capacity = newCapacity;							\
+		arr = (elementType*) SDL_realloc(					\
+			arr,								\
+			sizeof(elementType) * capacity					\
+		);									\
 	}
 
 /* D3DCompile signature */
@@ -446,6 +439,7 @@ typedef struct D3D11TransferBuffer
 {
 	uint8_t *data;
 	uint32_t size;
+	SDL_atomic_t referenceCount;
 } D3D11TransferBuffer;
 
 typedef struct D3D11TransferBufferContainer
@@ -511,6 +505,11 @@ typedef struct D3D11CommandBuffer
 	D3D11UniformBuffer **boundUniformBuffers;
 	uint32_t boundUniformBufferCount;
 	uint32_t boundUniformBufferCapacity;
+
+	/* Reference Counting */
+	D3D11TransferBuffer **usedTransferBuffers;
+	uint32_t usedTransferBufferCount;
+	uint32_t usedTransferBufferCapacity;
 } D3D11CommandBuffer;
 
 typedef struct D3D11Sampler
@@ -699,6 +698,7 @@ static void D3D11_DestroyDevice(
 		D3D11CommandBuffer *commandBuffer = renderer->availableCommandBuffers[i];
 		ID3D11DeviceContext_Release(commandBuffer->context);
 		SDL_free(commandBuffer->boundUniformBuffers);
+		SDL_free(commandBuffer->usedTransferBuffers);
 		SDL_free(commandBuffer);
 	}
 	SDL_free(renderer->availableCommandBuffers);
@@ -1806,16 +1806,46 @@ static Refresh_GpuBuffer* D3D11_CreateGpuBuffer(
 	return (Refresh_GpuBuffer*) d3d11Buffer;
 }
 
-static Refresh_TransferBuffer* VULKAN_CreateTransferBuffer(
+static void D3D11_INTERNAL_TrackTransferBuffer(
+	D3D11CommandBuffer *commandBuffer,
+	D3D11TransferBuffer *buffer
+) {
+	EXPAND_ARRAY_IF_NEEDED(
+		commandBuffer->usedTransferBuffers,
+		D3D11TransferBuffer*,
+		commandBuffer->usedTransferBufferCount + 1,
+		commandBuffer->usedTransferBufferCapacity,
+		commandBuffer->boundUniformBufferCapacity * 2
+	);
+
+	SDL_AtomicIncRef(&buffer->referenceCount);
+
+	commandBuffer->usedTransferBuffers[
+		commandBuffer->usedTransferBufferCount
+	] = buffer;
+	commandBuffer->usedTransferBufferCount += 1;
+}
+
+static D3D11TransferBuffer* D3D11_INTERNAL_CreateTransferBuffer(
+	uint32_t sizeInBytes
+) {
+	D3D11TransferBuffer *transferBuffer = (D3D11TransferBuffer*) SDL_malloc(sizeof(D3D11TransferBuffer));
+
+	transferBuffer->data = SDL_malloc(sizeInBytes);
+	transferBuffer->size = sizeInBytes;
+	SDL_AtomicSet(&transferBuffer->referenceCount, 0);
+
+	return transferBuffer;
+}
+
+/* This actually returns a container handle so we can rotate buffers on Discard. */
+static Refresh_TransferBuffer* D3D11_CreateTransferBuffer(
 	Refresh_Renderer *driverData,
 	uint32_t sizeInBytes
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11TransferBufferContainer *container = (D3D11TransferBufferContainer*) (sizeof(D3D11TransferBufferContainer));
-	D3D11TransferBuffer *transferBuffer = (D3D11TransferBuffer*) SDL_malloc(sizeof(D3D11TransferBuffer));
-
-	transferBuffer->data = SDL_malloc(sizeInBytes);
-	transferBuffer->size = sizeInBytes;
+	D3D11TransferBuffer *transferBuffer = D3D11_INTERNAL_CreateTransferBuffer(sizeInBytes);
 
 	container->activeBuffer = transferBuffer;
 	container->bufferCapacity = 1;
@@ -1826,6 +1856,86 @@ static Refresh_TransferBuffer* VULKAN_CreateTransferBuffer(
 	container->buffers[0] = transferBuffer;
 
 	return (Refresh_TransferBuffer*) container;
+}
+
+/* TransferBuffer Data */
+
+static void D3D11_INTERNAL_DiscardActiveTransferBuffer(
+	D3D11TransferBufferContainer *container
+) {
+	for (uint32_t i = 0; i < container->bufferCount; i += 1)
+	{
+		if (SDL_AtomicGet(&container->buffers[i]->referenceCount) == 0)
+		{
+			container->activeBuffer = container->buffers[i];
+			return;
+		}
+	}
+
+	container->activeBuffer = D3D11_INTERNAL_CreateTransferBuffer(
+		container->activeBuffer->size
+	);
+
+	EXPAND_ARRAY_IF_NEEDED(
+		container->buffers,
+		D3D11TransferBuffer*,
+		container->bufferCount + 1,
+		container->bufferCapacity,
+		container->bufferCapacity * 2
+	);
+
+	container->buffers[
+		container->bufferCapacity
+	] = container->activeBuffer;
+	container->bufferCount += 1;
+}
+
+static void D3D11_SetTransferData(
+	Refresh_Renderer *driverData,
+	void* data,
+	Refresh_TransferBuffer *transferBuffer,
+	Refresh_BufferCopy *copyParams,
+	Refresh_TransferOptions transferOption
+) {
+	D3D11TransferBufferContainer *container = (D3D11TransferBufferContainer*) transferBuffer;
+	D3D11TransferBuffer *buffer = container->activeBuffer;
+
+	if (
+		transferOption == REFRESH_TRANSFEROPTIONS_SAFEDISCARD &&
+		SDL_AtomicGet(&container->activeBuffer->referenceCount) > 0
+	) {
+		D3D11_INTERNAL_DiscardActiveTransferBuffer(
+			container
+		);
+	}
+
+	uint8_t *bufferPointer =
+		buffer->data + copyParams->dstOffset;
+
+	SDL_memcpy(
+		bufferPointer,
+		((uint8_t*) data) + copyParams->srcOffset,
+		copyParams->size
+	);
+}
+
+static void D3D11_GetTransferData(
+	Refresh_Renderer *driverData,
+	Refresh_TransferBuffer *transferBuffer,
+	void* data,
+	Refresh_BufferCopy *copyParams
+) {
+	D3D11TransferBufferContainer *container = (D3D11TransferBufferContainer*) transferBuffer;
+	D3D11TransferBuffer *buffer = container->activeBuffer;
+
+	uint8_t *bufferPointer =
+		buffer->data + copyParams->srcOffset;
+
+	SDL_memcpy(
+		((uint8_t*) data) + copyParams->dstOffset,
+		bufferPointer,
+		copyParams->size
+	);
 }
 
 /* Copy Pass */
@@ -1882,6 +1992,8 @@ static void D3D11_UploadToTexture(
 		copyParams->bufferStride * copyParams->bufferImageHeight,
 		writeOption == REFRESH_WRITEOPTIONS_SAFEDISCARD ? D3D11_COPY_DISCARD : 0
 	);
+
+	D3D11_INTERNAL_TrackTransferBuffer(commandBuffer, d3d11TransferBuffer);
 }
 
 static void D3D11_UploadToBuffer(
@@ -1908,6 +2020,8 @@ static void D3D11_UploadToBuffer(
 		1,
 		writeOption == REFRESH_WRITEOPTIONS_SAFEDISCARD ? D3D11_COPY_DISCARD : 0
 	);
+
+	D3D11_INTERNAL_TrackTransferBuffer(commandBuffer, d3d11TransferBuffer);
 }
 
 static void D3D11_CopyTextureToTexture(
@@ -2487,6 +2601,13 @@ static void D3D11_INTERNAL_AllocateCommandBuffers(
 		commandBuffer->boundUniformBufferCount = 0;
 		commandBuffer->boundUniformBuffers = SDL_malloc(
 			commandBuffer->boundUniformBufferCapacity * sizeof(D3D11UniformBuffer*)
+		);
+
+		/* Reference Counting */
+		commandBuffer->usedTransferBufferCapacity = 4;
+		commandBuffer->usedTransferBufferCount = 0;
+		commandBuffer->usedTransferBuffers = SDL_malloc(
+			commandBuffer->usedTransferBufferCapacity * sizeof(D3D11TransferBuffer*)
 		);
 
 		renderer->availableCommandBuffers[renderer->availableCommandBufferCount] = commandBuffer;
@@ -3616,6 +3737,14 @@ static void D3D11_INTERNAL_CleanCommandBuffer(
 	SDL_UnlockMutex(renderer->uniformBufferLock);
 
 	commandBuffer->boundUniformBufferCount = 0;
+
+	/* Reference Counting */
+
+	for (uint32_t i = 0; i < commandBuffer->usedTransferBufferCount; i += 1)
+	{
+		SDL_AtomicDecRef(&commandBuffer->usedTransferBuffers[i]->referenceCount);
+	}
+	commandBuffer->usedTransferBufferCount = 0;
 
 	/* The fence is now available (unless SubmitAndAcquireFence was called) */
 	if (commandBuffer->autoReleaseFence)
