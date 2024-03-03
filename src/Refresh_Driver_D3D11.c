@@ -445,7 +445,8 @@ typedef struct D3D11Buffer
 typedef struct D3D11UniformBuffer
 {
 	D3D11Buffer *d3d11Buffer;
-	uint32_t offset;
+	uint32_t offset; /* number of bytes written */
+	uint32_t drawOffset; /* parameter for SetConstantBuffers */
 	uint8_t hasDiscarded;
 } D3D11UniformBuffer;
 
@@ -753,13 +754,11 @@ static void D3D11_DrawInstancedPrimitives(
 	uint32_t baseVertex,
 	uint32_t startIndex,
 	uint32_t primitiveCount,
-	uint32_t instanceCount,
-	uint32_t vertexParamOffset,
-	uint32_t fragmentParamOffset
+	uint32_t instanceCount
 ) {
 	D3D11CommandBuffer *d3d11CommandBuffer = (D3D11CommandBuffer*) commandBuffer;
-	uint32_t vertexOffsetInConstants = vertexParamOffset / 16;
-	uint32_t fragmentOffsetInConstants = fragmentParamOffset / 16;
+	uint32_t vertexOffsetInConstants = d3d11CommandBuffer->vertexUniformBuffer->drawOffset / 16;
+	uint32_t fragmentOffsetInConstants = d3d11CommandBuffer->fragmentUniformBuffer->drawOffset / 16;
 	uint32_t vertexBlockSizeInConstants = d3d11CommandBuffer->graphicsPipeline->vertexUniformBlockSize / 16;
 	uint32_t fragmentBlockSizeInConstants = d3d11CommandBuffer->graphicsPipeline->fragmentUniformBlockSize / 16;
 
@@ -802,9 +801,7 @@ static void D3D11_DrawIndexedPrimitives(
 	Refresh_CommandBuffer *commandBuffer,
 	uint32_t baseVertex,
 	uint32_t startIndex,
-	uint32_t primitiveCount,
-	uint32_t vertexParamOffset,
-	uint32_t fragmentParamOffset
+	uint32_t primitiveCount
 ) {
 	D3D11_DrawInstancedPrimitives(
 		driverData,
@@ -812,9 +809,7 @@ static void D3D11_DrawIndexedPrimitives(
 		baseVertex,
 		startIndex,
 		primitiveCount,
-		1,
-		vertexParamOffset,
-		fragmentParamOffset
+		1
 	);
 }
 
@@ -822,13 +817,11 @@ static void D3D11_DrawPrimitives(
 	Refresh_Renderer *driverData,
 	Refresh_CommandBuffer *commandBuffer,
 	uint32_t vertexStart,
-	uint32_t primitiveCount,
-	uint32_t vertexParamOffset,
-	uint32_t fragmentParamOffset
+	uint32_t primitiveCount
 ) {
 	D3D11CommandBuffer *d3d11CommandBuffer = (D3D11CommandBuffer*) commandBuffer;
-	uint32_t vertexOffsetInConstants = vertexParamOffset / 16;
-	uint32_t fragmentOffsetInConstants = fragmentParamOffset / 16;
+	uint32_t vertexOffsetInConstants = d3d11CommandBuffer->vertexUniformBuffer->drawOffset / 16;
+	uint32_t fragmentOffsetInConstants = d3d11CommandBuffer->fragmentUniformBuffer->drawOffset / 16;
 	uint32_t vertexBlockSizeInConstants = d3d11CommandBuffer->graphicsPipeline->vertexUniformBlockSize / 16;
 	uint32_t fragmentBlockSizeInConstants = d3d11CommandBuffer->graphicsPipeline->fragmentUniformBlockSize / 16;
 
@@ -866,17 +859,15 @@ static void D3D11_DrawPrimitives(
 static void D3D11_DrawPrimitivesIndirect(
 	Refresh_Renderer *driverData,
 	Refresh_CommandBuffer *commandBuffer,
-	Refresh_Buffer *buffer,
+	Refresh_GpuBuffer *gpuBuffer,
 	uint32_t offsetInBytes,
 	uint32_t drawCount,
-	uint32_t stride,
-	uint32_t vertexParamOffset,
-	uint32_t fragmentParamOffset
+	uint32_t stride
 ) {
 	D3D11CommandBuffer *d3d11CommandBuffer = (D3D11CommandBuffer*) commandBuffer;
-	D3D11Buffer *d3d11Buffer = (D3D11Buffer*) buffer;
-	uint32_t vertexOffsetInConstants = vertexParamOffset / 16;
-	uint32_t fragmentOffsetInConstants = fragmentParamOffset / 16;
+	D3D11Buffer *d3d11Buffer = (D3D11Buffer*) gpuBuffer;
+	uint32_t vertexOffsetInConstants = d3d11CommandBuffer->vertexUniformBuffer->drawOffset / 16;
+	uint32_t fragmentOffsetInConstants = d3d11CommandBuffer->fragmentUniformBuffer->drawOffset / 16;
 	uint32_t vertexBlockSizeInConstants = d3d11CommandBuffer->graphicsPipeline->vertexUniformBlockSize / 16;
 	uint32_t fragmentBlockSizeInConstants = d3d11CommandBuffer->graphicsPipeline->fragmentUniformBlockSize / 16;
 
@@ -918,15 +909,14 @@ static void D3D11_DrawPrimitivesIndirect(
 }
 
 static void D3D11_DispatchCompute(
-	Refresh_Renderer *device,
+	Refresh_Renderer *driverData,
 	Refresh_CommandBuffer *commandBuffer,
 	uint32_t groupCountX,
 	uint32_t groupCountY,
-	uint32_t groupCountZ,
-	uint32_t computeParamOffset
+	uint32_t groupCountZ
 ) {
 	D3D11CommandBuffer* d3d11CommandBuffer = (D3D11CommandBuffer*)commandBuffer;
-	uint32_t computeOffsetInConstants = computeParamOffset / 16;
+	uint32_t computeOffsetInConstants = d3d11CommandBuffer->computeUniformBuffer->drawOffset / 16;
 	uint32_t computeBlockSizeInConstants = (uint32_t) (d3d11CommandBuffer->computePipeline->computeUniformBlockSize / 16);
 
 	if (d3d11CommandBuffer->computeUniformBuffer != NULL)
@@ -2056,6 +2046,7 @@ static uint8_t D3D11_INTERNAL_CreateUniformBuffer(
 
 	uniformBuffer = SDL_malloc(sizeof(D3D11UniformBuffer));
 	uniformBuffer->offset = 0;
+	uniformBuffer->drawOffset = 0;
 	uniformBuffer->hasDiscarded = 0;
 	uniformBuffer->d3d11Buffer = SDL_malloc(sizeof(D3D11Buffer));
 	uniformBuffer->d3d11Buffer->handle = bufferHandle;
@@ -2108,6 +2099,7 @@ static uint8_t D3D11_INTERNAL_AcquireUniformBuffer(
 	/* Reset the uniform buffer */
 	uniformBuffer->hasDiscarded = 0;
 	uniformBuffer->offset = 0;
+	uniformBuffer->drawOffset = 0;
 
 	/* Bind the uniform buffer to the command buffer */
 	if (commandBuffer->boundUniformBufferCount >= commandBuffer->boundUniformBufferCapacity)
@@ -2160,7 +2152,7 @@ static void D3D11_INTERNAL_SetUniformBufferData(
 	uniformBuffer->hasDiscarded = 1;
 }
 
-static uint32_t D3D11_PushVertexShaderUniforms(
+static void D3D11_PushVertexShaderUniforms(
 	Refresh_Renderer *driverData,
 	Refresh_CommandBuffer *commandBuffer,
 	void *data,
@@ -2169,7 +2161,6 @@ static uint32_t D3D11_PushVertexShaderUniforms(
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11CommandBuffer *d3d11CommandBuffer = (D3D11CommandBuffer*) commandBuffer;
 	D3D11GraphicsPipeline *graphicsPipeline = d3d11CommandBuffer->graphicsPipeline;
-	uint32_t offset;
 
 	if (d3d11CommandBuffer->vertexUniformBuffer->offset + graphicsPipeline->vertexUniformBlockSize >= UBO_BUFFER_SIZE)
 	{
@@ -2182,7 +2173,7 @@ static uint32_t D3D11_PushVertexShaderUniforms(
 		);
 	}
 
-	offset = d3d11CommandBuffer->vertexUniformBuffer->offset;
+	d3d11CommandBuffer->vertexUniformBuffer->drawOffset = d3d11CommandBuffer->vertexUniformBuffer->offset;
 
 	D3D11_INTERNAL_SetUniformBufferData(
 		renderer,
@@ -2193,11 +2184,9 @@ static uint32_t D3D11_PushVertexShaderUniforms(
 	);
 
 	d3d11CommandBuffer->vertexUniformBuffer->offset += graphicsPipeline->vertexUniformBlockSize;
-
-	return offset;
 }
 
-static uint32_t D3D11_PushFragmentShaderUniforms(
+static void D3D11_PushFragmentShaderUniforms(
 	Refresh_Renderer *driverData,
 	Refresh_CommandBuffer *commandBuffer,
 	void *data,
@@ -2206,7 +2195,6 @@ static uint32_t D3D11_PushFragmentShaderUniforms(
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11CommandBuffer *d3d11CommandBuffer = (D3D11CommandBuffer*) commandBuffer;
 	D3D11GraphicsPipeline *graphicsPipeline = d3d11CommandBuffer->graphicsPipeline;
-	uint32_t offset;
 
 	if (d3d11CommandBuffer->fragmentUniformBuffer->offset + graphicsPipeline->fragmentUniformBlockSize >= UBO_BUFFER_SIZE)
 	{
@@ -2219,7 +2207,7 @@ static uint32_t D3D11_PushFragmentShaderUniforms(
 		);
 	}
 
-	offset = d3d11CommandBuffer->fragmentUniformBuffer->offset;
+	d3d11CommandBuffer->fragmentUniformBuffer->drawOffset = d3d11CommandBuffer->fragmentUniformBuffer->offset;
 
 	D3D11_INTERNAL_SetUniformBufferData(
 		renderer,
@@ -2230,8 +2218,6 @@ static uint32_t D3D11_PushFragmentShaderUniforms(
 	);
 
 	d3d11CommandBuffer->fragmentUniformBuffer->offset += graphicsPipeline->fragmentUniformBlockSize;
-
-	return offset;
 }
 
 static uint32_t D3D11_PushComputeShaderUniforms(
@@ -2243,7 +2229,6 @@ static uint32_t D3D11_PushComputeShaderUniforms(
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11CommandBuffer *d3d11CommandBuffer = (D3D11CommandBuffer*) commandBuffer;
 	D3D11ComputePipeline *computePipeline = d3d11CommandBuffer->computePipeline;
-	uint32_t offset;
 
 	if (d3d11CommandBuffer->computeUniformBuffer->offset + computePipeline->computeUniformBlockSize >= UBO_BUFFER_SIZE)
 	{
@@ -2256,7 +2241,7 @@ static uint32_t D3D11_PushComputeShaderUniforms(
 		);
 	}
 
-	offset = d3d11CommandBuffer->computeUniformBuffer->offset;
+	d3d11CommandBuffer->computeUniformBuffer->drawOffset = d3d11CommandBuffer->computeUniformBuffer->offset;
 
 	D3D11_INTERNAL_SetUniformBufferData(
 		renderer,
@@ -2268,8 +2253,6 @@ static uint32_t D3D11_PushComputeShaderUniforms(
 
 	d3d11CommandBuffer->computeUniformBuffer->offset +=
 		(uint32_t) computePipeline->computeUniformBlockSize; /* API FIXME: Is this cast safe? */
-
-	return offset;
 }
 
 /* Samplers */
