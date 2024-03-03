@@ -470,9 +470,6 @@ typedef struct Refresh_StencilOpState
 	Refresh_StencilOp passOp;
 	Refresh_StencilOp depthFailOp;
 	Refresh_CompareOp compareOp;
-	uint32_t compareMask;
-	uint32_t writeMask;
-	uint32_t reference;
 } Refresh_StencilOpState;
 
 typedef struct Refresh_ColorAttachmentBlendState
@@ -549,7 +546,11 @@ typedef struct Refresh_DepthStencilState
 	Refresh_CompareOp compareOp;
 	uint8_t depthBoundsTestEnable;
 	uint8_t stencilTestEnable;
-	Refresh_StencilOpState stencilState;
+	Refresh_StencilOpState backStencilState;
+	Refresh_StencilOpState frontStencilState;
+	uint32_t compareMask;
+	uint32_t writeMask;
+	uint32_t reference;
 	float minDepthBounds;
 	float maxDepthBounds;
 } Refresh_DepthStencilState;
