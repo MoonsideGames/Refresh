@@ -6269,42 +6269,42 @@ static Refresh_GraphicsPipeline* VULKAN_CreateGraphicsPipeline(
 	/* Depth Stencil State */
 
 	frontStencilState.failOp = RefreshToVK_StencilOp[
-		pipelineCreateInfo->depthStencilState.stencilState.failOp
+		pipelineCreateInfo->depthStencilState.frontStencilState.failOp
 	];
 	frontStencilState.passOp = RefreshToVK_StencilOp[
-		pipelineCreateInfo->depthStencilState.stencilState.passOp
+		pipelineCreateInfo->depthStencilState.frontStencilState.passOp
 	];
 	frontStencilState.depthFailOp = RefreshToVK_StencilOp[
-		pipelineCreateInfo->depthStencilState.stencilState.depthFailOp
+		pipelineCreateInfo->depthStencilState.frontStencilState.depthFailOp
 	];
 	frontStencilState.compareOp = RefreshToVK_CompareOp[
-		pipelineCreateInfo->depthStencilState.stencilState.compareOp
+		pipelineCreateInfo->depthStencilState.frontStencilState.compareOp
 	];
 	frontStencilState.compareMask =
-		pipelineCreateInfo->depthStencilState.stencilState.compareMask;
+		pipelineCreateInfo->depthStencilState.compareMask;
 	frontStencilState.writeMask =
-		pipelineCreateInfo->depthStencilState.stencilState.writeMask;
+		pipelineCreateInfo->depthStencilState.writeMask;
 	frontStencilState.reference =
-		pipelineCreateInfo->depthStencilState.stencilState.reference;
+		pipelineCreateInfo->depthStencilState.reference;
 
 	backStencilState.failOp = RefreshToVK_StencilOp[
-		pipelineCreateInfo->depthStencilState.stencilState.failOp
+		pipelineCreateInfo->depthStencilState.backStencilState.failOp
 	];
 	backStencilState.passOp = RefreshToVK_StencilOp[
-		pipelineCreateInfo->depthStencilState.stencilState.passOp
+		pipelineCreateInfo->depthStencilState.backStencilState.passOp
 	];
 	backStencilState.depthFailOp = RefreshToVK_StencilOp[
-		pipelineCreateInfo->depthStencilState.stencilState.depthFailOp
+		pipelineCreateInfo->depthStencilState.backStencilState.depthFailOp
 	];
 	backStencilState.compareOp = RefreshToVK_CompareOp[
-		pipelineCreateInfo->depthStencilState.stencilState.compareOp
+		pipelineCreateInfo->depthStencilState.backStencilState.compareOp
 	];
 	backStencilState.compareMask =
-		pipelineCreateInfo->depthStencilState.stencilState.compareMask;
+		pipelineCreateInfo->depthStencilState.compareMask;
 	backStencilState.writeMask =
-		pipelineCreateInfo->depthStencilState.stencilState.writeMask;
+		pipelineCreateInfo->depthStencilState.writeMask;
 	backStencilState.reference =
-		pipelineCreateInfo->depthStencilState.stencilState.reference;
+		pipelineCreateInfo->depthStencilState.reference;
 
 
 	depthStencilStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
