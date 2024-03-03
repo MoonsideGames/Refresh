@@ -1032,9 +1032,8 @@ static ID3D11DepthStencilState* D3D11_INTERNAL_FetchDepthStencilState(
 	dsDesc.FrontFace.StencilFailOp = RefreshToD3D11_CompareOp[depthStencilState.frontStencilState.failOp];
 	dsDesc.FrontFace.StencilPassOp = RefreshToD3D11_CompareOp[depthStencilState.frontStencilState.passOp];
 
-	/* API FIXME: D3D11 doesn't have separate read/write masks for each stencil side. What should we do? */
-	dsDesc.StencilReadMask = depthStencilState.frontStencilState.compareMask;
-	dsDesc.StencilWriteMask = depthStencilState.frontStencilState.writeMask;
+	dsDesc.StencilReadMask = depthStencilState.compareMask;
+	dsDesc.StencilWriteMask = depthStencilState.writeMask;
 
 	if (depthStencilState.depthBoundsTestEnable)
 	{
@@ -1240,8 +1239,7 @@ static Refresh_GraphicsPipeline* D3D11_CreateGraphicsPipeline(
 	pipeline->depthStencilAttachmentFormat = RefreshToD3D11_TextureFormat[
 		pipelineCreateInfo->attachmentInfo.depthStencilFormat
 	];
-	/* API FIXME: D3D11 doesn't have separate references for each stencil side. What should we do? */
-	pipeline->stencilRef = pipelineCreateInfo->depthStencilState.frontStencilState.reference;
+	pipeline->stencilRef = pipelineCreateInfo->depthStencilState.reference;
 
 	/* Rasterizer */
 
