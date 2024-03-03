@@ -442,6 +442,26 @@ typedef struct D3D11Buffer
 	uint32_t size;
 } D3D11Buffer;
 
+typedef struct D3D11TransferBuffer
+{
+	uint8_t *data;
+	uint32_t size;
+} D3D11TransferBuffer;
+
+typedef struct D3D11TransferBufferContainer
+{
+	D3D11TransferBuffer *activeBuffer;
+
+	/* These are all the buffers that have been used by this container.
+	 * If the resource is bound and then updated with SafeDiscard, a new resource
+	 * will be added to this list.
+	 * These can be reused after they are submitted and command processing is complete.
+	 */
+	uint32_t bufferCapacity;
+	uint32_t bufferCount;
+	D3D11TransferBuffer **buffers;
+} D3D11TransferBufferContainer;
+
 typedef struct D3D11UniformBuffer
 {
 	D3D11Buffer *d3d11Buffer;
@@ -1706,7 +1726,7 @@ static Refresh_Texture* D3D11_CreateTexture(
 	return (Refresh_Texture*) d3d11Texture;
 }
 
-static Refresh_Buffer* D3D11_CreateBuffer(
+static Refresh_GpuBuffer* D3D11_CreateGpuBuffer(
 	Refresh_Renderer *driverData,
 	Refresh_BufferUsageFlags usageFlags,
 	uint32_t sizeInBytes
@@ -1783,24 +1803,55 @@ static Refresh_Buffer* D3D11_CreateBuffer(
 	d3d11Buffer->size = sizeInBytes;
 	d3d11Buffer->uav = uav;
 
-	return (Refresh_Buffer*) d3d11Buffer;
+	return (Refresh_GpuBuffer*) d3d11Buffer;
 }
 
-/* Texture Data */
-
-static void D3D11_SetTextureData(
+static Refresh_TransferBuffer* VULKAN_CreateTransferBuffer(
 	Refresh_Renderer *driverData,
-	Refresh_CommandBuffer *commandBuffer,
-	Refresh_TextureSlice *textureSlice,
-	void *data,
-	uint32_t dataLengthInBytes
+	uint32_t sizeInBytes
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
-	D3D11CommandBuffer *d3d11CommandBuffer = (D3D11CommandBuffer*) commandBuffer;
-	D3D11Texture *d3d11Texture = (D3D11Texture*) textureSlice->texture;
+	D3D11TransferBufferContainer *container = (D3D11TransferBufferContainer*) (sizeof(D3D11TransferBufferContainer));
+	D3D11TransferBuffer *transferBuffer = (D3D11TransferBuffer*) SDL_malloc(sizeof(D3D11TransferBuffer));
 
-	int32_t w = textureSlice->rectangle.w;
-	int32_t h = textureSlice->rectangle.h;
+	transferBuffer->data = SDL_malloc(sizeInBytes);
+	transferBuffer->size = sizeInBytes;
+
+	container->activeBuffer = transferBuffer;
+	container->bufferCapacity = 1;
+	container->bufferCount = 1;
+	container->buffers = SDL_malloc(
+		container->bufferCapacity * sizeof(D3D11TransferBuffer)
+	);
+	container->buffers[0] = transferBuffer;
+
+	return (Refresh_TransferBuffer*) container;
+}
+
+/* Copy Pass */
+
+static void D3D11_BeginCopyPass(
+	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer
+) {
+	/* no-op */
+}
+
+static void D3D11_UploadToTexture(
+	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_TransferBuffer *transferBuffer,
+	Refresh_TextureRegion *textureRegion,
+	Refresh_BufferImageCopy *copyParams,
+	Refresh_WriteOptions writeOption
+) {
+	D3D11CommandBuffer *d3d11CommandBuffer = (D3D11CommandBuffer*) commandBuffer;
+	D3D11TransferBufferContainer *container = (D3D11TransferBufferContainer*) transferBuffer;
+	D3D11TransferBuffer *d3d11TransferBuffer = container->activeBuffer;
+	D3D11Texture *d3d11Texture = (D3D11Texture*) textureRegion->textureSlice.texture;
+
+	int32_t w = textureRegion->w;
+	int32_t h = textureRegion->h;
 
 	int32_t blockSize = Texture_GetBlockSize(d3d11Texture->format);
 	if (blockSize > 1)
@@ -1810,89 +1861,52 @@ static void D3D11_SetTextureData(
 	}
 
 	D3D11_BOX dstBox;
-	dstBox.left = textureSlice->rectangle.x;
-	dstBox.top = textureSlice->rectangle.y;
-	dstBox.front = textureSlice->depth;
-	dstBox.right = textureSlice->rectangle.x + w;
-	dstBox.bottom = textureSlice->rectangle.y + h;
-	dstBox.back = textureSlice->depth + 1;
+	dstBox.left = textureRegion->x;
+	dstBox.top = textureRegion->y;
+	dstBox.front = textureRegion->d;
+	dstBox.right = textureRegion->x + w;
+	dstBox.bottom = textureRegion->y + h;
+	dstBox.back = textureRegion->d + 1;
 
 	ID3D11DeviceContext1_UpdateSubresource1(
 		d3d11CommandBuffer->context,
 		d3d11Texture->handle,
 		D3D11_INTERNAL_CalcSubresource(
-			textureSlice->level,
-			textureSlice->layer,
-			d3d11Texture->levelCount
+			textureRegion->textureSlice.mipLevel,
+			textureRegion->textureSlice.layer,
+			1
 		),
 		&dstBox,
-		data,
-		BytesPerRow(w, d3d11Texture->format),
-		BytesPerImage(w, h, d3d11Texture->format),
-		0 /* FIXME: Could DISCARD here if we know we're overwriting the whole image... */
+		d3d11TransferBuffer->data + copyParams->bufferOffset,
+		copyParams->bufferStride,
+		copyParams->bufferStride * copyParams->bufferImageHeight,
+		writeOption == REFRESH_WRITEOPTIONS_SAFEDISCARD ? D3D11_COPY_DISCARD : 0
 	);
 }
 
-static void D3D11_SetTextureDataYUV(
+static void D3D11_UploadToBuffer(
 	Refresh_Renderer *driverData,
-	Refresh_CommandBuffer* commandBuffer,
-	Refresh_Texture *y,
-	Refresh_Texture *u,
-	Refresh_Texture *v,
-	uint32_t yWidth,
-	uint32_t yHeight,
-	uint32_t uvWidth,
-	uint32_t uvHeight,
-	void *yDataPtr,
-	void *uDataPtr,
-	void *vDataPtr,
-	uint32_t yDataLength,
-	uint32_t uvDataLength,
-	uint32_t yStride,
-	uint32_t uvStride
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_TransferBuffer *transferBuffer,
+	Refresh_GpuBuffer *gpuBuffer,
+	Refresh_BufferCopy *copyParams,
+	Refresh_WriteOptions writeOption
 ) {
-	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11CommandBuffer *d3d11CommandBuffer = (D3D11CommandBuffer*) commandBuffer;
-	D3D11Texture *yTex = (D3D11Texture*) y;
-	D3D11Texture *uTex = (D3D11Texture*) u;
-	D3D11Texture *vTex = (D3D11Texture*) v;
-	D3D11_BOX yBox = { 0, 0, 0, yWidth, yHeight, 1 };
-	D3D11_BOX uvBox = { 0, 0, 0, uvWidth, uvHeight, 1 };
+	D3D11TransferBufferContainer *container = (D3D11TransferBufferContainer*) transferBuffer;
+	D3D11TransferBuffer *d3d11TransferBuffer = container->activeBuffer;
+	D3D11Buffer *d3d11Buffer = (D3D11Buffer*) gpuBuffer;
+	D3D11_BOX dstBox = { copyParams->dstOffset, 0, 0, copyParams->dstOffset + copyParams->size, 1, 1 };
 
-	/* Y */
 	ID3D11DeviceContext1_UpdateSubresource1(
 		d3d11CommandBuffer->context,
-		yTex->handle,
+		(ID3D11Resource*) d3d11Buffer->handle,
 		0,
-		&yBox,
-		yDataPtr,
-		yStride,
-		0,
-		D3D11_COPY_DISCARD
-	);
-
-	/* U */
-	ID3D11DeviceContext1_UpdateSubresource1(
-		d3d11CommandBuffer->context,
-		uTex->handle,
-		0,
-		&uvBox,
-		uDataPtr,
-		uvStride,
-		0,
-		D3D11_COPY_DISCARD
-	);
-
-	/* V */
-	ID3D11DeviceContext1_UpdateSubresource1(
-		d3d11CommandBuffer->context,
-		vTex->handle,
-		0,
-		&uvBox,
-		vDataPtr,
-		uvStride,
-		0,
-		D3D11_COPY_DISCARD
+		&dstBox,
+		d3d11TransferBuffer->data + copyParams->dstOffset,
+		copyParams->size,
+		1,
+		writeOption == REFRESH_WRITEOPTIONS_SAFEDISCARD ? D3D11_COPY_DISCARD : 0
 	);
 }
 
@@ -1913,6 +1927,13 @@ static void D3D11_CopyTextureToBuffer(
 	Refresh_Buffer *buffer
 ) {
 	NOT_IMPLEMENTED
+}
+
+static void D3D11_EndCopyPass(
+	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer
+) {
+	/* no-op */
 }
 
 /* Buffer Data */
