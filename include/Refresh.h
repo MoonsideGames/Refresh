@@ -1260,26 +1260,6 @@ REFRESHAPI void Refresh_CopyTextureToTexture(
 	Refresh_WriteOptions writeOption
 );
 
-/* Copies image data from a texture slice into a buffer. */
-REFRESHAPI void Refresh_CopyTextureToBuffer(
-	Refresh_Device *device,
-	Refresh_CommandBuffer *commandBuffer,
-	Refresh_TextureRegion *textureRegion,
-	Refresh_GpuBuffer *gpuBuffer,
-	Refresh_BufferImageCopy *copyParams,
-	Refresh_WriteOptions writeOption
-);
-
-/* Copies data from a buffer to a texture slice. */
-REFRESHAPI void Refresh_CopyBufferToTexture(
-	Refresh_Device *device,
-	Refresh_CommandBuffer *commandBuffer,
-	Refresh_GpuBuffer *gpuBuffer,
-	Refresh_TextureRegion *textureRegion,
-	Refresh_BufferImageCopy *copyParams,
-	Refresh_WriteOptions writeOption
-);
-
 /* Copies data from a buffer to a buffer. */
 REFRESHAPI void Refresh_CopyBufferToBuffer(
 	Refresh_Device *device,

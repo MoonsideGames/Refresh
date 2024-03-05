@@ -532,24 +532,6 @@ struct Refresh_Device
 		Refresh_WriteOptions writeOption
 	);
 
-	void (*CopyTextureToBuffer)(
-		Refresh_Renderer *driverData,
-		Refresh_CommandBuffer *commandBuffer,
-		Refresh_TextureRegion *textureSlice,
-		Refresh_GpuBuffer *gpuBuffer,
-		Refresh_BufferImageCopy *copyParams,
-		Refresh_WriteOptions writeOption
-	);
-
-	void (*CopyBufferToTexture)(
-		Refresh_Renderer *driverData,
-		Refresh_CommandBuffer *commandBuffer,
-		Refresh_GpuBuffer *gpuBuffer,
-		Refresh_TextureRegion *textureSlice,
-		Refresh_BufferImageCopy *copyParams,
-		Refresh_WriteOptions writeOption
-	);
-
 	void (*CopyBufferToBuffer)(
 		Refresh_Renderer *driverData,
 		Refresh_CommandBuffer *commandBuffer,
@@ -689,8 +671,6 @@ struct Refresh_Device
 	ASSIGN_DRIVER_FUNC(DownloadFromTexture, name) \
 	ASSIGN_DRIVER_FUNC(DownloadFromBuffer, name) \
 	ASSIGN_DRIVER_FUNC(CopyTextureToTexture, name) \
-	ASSIGN_DRIVER_FUNC(CopyTextureToBuffer, name) \
-	ASSIGN_DRIVER_FUNC(CopyBufferToTexture, name) \
 	ASSIGN_DRIVER_FUNC(CopyBufferToBuffer, name) \
 	ASSIGN_DRIVER_FUNC(GenerateMipmaps, name) \
 	ASSIGN_DRIVER_FUNC(EndCopyPass, name) \

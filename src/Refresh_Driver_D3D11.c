@@ -1,4 +1,4 @@
-﻿/* Refresh - XNA-inspired 3D Graphics Library with modern capabilities
+/* Refresh - XNA-inspired 3D Graphics Library with modern capabilities
  *
  * Copyright (c) 2020 Evan Hemsley
  *
@@ -1865,27 +1865,8 @@ static D3D11TransferBuffer* D3D11_INTERNAL_CreateTransferBuffer(
 	D3D11Renderer *renderer,
 	uint32_t sizeInBytes
 ) {
-	D3D11TransferBuffer *transferBuffer;
-	D3D11_BUFFER_DESC bufferDesc;
-	ID3D11Buffer *bufferHandle;
-	HRESULT res;
+	D3D11TransferBuffer *transferBuffer = (D3D11TransferBuffer*) SDL_malloc(sizeof(D3D11TransferBuffer));
 
-	bufferDesc.ByteWidth = sizeInBytes;
-	bufferDesc.Usage = D3D11_USAGE_STAGING;
-	bufferDesc.BindFlags = 0;
-	bufferDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE | D3D11_CPU_ACCESS_READ;
-	bufferDesc.MiscFlags = 0;
-	bufferDesc.StructureByteStride = 0;
-
-	res = ID3D11Device_CreateBuffer(
-		renderer->device,
-		&bufferDesc,
-		NULL,
-		&bufferHandle
-	);
-	ERROR_CHECK_RETURN("Could not create buffer", NULL);
-
-	transferBuffer = (D3D11TransferBuffer*) SDL_malloc(sizeof(D3D11TransferBuffer));
 	transferBuffer->data = (uint8_t*) SDL_malloc(sizeInBytes);
 	transferBuffer->size = sizeInBytes;
 	SDL_AtomicSet(&transferBuffer->referenceCount, 0);
@@ -2289,13 +2270,13 @@ static void D3D11_CopyTextureToTexture(
 	Refresh_WriteOptions writeOption
 ) {
 	D3D11CommandBuffer *d3d11CommandBuffer = (D3D11CommandBuffer*) commandBuffer;
-	D3D11Texture *srcTexture = source->textureSlice.texture;
+	D3D11Texture *srcTexture = (D3D11Texture*) source->textureSlice.texture;
 	uint32_t srcSubresourceIndex = D3D11_INTERNAL_CalcSubresource(
 		source->textureSlice.mipLevel,
 		source->textureSlice.layer,
 		srcTexture->levelCount
 	);
-	D3D11Texture *dstTexture = destination->textureSlice.texture;
+	D3D11Texture *dstTexture = (D3D11Texture*) destination->textureSlice.texture;
 	uint32_t dstSubresourceIndex = D3D11_INTERNAL_CalcSubresource(
 		destination->textureSlice.mipLevel,
 		destination->textureSlice.layer,
@@ -2341,6 +2322,21 @@ static void D3D11_CopyBufferToBuffer(
 		0,
 		&srcBox,
 		writeOption == REFRESH_WRITEOPTIONS_SAFEDISCARD ? D3D11_COPY_DISCARD : 0
+	);
+}
+
+static void D3D11_GenerateMipmaps(
+	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_Texture *texture
+) {
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	D3D11CommandBuffer *d3d11CommandBuffer = (D3D11CommandBuffer*) commandBuffer;
+	D3D11Texture *d3d11Texture = (D3D11Texture*) texture;
+
+	ID3D11DeviceContext1_GenerateMips(
+		d3d11CommandBuffer->context,
+		d3d11Texture->shaderView
 	);
 }
 
@@ -2726,6 +2722,19 @@ static void D3D11_QueueDestroyGpuBuffer(
 	ID3D11Buffer_Release(d3d11Buffer->handle);
 
 	SDL_free(d3d11Buffer);
+}
+
+static void D3D11_QueueDestroyTransferBuffer(
+	Refresh_Renderer *driverData,
+	Refresh_TransferBuffer *transferBuffer
+) {
+	D3D11TransferBufferContainer *container = (D3D11TransferBufferContainer*) transferBuffer;
+
+	for (uint32_t i = 0; i < container->bufferCount; i += 1)
+	{
+		SDL_free(container->buffers[i]);
+	}
+	SDL_free(container->buffers);
 }
 
 static void D3D11_QueueDestroyShaderModule(
@@ -3312,6 +3321,13 @@ static void D3D11_BindIndexBuffer(
 
 /* Compute State */
 
+static void D3D11_BeginComputePass(
+	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer
+) {
+	/* no-op */
+}
+
 static void D3D11_BindComputePipeline(
 	Refresh_Renderer *driverData,
 	Refresh_CommandBuffer *commandBuffer,
@@ -3404,6 +3420,13 @@ static void D3D11_BindComputeTextures(
 	);
 }
 
+static void D3D11_EndComputePass(
+	Refresh_Renderer *driverData,
+	Refresh_CommandBuffer *commandBuffer
+) {
+	/* no-op */
+}
+
 /* Window and Swapchain Management */
 
 static D3D11WindowData* D3D11_INTERNAL_FetchWindowData(
@@ -3419,8 +3442,10 @@ static uint8_t D3D11_INTERNAL_InitializeSwapchainTexture(
 ) {
 	ID3D11Texture2D *swapchainTexture;
 	D3D11_RENDER_TARGET_VIEW_DESC rtvDesc;
+	D3D11_UNORDERED_ACCESS_VIEW_DESC uavDesc;
 	D3D11_TEXTURE2D_DESC textureDesc;
 	ID3D11RenderTargetView *rtv;
+	ID3D11UnorderedAccessView *uav;
 	HRESULT res;
 
 	/* Clear all the texture data */
@@ -3453,14 +3478,32 @@ static uint8_t D3D11_INTERNAL_InitializeSwapchainTexture(
 		return 0;
 	}
 
+	uavDesc.ViewDimension = D3D11_UAV_DIMENSION_TEXTURE2D;
+	uavDesc.Texture2D.MipSlice = 0;
+
+	res = ID3D11Device_CreateUnorderedAccessView(
+		renderer->device,
+		(ID3D11Resource *)swapchainTexture,
+		&uavDesc,
+		&uav
+	);
+	if (FAILED(res))
+	{
+		ID3D11RenderTargetView_Release(rtv);
+		ID3D11Texture2D_Release(swapchainTexture);
+		D3D11_INTERNAL_LogError(renderer->device, "Swapchain UAV creation failed", res);
+		return 0;
+	}
+
 	/* Fill out the texture struct */
 	pTexture->handle = NULL; /* The texture does not "own" the swapchain texture, and it can change dynamically. */
 	pTexture->shaderView = NULL;
-	pTexture->unorderedAccessView = NULL;
-	pTexture->targetViewCapacity = 1;
-	pTexture->targetViewCount = 1;
-	pTexture->targetViews = SDL_calloc(1, sizeof(D3D11TargetView));
-	pTexture->targetViews[0].view = (ID3D11View*) rtv;
+	pTexture->subresources = SDL_malloc(sizeof(D3D11TextureSubresource));
+	pTexture->subresources[0].targetView = rtv;
+	pTexture->subresources[0].uav = uav;
+	pTexture->subresources[0].msaaHandle = NULL;
+	pTexture->subresources[0].layer = 0;
+	pTexture->subresources[0].level = 0;
 
 	ID3D11Texture2D_GetDesc(swapchainTexture, &textureDesc);
 	pTexture->levelCount = textureDesc.MipLevels;
@@ -3600,9 +3643,10 @@ static uint8_t D3D11_INTERNAL_ResizeSwapchain(
 	int32_t width,
 	int32_t height
 ) {
-	/* Release the old RTV */
-	ID3D11RenderTargetView_Release(windowData->texture.targetViews[0].view);
-	SDL_free(windowData->texture.targetViews);
+	/* Release the old views */
+	ID3D11RenderTargetView_Release(windowData->texture.subresources[0].targetView);
+	ID3D11UnorderedAccessView_Release(windowData->texture.subresources[0].uav);
+	SDL_free(windowData->texture.subresources);
 
 	/* Resize the swapchain */
 	HRESULT res = IDXGISwapChain_ResizeBuffers(
@@ -3685,8 +3729,9 @@ static void D3D11_UnclaimWindow(
 
 	D3D11_Wait(driverData);
 
-	ID3D11RenderTargetView_Release(windowData->texture.targetViews[0].view);
-	SDL_free(windowData->texture.targetViews);
+	ID3D11RenderTargetView_Release(windowData->texture.subresources[0].targetView);
+	ID3D11UnorderedAccessView_Release(windowData->texture.subresources[0].uav);
+	SDL_free(windowData->texture.subresources);
 	IDXGISwapChain_Release(windowData->swapchain);
 
 	SDL_LockMutex(renderer->windowLock);
