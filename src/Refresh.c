@@ -879,44 +879,6 @@ void Refresh_CopyTextureToTexture(
 	);
 }
 
-void Refresh_CopyTextureToBuffer(
-	Refresh_Device *device,
-	Refresh_CommandBuffer *commandBuffer,
-	Refresh_TextureRegion *textureRegion,
-	Refresh_GpuBuffer *gpuBuffer,
-	Refresh_BufferImageCopy *copyParameters,
-	Refresh_WriteOptions writeOption
-) {
-	NULL_RETURN(device);
-	device->CopyTextureToBuffer(
-		device->driverData,
-		commandBuffer,
-		textureRegion,
-		gpuBuffer,
-		copyParameters,
-		writeOption
-	);
-}
-
-void Refresh_CopyBufferToTexture(
-	Refresh_Device *device,
-	Refresh_CommandBuffer *commandBuffer,
-	Refresh_GpuBuffer *gpuBuffer,
-	Refresh_TextureRegion *textureRegion,
-	Refresh_BufferImageCopy *copyParams,
-	Refresh_WriteOptions writeOption
-) {
-	NULL_RETURN(device);
-	device->CopyBufferToTexture(
-		device->driverData,
-		commandBuffer,
-		gpuBuffer,
-		textureRegion,
-		copyParams,
-		writeOption
-	);
-}
-
 void Refresh_CopyBufferToBuffer(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
