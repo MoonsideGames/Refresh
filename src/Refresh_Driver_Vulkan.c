@@ -10267,6 +10267,7 @@ static void VULKAN_DownloadFromTexture(
 
 	fence = VULKAN_SubmitAndAcquireFence(driverData, (Refresh_CommandBuffer*) vulkanCommandBuffer);
 	VULKAN_WaitForFences(driverData, 1, 1, &fence);
+	VULKAN_ReleaseFence(driverData, fence);
 }
 
 static void VULKAN_DownloadFromBuffer(
@@ -10325,6 +10326,7 @@ static void VULKAN_DownloadFromBuffer(
 
 	fence = VULKAN_SubmitAndAcquireFence(driverData, (Refresh_CommandBuffer*) vulkanCommandBuffer);
 	VULKAN_WaitForFences(driverData, 1, 1, &fence);
+	VULKAN_ReleaseFence(driverData, fence);
 }
 
 /* Device instantiation */
