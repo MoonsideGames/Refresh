@@ -1882,7 +1882,7 @@ static Refresh_TransferBuffer* D3D11_CreateTransferBuffer(
 	container->bufferCapacity = 1;
 	container->bufferCount = 1;
 	container->buffers = SDL_malloc(
-		container->bufferCapacity * sizeof(D3D11TransferBuffer)
+		container->bufferCapacity * sizeof(D3D11TransferBuffer*)
 	);
 	container->buffers[0] = transferBuffer;
 
@@ -2741,6 +2741,7 @@ static void D3D11_QueueDestroyTransferBuffer(
 
 	for (uint32_t i = 0; i < container->bufferCount; i += 1)
 	{
+		SDL_free(container->buffers[i]->data);
 		SDL_free(container->buffers[i]);
 	}
 	SDL_free(container->buffers);
