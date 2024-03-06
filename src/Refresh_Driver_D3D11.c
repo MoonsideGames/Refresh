@@ -1990,7 +1990,8 @@ static void D3D11_UploadToTexture(
 	D3D11TransferBufferContainer *container = (D3D11TransferBufferContainer*) transferBuffer;
 	D3D11TransferBuffer *d3d11TransferBuffer = container->activeBuffer;
 	D3D11Texture *d3d11Texture = (D3D11Texture*) textureRegion->textureSlice.texture;
-
+	uint32_t bufferStride = copyParams->bufferStride;
+	uint32_t bufferImageHeight = copyParams->bufferImageHeight;
 	int32_t w = textureRegion->w;
 	int32_t h = textureRegion->h;
 
@@ -1999,6 +2000,15 @@ static void D3D11_UploadToTexture(
 	{
 		w = (w + blockSize - 1) & ~(blockSize - 1);
 		h = (h + blockSize - 1) & ~(blockSize - 1);
+	}
+
+	if (bufferStride == 0)
+	{
+		bufferStride = BytesPerRow(w, d3d11Texture->format);
+	}
+	if (bufferImageHeight == 0)
+	{
+		bufferImageHeight = h;
 	}
 
 	D3D11_BOX dstBox;
@@ -2019,8 +2029,8 @@ static void D3D11_UploadToTexture(
 		),
 		&dstBox,
 		(uint8_t*) d3d11TransferBuffer->data + copyParams->bufferOffset,
-		copyParams->bufferStride,
-		copyParams->bufferStride * copyParams->bufferImageHeight,
+		bufferStride,
+		bufferStride * bufferImageHeight,
 		writeOption == REFRESH_WRITEOPTIONS_SAFEDISCARD ? D3D11_COPY_DISCARD : 0
 	);
 
@@ -2076,6 +2086,8 @@ static void D3D11_DownloadFromTexture(
 		d3d11Texture->levelCount
 	);
 	int32_t formatSize = Texture_GetFormatSize(d3d11Texture->format);
+	uint32_t bufferStride = copyParams->bufferStride;
+	uint32_t bufferImageHeight = copyParams->bufferImageHeight;
 	D3D11_BOX srcBox = {textureRegion->x, textureRegion->y, textureRegion->z, textureRegion->x + textureRegion->w, textureRegion->y + textureRegion->h, 1};
 	D3D11_MAPPED_SUBRESOURCE subresource;
 	HRESULT res;
@@ -2136,12 +2148,21 @@ static void D3D11_DownloadFromTexture(
 	);
 	ERROR_CHECK_RETURN("Could not map texture for reading",)
 
+	if (bufferStride == 0)
+	{
+		bufferStride = BytesPerRow(textureRegion->w, d3d11Texture->format);
+	}
+	if (bufferImageHeight == 0)
+	{
+		bufferImageHeight = textureRegion->h;
+	}
+
 	uint8_t* dataPtr = (uint8_t*) d3d11TransferBuffer->data + copyParams->bufferOffset;
 	for (uint32_t row = textureRegion->y; row < copyParams->bufferImageHeight; row += 1)
 	{
 		SDL_memcpy(
 			dataPtr,
-			(uint8_t*) subresource.pData + (row * copyParams->bufferStride) + (textureRegion->x * formatSize),
+			(uint8_t*) subresource.pData + (row * bufferStride) + (textureRegion->x * formatSize),
 			textureRegion->w * formatSize
 		);
 	}
