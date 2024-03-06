@@ -1,4 +1,4 @@
-﻿/* Refresh - XNA-inspired 3D Graphics Library with modern capabilities
+/* Refresh - XNA-inspired 3D Graphics Library with modern capabilities
  *
  * Copyright (c) 2020 Evan Hemsley
  *
@@ -453,7 +453,7 @@ typedef struct D3D11TransferBufferContainer
 	 */
 	uint32_t bufferCapacity;
 	uint32_t bufferCount;
-	D3D11TransferBuffer **buffers;
+	D3D11TransferBuffer *buffers;
 } D3D11TransferBufferContainer;
 
 typedef struct D3D11UniformBuffer
@@ -550,6 +550,10 @@ typedef struct D3D11Renderer
 	D3D11Fence **availableFences;
 	uint32_t availableFenceCount;
 	uint32_t availableFenceCapacity;
+
+	D3D11TransferBufferContainer **transferBufferContainersToDestroy;
+	uint32_t transferBufferContainersToDestroyCount;
+	uint32_t transferBufferContainersToDestroyCapacity;
 
 	SDL_mutex *contextLock;
 	SDL_mutex *acquireCommandBufferLock;
@@ -1887,17 +1891,14 @@ static void D3D11_INTERNAL_TrackTransferBuffer(
 	commandBuffer->usedTransferBufferCount += 1;
 }
 
-static D3D11TransferBuffer* D3D11_INTERNAL_CreateTransferBuffer(
+static void D3D11_INTERNAL_InitTransferBuffer(
 	D3D11Renderer *renderer,
-	uint32_t sizeInBytes
+	uint32_t sizeInBytes,
+	D3D11TransferBuffer *pTransferBuffer
 ) {
-	D3D11TransferBuffer *transferBuffer = (D3D11TransferBuffer*) SDL_malloc(sizeof(D3D11TransferBuffer));
-
-	transferBuffer->data = (uint8_t*) SDL_malloc(sizeInBytes);
-	transferBuffer->size = sizeInBytes;
-	SDL_AtomicSet(&transferBuffer->referenceCount, 0);
-
-	return transferBuffer;
+	pTransferBuffer->data = (uint8_t*) SDL_malloc(sizeInBytes);
+	pTransferBuffer->size = sizeInBytes;
+	SDL_AtomicSet(&pTransferBuffer->referenceCount, 0);
 }
 
 /* This actually returns a container handle so we can rotate buffers on Discard. */
@@ -1907,15 +1908,19 @@ static Refresh_TransferBuffer* D3D11_CreateTransferBuffer(
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11TransferBufferContainer *container = (D3D11TransferBufferContainer*) SDL_malloc(sizeof(D3D11TransferBufferContainer));
-	D3D11TransferBuffer *transferBuffer = D3D11_INTERNAL_CreateTransferBuffer(renderer, sizeInBytes);
 
-	container->activeBuffer = transferBuffer;
 	container->bufferCapacity = 1;
 	container->bufferCount = 1;
 	container->buffers = SDL_malloc(
-		container->bufferCapacity * sizeof(D3D11TransferBuffer*)
+		container->bufferCapacity * sizeof(D3D11TransferBuffer)
 	);
-	container->buffers[0] = transferBuffer;
+	D3D11_INTERNAL_InitTransferBuffer(
+		renderer,
+		sizeInBytes,
+		&container->buffers[0]
+	);
+
+	container->activeBuffer = &container->buffers[0];
 
 	return (Refresh_TransferBuffer*) container;
 }
@@ -1928,30 +1933,29 @@ static void D3D11_INTERNAL_DiscardActiveTransferBuffer(
 ) {
 	for (uint32_t i = 0; i < container->bufferCount; i += 1)
 	{
-		if (SDL_AtomicGet(&container->buffers[i]->referenceCount) == 0)
+		if (SDL_AtomicGet(&container->buffers[i].referenceCount) == 0)
 		{
-			container->activeBuffer = container->buffers[i];
+			container->activeBuffer = &container->buffers[i];
 			return;
 		}
 	}
 
-	container->activeBuffer = D3D11_INTERNAL_CreateTransferBuffer(
-		renderer,
-		container->activeBuffer->size
-	);
-
 	EXPAND_ARRAY_IF_NEEDED(
 		container->buffers,
-		D3D11TransferBuffer*,
+		D3D11TransferBuffer,
 		container->bufferCount + 1,
 		container->bufferCapacity,
-		container->bufferCapacity * 2
+		container->bufferCapacity + 1
 	);
 
-	container->buffers[
-		container->bufferCapacity
-	] = container->activeBuffer;
+	D3D11_INTERNAL_InitTransferBuffer(
+		renderer,
+		container->activeBuffer->size,
+		&container->buffers[container->bufferCount]
+	);
 	container->bufferCount += 1;
+
+	container->activeBuffer = &container->buffers[container->bufferCount - 1];
 }
 
 static void D3D11_SetTransferData(
@@ -2774,14 +2778,34 @@ static void D3D11_QueueDestroyTransferBuffer(
 	Refresh_Renderer *driverData,
 	Refresh_TransferBuffer *transferBuffer
 ) {
-	D3D11TransferBufferContainer *container = (D3D11TransferBufferContainer*) transferBuffer;
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 
-	for (uint32_t i = 0; i < container->bufferCount; i += 1)
+	SDL_LockMutex(renderer->contextLock);
+
+	EXPAND_ARRAY_IF_NEEDED(
+		renderer->transferBufferContainersToDestroy,
+		D3D11TransferBufferContainer*,
+		renderer->transferBufferContainersToDestroyCount + 1,
+		renderer->transferBufferContainersToDestroyCapacity,
+		renderer->transferBufferContainersToDestroyCapacity + 1
+	);
+
+	renderer->transferBufferContainersToDestroy[
+		renderer->transferBufferContainersToDestroyCount
+	] = (D3D11TransferBufferContainer*) transferBuffer;
+	renderer->transferBufferContainersToDestroyCount += 1;
+
+	SDL_UnlockMutex(renderer->contextLock);
+}
+
+static void D3D11_INTERNAL_DestroyTransferBufferContainer(
+	D3D11TransferBufferContainer *transferBufferContainer
+) {
+	for (uint32_t i = 0; i < transferBufferContainer->bufferCount; i += 1)
 	{
-		SDL_free(container->buffers[i]->data);
-		SDL_free(container->buffers[i]);
+		SDL_free(transferBufferContainer->buffers[i].data);
 	}
-	SDL_free(container->buffers);
+	SDL_free(transferBufferContainer->buffers);
 }
 
 static void D3D11_QueueDestroyShaderModule(
@@ -4035,6 +4059,29 @@ static void D3D11_INTERNAL_WaitForFence(
 	SDL_UnlockMutex(renderer->contextLock);
 }
 
+static void D3D11_INTERNAL_PerformPendingDestroys(
+	D3D11Renderer *renderer
+) {
+	for (int32_t i = renderer->transferBufferContainersToDestroyCount - 1; i >= 0; i -= 1)
+	{
+		int32_t referenceCount = 0;
+		for (uint32_t j = 0; j < renderer->transferBufferContainersToDestroy[i]->bufferCount; j += 1)
+		{
+			referenceCount += SDL_AtomicGet(&renderer->transferBufferContainersToDestroy[i]->buffers[j].referenceCount);
+		}
+
+		if (referenceCount == 0)
+		{
+			D3D11_INTERNAL_DestroyTransferBufferContainer(
+				renderer->transferBufferContainersToDestroy[i]
+			);
+
+			renderer->transferBufferContainersToDestroy[i] = renderer->transferBufferContainersToDestroy[renderer->transferBufferContainersToDestroyCount - 1];
+			renderer->transferBufferContainersToDestroyCount -= 1;
+		}
+	}
+}
+
 static void D3D11_Submit(
 	Refresh_Renderer *driverData,
 	Refresh_CommandBuffer *commandBuffer
@@ -4130,6 +4177,8 @@ static void D3D11_Submit(
 		}
 	}
 
+	D3D11_INTERNAL_PerformPendingDestroys(renderer);
+
 	SDL_UnlockMutex(renderer->contextLock);
 }
 
@@ -4171,6 +4220,8 @@ static void D3D11_Wait(
 		commandBuffer = renderer->submittedCommandBuffers[i];
 		D3D11_INTERNAL_CleanCommandBuffer(renderer, commandBuffer);
 	}
+
+	D3D11_INTERNAL_PerformPendingDestroys(renderer);
 
 	SDL_UnlockMutex(renderer->contextLock);
 }
@@ -4634,6 +4685,13 @@ tryCreateDevice:
 	renderer->availableFenceCapacity = 2;
 	renderer->availableFences = SDL_malloc(
 		sizeof(D3D11Fence*) * renderer->availableFenceCapacity
+	);
+
+	/* Create deferred transfer array */
+	renderer->transferBufferContainersToDestroyCapacity = 2;
+	renderer->transferBufferContainersToDestroyCount = 0;
+	renderer->transferBufferContainersToDestroy = SDL_malloc(
+		renderer->transferBufferContainersToDestroyCapacity * sizeof(D3D11TransferBufferContainer*)
 	);
 
 	/* Create claimed window list */
