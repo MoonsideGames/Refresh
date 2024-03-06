@@ -1685,6 +1685,8 @@ static Refresh_Texture* D3D11_CreateTexture(
 				{
 					D3D11_RENDER_TARGET_VIEW_DESC rtvDesc;
 
+					rtvDesc.Format = RefreshToD3D11_TextureFormat[d3d11Texture->format];
+
 					if (d3d11Texture->layerCount > 1)
 					{
 						rtvDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2DARRAY;
