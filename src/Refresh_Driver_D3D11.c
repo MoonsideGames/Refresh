@@ -1632,6 +1632,7 @@ static Refresh_Texture* D3D11_CreateTexture(
 			d3d11Texture->subresources[subresourceIndex].depthStencilTargetView = NULL;
 			d3d11Texture->subresources[subresourceIndex].uav = NULL;
 			d3d11Texture->subresources[subresourceIndex].msaaHandle = NULL;
+			d3d11Texture->subresources[subresourceIndex].msaaTargetView = NULL;
 			d3d11Texture->subresources[subresourceIndex].layer = layerIndex;
 			d3d11Texture->subresources[subresourceIndex].level = levelIndex;
 
@@ -3578,6 +3579,7 @@ static uint8_t D3D11_INTERNAL_InitializeSwapchainTexture(
 	pTexture->subresources[0].uav = uav;
 	pTexture->subresources[0].depthStencilTargetView = NULL;
 	pTexture->subresources[0].msaaHandle = NULL;
+	pTexture->subresources[0].msaaTargetView = NULL;
 	pTexture->subresources[0].layer = 0;
 	pTexture->subresources[0].level = 0;
 
