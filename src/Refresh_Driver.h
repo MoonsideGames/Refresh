@@ -506,24 +506,6 @@ struct Refresh_Device
 		Refresh_WriteOptions writeOption
 	);
 
-	void (*DownloadFromTexture)(
-		Refresh_Renderer *driverData,
-		Refresh_CommandBuffer *commandBuffer,
-		Refresh_TextureRegion *textureSlice,
-		Refresh_TransferBuffer *transferBuffer,
-		Refresh_BufferImageCopy *copyParams,
-		Refresh_TransferOptions transferOption
-	);
-
-	void (*DownloadFromBuffer)(
-		Refresh_Renderer *driverData,
-		Refresh_CommandBuffer *commandBuffer,
-		Refresh_GpuBuffer *gpuBuffer,
-		Refresh_TransferBuffer *transferBuffer,
-		Refresh_BufferCopy *copyParams,
-		Refresh_TransferOptions transferOption
-	);
-
 	void (*CopyTextureToTexture)(
 		Refresh_Renderer *driverData,
 		Refresh_CommandBuffer *commandBuffer,
@@ -617,6 +599,22 @@ struct Refresh_Device
 	void (*ReleaseFence)(
 		Refresh_Renderer *driverData,
 		Refresh_Fence *fence
+	);
+
+	void (*DownloadFromTexture)(
+		Refresh_Renderer *driverData,
+		Refresh_TextureRegion *textureSlice,
+		Refresh_TransferBuffer *transferBuffer,
+		Refresh_BufferImageCopy *copyParams,
+		Refresh_TransferOptions transferOption
+	);
+
+	void (*DownloadFromBuffer)(
+		Refresh_Renderer *driverData,
+		Refresh_GpuBuffer *gpuBuffer,
+		Refresh_TransferBuffer *transferBuffer,
+		Refresh_BufferCopy *copyParams,
+		Refresh_TransferOptions transferOption
 	);
 
 	/* Opaque pointer for the Driver */

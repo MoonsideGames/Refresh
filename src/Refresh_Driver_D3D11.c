@@ -2069,14 +2069,12 @@ static void D3D11_UploadToBuffer(
 
 static void D3D11_DownloadFromTexture(
 	Refresh_Renderer *driverData,
-	Refresh_CommandBuffer *commandBuffer,
 	Refresh_TextureRegion *textureRegion,
 	Refresh_TransferBuffer *transferBuffer,
 	Refresh_BufferImageCopy *copyParams,
 	Refresh_TransferOptions transferOption
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
-	D3D11CommandBuffer *d3d11CommandBuffer = (D3D11CommandBuffer*) commandBuffer;
 	D3D11TransferBufferContainer *container = (D3D11TransferBufferContainer*) transferBuffer;
 	D3D11TransferBuffer *d3d11TransferBuffer = container->activeBuffer;
 	D3D11Texture *d3d11Texture = (D3D11Texture*) textureRegion->textureSlice.texture;
@@ -2126,8 +2124,10 @@ static void D3D11_DownloadFromTexture(
 	);
 	ERROR_CHECK_RETURN("Staging texture creation failed",)
 
-	ID3D11DeviceContext1_CopySubresourceRegion1(
-		d3d11CommandBuffer->context,
+	/* Readback is only possible on CPU timeline in D3D11 */
+	SDL_LockMutex(renderer->contextLock);
+	ID3D11DeviceContext_CopySubresourceRegion(
+		renderer->immediateContext,
 		stagingTexture,
 		0,
 		0,
@@ -2135,13 +2135,12 @@ static void D3D11_DownloadFromTexture(
 		0,
 		d3d11Texture->handle,
 		subresourceIndex,
-		&srcBox,
-		D3D11_COPY_NO_OVERWRITE
+		&srcBox
 	);
 
 	/* Read from the staging texture */
-	res = ID3D11DeviceContext1_Map(
-		d3d11CommandBuffer->context,
+	res = ID3D11DeviceContext_Map(
+		renderer->immediateContext,
 		stagingTexture,
 		subresourceIndex,
 		D3D11_MAP_READ,
@@ -2170,24 +2169,24 @@ static void D3D11_DownloadFromTexture(
 	}
 
 	ID3D11DeviceContext1_Unmap(
-		d3d11CommandBuffer->context,
+		renderer->immediateContext,
 		stagingTexture,
 		0
 	);
+	SDL_UnlockMutex(renderer->contextLock);
 
+	/* Clean up the staging texture */
 	ID3D11Texture2D_Release(stagingTexture);
 }
 
 static void D3D11_DownloadFromBuffer(
 	Refresh_Renderer *driverData,
-	Refresh_CommandBuffer *commandBuffer,
 	Refresh_GpuBuffer *gpuBuffer,
 	Refresh_TransferBuffer *transferBuffer,
 	Refresh_BufferCopy *copyParams,
 	Refresh_TransferOptions transferOption
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
-	D3D11CommandBuffer *d3d11CommandBuffer = (D3D11CommandBuffer*) commandBuffer;
 	D3D11TransferBufferContainer *container = (D3D11TransferBufferContainer*) transferBuffer;
 	D3D11TransferBuffer *d3d11TransferBuffer = container->activeBuffer;
 	D3D11Buffer *d3d11Buffer = (D3D11Buffer*) gpuBuffer;
@@ -2225,8 +2224,10 @@ static void D3D11_DownloadFromBuffer(
 	);
 	ERROR_CHECK_RETURN("Could not create staging buffer for readback", );
 
-	ID3D11DeviceContext1_CopySubresourceRegion1(
-		d3d11CommandBuffer->context,
+	/* Readback is only possible on CPU timeline in D3D11 */
+	SDL_LockMutex(renderer->contextLock);
+	ID3D11DeviceContext_CopySubresourceRegion(
+		renderer->immediateContext,
 		(ID3D11Resource*) stagingBuffer,
 		0,
 		0,
@@ -2234,13 +2235,12 @@ static void D3D11_DownloadFromBuffer(
 		0,
 	 	(ID3D11Resource*) d3d11Buffer->handle,
 		0,
-		&srcBox,
-		D3D11_COPY_NO_OVERWRITE
+		&srcBox
 	);
 
 	/* Read from the staging buffer */
-	res = ID3D11DeviceContext1_Map(
-		d3d11CommandBuffer->context,
+	res = ID3D11DeviceContext_Map(
+		renderer->immediateContext,
 		stagingBuffer,
 		0,
 		D3D11_MAP_READ,
@@ -2265,12 +2265,11 @@ static void D3D11_DownloadFromBuffer(
 	);
 
 	ID3D11DeviceContext1_Unmap(
-		d3d11CommandBuffer->context,
+		renderer->immediateContext,
 		stagingBuffer,
 		0
 	);
-
-	D3D11_INTERNAL_TrackTransferBuffer(d3d11CommandBuffer, d3d11TransferBuffer);
+	SDL_UnlockMutex(renderer->contextLock);
 
 	/* Clean up the staging buffer */
 	ID3D11Buffer_Release(stagingBuffer);
