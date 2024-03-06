@@ -2151,6 +2151,7 @@ static void D3D11_DownloadFromTexture(
 
 	uint8_t* dataPtr = (uint8_t*) d3d11TransferBuffer->data + copyParams->bufferOffset;
 
+	/* TODO: figure out 3D copy */
 	for (uint32_t row = textureRegion->y; row < textureRegion->h; row += 1)
 	{
 		SDL_memcpy(
