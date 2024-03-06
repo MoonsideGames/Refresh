@@ -2086,8 +2086,8 @@ static void D3D11_DownloadFromTexture(
 		d3d11Texture->levelCount
 	);
 	int32_t formatSize = Texture_GetFormatSize(d3d11Texture->format);
-	uint32_t bufferStride = copyParams->bufferStride;
-	uint32_t bufferImageHeight = copyParams->bufferImageHeight;
+	uint32_t bufferStride = copyParams->bufferStride == 0 ? (textureRegion->w * formatSize) : copyParams->bufferStride;
+	uint32_t bufferImageHeight = copyParams->bufferImageHeight == 0 ? (textureRegion->h * formatSize) : copyParams->bufferImageHeight;
 	D3D11_BOX srcBox = {textureRegion->x, textureRegion->y, textureRegion->z, textureRegion->x + textureRegion->w, textureRegion->y + textureRegion->h, 1};
 	D3D11_MAPPED_SUBRESOURCE subresource;
 	HRESULT res;
@@ -2130,7 +2130,7 @@ static void D3D11_DownloadFromTexture(
 		renderer->immediateContext,
 		stagingTexture,
 		0,
-		copyParams->bufferOffset,
+		0,
 		0,
 		0,
 		d3d11Texture->handle,
@@ -2142,43 +2142,23 @@ static void D3D11_DownloadFromTexture(
 	res = ID3D11DeviceContext_Map(
 		renderer->immediateContext,
 		stagingTexture,
-		subresourceIndex,
+		0,
 		D3D11_MAP_READ,
 		0,
 		&subresource
 	);
 	ERROR_CHECK_RETURN("Could not map texture for reading",)
 
-	if (bufferStride == 0)
-	{
-		bufferStride = BytesPerRow(textureRegion->w, d3d11Texture->format);
-	}
-	if (bufferImageHeight == 0)
-	{
-		bufferImageHeight = textureRegion->h;
-	}
-
 	uint8_t* dataPtr = (uint8_t*) d3d11TransferBuffer->data + copyParams->bufferOffset;
 
-	if (bufferStride == 0 && bufferImageHeight == 0) // assume tightly packed
+	for (uint32_t row = textureRegion->y; row < textureRegion->h; row += 1)
 	{
 		SDL_memcpy(
 			dataPtr,
-			(uint8_t *)subresource.pData,
-			BytesPerImage(textureRegion->w, textureRegion->h, d3d11Texture->format)
+			(uint8_t*) subresource.pData + (row * subresource.RowPitch) + (textureRegion->x * formatSize),
+			bufferStride
 		);
-	}
-	else
-	{
-		for (uint32_t row = textureRegion->y; row < bufferImageHeight; row += 1)
-		{
-			SDL_memcpy(
-				dataPtr,
-				(uint8_t*) subresource.pData + (row * bufferStride) + (textureRegion->x * formatSize),
-				textureRegion->w * formatSize
-			);
-			dataPtr += textureRegion->w * formatSize;
-		}
+		dataPtr += bufferStride;
 	}
 
 	ID3D11DeviceContext1_Unmap(

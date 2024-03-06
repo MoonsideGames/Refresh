@@ -10211,6 +10211,8 @@ static void VULKAN_DownloadFromTexture(
 	vulkanTextureSlice = VULKAN_INTERNAL_RefreshToVulkanTextureSlice(&textureRegion->textureSlice);
 	Refresh_Fence *fence;
 	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) VULKAN_AcquireCommandBuffer(driverData);
+	VulkanResourceAccessType originalTextureSliceAccessType;
+	VulkanResourceAccessType originalBufferAccessType;
 
 	if (
 		transferOption == REFRESH_TRANSFEROPTIONS_SAFEDISCARD &&
@@ -10222,6 +10224,9 @@ static void VULKAN_DownloadFromTexture(
 		);
 		vulkanTextureSlice = VULKAN_INTERNAL_RefreshToVulkanTextureSlice(&textureRegion->textureSlice);
 	}
+
+	originalTextureSliceAccessType = vulkanTextureSlice->resourceAccessType;
+	originalBufferAccessType = transferBufferContainer->activeBufferHandle->vulkanBuffer->resourceAccessType;
 
 	VULKAN_INTERNAL_BufferMemoryBarrier(
 		renderer,
@@ -10260,6 +10265,19 @@ static void VULKAN_DownloadFromTexture(
 		&imageCopy
 	);
 
+	VULKAN_INTERNAL_ImageMemoryBarrier(
+		renderer,
+		vulkanCommandBuffer->commandBuffer,
+		originalTextureSliceAccessType,
+		vulkanTextureSlice
+	);
+
+	VULKAN_INTERNAL_BufferMemoryBarrier(
+		renderer,
+		vulkanCommandBuffer->commandBuffer,
+		originalBufferAccessType,
+		transferBufferContainer->activeBufferHandle->vulkanBuffer);
+
 	VULKAN_INTERNAL_TrackBuffer(renderer, vulkanCommandBuffer, transferBufferContainer->activeBufferHandle->vulkanBuffer);
 	VULKAN_INTERNAL_TrackTextureSlice(renderer, vulkanCommandBuffer, vulkanTextureSlice);
 	VULKAN_INTERNAL_TrackCopiedTextureSlice(renderer, vulkanCommandBuffer, vulkanTextureSlice);
@@ -10282,6 +10300,8 @@ static void VULKAN_DownloadFromBuffer(
 	VkBufferCopy bufferCopy;
 	Refresh_Fence *fence;
 	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) VULKAN_AcquireCommandBuffer(driverData);
+	VulkanResourceAccessType originalTransferBufferAccessType;
+	VulkanResourceAccessType originalGpuBufferAccessType;
 
 	if (
 		transferOption == REFRESH_TRANSFEROPTIONS_SAFEDISCARD &&
@@ -10292,6 +10312,9 @@ static void VULKAN_DownloadFromBuffer(
 			transferBufferContainer
 		);
 	}
+
+	originalTransferBufferAccessType = transferBufferContainer->activeBufferHandle->vulkanBuffer->resourceAccessType;
+	originalGpuBufferAccessType = gpuBufferContainer->activeBufferHandle->vulkanBuffer->resourceAccessType;
 
 	VULKAN_INTERNAL_BufferMemoryBarrier(
 		renderer,
@@ -10318,6 +10341,19 @@ static void VULKAN_DownloadFromBuffer(
 		1,
 		&bufferCopy
 	);
+
+	VULKAN_INTERNAL_BufferMemoryBarrier(
+		renderer,
+		vulkanCommandBuffer->commandBuffer,
+		originalTransferBufferAccessType,
+		transferBufferContainer->activeBufferHandle->vulkanBuffer
+	);
+
+	VULKAN_INTERNAL_BufferMemoryBarrier(
+		renderer,
+		vulkanCommandBuffer->commandBuffer,
+		originalGpuBufferAccessType,
+		gpuBufferContainer->activeBufferHandle->vulkanBuffer);
 
 	VULKAN_INTERNAL_TrackBuffer(renderer, vulkanCommandBuffer, transferBufferContainer->activeBufferHandle->vulkanBuffer);
 	VULKAN_INTERNAL_TrackBuffer(renderer, vulkanCommandBuffer, gpuBufferContainer->activeBufferHandle->vulkanBuffer);
