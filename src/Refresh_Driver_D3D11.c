@@ -3680,6 +3680,7 @@ static uint8_t D3D11_INTERNAL_ResizeSwapchain(
 	int32_t height
 ) {
 	/* Release the old views */
+	ID3D11ShaderResourceView_Release(windowData->texture.shaderView);
 	ID3D11RenderTargetView_Release(windowData->texture.subresources[0].colorTargetView);
 	ID3D11UnorderedAccessView_Release(windowData->texture.subresources[0].uav);
 	SDL_free(windowData->texture.subresources);
