@@ -1883,6 +1883,14 @@ static void D3D11_INTERNAL_TrackTransferBuffer(
 	D3D11CommandBuffer *commandBuffer,
 	D3D11TransferBuffer *buffer
 ) {
+	for (uint32_t i = 0; i < commandBuffer->usedTransferBufferCount; i += 1)
+	{
+		if (commandBuffer->usedTransferBuffers[i] == buffer)
+		{
+			return;
+		}
+	}
+
 	EXPAND_ARRAY_IF_NEEDED(
 		commandBuffer->usedTransferBuffers,
 		D3D11TransferBuffer*,
