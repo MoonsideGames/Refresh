@@ -354,6 +354,7 @@ typedef struct D3D11TextureSubresource
 	ID3D11DepthStencilView *depthStencilTargetView; /* NULL if not a depth stencil target */
 	ID3D11UnorderedAccessView *uav; /* NULL if not used in compute */
 	ID3D11Resource *msaaHandle; /* NULL if not using MSAA */
+	ID3D11RenderTargetView *msaaTargetView; /* NULL if not an MSAA color target */
 	uint32_t level;
 	uint32_t layer;
 } D3D11TextureSubresource;
@@ -1452,7 +1453,6 @@ static Refresh_Texture* D3D11_CreateTexture(
 	uint8_t isColorTarget, isDepthStencil, isSampler, isCompute, isMultisample;
 	DXGI_FORMAT format;
 	ID3D11Resource *textureHandle;
-	ID3D11Resource *msaaHandle = NULL;
 	ID3D11ShaderResourceView *srv = NULL;
 	D3D11Texture *d3d11Texture;
 	HRESULT res;
@@ -1639,11 +1639,25 @@ static Refresh_Texture* D3D11_CreateTexture(
 			{
 				D3D11_TEXTURE2D_DESC desc2D;
 
-				desc2D.MiscFlags = 0;
-				desc2D.MipLevels = 1;
+				if (isColorTarget)
+				{
+					desc2D.BindFlags = D3D11_BIND_RENDER_TARGET;
+				}
+				else if (isDepthStencil)
+				{
+					desc2D.BindFlags = D3D11_BIND_DEPTH_STENCIL;
+				}
+
+				desc2D.Width = textureCreateInfo->width;
+				desc2D.Height = textureCreateInfo->height;
 				desc2D.ArraySize = 1;
+				desc2D.CPUAccessFlags = 0;
+				desc2D.Format = format;
+				desc2D.MipLevels = 1;
+				desc2D.MiscFlags = 0;
 				desc2D.SampleDesc.Count = RefreshToD3D11_SampleCount[textureCreateInfo->sampleCount];
 				desc2D.SampleDesc.Quality = D3D11_STANDARD_MULTISAMPLE_PATTERN;
+				desc2D.Usage = D3D11_USAGE_DEFAULT;
 
 				res = ID3D11Device_CreateTexture2D(
 					renderer->device,
@@ -1652,6 +1666,22 @@ static Refresh_Texture* D3D11_CreateTexture(
 					(ID3D11Texture2D**) &d3d11Texture->subresources[subresourceIndex].msaaHandle
 				);
 				ERROR_CHECK_RETURN("Could not create MSAA texture!", NULL);
+
+				if (!isDepthStencil)
+				{
+					D3D11_RENDER_TARGET_VIEW_DESC rtvDesc;
+
+					rtvDesc.Format = format;
+					rtvDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2DMS;
+
+					res = ID3D11Device_CreateRenderTargetView(
+						renderer->device,
+						d3d11Texture->subresources[subresourceIndex].msaaHandle,
+						&rtvDesc,
+						&d3d11Texture->subresources[subresourceIndex].msaaTargetView
+					);
+					ERROR_CHECK_RETURN("Could not create MSAA RTV!", NULL);
+				}
 			}
 
 			if (d3d11Texture->isRenderTarget)
@@ -2686,6 +2716,11 @@ static void D3D11_QueueDestroyTexture(
 				ID3D11Resource_Release(d3d11Texture->subresources[subresourceIndex].msaaHandle);
 			}
 
+			if (d3d11Texture->subresources[subresourceIndex].msaaTargetView != NULL)
+			{
+				ID3D11RenderTargetView_Release(d3d11Texture->subresources[subresourceIndex].msaaTargetView);
+			}
+
 			if (d3d11Texture->subresources[subresourceIndex].colorTargetView != NULL)
 			{
 				ID3D11RenderTargetView_Release(d3d11Texture->subresources[subresourceIndex].colorTargetView);
@@ -2994,13 +3029,18 @@ static void D3D11_BeginRenderPass(
 			colorAttachmentInfos[i].textureSlice.layer,
 			texture->levelCount
 		);
-		rtvs[i] = texture->subresources[subresourceIndex].colorTargetView;
 
 		if (texture->subresources[subresourceIndex].msaaHandle != NULL)
 		{
 			d3d11CommandBuffer->colorTargetResolveTexture[i] = texture;
 			d3d11CommandBuffer->colorTargetResolveSubresourceIndex[i] = subresourceIndex;
 			d3d11CommandBuffer->colorTargetMsaaHandle[i] = texture->subresources[subresourceIndex].msaaHandle;
+
+			rtvs[i] = texture->subresources[subresourceIndex].msaaTargetView;
+		}
+		else
+		{
+			rtvs[i] = texture->subresources[subresourceIndex].colorTargetView;
 		}
 	}
 
