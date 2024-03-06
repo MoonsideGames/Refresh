@@ -1,4 +1,4 @@
-/* Refresh - XNA-inspired 3D Graphics Library with modern capabilities
+﻿/* Refresh - XNA-inspired 3D Graphics Library with modern capabilities
  *
  * Copyright (c) 2020 Evan Hemsley
  *
@@ -1525,6 +1525,14 @@ static Refresh_Texture* D3D11_CreateTexture(
 				srvDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURECUBE;
 				srvDesc.TextureCube.MipLevels = desc2D.MipLevels;
 				srvDesc.TextureCube.MostDetailedMip = 0;
+			}
+			else if (textureCreateInfo->layerCount > 1)
+			{
+				srvDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2DARRAY;
+				srvDesc.Texture2DArray.MipLevels = desc2D.MipLevels;
+				srvDesc.Texture2DArray.MostDetailedMip = 0;
+				srvDesc.Texture2DArray.FirstArraySlice = 0;
+				srvDesc.Texture2DArray.ArraySize = textureCreateInfo->layerCount;
 			}
 			else
 			{
