@@ -1611,7 +1611,7 @@ static Refresh_Texture* D3D11_CreateTexture(
 	d3d11Texture->levelCount = textureCreateInfo->levelCount;
 	d3d11Texture->layerCount = textureCreateInfo->layerCount;
 	d3d11Texture->isCube = textureCreateInfo->isCube;
-	d3d11Texture->isRenderTarget = isColorTarget | isDepthStencil;
+	d3d11Texture->isRenderTarget = isColorTarget || isDepthStencil;
 	d3d11Texture->shaderView = srv;
 
 	d3d11Texture->subresources = SDL_malloc(
@@ -3033,6 +3033,14 @@ static void D3D11_BeginRenderPass(
 
 		if (texture->subresources[subresourceIndex].msaaHandle != NULL)
 		{
+			if (colorAttachmentInfos[i].writeOption == REFRESH_WRITEOPTIONS_SAFEDISCARD)
+			{
+				ID3D11DeviceContext1_DiscardView(
+					d3d11CommandBuffer->context,
+					(ID3D11View*) texture->subresources[subresourceIndex].msaaTargetView
+				);
+			}
+
 			d3d11CommandBuffer->colorTargetResolveTexture[i] = texture;
 			d3d11CommandBuffer->colorTargetResolveSubresourceIndex[i] = subresourceIndex;
 			d3d11CommandBuffer->colorTargetMsaaHandle[i] = texture->subresources[subresourceIndex].msaaHandle;
@@ -3041,6 +3049,14 @@ static void D3D11_BeginRenderPass(
 		}
 		else
 		{
+			if (colorAttachmentInfos[i].writeOption == REFRESH_WRITEOPTIONS_SAFEDISCARD)
+			{
+				ID3D11DeviceContext1_DiscardView(
+					d3d11CommandBuffer->context,
+					(ID3D11View*) texture->subresources[subresourceIndex].colorTargetView
+				);
+			}
+
 			rtvs[i] = texture->subresources[subresourceIndex].colorTargetView;
 		}
 	}
@@ -3055,6 +3071,14 @@ static void D3D11_BeginRenderPass(
 			depthStencilAttachmentInfo->textureSlice.layer,
 			texture->levelCount
 		);
+
+		if (depthStencilAttachmentInfo->writeOption == REFRESH_WRITEOPTIONS_SAFEDISCARD)
+		{
+			ID3D11DeviceContext1_DiscardView(
+				d3d11CommandBuffer->context,
+				(ID3D11View*) texture->subresources[subresourceIndex].depthStencilTargetView
+			);
+		}
 
 		dsv = texture->subresources[subresourceIndex].depthStencilTargetView;
 	}
