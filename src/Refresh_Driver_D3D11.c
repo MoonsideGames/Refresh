@@ -1,4 +1,4 @@
-/* Refresh - XNA-inspired 3D Graphics Library with modern capabilities
+﻿/* Refresh - XNA-inspired 3D Graphics Library with modern capabilities
  *
  * Copyright (c) 2020 Evan Hemsley
  *
@@ -2130,7 +2130,7 @@ static void D3D11_DownloadFromTexture(
 		renderer->immediateContext,
 		stagingTexture,
 		0,
-		0,
+		copyParams->bufferOffset,
 		0,
 		0,
 		d3d11Texture->handle,
@@ -2159,13 +2159,26 @@ static void D3D11_DownloadFromTexture(
 	}
 
 	uint8_t* dataPtr = (uint8_t*) d3d11TransferBuffer->data + copyParams->bufferOffset;
-	for (uint32_t row = textureRegion->y; row < copyParams->bufferImageHeight; row += 1)
+
+	if (bufferStride == 0 && bufferImageHeight == 0) // assume tightly packed
 	{
 		SDL_memcpy(
 			dataPtr,
-			(uint8_t*) subresource.pData + (row * bufferStride) + (textureRegion->x * formatSize),
-			textureRegion->w * formatSize
+			(uint8_t *)subresource.pData,
+			BytesPerImage(textureRegion->w, textureRegion->h, d3d11Texture->format)
 		);
+	}
+	else
+	{
+		for (uint32_t row = textureRegion->y; row < bufferImageHeight; row += 1)
+		{
+			SDL_memcpy(
+				dataPtr,
+				(uint8_t*) subresource.pData + (row * bufferStride) + (textureRegion->x * formatSize),
+				textureRegion->w * formatSize
+			);
+			dataPtr += textureRegion->w * formatSize;
+		}
 	}
 
 	ID3D11DeviceContext1_Unmap(
@@ -2295,7 +2308,7 @@ static void D3D11_CopyTextureToTexture(
 		destination->textureSlice.layer,
 		dstTexture->levelCount
 	);
-	D3D11_BOX srcBox = { source->x, source->y, source->z, source->x + source->w, source->y + source->w, 1 };
+	D3D11_BOX srcBox = { source->x, source->y, source->z, source->x + source->w, source->y + source->h, 1 };
 
 	ID3D11DeviceContext1_CopySubresourceRegion1(
 		d3d11CommandBuffer->context,
@@ -3457,9 +3470,11 @@ static uint8_t D3D11_INTERNAL_InitializeSwapchainTexture(
 	D3D11Texture *pTexture
 ) {
 	ID3D11Texture2D *swapchainTexture;
+	D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc;
 	D3D11_RENDER_TARGET_VIEW_DESC rtvDesc;
 	D3D11_UNORDERED_ACCESS_VIEW_DESC uavDesc;
 	D3D11_TEXTURE2D_DESC textureDesc;
+	ID3D11ShaderResourceView *srv;
 	ID3D11RenderTargetView *rtv;
 	ID3D11UnorderedAccessView *uav;
 	HRESULT res;
@@ -3476,6 +3491,25 @@ static uint8_t D3D11_INTERNAL_InitializeSwapchainTexture(
 	);
 	ERROR_CHECK_RETURN("Could not get buffer from swapchain!", 0);
 
+	/* Create the SRV for the swapchain */
+	srvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	srvDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+	srvDesc.Texture2D.MipLevels = 1;
+	srvDesc.Texture2D.MostDetailedMip = 0;
+
+	res = ID3D11Device_CreateShaderResourceView(
+		renderer->device,
+		(ID3D11Resource *)swapchainTexture,
+		&srvDesc,
+		&srv
+	);
+	if (FAILED(res))
+	{
+		ID3D11Texture2D_Release(swapchainTexture);
+		D3D11_INTERNAL_LogError(renderer->device, "Swapchain SRV creation failed", res);
+		return 0;
+	}
+
 	/* Create the RTV for the swapchain */
 	rtvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
 	rtvDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
@@ -3489,6 +3523,7 @@ static uint8_t D3D11_INTERNAL_InitializeSwapchainTexture(
 	);
 	if (FAILED(res))
 	{
+		ID3D11ShaderResourceView_Release(srv);
 		ID3D11Texture2D_Release(swapchainTexture);
 		D3D11_INTERNAL_LogError(renderer->device, "Swapchain RTV creation failed", res);
 		return 0;
@@ -3506,6 +3541,7 @@ static uint8_t D3D11_INTERNAL_InitializeSwapchainTexture(
 	);
 	if (FAILED(res))
 	{
+		ID3D11ShaderResourceView_Release(srv);
 		ID3D11RenderTargetView_Release(rtv);
 		ID3D11Texture2D_Release(swapchainTexture);
 		D3D11_INTERNAL_LogError(renderer->device, "Swapchain UAV creation failed", res);
@@ -3513,8 +3549,8 @@ static uint8_t D3D11_INTERNAL_InitializeSwapchainTexture(
 	}
 
 	/* Fill out the texture struct */
-	pTexture->handle = NULL; /* The texture does not "own" the swapchain texture, and it can change dynamically. */
-	pTexture->shaderView = NULL;
+	pTexture->handle = NULL; /* This will be set in AcquireSwapchainTexture. */
+	pTexture->shaderView = srv;
 	pTexture->subresources = SDL_malloc(sizeof(D3D11TextureSubresource));
 	pTexture->subresources[0].colorTargetView = rtv;
 	pTexture->subresources[0].uav = uav;
@@ -3571,7 +3607,7 @@ static uint8_t D3D11_INTERNAL_CreateSwapchain(
 	/* Initialize the rest of the swapchain descriptor */
 	swapchainDesc.SampleDesc.Count = 1;
 	swapchainDesc.SampleDesc.Quality = 0;
-	swapchainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT | DXGI_USAGE_UNORDERED_ACCESS;
+	swapchainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT | DXGI_USAGE_UNORDERED_ACCESS | DXGI_USAGE_SHADER_INPUT;
 	swapchainDesc.BufferCount = 2;
 	swapchainDesc.OutputWindow = dxgiHandle;
 	swapchainDesc.Windowed = 1;
@@ -3748,6 +3784,7 @@ static void D3D11_UnclaimWindow(
 
 	D3D11_Wait(driverData);
 
+	ID3D11ShaderResourceView_Release(windowData->texture.shaderView);
 	ID3D11RenderTargetView_Release(windowData->texture.subresources[0].colorTargetView);
 	ID3D11UnorderedAccessView_Release(windowData->texture.subresources[0].uav);
 	SDL_free(windowData->texture.subresources);
@@ -3803,6 +3840,15 @@ static Refresh_Texture* D3D11_AcquireSwapchainTexture(
 		);
 		ERROR_CHECK_RETURN("Could not resize swapchain", NULL);
 	}
+
+	/* Set the handle on the windowData texture data. */
+	res = IDXGISwapChain_GetBuffer(
+		windowData->swapchain,
+		0,
+		&D3D_IID_ID3D11Texture2D,
+		(void**) &windowData->texture.handle
+	);
+	ERROR_CHECK_RETURN("Could not acquire swapchain!", NULL);
 
 	/* Let the command buffer know it's associated with this swapchain. */
 	d3d11CommandBuffer->windowData = windowData;
@@ -4011,6 +4057,8 @@ static void D3D11_Submit(
 			syncInterval,
 			presentFlags
 		);
+
+		ID3D11Texture2D_Release(d3d11CommandBuffer->windowData->texture.handle);
 	}
 
 	/* Check if we can perform any cleanups */
