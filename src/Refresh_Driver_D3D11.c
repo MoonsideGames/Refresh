@@ -930,7 +930,7 @@ static void D3D11_DispatchCompute(
 	uint32_t groupCountZ
 ) {
 	D3D11CommandBuffer* d3d11CommandBuffer = (D3D11CommandBuffer*)commandBuffer;
-	uint32_t computeOffsetInConstants = d3d11CommandBuffer->computeUniformBuffer->drawOffset / 16;
+	uint32_t computeOffsetInConstants = d3d11CommandBuffer->computeUniformBuffer != NULL ? d3d11CommandBuffer->computeUniformBuffer->drawOffset / 16 : 0;
 	uint32_t computeBlockSizeInConstants = (uint32_t) (d3d11CommandBuffer->computePipeline->computeUniformBlockSize / 16);
 
 	if (d3d11CommandBuffer->computeUniformBuffer != NULL)
