@@ -2016,10 +2016,10 @@ static void D3D11_UploadToTexture(
 	D3D11_BOX dstBox;
 	dstBox.left = textureRegion->x;
 	dstBox.top = textureRegion->y;
-	dstBox.front = textureRegion->d;
+	dstBox.front = textureRegion->z;
 	dstBox.right = textureRegion->x + w;
 	dstBox.bottom = textureRegion->y + h;
-	dstBox.back = textureRegion->d + 1;
+	dstBox.back = textureRegion->z + 1;
 
 	ID3D11DeviceContext1_UpdateSubresource1(
 		d3d11CommandBuffer->context,
