@@ -824,44 +824,6 @@ void Refresh_UploadToBuffer(
 	);
 }
 
-void Refresh_DownloadFromTexture(
-	Refresh_Device *device,
-	Refresh_CommandBuffer *commandBuffer,
-	Refresh_TextureRegion *textureRegion,
-	Refresh_TransferBuffer *transferBuffer,
-	Refresh_BufferImageCopy *copyParams,
-	Refresh_TransferOptions transferOption
-) {
-	NULL_RETURN(device);
-	device->DownloadFromTexture(
-		device->driverData,
-		commandBuffer,
-		textureRegion,
-		transferBuffer,
-		copyParams,
-		transferOption
-	);
-}
-
-void Refresh_DownloadFromBuffer(
-	Refresh_Device *device,
-	Refresh_CommandBuffer *commandBuffer,
-	Refresh_GpuBuffer *gpuBuffer,
-	Refresh_TransferBuffer *transferBuffer,
-	Refresh_BufferCopy *copyParams,
-	Refresh_TransferOptions transferOption
-) {
-	NULL_RETURN(device);
-	device->DownloadFromBuffer(
-		device->driverData,
-		commandBuffer,
-		gpuBuffer,
-		transferBuffer,
-		copyParams,
-		transferOption
-	);
-}
-
 void Refresh_CopyTextureToTexture(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
@@ -1064,6 +1026,40 @@ void Refresh_ReleaseFence(
 	device->ReleaseFence(
 		device->driverData,
 		fence
+	);
+}
+
+void Refresh_DownloadFromTexture(
+	Refresh_Device *device,
+	Refresh_TextureRegion *textureRegion,
+	Refresh_TransferBuffer *transferBuffer,
+	Refresh_BufferImageCopy *copyParams,
+	Refresh_TransferOptions transferOption
+) {
+	NULL_RETURN(device);
+	device->DownloadFromTexture(
+		device->driverData,
+		textureRegion,
+		transferBuffer,
+		copyParams,
+		transferOption
+	);
+}
+
+void Refresh_DownloadFromBuffer(
+	Refresh_Device *device,
+	Refresh_GpuBuffer *gpuBuffer,
+	Refresh_TransferBuffer *transferBuffer,
+	Refresh_BufferCopy *copyParams,
+	Refresh_TransferOptions transferOption
+) {
+	NULL_RETURN(device);
+	device->DownloadFromBuffer(
+		device->driverData,
+		gpuBuffer,
+		transferBuffer,
+		copyParams,
+		transferOption
 	);
 }
 

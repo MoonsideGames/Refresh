@@ -8549,130 +8549,6 @@ static void VULKAN_UploadToBuffer(
 	VULKAN_INTERNAL_TrackCopiedBuffer(renderer, vulkanCommandBuffer, gpuBufferContainer->activeBufferHandle->vulkanBuffer);
 }
 
-static void VULKAN_DownloadFromTexture(
-	Refresh_Renderer *driverData,
-	Refresh_CommandBuffer *commandBuffer,
-	Refresh_TextureRegion *textureRegion,
-	Refresh_TransferBuffer *transferBuffer,
-	Refresh_BufferImageCopy *copyParams,
-	Refresh_TransferOptions transferOption
-) {
-	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
-	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
-	VulkanTextureSlice *vulkanTextureSlice;
-	VulkanBufferContainer *transferBufferContainer = (VulkanBufferContainer*) transferBuffer;
-	VkBufferImageCopy imageCopy;
-
-	vulkanTextureSlice = VULKAN_INTERNAL_RefreshToVulkanTextureSlice(&textureRegion->textureSlice);
-
-	if (
-		transferOption == REFRESH_TRANSFEROPTIONS_SAFEDISCARD &&
-		SDL_AtomicGet(&transferBufferContainer->activeBufferHandle->vulkanBuffer->referenceCount) > 0
-	) {
-		VULKAN_INTERNAL_DiscardActiveBuffer(
-			renderer,
-			transferBufferContainer
-		);
-		vulkanTextureSlice = VULKAN_INTERNAL_RefreshToVulkanTextureSlice(&textureRegion->textureSlice);
-	}
-
-	VULKAN_INTERNAL_BufferMemoryBarrier(
-		renderer,
-		vulkanCommandBuffer->commandBuffer,
-		RESOURCE_ACCESS_TRANSFER_WRITE,
-		transferBufferContainer->activeBufferHandle->vulkanBuffer
-	);
-
-	VULKAN_INTERNAL_ImageMemoryBarrier(
-		renderer,
-		vulkanCommandBuffer->commandBuffer,
-		RESOURCE_ACCESS_TRANSFER_READ,
-		vulkanTextureSlice
-	);
-
-	imageCopy.imageExtent.width = textureRegion->w;
-	imageCopy.imageExtent.height = textureRegion->h;
-	imageCopy.imageExtent.depth = textureRegion->d;
-	imageCopy.imageOffset.x = textureRegion->x;
-	imageCopy.imageOffset.y = textureRegion->y;
-	imageCopy.imageOffset.z = textureRegion->z;
-	imageCopy.imageSubresource.aspectMask = vulkanTextureSlice->parent->aspectFlags;
-	imageCopy.imageSubresource.baseArrayLayer = textureRegion->textureSlice.layer;
-	imageCopy.imageSubresource.layerCount = 1;
-	imageCopy.imageSubresource.mipLevel = textureRegion->textureSlice.mipLevel;
-	imageCopy.bufferOffset = copyParams->bufferOffset;
-	imageCopy.bufferRowLength = copyParams->bufferStride;
-	imageCopy.bufferImageHeight = copyParams->bufferImageHeight;
-
-	renderer->vkCmdCopyImageToBuffer(
-		vulkanCommandBuffer->commandBuffer,
-		vulkanTextureSlice->parent->image,
-		AccessMap[vulkanTextureSlice->resourceAccessType].imageLayout,
-		transferBufferContainer->activeBufferHandle->vulkanBuffer->buffer,
-		1,
-		&imageCopy
-	);
-
-	VULKAN_INTERNAL_TrackBuffer(renderer, vulkanCommandBuffer, transferBufferContainer->activeBufferHandle->vulkanBuffer);
-	VULKAN_INTERNAL_TrackTextureSlice(renderer, vulkanCommandBuffer, vulkanTextureSlice);
-	VULKAN_INTERNAL_TrackCopiedTextureSlice(renderer, vulkanCommandBuffer, vulkanTextureSlice);
-}
-
-static void VULKAN_DownloadFromBuffer(
-	Refresh_Renderer *driverData,
-	Refresh_CommandBuffer *commandBuffer,
-	Refresh_GpuBuffer *gpuBuffer,
-	Refresh_TransferBuffer *transferBuffer,
-	Refresh_BufferCopy *copyParams,
-	Refresh_TransferOptions transferOption
-) {
-	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
-	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
-	VulkanBufferContainer *gpuBufferContainer = (VulkanBufferContainer*) gpuBuffer;
-	VulkanBufferContainer *transferBufferContainer = (VulkanBufferContainer*) transferBuffer;
-	VkBufferCopy bufferCopy;
-
-	if (
-		transferOption == REFRESH_TRANSFEROPTIONS_SAFEDISCARD &&
-		SDL_AtomicGet(&transferBufferContainer->activeBufferHandle->vulkanBuffer->referenceCount) > 0
-	) {
-		VULKAN_INTERNAL_DiscardActiveBuffer(
-			renderer,
-			transferBufferContainer
-		);
-	}
-
-	VULKAN_INTERNAL_BufferMemoryBarrier(
-		renderer,
-		vulkanCommandBuffer->commandBuffer,
-		RESOURCE_ACCESS_TRANSFER_WRITE,
-		transferBufferContainer->activeBufferHandle->vulkanBuffer
-	);
-
-	VULKAN_INTERNAL_BufferMemoryBarrier(
-		renderer,
-		vulkanCommandBuffer->commandBuffer,
-		RESOURCE_ACCESS_TRANSFER_READ,
-		gpuBufferContainer->activeBufferHandle->vulkanBuffer
-	);
-
-	bufferCopy.srcOffset = copyParams->srcOffset;
-	bufferCopy.dstOffset = copyParams->dstOffset;
-	bufferCopy.size = copyParams->size;
-
-	renderer->vkCmdCopyBuffer(
-		vulkanCommandBuffer->commandBuffer,
-		gpuBufferContainer->activeBufferHandle->vulkanBuffer->buffer,
-		transferBufferContainer->activeBufferHandle->vulkanBuffer->buffer,
-		1,
-		&bufferCopy
-	);
-
-	VULKAN_INTERNAL_TrackBuffer(renderer, vulkanCommandBuffer, transferBufferContainer->activeBufferHandle->vulkanBuffer);
-	VULKAN_INTERNAL_TrackBuffer(renderer, vulkanCommandBuffer, gpuBufferContainer->activeBufferHandle->vulkanBuffer);
-	VULKAN_INTERNAL_TrackCopiedBuffer(renderer, vulkanCommandBuffer, gpuBufferContainer->activeBufferHandle->vulkanBuffer);
-}
-
 static void VULKAN_CopyTextureToTexture(
 	Refresh_Renderer *driverData,
 	Refresh_CommandBuffer *commandBuffer,
@@ -8748,147 +8624,6 @@ static void VULKAN_CopyTextureToTexture(
 	VULKAN_INTERNAL_TrackTextureSlice(renderer, vulkanCommandBuffer, dstSlice);
 	VULKAN_INTERNAL_TrackCopiedTextureSlice(renderer, vulkanCommandBuffer, srcSlice);
 	VULKAN_INTERNAL_TrackCopiedTextureSlice(renderer, vulkanCommandBuffer, dstSlice);
-}
-
-static void VULKAN_CopyTextureToBuffer(
-	Refresh_Renderer *driverData,
-	Refresh_CommandBuffer *commandBuffer,
-	Refresh_TextureRegion *textureRegion,
-	Refresh_GpuBuffer *gpuBuffer,
-	Refresh_BufferImageCopy *copyParams,
-	Refresh_WriteOptions writeOption
-) {
-	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
-	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
-	VulkanTextureSlice *vulkanTextureSlice;
-	VulkanBufferContainer *bufferContainer = (VulkanBufferContainer*) gpuBuffer;
-	VkBufferImageCopy imageCopy;
-
-	vulkanTextureSlice = VULKAN_INTERNAL_RefreshToVulkanTextureSlice(&textureRegion->textureSlice);
-
-	if (
-		writeOption == REFRESH_WRITEOPTIONS_SAFEDISCARD &&
-		SDL_AtomicGet(&bufferContainer->activeBufferHandle->vulkanBuffer->referenceCount) > 0
-	) {
-		VULKAN_INTERNAL_DiscardActiveBuffer(
-			renderer,
-			bufferContainer
-		);
-	}
-
-	VULKAN_INTERNAL_ImageMemoryBarrier(
-		renderer,
-		vulkanCommandBuffer->commandBuffer,
-		RESOURCE_ACCESS_TRANSFER_READ,
-		vulkanTextureSlice
-	);
-
-	VULKAN_INTERNAL_BufferMemoryBarrier(
-		renderer,
-		vulkanCommandBuffer->commandBuffer,
-		RESOURCE_ACCESS_TRANSFER_WRITE,
-		bufferContainer->activeBufferHandle->vulkanBuffer
-	);
-
-	imageCopy.imageExtent.width = textureRegion->w;
-	imageCopy.imageExtent.height = textureRegion->h;
-	imageCopy.imageExtent.depth = textureRegion->d;
-	imageCopy.imageOffset.x = textureRegion->x;
-	imageCopy.imageOffset.y = textureRegion->y;
-	imageCopy.imageOffset.z = textureRegion->z;
-	imageCopy.imageSubresource.aspectMask = vulkanTextureSlice->parent->aspectFlags;
-	imageCopy.imageSubresource.baseArrayLayer = textureRegion->textureSlice.layer;
-	imageCopy.imageSubresource.layerCount = 1;
-	imageCopy.imageSubresource.mipLevel = textureRegion->textureSlice.mipLevel;
-	imageCopy.bufferOffset = copyParams->bufferOffset;
-	imageCopy.bufferRowLength = copyParams->bufferStride;
-	imageCopy.bufferImageHeight = copyParams->bufferImageHeight;
-
-	renderer->vkCmdCopyImageToBuffer(
-		vulkanCommandBuffer->commandBuffer,
-		vulkanTextureSlice->parent->image,
-		AccessMap[vulkanTextureSlice->resourceAccessType].imageLayout,
-		bufferContainer->activeBufferHandle->vulkanBuffer->buffer,
-		1,
-		&imageCopy
-	);
-
-	VULKAN_INTERNAL_TrackBuffer(renderer, vulkanCommandBuffer, bufferContainer->activeBufferHandle->vulkanBuffer);
-	VULKAN_INTERNAL_TrackTextureSlice(renderer, vulkanCommandBuffer, vulkanTextureSlice);
-	VULKAN_INTERNAL_TrackCopiedBuffer(renderer, vulkanCommandBuffer, bufferContainer->activeBufferHandle->vulkanBuffer);
-	VULKAN_INTERNAL_TrackCopiedTextureSlice(renderer, vulkanCommandBuffer, vulkanTextureSlice);
-}
-
-static void VULKAN_CopyBufferToTexture(
-	Refresh_Renderer *driverData,
-	Refresh_CommandBuffer *commandBuffer,
-	Refresh_GpuBuffer *gpuBuffer,
-	Refresh_TextureRegion *textureRegion,
-	Refresh_BufferImageCopy *copyParams,
-	Refresh_WriteOptions writeOption
-) {
-	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
-	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
-	VulkanBufferContainer *bufferContainer = (VulkanBufferContainer*) gpuBuffer;
-	VulkanTextureContainer *textureContainer = (VulkanTextureContainer*) textureRegion->textureSlice.texture;
-	VulkanTextureSlice *vulkanTextureSlice;
-	VkBufferImageCopy imageCopy;
-
-	vulkanTextureSlice = VULKAN_INTERNAL_RefreshToVulkanTextureSlice(&textureRegion->textureSlice);
-
-	if (
-		writeOption == REFRESH_WRITEOPTIONS_SAFEDISCARD &&
-		textureContainer->canBeDiscarded &&
-		SDL_AtomicGet(&vulkanTextureSlice->referenceCount) > 0
-	) {
-		VULKAN_INTERNAL_DiscardActiveTexture(
-			renderer,
-			textureContainer
-		);
-		vulkanTextureSlice = VULKAN_INTERNAL_RefreshToVulkanTextureSlice(&textureRegion->textureSlice);
-	}
-
-	VULKAN_INTERNAL_BufferMemoryBarrier(
-		renderer,
-		vulkanCommandBuffer->commandBuffer,
-		RESOURCE_ACCESS_TRANSFER_READ,
-		bufferContainer->activeBufferHandle->vulkanBuffer
-	);
-
-	VULKAN_INTERNAL_ImageMemoryBarrier(
-		renderer,
-		vulkanCommandBuffer->commandBuffer,
-		RESOURCE_ACCESS_TRANSFER_WRITE,
-		vulkanTextureSlice
-	);
-
-	imageCopy.imageExtent.width = textureRegion->w;
-	imageCopy.imageExtent.height = textureRegion->h;
-	imageCopy.imageExtent.depth = textureRegion->d;
-	imageCopy.imageOffset.x = textureRegion->x;
-	imageCopy.imageOffset.y = textureRegion->y;
-	imageCopy.imageOffset.z = textureRegion->z;
-	imageCopy.imageSubresource.aspectMask = vulkanTextureSlice->parent->aspectFlags;
-	imageCopy.imageSubresource.baseArrayLayer = textureRegion->textureSlice.layer;
-	imageCopy.imageSubresource.layerCount = 1;
-	imageCopy.imageSubresource.mipLevel = textureRegion->textureSlice.mipLevel;
-	imageCopy.bufferOffset = copyParams->bufferOffset;
-	imageCopy.bufferRowLength = copyParams->bufferStride;
-	imageCopy.bufferImageHeight = copyParams->bufferImageHeight;
-
-	renderer->vkCmdCopyBufferToImage(
-		vulkanCommandBuffer->commandBuffer,
-		bufferContainer->activeBufferHandle->vulkanBuffer->buffer,
-		vulkanTextureSlice->parent->image,
-		AccessMap[vulkanTextureSlice->resourceAccessType].imageLayout,
-		1,
-		&imageCopy
-	);
-
-	VULKAN_INTERNAL_TrackBuffer(renderer, vulkanCommandBuffer, bufferContainer->activeBufferHandle->vulkanBuffer);
-	VULKAN_INTERNAL_TrackTextureSlice(renderer, vulkanCommandBuffer, vulkanTextureSlice);
-	VULKAN_INTERNAL_TrackCopiedBuffer(renderer, vulkanCommandBuffer, bufferContainer->activeBufferHandle->vulkanBuffer);
-	VULKAN_INTERNAL_TrackCopiedTextureSlice(renderer, vulkanCommandBuffer, vulkanTextureSlice);
 }
 
 static void VULKAN_CopyBufferToBuffer(
@@ -10458,6 +10193,137 @@ static void VULKAN_ReleaseFence(
 	Refresh_Fence *fence
 ) {
 	VULKAN_INTERNAL_ReturnFenceToPool((VulkanRenderer*) driverData, (VkFence) fence);
+}
+
+/* Readback */
+
+static void VULKAN_DownloadFromTexture(
+	Refresh_Renderer *driverData,
+	Refresh_TextureRegion *textureRegion,
+	Refresh_TransferBuffer *transferBuffer,
+	Refresh_BufferImageCopy *copyParams,
+	Refresh_TransferOptions transferOption
+) {
+	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	VulkanTextureSlice *vulkanTextureSlice;
+	VulkanBufferContainer *transferBufferContainer = (VulkanBufferContainer*) transferBuffer;
+	VkBufferImageCopy imageCopy;
+	vulkanTextureSlice = VULKAN_INTERNAL_RefreshToVulkanTextureSlice(&textureRegion->textureSlice);
+	Refresh_Fence *fence;
+	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) VULKAN_AcquireCommandBuffer(driverData);
+
+	if (
+		transferOption == REFRESH_TRANSFEROPTIONS_SAFEDISCARD &&
+		SDL_AtomicGet(&transferBufferContainer->activeBufferHandle->vulkanBuffer->referenceCount) > 0
+	) {
+		VULKAN_INTERNAL_DiscardActiveBuffer(
+			renderer,
+			transferBufferContainer
+		);
+		vulkanTextureSlice = VULKAN_INTERNAL_RefreshToVulkanTextureSlice(&textureRegion->textureSlice);
+	}
+
+	VULKAN_INTERNAL_BufferMemoryBarrier(
+		renderer,
+		vulkanCommandBuffer->commandBuffer,
+		RESOURCE_ACCESS_TRANSFER_WRITE,
+		transferBufferContainer->activeBufferHandle->vulkanBuffer
+	);
+
+	VULKAN_INTERNAL_ImageMemoryBarrier(
+		renderer,
+		vulkanCommandBuffer->commandBuffer,
+		RESOURCE_ACCESS_TRANSFER_READ,
+		vulkanTextureSlice
+	);
+
+	imageCopy.imageExtent.width = textureRegion->w;
+	imageCopy.imageExtent.height = textureRegion->h;
+	imageCopy.imageExtent.depth = textureRegion->d;
+	imageCopy.imageOffset.x = textureRegion->x;
+	imageCopy.imageOffset.y = textureRegion->y;
+	imageCopy.imageOffset.z = textureRegion->z;
+	imageCopy.imageSubresource.aspectMask = vulkanTextureSlice->parent->aspectFlags;
+	imageCopy.imageSubresource.baseArrayLayer = textureRegion->textureSlice.layer;
+	imageCopy.imageSubresource.layerCount = 1;
+	imageCopy.imageSubresource.mipLevel = textureRegion->textureSlice.mipLevel;
+	imageCopy.bufferOffset = copyParams->bufferOffset;
+	imageCopy.bufferRowLength = copyParams->bufferStride;
+	imageCopy.bufferImageHeight = copyParams->bufferImageHeight;
+
+	renderer->vkCmdCopyImageToBuffer(
+		vulkanCommandBuffer->commandBuffer,
+		vulkanTextureSlice->parent->image,
+		AccessMap[vulkanTextureSlice->resourceAccessType].imageLayout,
+		transferBufferContainer->activeBufferHandle->vulkanBuffer->buffer,
+		1,
+		&imageCopy
+	);
+
+	VULKAN_INTERNAL_TrackBuffer(renderer, vulkanCommandBuffer, transferBufferContainer->activeBufferHandle->vulkanBuffer);
+	VULKAN_INTERNAL_TrackTextureSlice(renderer, vulkanCommandBuffer, vulkanTextureSlice);
+	VULKAN_INTERNAL_TrackCopiedTextureSlice(renderer, vulkanCommandBuffer, vulkanTextureSlice);
+
+	fence = VULKAN_SubmitAndAcquireFence(driverData, (Refresh_CommandBuffer*) vulkanCommandBuffer);
+	VULKAN_WaitForFences(driverData, 1, 1, &fence);
+}
+
+static void VULKAN_DownloadFromBuffer(
+	Refresh_Renderer *driverData,
+	Refresh_GpuBuffer *gpuBuffer,
+	Refresh_TransferBuffer *transferBuffer,
+	Refresh_BufferCopy *copyParams,
+	Refresh_TransferOptions transferOption
+) {
+	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	VulkanBufferContainer *gpuBufferContainer = (VulkanBufferContainer*) gpuBuffer;
+	VulkanBufferContainer *transferBufferContainer = (VulkanBufferContainer*) transferBuffer;
+	VkBufferCopy bufferCopy;
+	Refresh_Fence *fence;
+	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) VULKAN_AcquireCommandBuffer(driverData);
+
+	if (
+		transferOption == REFRESH_TRANSFEROPTIONS_SAFEDISCARD &&
+		SDL_AtomicGet(&transferBufferContainer->activeBufferHandle->vulkanBuffer->referenceCount) > 0
+	) {
+		VULKAN_INTERNAL_DiscardActiveBuffer(
+			renderer,
+			transferBufferContainer
+		);
+	}
+
+	VULKAN_INTERNAL_BufferMemoryBarrier(
+		renderer,
+		vulkanCommandBuffer->commandBuffer,
+		RESOURCE_ACCESS_TRANSFER_WRITE,
+		transferBufferContainer->activeBufferHandle->vulkanBuffer
+	);
+
+	VULKAN_INTERNAL_BufferMemoryBarrier(
+		renderer,
+		vulkanCommandBuffer->commandBuffer,
+		RESOURCE_ACCESS_TRANSFER_READ,
+		gpuBufferContainer->activeBufferHandle->vulkanBuffer
+	);
+
+	bufferCopy.srcOffset = copyParams->srcOffset;
+	bufferCopy.dstOffset = copyParams->dstOffset;
+	bufferCopy.size = copyParams->size;
+
+	renderer->vkCmdCopyBuffer(
+		vulkanCommandBuffer->commandBuffer,
+		gpuBufferContainer->activeBufferHandle->vulkanBuffer->buffer,
+		transferBufferContainer->activeBufferHandle->vulkanBuffer->buffer,
+		1,
+		&bufferCopy
+	);
+
+	VULKAN_INTERNAL_TrackBuffer(renderer, vulkanCommandBuffer, transferBufferContainer->activeBufferHandle->vulkanBuffer);
+	VULKAN_INTERNAL_TrackBuffer(renderer, vulkanCommandBuffer, gpuBufferContainer->activeBufferHandle->vulkanBuffer);
+	VULKAN_INTERNAL_TrackCopiedBuffer(renderer, vulkanCommandBuffer, gpuBufferContainer->activeBufferHandle->vulkanBuffer);
+
+	fence = VULKAN_SubmitAndAcquireFence(driverData, (Refresh_CommandBuffer*) vulkanCommandBuffer);
+	VULKAN_WaitForFences(driverData, 1, 1, &fence);
 }
 
 /* Device instantiation */

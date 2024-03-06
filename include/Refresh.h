@@ -1193,46 +1193,6 @@ REFRESHAPI void Refresh_UploadToBuffer(
 	Refresh_WriteOptions writeOption
 );
 
-/* GPU-to-CPU copies occur on the GPU timeline.
- *
- * You may NOT assume that the data in the TransferBuffer is fully copied
- * until the command buffer has finished execution.
- */
-
-/*
- * transferOption:
- *  SAFEDISCARD:
- *    If this TransferBuffer has been used in commands that have not completed,
- *    the issued commands will still be valid at the cost of increased memory usage.
- *    You may NOT assume that any of the previous data is retained.
- *    If the TransferBuffer was not in use, this option is equivalent to OVERWRITE.
- *    It is not recommended to use this option with large TransferBuffers.
- *
- *  OVERWRITE:
- *    Overwrites the data regardless of whether a command has been issued.
- *    Use this option with great care, as it can cause data races to occur!
- */
-
-/* Downloads data from a texture to a TransferBuffer. */
-REFRESHAPI void Refresh_DownloadFromTexture(
-	Refresh_Device *device,
-	Refresh_CommandBuffer *commandBuffer,
-	Refresh_TextureRegion *textureRegion,
-	Refresh_TransferBuffer *transferBuffer,
-	Refresh_BufferImageCopy *copyParams,
-	Refresh_TransferOptions transferOption
-);
-
-/* Downloads data from a GpuBuffer object. */
-REFRESHAPI void Refresh_DownloadFromBuffer(
-	Refresh_Device *device,
-	Refresh_CommandBuffer *commandBuffer,
-	Refresh_GpuBuffer *gpuBuffer,
-	Refresh_TransferBuffer *transferBuffer,
-	Refresh_BufferCopy *copyParams,
-	Refresh_TransferOptions transferOption
-);
-
 /* GPU-to-GPU copies occur on the GPU timeline,
  * and you may assume the copy has finished in subsequent commands.
  */
@@ -1399,6 +1359,49 @@ REFRESHAPI int Refresh_QueryFence(
 REFRESHAPI void Refresh_ReleaseFence(
 	Refresh_Device *device,
 	Refresh_Fence *fence
+);
+
+/* Readback */
+
+/* GPU-to-CPU copies occur immediately on the CPU timeline.
+ *
+ * If you modify data on the GPU and then call these functions without calling Wait or WaitForFences first,
+ * the data will be undefined!
+ *
+ * Readback forces a sync point and is generally a bad thing to do.
+ * Only use these functions if you have exhausted all other options.
+ */
+
+/*
+ * transferOption:
+ *  SAFEDISCARD:
+ *    If this TransferBuffer has been used in commands that have not completed,
+ *    the issued commands will still be valid at the cost of increased memory usage.
+ *    You may NOT assume that any of the previous data is retained.
+ *    If the TransferBuffer was not in use, this option is equivalent to OVERWRITE.
+ *    It is not recommended to use this option with large TransferBuffers.
+ *
+ *  OVERWRITE:
+ *    Overwrites the data regardless of whether a command has been issued.
+ *    Use this option with great care, as it can cause data races to occur!
+ */
+
+/* Downloads data from a texture to a TransferBuffer. */
+REFRESHAPI void Refresh_DownloadFromTexture(
+	Refresh_Device *device,
+	Refresh_TextureRegion *textureRegion,
+	Refresh_TransferBuffer *transferBuffer,
+	Refresh_BufferImageCopy *copyParams,
+	Refresh_TransferOptions transferOption
+);
+
+/* Downloads data from a GpuBuffer object. */
+REFRESHAPI void Refresh_DownloadFromBuffer(
+	Refresh_Device *device,
+	Refresh_GpuBuffer *gpuBuffer,
+	Refresh_TransferBuffer *transferBuffer,
+	Refresh_BufferCopy *copyParams,
+	Refresh_TransferOptions transferOption
 );
 
 #ifdef __cplusplus
