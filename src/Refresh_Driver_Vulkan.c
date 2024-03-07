@@ -4184,47 +4184,6 @@ static uint8_t VULKAN_INTERNAL_AddUniformDescriptorPool(
 	return 1;
 }
 
-static uint8_t VULKAN_INTERNAL_InitUniformBufferPool(
-	VulkanRenderer *renderer,
-	VulkanUniformBufferType uniformBufferType,
-	VulkanUniformBufferPool *uniformBufferPool
-) {
-	VulkanResourceAccessType resourceAccessType;
-
-	if (uniformBufferType == UNIFORM_BUFFER_VERTEX)
-	{
-		resourceAccessType = RESOURCE_ACCESS_VERTEX_SHADER_READ_UNIFORM_BUFFER;
-	}
-	else if (uniformBufferType == UNIFORM_BUFFER_FRAGMENT)
-	{
-		resourceAccessType = RESOURCE_ACCESS_FRAGMENT_SHADER_READ_UNIFORM_BUFFER;
-	}
-	else if (uniformBufferType == UNIFORM_BUFFER_COMPUTE)
-	{
-		resourceAccessType = RESOURCE_ACCESS_COMPUTE_SHADER_READ_UNIFORM_BUFFER;
-	}
-	else
-	{
-		Refresh_LogError("Unrecognized uniform buffer type!");
-		return 0;
-	}
-
-	uniformBufferPool->type = uniformBufferType;
-	uniformBufferPool->lock = SDL_CreateMutex();
-
-	uniformBufferPool->availableBufferCapacity = 16;
-	uniformBufferPool->availableBufferCount = 0;
-	uniformBufferPool->availableBuffers = SDL_malloc(uniformBufferPool->availableBufferCapacity * sizeof(VulkanUniformBuffer*));
-
-	uniformBufferPool->descriptorPool.availableDescriptorSetCount = 0;
-	uniformBufferPool->descriptorPool.descriptorPoolCount = 0;
-	uniformBufferPool->descriptorPool.descriptorPools = NULL;
-
-	VULKAN_INTERNAL_AddUniformDescriptorPool(renderer, &uniformBufferPool->descriptorPool);
-
-	return 1;
-}
-
 static uint8_t VULKAN_INTERNAL_CreateUniformBuffer(
 	VulkanRenderer *renderer,
 	VulkanUniformBufferPool *bufferPool
@@ -4314,6 +4273,56 @@ static uint8_t VULKAN_INTERNAL_CreateUniformBuffer(
 	bufferPool->availableBufferCount += 1;
 
 	/* Mark descriptor set as null */
+
+	return 1;
+}
+
+static uint8_t VULKAN_INTERNAL_InitUniformBufferPool(
+	VulkanRenderer *renderer,
+	VulkanUniformBufferType uniformBufferType,
+	VulkanUniformBufferPool *uniformBufferPool
+) {
+	VulkanResourceAccessType resourceAccessType;
+
+	if (uniformBufferType == UNIFORM_BUFFER_VERTEX)
+	{
+		resourceAccessType = RESOURCE_ACCESS_VERTEX_SHADER_READ_UNIFORM_BUFFER;
+	}
+	else if (uniformBufferType == UNIFORM_BUFFER_FRAGMENT)
+	{
+		resourceAccessType = RESOURCE_ACCESS_FRAGMENT_SHADER_READ_UNIFORM_BUFFER;
+	}
+	else if (uniformBufferType == UNIFORM_BUFFER_COMPUTE)
+	{
+		resourceAccessType = RESOURCE_ACCESS_COMPUTE_SHADER_READ_UNIFORM_BUFFER;
+	}
+	else
+	{
+		Refresh_LogError("Unrecognized uniform buffer type!");
+		return 0;
+	}
+
+	uniformBufferPool->type = uniformBufferType;
+	uniformBufferPool->lock = SDL_CreateMutex();
+
+	uniformBufferPool->availableBufferCapacity = 16;
+	uniformBufferPool->availableBufferCount = 0;
+	uniformBufferPool->availableBuffers = SDL_malloc(uniformBufferPool->availableBufferCapacity * sizeof(VulkanUniformBuffer*));
+
+	uniformBufferPool->descriptorPool.availableDescriptorSetCount = 0;
+	uniformBufferPool->descriptorPool.descriptorPoolCount = 0;
+	uniformBufferPool->descriptorPool.descriptorPools = NULL;
+
+	VULKAN_INTERNAL_AddUniformDescriptorPool(renderer, &uniformBufferPool->descriptorPool);
+
+	/* Pre-populate the pool */
+	for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i += 1)
+	{
+		VULKAN_INTERNAL_CreateUniformBuffer(
+			renderer,
+			uniformBufferPool
+		);
+	}
 
 	return 1;
 }
