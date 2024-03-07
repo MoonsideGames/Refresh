@@ -3046,14 +3046,6 @@ static void D3D11_BeginRenderPass(
 
 		if (texture->subresources[subresourceIndex].msaaHandle != NULL)
 		{
-			if (colorAttachmentInfos[i].writeOption == REFRESH_WRITEOPTIONS_SAFEDISCARD)
-			{
-				ID3D11DeviceContext1_DiscardView(
-					d3d11CommandBuffer->context,
-					(ID3D11View*) texture->subresources[subresourceIndex].msaaTargetView
-				);
-			}
-
 			d3d11CommandBuffer->colorTargetResolveTexture[i] = texture;
 			d3d11CommandBuffer->colorTargetResolveSubresourceIndex[i] = subresourceIndex;
 			d3d11CommandBuffer->colorTargetMsaaHandle[i] = texture->subresources[subresourceIndex].msaaHandle;
@@ -3062,14 +3054,6 @@ static void D3D11_BeginRenderPass(
 		}
 		else
 		{
-			if (colorAttachmentInfos[i].writeOption == REFRESH_WRITEOPTIONS_SAFEDISCARD)
-			{
-				ID3D11DeviceContext1_DiscardView(
-					d3d11CommandBuffer->context,
-					(ID3D11View*) texture->subresources[subresourceIndex].colorTargetView
-				);
-			}
-
 			rtvs[i] = texture->subresources[subresourceIndex].colorTargetView;
 		}
 	}
