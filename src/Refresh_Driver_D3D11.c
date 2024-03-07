@@ -447,7 +447,7 @@ typedef struct D3D11TransferBufferContainer
 	D3D11TransferBuffer *activeBuffer;
 
 	/* These are all the buffers that have been used by this container.
-	 * If the resource is bound and then updated with SafeDiscard, a new resource
+	 * If the resource is bound and then updated with DISCARD, a new resource
 	 * will be added to this list.
 	 * These can be reused after they are submitted and command processing is complete.
 	 */
@@ -1969,7 +1969,7 @@ static void D3D11_SetTransferData(
 
 	/* Rotate the transfer buffer if necessary */
 	if (
-		transferOption == REFRESH_TRANSFEROPTIONS_SAFEDISCARD &&
+		transferOption == REFRESH_TRANSFEROPTIONS_DISCARD &&
 		SDL_AtomicGet(&container->activeBuffer->referenceCount) > 0
 	) {
 		D3D11_INTERNAL_DiscardActiveTransferBuffer(
@@ -2066,7 +2066,7 @@ static void D3D11_UploadToTexture(
 		(uint8_t*) d3d11TransferBuffer->data + copyParams->bufferOffset,
 		bufferStride,
 		bufferStride * bufferImageHeight,
-		writeOption == REFRESH_WRITEOPTIONS_SAFEDISCARD ? D3D11_COPY_DISCARD : 0
+		writeOption == REFRESH_WRITEOPTIONS_DISCARD ? D3D11_COPY_DISCARD : 0
 	);
 
 	D3D11_INTERNAL_TrackTransferBuffer(d3d11CommandBuffer, d3d11TransferBuffer);
@@ -2094,7 +2094,7 @@ static void D3D11_UploadToBuffer(
 		d3d11TransferBuffer->data + copyParams->srcOffset,
 		0,
 		0,
-		writeOption == REFRESH_WRITEOPTIONS_SAFEDISCARD ? D3D11_COPY_DISCARD : 0
+		writeOption == REFRESH_WRITEOPTIONS_DISCARD ? D3D11_COPY_DISCARD : 0
 	);
 
 	D3D11_INTERNAL_TrackTransferBuffer(d3d11CommandBuffer, d3d11TransferBuffer);
@@ -2127,7 +2127,7 @@ static void D3D11_DownloadFromTexture(
 
 	/* Rotate the transfer buffer if necessary */
 	if (
-		transferOption == REFRESH_TRANSFEROPTIONS_SAFEDISCARD &&
+		transferOption == REFRESH_TRANSFEROPTIONS_DISCARD &&
 		SDL_AtomicGet(&container->activeBuffer->referenceCount) > 0
 	) {
 		D3D11_INTERNAL_DiscardActiveTransferBuffer(
@@ -2225,7 +2225,7 @@ static void D3D11_DownloadFromBuffer(
 
 	/* Rotate the transfer buffer if necessary */
 	if (
-		transferOption == REFRESH_TRANSFEROPTIONS_SAFEDISCARD &&
+		transferOption == REFRESH_TRANSFEROPTIONS_DISCARD &&
 		SDL_AtomicGet(&container->activeBuffer->referenceCount) > 0
 	) {
 		D3D11_INTERNAL_DiscardActiveTransferBuffer(
@@ -2334,7 +2334,7 @@ static void D3D11_CopyTextureToTexture(
 		srcTexture->handle,
 		srcSubresourceIndex,
 		&srcBox,
-		writeOption == REFRESH_WRITEOPTIONS_SAFEDISCARD ? D3D11_COPY_DISCARD : 0
+		writeOption == REFRESH_WRITEOPTIONS_DISCARD ? D3D11_COPY_DISCARD : 0
 	);
 }
 
@@ -2361,7 +2361,7 @@ static void D3D11_CopyBufferToBuffer(
 	 	(ID3D11Resource*) srcBuffer->handle,
 		0,
 		&srcBox,
-		writeOption == REFRESH_WRITEOPTIONS_SAFEDISCARD ? D3D11_COPY_DISCARD : 0
+		writeOption == REFRESH_WRITEOPTIONS_DISCARD ? D3D11_COPY_DISCARD : 0
 	);
 }
 
@@ -3069,7 +3069,7 @@ static void D3D11_BeginRenderPass(
 			texture->levelCount
 		);
 
-		if (depthStencilAttachmentInfo->writeOption == REFRESH_WRITEOPTIONS_SAFEDISCARD)
+		if (depthStencilAttachmentInfo->writeOption == REFRESH_WRITEOPTIONS_DISCARD)
 		{
 			ID3D11DeviceContext1_DiscardView(
 				d3d11CommandBuffer->context,

@@ -329,13 +329,13 @@ typedef enum Refresh_BorderColor
 
 typedef enum Refresh_TransferOptions
 {
-	REFRESH_TRANSFEROPTIONS_SAFEDISCARD,
+	REFRESH_TRANSFEROPTIONS_DISCARD,
 	REFRESH_TRANSFEROPTIONS_OVERWRITE
 } Refresh_TransferOptions;
 
 typedef enum Refresh_WriteOptions
 {
-	REFRESH_WRITEOPTIONS_SAFEDISCARD,
+	REFRESH_WRITEOPTIONS_DISCARD,
 	REFRESH_WRITEOPTIONS_SAFEOVERWRITE
 } Refresh_WriteOptions;
 
@@ -609,15 +609,14 @@ typedef struct Refresh_GraphicsPipelineCreateInfo
  *
  *
  * writeOption is ignored if loadOp is LOAD and is implicitly assumed to be SAFEOVERWRITE.
- * Interleaving LOAD and SAFEDISCARD successively on the same texture (not slice!) is undefined behavior.
+ * Interleaving LOAD and DISCARD successively on the same texture (not slice!) is undefined behavior.
  *
  * writeOption:
- *  SAFEDISCARD:
+ *  DISCARD:
  *    If this texture slice has been used in commands that have not completed,
- *    this option will prevent a data dependency at the cost of increased memory usage.
+ *    the implementation may choose to prevent a data dependency at the cost of increased memory usage.
  *    You may NOT assume that any of the previous texture data is retained.
- *    If the texture slice was not in use, this option is equivalent to SAFEOVERWRITE.
- *    This is a good option to prevent stalls when frequently reusing a texture slice in rendering.
+ *    This may prevent stalls when frequently reusing a texture slice in rendering.
  *
  *  SAFEOVERWRITE:
  *    Overwrites the data safely using a GPU memory barrier.
@@ -1122,12 +1121,12 @@ REFRESHAPI void Refresh_EndComputePass(
 /* Immediately copies data from a pointer into a TransferBuffer.
  *
  * transferOption:
- *  SAFEDISCARD:
+ *  DISCARD:
  *    If this TransferBuffer has been used in commands that have not completed,
  *    the issued commands will still be valid at the cost of increased memory usage.
  *    You may NOT assume that any of the previous data is retained.
  *    If the TransferBuffer was not in use, this option is equivalent to OVERWRITE.
- *    This is a good option to prevent stalls when frequently updating data.
+ *    This may prevent stalls when frequently updating data.
  *    It is not recommended to use this option with large TransferBuffers.
  *
  *  OVERWRITE:
@@ -1165,12 +1164,11 @@ REFRESHAPI void Refresh_BeginCopyPass(
 
 /*
  * writeOption:
- *  SAFEDISCARD:
+ *  DISCARD:
  *    If the destination resource has been used in commands that have not completed,
- *    this option will prevent a data dependency at the cost of increased memory usage.
+ *    the implementation may choose to prevent a data dependency at the cost of increased memory usage.
  *    You may NOT assume that any of the previous data is retained.
- *    If the destination resource was not in use, this option is equivalent to SAFEOVERWRITE.
- * 	  This is a good option to prevent stalls on resources with frequent updates.
+ *    This may prevent stalls on resources with frequent updates.
  *    It is not recommended to use this option with large resources.
  *
  *  SAFEOVERWRITE:
@@ -1203,12 +1201,11 @@ REFRESHAPI void Refresh_UploadToBuffer(
 
 /*
  * writeOption:
- *  SAFEDISCARD:
+ *  DISCARD:
  *    If the destination resource has been used in commands that have not completed,
- *    this option will prevent a data dependency at the cost of increased memory usage.
+ *    the implementation may choose to prevent a data dependency at the cost of increased memory usage.
  *    You may NOT assume that any of the previous data is retained.
- *    If the destination resource was not in use, this option is equivalent to SAFEOVERWRITE.
- * 	  This is a good option to prevent stalls on resources with frequent updates.
+ *    This may prevent stalls on resources with frequent updates.
  *    It is not recommended to use this option with large resources.
  *
  *  SAFEOVERWRITE:
@@ -1378,7 +1375,7 @@ REFRESHAPI void Refresh_ReleaseFence(
 
 /*
  * transferOption:
- *  SAFEDISCARD:
+ *  DISCARD:
  *    If this TransferBuffer has been used in commands that have not completed,
  *    the issued commands will still be valid at the cost of increased memory usage.
  *    You may NOT assume that any of the previous data is retained.
