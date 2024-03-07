@@ -35,7 +35,6 @@
 #include "Refresh_Driver.h"
 
 #include <SDL.h>
-#include <SDL_syswm.h>
 #include <SDL_vulkan.h>
 
 #define VULKAN_INTERNAL_clamp(val, min, max) SDL_max(min, SDL_min(val, max))
