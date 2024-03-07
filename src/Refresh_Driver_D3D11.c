@@ -765,6 +765,58 @@ static void D3D11_DestroyDevice(
 
 /* Drawing */
 
+static void D3D11_SetGraphicsConstantBuffers(
+	D3D11CommandBuffer *commandBuffer
+) {
+	uint32_t vertexOffsetInConstants = commandBuffer->vertexUniformBuffer != NULL ? commandBuffer->vertexUniformBuffer->drawOffset / 16 : 0;
+	uint32_t fragmentOffsetInConstants = commandBuffer->fragmentUniformBuffer != NULL ? commandBuffer->fragmentUniformBuffer->drawOffset / 16 : 0;
+	uint32_t vertexBlockSizeInConstants = commandBuffer->graphicsPipeline->vertexUniformBlockSize / 16;
+	uint32_t fragmentBlockSizeInConstants = commandBuffer->graphicsPipeline->fragmentUniformBlockSize / 16;
+	ID3D11Buffer *nullBuf = NULL;
+
+	if (commandBuffer->vertexUniformBuffer != NULL)
+	{
+		/* stupid workaround for god awful D3D11 drivers
+		 * see: https://learn.microsoft.com/en-us/windows/win32/api/d3d11_1/nf-d3d11_1-id3d11devicecontext1-vssetconstantbuffers1#calling-vssetconstantbuffers1-with-command-list-emulation
+		 */
+		ID3D11DeviceContext1_VSSetConstantBuffers(
+			commandBuffer->context,
+			0,
+			1,
+			&nullBuf
+		);
+
+		ID3D11DeviceContext1_VSSetConstantBuffers1(
+			commandBuffer->context,
+			0,
+			1,
+			&commandBuffer->vertexUniformBuffer->d3d11Buffer.handle,
+			&vertexOffsetInConstants,
+			&vertexBlockSizeInConstants
+		);
+	}
+
+	if (commandBuffer->fragmentUniformBuffer != NULL)
+	{
+		/* another stupid workaround for god awful D3D11 drivers */
+		ID3D11DeviceContext1_PSSetConstantBuffers(
+			commandBuffer->context,
+			0,
+			1,
+			&nullBuf
+		);
+
+		ID3D11DeviceContext1_PSSetConstantBuffers1(
+			commandBuffer->context,
+			0,
+			1,
+			&commandBuffer->fragmentUniformBuffer->d3d11Buffer.handle,
+			&fragmentOffsetInConstants,
+			&fragmentBlockSizeInConstants
+		);
+	}
+}
+
 static void D3D11_DrawInstancedPrimitives(
 	Refresh_Renderer *driverData,
 	Refresh_CommandBuffer *commandBuffer,
@@ -774,54 +826,8 @@ static void D3D11_DrawInstancedPrimitives(
 	uint32_t instanceCount
 ) {
 	D3D11CommandBuffer *d3d11CommandBuffer = (D3D11CommandBuffer*) commandBuffer;
-	uint32_t vertexOffsetInConstants = d3d11CommandBuffer->vertexUniformBuffer != NULL ? d3d11CommandBuffer->vertexUniformBuffer->drawOffset / 16 : 0;
-	uint32_t fragmentOffsetInConstants = d3d11CommandBuffer->fragmentUniformBuffer != NULL ? d3d11CommandBuffer->fragmentUniformBuffer->drawOffset / 16 : 0;
-	uint32_t vertexBlockSizeInConstants = d3d11CommandBuffer->graphicsPipeline->vertexUniformBlockSize / 16;
-	uint32_t fragmentBlockSizeInConstants = d3d11CommandBuffer->graphicsPipeline->fragmentUniformBlockSize / 16;
 
-	ID3D11Buffer *nullBuf = NULL;
-
-	if (d3d11CommandBuffer->vertexUniformBuffer != NULL)
-	{
-		/* stupid workaround for god awful D3D11 drivers
-		 * see: https://learn.microsoft.com/en-us/windows/win32/api/d3d11_1/nf-d3d11_1-id3d11devicecontext1-vssetconstantbuffers1#calling-vssetconstantbuffers1-with-command-list-emulation
-		 */
-		ID3D11DeviceContext1_VSSetConstantBuffers(
-			d3d11CommandBuffer->context,
-			0,
-			1,
-			&nullBuf
-		);
-
-		ID3D11DeviceContext1_VSSetConstantBuffers1(
-			d3d11CommandBuffer->context,
-			0,
-			1,
-			&d3d11CommandBuffer->vertexUniformBuffer->d3d11Buffer.handle,
-			&vertexOffsetInConstants,
-			&vertexBlockSizeInConstants
-		);
-	}
-
-	if (d3d11CommandBuffer->fragmentUniformBuffer != NULL)
-	{
-		/* another stupid workaround for god awful D3D11 drivers */
-		ID3D11DeviceContext1_PSSetConstantBuffers(
-			d3d11CommandBuffer->context,
-			0,
-			1,
-			&nullBuf
-		);
-
-		ID3D11DeviceContext1_PSSetConstantBuffers1(
-			d3d11CommandBuffer->context,
-			0,
-			1,
-			&d3d11CommandBuffer->fragmentUniformBuffer->d3d11Buffer.handle,
-			&fragmentOffsetInConstants,
-			&fragmentBlockSizeInConstants
-		);
-	}
+	D3D11_SetGraphicsConstantBuffers(d3d11CommandBuffer);
 
 	ID3D11DeviceContext_DrawIndexedInstanced(
 		d3d11CommandBuffer->context,
@@ -857,34 +863,8 @@ static void D3D11_DrawPrimitives(
 	uint32_t primitiveCount
 ) {
 	D3D11CommandBuffer *d3d11CommandBuffer = (D3D11CommandBuffer*) commandBuffer;
-	uint32_t vertexOffsetInConstants = d3d11CommandBuffer->vertexUniformBuffer != NULL ? d3d11CommandBuffer->vertexUniformBuffer->drawOffset / 16 : 0;
-	uint32_t fragmentOffsetInConstants = d3d11CommandBuffer->fragmentUniformBuffer != NULL ? d3d11CommandBuffer->fragmentUniformBuffer->drawOffset / 16 : 0;
-	uint32_t vertexBlockSizeInConstants = d3d11CommandBuffer->graphicsPipeline->vertexUniformBlockSize / 16;
-	uint32_t fragmentBlockSizeInConstants = d3d11CommandBuffer->graphicsPipeline->fragmentUniformBlockSize / 16;
 
-	if (d3d11CommandBuffer->vertexUniformBuffer != NULL)
-	{
-		ID3D11DeviceContext1_VSSetConstantBuffers1(
-			d3d11CommandBuffer->context,
-			0,
-			1,
-			&d3d11CommandBuffer->vertexUniformBuffer->d3d11Buffer.handle,
-			&vertexOffsetInConstants,
-			&vertexBlockSizeInConstants
-		);
-	}
-
-	if (d3d11CommandBuffer->fragmentUniformBuffer != NULL)
-	{
-		ID3D11DeviceContext1_PSSetConstantBuffers1(
-			d3d11CommandBuffer->context,
-			0,
-			1,
-			&d3d11CommandBuffer->fragmentUniformBuffer->d3d11Buffer.handle,
-			&fragmentOffsetInConstants,
-			&fragmentBlockSizeInConstants
-		);
-	}
+	D3D11_SetGraphicsConstantBuffers(d3d11CommandBuffer);
 
 	ID3D11DeviceContext_Draw(
 		d3d11CommandBuffer->context,
@@ -903,34 +883,8 @@ static void D3D11_DrawPrimitivesIndirect(
 ) {
 	D3D11CommandBuffer *d3d11CommandBuffer = (D3D11CommandBuffer*) commandBuffer;
 	D3D11Buffer *d3d11Buffer = (D3D11Buffer*) gpuBuffer;
-	uint32_t vertexOffsetInConstants = d3d11CommandBuffer->vertexUniformBuffer != NULL ? d3d11CommandBuffer->vertexUniformBuffer->drawOffset / 16 : 0;
-	uint32_t fragmentOffsetInConstants = d3d11CommandBuffer->fragmentUniformBuffer != NULL ? d3d11CommandBuffer->fragmentUniformBuffer->drawOffset / 16 : 0;
-	uint32_t vertexBlockSizeInConstants = d3d11CommandBuffer->graphicsPipeline->vertexUniformBlockSize / 16;
-	uint32_t fragmentBlockSizeInConstants = d3d11CommandBuffer->graphicsPipeline->fragmentUniformBlockSize / 16;
 
-	if (d3d11CommandBuffer->vertexUniformBuffer != NULL)
-	{
-		ID3D11DeviceContext1_VSSetConstantBuffers1(
-			d3d11CommandBuffer->context,
-			0,
-			1,
-			&d3d11CommandBuffer->vertexUniformBuffer->d3d11Buffer.handle,
-			&vertexOffsetInConstants,
-			&vertexBlockSizeInConstants
-		);
-	}
-
-	if (d3d11CommandBuffer->fragmentUniformBuffer != NULL)
-	{
-		ID3D11DeviceContext1_PSSetConstantBuffers1(
-			d3d11CommandBuffer->context,
-			0,
-			1,
-			&d3d11CommandBuffer->fragmentUniformBuffer->d3d11Buffer.handle,
-			&fragmentOffsetInConstants,
-			&fragmentBlockSizeInConstants
-		);
-	}
+	D3D11_SetGraphicsConstantBuffers(d3d11CommandBuffer);
 
 	/* D3D11: "We have multi-draw at home!"
 	 * Multi-draw at home:
@@ -2445,10 +2399,10 @@ static uint8_t D3D11_INTERNAL_CreateUniformBuffer(
 
 	bufferDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
 	bufferDesc.ByteWidth = UBO_BUFFER_SIZE;
-	bufferDesc.CPUAccessFlags = 0;
+	bufferDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
 	bufferDesc.MiscFlags = 0;
 	bufferDesc.StructureByteStride = 0;
-	bufferDesc.Usage = D3D11_USAGE_DEFAULT;
+	bufferDesc.Usage = D3D11_USAGE_DYNAMIC;
 
 	res = ID3D11Device_CreateBuffer(
 		renderer->device,
@@ -2485,8 +2439,7 @@ static uint8_t D3D11_INTERNAL_CreateUniformBuffer(
 static uint8_t D3D11_INTERNAL_AcquireUniformBuffer(
 	D3D11Renderer *renderer,
 	D3D11CommandBuffer *commandBuffer,
-	D3D11UniformBuffer **uniformBufferToBind,
-	uint64_t blockSize
+	D3D11UniformBuffer **uniformBufferToBind
 ) {
 	D3D11UniformBuffer *uniformBuffer;
 
@@ -2536,17 +2489,28 @@ static void D3D11_INTERNAL_SetUniformBufferData(
 	void* data,
 	uint32_t dataLength
 ) {
-	D3D11_BOX dstBox = { uniformBuffer->offset, 0, 0, uniformBuffer->offset + dataLength, 1, 1 };
+	D3D11_MAPPED_SUBRESOURCE subres;
 
-	ID3D11DeviceContext1_UpdateSubresource1(
+	HRESULT res = ID3D11DeviceContext_Map(
 		commandBuffer->context,
 		(ID3D11Resource*) uniformBuffer->d3d11Buffer.handle,
 		0,
-		&dstBox,
+		uniformBuffer->offset == 0 ? D3D11_MAP_WRITE_DISCARD : D3D11_MAP_WRITE_NO_OVERWRITE,
+		0,
+		&subres
+	);
+	ERROR_CHECK_RETURN("Could not map buffer for writing!", );
+
+	SDL_memcpy(
+		(uint8_t*) subres.pData + uniformBuffer->offset,
 		data,
-		0,
-		0,
-		uniformBuffer->offset == 0 ? D3D11_COPY_DISCARD : D3D11_COPY_NO_OVERWRITE
+		dataLength
+	);
+
+	ID3D11DeviceContext_Unmap(
+		commandBuffer->context,
+		(ID3D11Resource*) uniformBuffer->d3d11Buffer.handle,
+		0
 	);
 }
 
@@ -2566,8 +2530,7 @@ static void D3D11_PushVertexShaderUniforms(
 		D3D11_INTERNAL_AcquireUniformBuffer(
 			renderer,
 			d3d11CommandBuffer,
-			&d3d11CommandBuffer->vertexUniformBuffer,
-			graphicsPipeline->vertexUniformBlockSize
+			&d3d11CommandBuffer->vertexUniformBuffer
 		);
 	}
 
@@ -2600,8 +2563,7 @@ static void D3D11_PushFragmentShaderUniforms(
 		D3D11_INTERNAL_AcquireUniformBuffer(
 			renderer,
 			d3d11CommandBuffer,
-			&d3d11CommandBuffer->fragmentUniformBuffer,
-			graphicsPipeline->fragmentUniformBlockSize
+			&d3d11CommandBuffer->fragmentUniformBuffer
 		);
 	}
 
@@ -2634,8 +2596,7 @@ static void D3D11_PushComputeShaderUniforms(
 		D3D11_INTERNAL_AcquireUniformBuffer(
 			renderer,
 			d3d11CommandBuffer,
-			&d3d11CommandBuffer->computeUniformBuffer,
-			computePipeline->computeUniformBlockSize
+			&d3d11CommandBuffer->computeUniformBuffer
 		);
 	}
 
@@ -3292,8 +3253,7 @@ static void D3D11_BindGraphicsPipeline(
 		D3D11_INTERNAL_AcquireUniformBuffer(
 			renderer,
 			d3d11CommandBuffer,
-			&d3d11CommandBuffer->vertexUniformBuffer,
-			pipeline->vertexUniformBlockSize
+			&d3d11CommandBuffer->vertexUniformBuffer
 		);
 	}
 
@@ -3303,8 +3263,7 @@ static void D3D11_BindGraphicsPipeline(
 		D3D11_INTERNAL_AcquireUniformBuffer(
 			renderer,
 			d3d11CommandBuffer,
-			&d3d11CommandBuffer->fragmentUniformBuffer,
-			pipeline->fragmentUniformBlockSize
+			&d3d11CommandBuffer->fragmentUniformBuffer
 		);
 	}
 
@@ -3467,8 +3426,7 @@ static void D3D11_BindComputePipeline(
 		D3D11_INTERNAL_AcquireUniformBuffer(
 			renderer,
 			d3d11CommandBuffer,
-			&d3d11CommandBuffer->computeUniformBuffer,
-			pipeline->computeUniformBlockSize
+			&d3d11CommandBuffer->computeUniformBuffer
 		);
 	}
 
