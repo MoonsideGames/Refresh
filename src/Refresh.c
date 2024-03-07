@@ -52,10 +52,10 @@
 #endif
 
 static const Refresh_Driver *backends[] = {
-	NULL,
 	VULKAN_DRIVER,
 	D3D11_DRIVER,
-	PS5_DRIVER
+	PS5_DRIVER,
+	NULL
 };
 
 /* Logging */
@@ -146,40 +146,27 @@ uint32_t Refresh_LinkedVersion(void)
 
 static Refresh_Backend selectedBackend = REFRESH_BACKEND_INVALID;
 
-Refresh_Backend Refresh_SelectBackend(Refresh_Backend preferredBackend, uint32_t *flags)
-{
+Refresh_Backend Refresh_SelectBackend(
+	Refresh_Backend *preferredBackends,
+	uint32_t preferredBackendCount,
+	uint32_t *flags
+) {
 	uint32_t i;
+	Refresh_Backend currentPreferredBackend;
 
-	if (preferredBackend != REFRESH_BACKEND_DONTCARE)
+	/* Iterate the array and return if a backend successfully prepares. */
+
+	for (i = 0; i < preferredBackendCount; i += 1)
 	{
-		if (backends[preferredBackend] == NULL)
+		currentPreferredBackend = preferredBackends[i];
+		if (backends[currentPreferredBackend] != NULL && backends[currentPreferredBackend]->PrepareDriver(flags))
 		{
-			Refresh_LogWarn("Preferred backend was not compiled into this binary! Attempting to fall back!");
-		}
-		else if (backends[preferredBackend]->PrepareDriver(flags))
-		{
-			selectedBackend = preferredBackend;
-			return selectedBackend;
-		}
-	}
-
-	/* Iterate until we find an appropriate backend. */
-
-	for (i = 1; i < SDL_arraysize(backends); i += 1)
-	{
-		if (i != preferredBackend && backends[i] != NULL && backends[i]->PrepareDriver(flags))
-		{
-			selectedBackend = i;
-			return i;
+			selectedBackend = currentPreferredBackend;
+			return currentPreferredBackend;
 		}
 	}
 
-	if (backends[i] == NULL)
-	{
-		Refresh_LogError("No supported Refresh backend found!");
-	}
-
-	selectedBackend = REFRESH_BACKEND_INVALID;
+	Refresh_LogError("No supported Refresh backend found!");
 	return REFRESH_BACKEND_INVALID;
 }
 

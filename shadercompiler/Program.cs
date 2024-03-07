@@ -208,13 +208,13 @@ partial class Program
 				if (data.vulkan)
 				{
 					string inputPath = Path.Combine(tempDir, $"{shaderName}.spv");
-					WriteShaderBlob(writer, inputPath, 1);
+					WriteShaderBlob(writer, inputPath, 0);
 				}
 
 				if (data.d3d11)
 				{
 					string inputPath = Path.Combine(tempDir, $"{shaderName}.hlsl");
-					WriteShaderBlob(writer, inputPath, 2);
+					WriteShaderBlob(writer, inputPath, 1);
 				}
 
 #if PS5
@@ -222,7 +222,7 @@ partial class Program
 				{
 					string ext = GetPS5ShaderFileExtension();
 					string inputPath = Path.Combine(tempDir, $"{shaderName}{ext}");
-					WriteShaderBlob(writer, inputPath, 3);
+					WriteShaderBlob(writer, inputPath, 2);
 				}
 #endif
 			}

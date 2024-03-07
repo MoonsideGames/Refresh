@@ -341,7 +341,6 @@ typedef enum Refresh_WriteOptions
 
 typedef enum Refresh_Backend
 {
-	REFRESH_BACKEND_DONTCARE,
 	REFRESH_BACKEND_VULKAN,
 	REFRESH_BACKEND_D3D11,
 	REFRESH_BACKEND_PS5,
@@ -692,16 +691,21 @@ REFRESHAPI void Refresh_HookLogFunctions(
 
 /* Select the graphics API backend that Refresh should use.
  *
- * Note that Refresh is not required to select your preferred backend
- * if it detects an incompatibility.
+ * You must provide a pointer to an array of Refresh_Backend enums in order of desired selection.
+ * If a backend fails to prepare, Refresh will attempt to select the next one in the array.
  *
  * Returns the backend that will actually be used, and fills in a window flag bitmask.
  * This bitmask should be used to create all windows that the device claims.
  *
- * preferredBackend: The preferred backend that Refresh should select.
+ * If all requested backends fail to prepare, this function returns REFRESH_BACKEND_INVALID.
+ *
  * flags: A pointer to a bitflag value that will be filled in with required SDL_WindowFlags masks.
  */
-REFRESHAPI Refresh_Backend Refresh_SelectBackend(Refresh_Backend preferredBackend, uint32_t *flags);
+REFRESHAPI Refresh_Backend Refresh_SelectBackend(
+	Refresh_Backend *preferredBackends,
+	uint32_t preferredBackendCount,
+	uint32_t *flags
+);
 
 /* Device */
 
