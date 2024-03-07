@@ -329,13 +329,13 @@ typedef enum Refresh_BorderColor
 
 typedef enum Refresh_TransferOptions
 {
-	REFRESH_TRANSFEROPTIONS_DISCARD,
+	REFRESH_TRANSFEROPTIONS_CYCLE,
 	REFRESH_TRANSFEROPTIONS_OVERWRITE
 } Refresh_TransferOptions;
 
 typedef enum Refresh_WriteOptions
 {
-	REFRESH_WRITEOPTIONS_DISCARD,
+	REFRESH_WRITEOPTIONS_CYCLE,
 	REFRESH_WRITEOPTIONS_SAFEOVERWRITE
 } Refresh_WriteOptions;
 
@@ -609,10 +609,10 @@ typedef struct Refresh_GraphicsPipelineCreateInfo
  *
  *
  * writeOption is ignored if loadOp is LOAD and is implicitly assumed to be SAFEOVERWRITE.
- * Interleaving LOAD and DISCARD successively on the same texture (not slice!) is undefined behavior.
+ * Interleaving LOAD and CYCLE successively on the same texture (not slice!) is undefined behavior.
  *
  * writeOption:
- *  DISCARD:
+ *  CYCLE:
  *    If this texture slice has been used in commands that have not completed,
  *    the implementation may choose to prevent a data dependency at the cost of increased memory usage.
  *    You may NOT assume that any of the previous texture data is retained.
@@ -1121,7 +1121,7 @@ REFRESHAPI void Refresh_EndComputePass(
 /* Immediately copies data from a pointer into a TransferBuffer.
  *
  * transferOption:
- *  DISCARD:
+ *  CYCLE:
  *    If this TransferBuffer has been used in commands that have not completed,
  *    the issued commands will still be valid at the cost of increased memory usage.
  *    You may NOT assume that any of the previous data is retained.
@@ -1164,7 +1164,7 @@ REFRESHAPI void Refresh_BeginCopyPass(
 
 /*
  * writeOption:
- *  DISCARD:
+ *  CYCLE:
  *    If the destination resource has been used in commands that have not completed,
  *    the implementation may choose to prevent a data dependency at the cost of increased memory usage.
  *    You may NOT assume that any of the previous data is retained.
@@ -1201,7 +1201,7 @@ REFRESHAPI void Refresh_UploadToBuffer(
 
 /*
  * writeOption:
- *  DISCARD:
+ *  CYCLE:
  *    If the destination resource has been used in commands that have not completed,
  *    the implementation may choose to prevent a data dependency at the cost of increased memory usage.
  *    You may NOT assume that any of the previous data is retained.
@@ -1375,7 +1375,7 @@ REFRESHAPI void Refresh_ReleaseFence(
 
 /*
  * transferOption:
- *  DISCARD:
+ *  CYCLE:
  *    If this TransferBuffer has been used in commands that have not completed,
  *    the issued commands will still be valid at the cost of increased memory usage.
  *    You may NOT assume that any of the previous data is retained.

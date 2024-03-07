@@ -728,7 +728,7 @@ typedef struct VulkanBufferContainer
 	VulkanBufferHandle *activeBufferHandle;
 
 	/* These are all the buffer handles that have been used by this container.
-	 * If the resource is bound and then updated with DISCARD, a new resource
+	 * If the resource is bound and then updated with CYCLE, a new resource
 	 * will be added to this list.
 	 * These can be reused after they are submitted and command processing is complete.
 	 */
@@ -862,7 +862,7 @@ typedef struct VulkanTextureContainer
 	VulkanTextureHandle *activeTextureHandle;
 
 	/* These are all the texture handles that have been used by this container.
-	 * If the resource is bound and then updated with DISCARD, a new resource
+	 * If the resource is bound and then updated with CYCLE, a new resource
 	 * will be added to this list.
 	 * These can be reused after they are submitted and command processing is complete.
 	 */
@@ -870,8 +870,8 @@ typedef struct VulkanTextureContainer
 	uint32_t textureCount;
 	VulkanTextureHandle **textureHandles;
 
-	/* Swapchain images cannot be discarded */
-	uint8_t canBeDiscarded;
+	/* Swapchain images cannot be cycled */
+	uint8_t canBeCycled;
 } VulkanTextureContainer;
 
 typedef struct VulkanFramebuffer
@@ -4998,7 +4998,7 @@ static uint8_t VULKAN_INTERNAL_CreateSwapchain(
 
 	for (i = 0; i < swapchainData->imageCount; i += 1)
 	{
-		swapchainData->textureContainers[i].canBeDiscarded = 0;
+		swapchainData->textureContainers[i].canBeCycled = 0;
 		swapchainData->textureContainers[i].textureCapacity = 0;
 		swapchainData->textureContainers[i].textureCount = 0;
 		swapchainData->textureContainers[i].textureHandles = NULL;
@@ -5770,14 +5770,14 @@ static VulkanTextureHandle* VULKAN_INTERNAL_CreateTextureHandle(
 	return textureHandle;
 }
 
-static void VULKAN_INTERNAL_DiscardActiveBuffer(
+static void VULKAN_INTERNAL_CycleActiveBuffer(
 	VulkanRenderer *renderer,
 	VulkanBufferContainer *bufferContainer
 ) {
 	VulkanBufferHandle *bufferHandle;
 	uint32_t i;
 
-	/* If a previously-discarded buffer is available, we can use that. */
+	/* If a previously-cycled buffer is available, we can use that. */
 	for (i = 0; i < bufferContainer->bufferCount; i += 1)
 	{
 		bufferHandle = bufferContainer->bufferHandles[i];
@@ -5814,7 +5814,7 @@ static void VULKAN_INTERNAL_DiscardActiveBuffer(
 	bufferContainer->bufferCount += 1;
 }
 
-static void VULKAN_INTERNAL_DiscardActiveTexture(
+static void VULKAN_INTERNAL_CycleActiveTexture(
 	VulkanRenderer *renderer,
 	VulkanTextureContainer *textureContainer
 ) {
@@ -5822,7 +5822,7 @@ static void VULKAN_INTERNAL_DiscardActiveTexture(
 	uint32_t i, j;
 	int32_t refCountTotal;
 
-	/* If a previously-discarded texture is available, we can use that. */
+	/* If a previously-cycled texture is available, we can use that. */
 	for (i = 0; i < textureContainer->textureCount; i += 1)
 	{
 		textureHandle = textureContainer->textureHandles[i];
@@ -6957,7 +6957,7 @@ static Refresh_Texture* VULKAN_CreateTexture(
 	}
 
 	container = SDL_malloc(sizeof(VulkanTextureContainer));
-	container->canBeDiscarded = 1;
+	container->canBeCycled = 1;
 	container->activeTextureHandle = textureHandle;
 	container->textureCapacity = 1;
 	container->textureCount = 1 ;
@@ -7802,12 +7802,12 @@ static void VULKAN_BeginRenderPass(
 		textureSlice = VULKAN_INTERNAL_RefreshToVulkanTextureSlice(&colorAttachmentInfos[i].textureSlice);
 
 		if (
-			colorAttachmentInfos[i].writeOption == REFRESH_WRITEOPTIONS_DISCARD &&
+			colorAttachmentInfos[i].writeOption == REFRESH_WRITEOPTIONS_CYCLE &&
 			colorAttachmentInfos[i].loadOp != REFRESH_LOADOP_LOAD &&
-			textureContainer->canBeDiscarded &&
+			textureContainer->canBeCycled &&
 			SDL_AtomicGet(&textureSlice->referenceCount) > 0
 		) {
-			VULKAN_INTERNAL_DiscardActiveTexture(
+			VULKAN_INTERNAL_CycleActiveTexture(
 				renderer,
 				textureContainer
 			);
@@ -7842,13 +7842,13 @@ static void VULKAN_BeginRenderPass(
 		textureSlice = VULKAN_INTERNAL_RefreshToVulkanTextureSlice(&depthStencilAttachmentInfo->textureSlice);
 
 		if (
-			depthStencilAttachmentInfo->writeOption == REFRESH_WRITEOPTIONS_DISCARD &&
+			depthStencilAttachmentInfo->writeOption == REFRESH_WRITEOPTIONS_CYCLE &&
 			depthStencilAttachmentInfo->loadOp != REFRESH_LOADOP_LOAD &&
 			depthStencilAttachmentInfo->stencilLoadOp != REFRESH_LOADOP_LOAD &&
-			textureContainer->canBeDiscarded &&
+			textureContainer->canBeCycled &&
 			SDL_AtomicGet(&textureSlice->referenceCount) > 0
 		) {
-			VULKAN_INTERNAL_DiscardActiveTexture(
+			VULKAN_INTERNAL_CycleActiveTexture(
 				renderer,
 				textureContainer
 			);
@@ -8377,10 +8377,10 @@ static void VULKAN_BindComputeBuffers(
 		currentVulkanBuffer = bufferContainer->activeBufferHandle->vulkanBuffer;
 
 		if (
-			pBindings[i].writeOption == REFRESH_WRITEOPTIONS_DISCARD &&
+			pBindings[i].writeOption == REFRESH_WRITEOPTIONS_CYCLE &&
 			SDL_AtomicGet(&bufferContainer->activeBufferHandle->vulkanBuffer->referenceCount) > 0
 		) {
-			VULKAN_INTERNAL_DiscardActiveBuffer(
+			VULKAN_INTERNAL_CycleActiveBuffer(
 				renderer,
 				bufferContainer
 			);
@@ -8436,10 +8436,10 @@ static void VULKAN_BindComputeTextures(
 		currentTextureSlice = VULKAN_INTERNAL_RefreshToVulkanTextureSlice(&pBindings[i].textureSlice);
 
 		if (
-			pBindings[i].writeOption == REFRESH_WRITEOPTIONS_DISCARD &&
+			pBindings[i].writeOption == REFRESH_WRITEOPTIONS_CYCLE &&
 			SDL_AtomicGet(&currentTextureSlice->referenceCount) > 0
 		) {
-			VULKAN_INTERNAL_DiscardActiveTexture(
+			VULKAN_INTERNAL_CycleActiveTexture(
 				renderer,
 				currentTextureContainer
 			);
@@ -8576,10 +8576,10 @@ static void VULKAN_SetTransferData(
 	VulkanBufferContainer *transferBufferContainer = (VulkanBufferContainer*) transferBuffer;
 
 	if (
-		transferOption == REFRESH_TRANSFEROPTIONS_DISCARD &&
+		transferOption == REFRESH_TRANSFEROPTIONS_CYCLE &&
 		SDL_AtomicGet(&transferBufferContainer->activeBufferHandle->vulkanBuffer->referenceCount) > 0
 	) {
-		VULKAN_INTERNAL_DiscardActiveBuffer(
+		VULKAN_INTERNAL_CycleActiveBuffer(
 			renderer,
 			transferBufferContainer
 		);
@@ -8648,11 +8648,11 @@ static void VULKAN_UploadToTexture(
 	vulkanTextureSlice = VULKAN_INTERNAL_RefreshToVulkanTextureSlice(&textureRegion->textureSlice);
 
 	if (
-		writeOption == REFRESH_WRITEOPTIONS_DISCARD &&
-		vulkanTextureContainer->canBeDiscarded &&
+		writeOption == REFRESH_WRITEOPTIONS_CYCLE &&
+		vulkanTextureContainer->canBeCycled &&
 		SDL_AtomicGet(&vulkanTextureSlice->referenceCount) > 0
 	) {
-		VULKAN_INTERNAL_DiscardActiveTexture(
+		VULKAN_INTERNAL_CycleActiveTexture(
 			renderer,
 			vulkanTextureContainer
 		);
@@ -8717,10 +8717,10 @@ static void VULKAN_UploadToBuffer(
 	VkBufferCopy bufferCopy;
 
 	if (
-		writeOption == REFRESH_WRITEOPTIONS_DISCARD &&
+		writeOption == REFRESH_WRITEOPTIONS_CYCLE &&
 		SDL_AtomicGet(&gpuBufferContainer->activeBufferHandle->vulkanBuffer->referenceCount) > 0
 	) {
-		VULKAN_INTERNAL_DiscardActiveBuffer(
+		VULKAN_INTERNAL_CycleActiveBuffer(
 			renderer,
 			gpuBufferContainer
 		);
@@ -8775,11 +8775,11 @@ static void VULKAN_CopyTextureToTexture(
 	dstSlice = VULKAN_INTERNAL_RefreshToVulkanTextureSlice(&destination->textureSlice);
 
 	if (
-		writeOption == REFRESH_WRITEOPTIONS_DISCARD &&
-		dstContainer->canBeDiscarded &&
+		writeOption == REFRESH_WRITEOPTIONS_CYCLE &&
+		dstContainer->canBeCycled &&
 		SDL_AtomicGet(&dstSlice->referenceCount) > 0
 	) {
-		VULKAN_INTERNAL_DiscardActiveTexture(
+		VULKAN_INTERNAL_CycleActiveTexture(
 			renderer,
 			dstContainer
 		);
@@ -8849,10 +8849,10 @@ static void VULKAN_CopyBufferToBuffer(
 	VkBufferCopy bufferCopy;
 
 	if (
-		writeOption == REFRESH_WRITEOPTIONS_DISCARD &&
+		writeOption == REFRESH_WRITEOPTIONS_CYCLE &&
 		SDL_AtomicGet(&dstContainer->activeBufferHandle->vulkanBuffer->referenceCount) > 0
 	) {
-		VULKAN_INTERNAL_DiscardActiveBuffer(
+		VULKAN_INTERNAL_CycleActiveBuffer(
 			renderer,
 			dstContainer
 		);
@@ -10470,10 +10470,10 @@ static void VULKAN_DownloadFromTexture(
 	VulkanResourceAccessType originalBufferAccessType;
 
 	if (
-		transferOption == REFRESH_TRANSFEROPTIONS_DISCARD &&
+		transferOption == REFRESH_TRANSFEROPTIONS_CYCLE &&
 		SDL_AtomicGet(&transferBufferContainer->activeBufferHandle->vulkanBuffer->referenceCount) > 0
 	) {
-		VULKAN_INTERNAL_DiscardActiveBuffer(
+		VULKAN_INTERNAL_CycleActiveBuffer(
 			renderer,
 			transferBufferContainer
 		);
@@ -10559,10 +10559,10 @@ static void VULKAN_DownloadFromBuffer(
 	VulkanResourceAccessType originalGpuBufferAccessType;
 
 	if (
-		transferOption == REFRESH_TRANSFEROPTIONS_DISCARD &&
+		transferOption == REFRESH_TRANSFEROPTIONS_CYCLE &&
 		SDL_AtomicGet(&transferBufferContainer->activeBufferHandle->vulkanBuffer->referenceCount) > 0
 	) {
-		VULKAN_INTERNAL_DiscardActiveBuffer(
+		VULKAN_INTERNAL_CycleActiveBuffer(
 			renderer,
 			transferBufferContainer
 		);
