@@ -73,7 +73,7 @@ typedef struct VulkanExtensions
 
 /* Defines */
 
-#define SMALL_ALLOCATION_THRESHOLD 1048576      /* 1   MiB */
+#define SMALL_ALLOCATION_THRESHOLD 2097152      /* 2   MiB */
 #define SMALL_ALLOCATION_SIZE 16777216          /* 16  MiB */
 #define LARGE_ALLOCATION_INCREMENT 67108864     /* 64  MiB */
 #define UBO_BUFFER_SIZE 1048576                 /* 1  MiB */
@@ -441,7 +441,6 @@ struct VulkanMemoryAllocation
 	VulkanMemoryFreeRegion **freeRegions;
 	uint32_t freeRegionCount;
 	uint32_t freeRegionCapacity;
-	uint8_t dedicated;
 	uint8_t availableForAllocation;
 	VkDeviceSize freeSpace;
 	VkDeviceSize usedSpace;
@@ -710,6 +709,7 @@ struct VulkanBuffer
 	uint8_t requireHostVisible;
 	uint8_t preferDeviceLocal;
 	uint8_t preferHostLocal;
+	uint8_t preserveContentsOnDefrag;
 
 	SDL_atomic_t referenceCount; /* Tracks command buffer usage */
 
@@ -2397,7 +2397,6 @@ static uint8_t VULKAN_INTERNAL_AllocateMemory(
 	VkImage image,
 	uint32_t memoryTypeIndex,
 	VkDeviceSize allocationSize,
-	uint8_t dedicated, /* indicates that one resource uses this memory and the memory shouldn't be moved */
 	uint8_t isHostVisible,
 	VulkanMemoryAllocation **pMemoryAllocation)
 {
@@ -2427,17 +2426,8 @@ static uint8_t VULKAN_INTERNAL_AllocateMemory(
 		allocator->allocationCount - 1
 	] = allocation;
 
-	if (dedicated)
-	{
-		allocation->dedicated = 1;
-		allocation->availableForAllocation = 0;
-	}
-	else
-	{
-		allocInfo.pNext = NULL;
-		allocation->dedicated = 0;
-		allocation->availableForAllocation = 1;
-	}
+	allocInfo.pNext = NULL;
+	allocation->availableForAllocation = 1;
 
 	allocation->usedRegions = SDL_malloc(sizeof(VulkanMemoryUsedRegion*));
 	allocation->usedRegionCount = 0;
@@ -2553,7 +2543,6 @@ static uint8_t VULKAN_INTERNAL_BindResourceMemory(
 	VulkanRenderer* renderer,
 	uint32_t memoryTypeIndex,
 	VkMemoryRequirements2KHR* memoryRequirements,
-	uint8_t forceDedicated,
 	VkDeviceSize resourceSize, /* may be different from requirements size! */
 	VkBuffer buffer, /* may be VK_NULL_HANDLE */
 	VkImage image, /* may be VK_NULL_HANDLE */
@@ -2568,7 +2557,6 @@ static uint8_t VULKAN_INTERNAL_BindResourceMemory(
 	VkDeviceSize requiredSize, allocationSize;
 	VkDeviceSize alignedOffset;
 	uint32_t newRegionSize, newRegionOffset;
-	uint8_t shouldAllocDedicated = forceDedicated;
 	uint8_t isHostVisible, smallAllocation, allocationResult;
 	int32_t i;
 
@@ -2591,34 +2579,31 @@ static uint8_t VULKAN_INTERNAL_BindResourceMemory(
 
 	selectedRegion = NULL;
 
-	if (!shouldAllocDedicated)
+	for (i = allocator->sortedFreeRegionCount - 1; i >= 0; i -= 1)
 	{
-		for (i = allocator->sortedFreeRegionCount - 1; i >= 0; i -= 1)
+		region = allocator->sortedFreeRegions[i];
+
+		if (smallAllocation && region->allocation->size != SMALL_ALLOCATION_SIZE)
 		{
-			region = allocator->sortedFreeRegions[i];
+			/* region is not in a small allocation */
+			continue;
+		}
 
-			if (smallAllocation && region->allocation->size != SMALL_ALLOCATION_SIZE)
-			{
-				/* region is not in a small allocation */
-				continue;
-			}
+		if (!smallAllocation && region->allocation->size == SMALL_ALLOCATION_SIZE)
+		{
+			/* allocation is not small and current region is in a small allocation */
+			continue;
+		}
 
-			if (!smallAllocation && region->allocation->size == SMALL_ALLOCATION_SIZE)
-			{
-				/* allocation is not small and current region is in a small allocation */
-				continue;
-			}
+		alignedOffset = VULKAN_INTERNAL_NextHighestAlignment(
+			region->offset,
+			memoryRequirements->memoryRequirements.alignment
+		);
 
-			alignedOffset = VULKAN_INTERNAL_NextHighestAlignment(
-				region->offset,
-				memoryRequirements->memoryRequirements.alignment
-			);
-
-			if (alignedOffset + requiredSize <= region->offset + region->size)
-			{
-				selectedRegion = region;
-				break;
-			}
+		if (alignedOffset + requiredSize <= region->offset + region->size)
+		{
+			selectedRegion = region;
+			break;
 		}
 	}
 
@@ -2697,7 +2682,6 @@ static uint8_t VULKAN_INTERNAL_BindResourceMemory(
 
 	/* No suitable free regions exist, allocate a new memory region */
 	if (
-		!shouldAllocDedicated &&
 		renderer->allocationsToDefragCount == 0 &&
 		!renderer->defragInProgress
 	) {
@@ -2705,11 +2689,7 @@ static uint8_t VULKAN_INTERNAL_BindResourceMemory(
 		VULKAN_INTERNAL_MarkAllocationsForDefrag(renderer);
 	}
 
-	if (shouldAllocDedicated)
-	{
-		allocationSize = requiredSize;
-	}
-	else if (requiredSize > SMALL_ALLOCATION_THRESHOLD)
+	if (requiredSize > SMALL_ALLOCATION_THRESHOLD)
 	{
 		/* allocate a page of required size aligned to LARGE_ALLOCATION_INCREMENT increments */
 		allocationSize =
@@ -2726,7 +2706,6 @@ static uint8_t VULKAN_INTERNAL_BindResourceMemory(
 		image,
 		memoryTypeIndex,
 		allocationSize,
-		shouldAllocDedicated,
 		isHostVisible,
 		&allocation
 	);
@@ -2837,7 +2816,6 @@ static uint8_t VULKAN_INTERNAL_BindMemoryForImage(
 			renderer,
 			memoryTypeIndex,
 			&memoryRequirements,
-			dedicated,
 			memoryRequirements.memoryRequirements.size,
 			VK_NULL_HANDLE,
 			image,
@@ -2873,7 +2851,6 @@ static uint8_t VULKAN_INTERNAL_BindMemoryForImage(
 				renderer,
 				memoryTypeIndex,
 				&memoryRequirements,
-				0,
 				memoryRequirements.memoryRequirements.size,
 				VK_NULL_HANDLE,
 				image,
@@ -2901,7 +2878,6 @@ static uint8_t VULKAN_INTERNAL_BindMemoryForBuffer(
 	uint8_t requireHostVisible,
 	uint8_t preferHostLocal,
 	uint8_t preferDeviceLocal,
-	uint8_t dedicatedAllocation,
 	VulkanMemoryUsedRegion** usedRegion
 ) {
 	uint8_t bindResult = 0;
@@ -2943,7 +2919,6 @@ static uint8_t VULKAN_INTERNAL_BindMemoryForBuffer(
 			renderer,
 			memoryTypeIndex,
 			&memoryRequirements,
-			dedicatedAllocation,
 			size,
 			buffer,
 			VK_NULL_HANDLE,
@@ -2998,7 +2973,6 @@ static uint8_t VULKAN_INTERNAL_BindMemoryForBuffer(
 				renderer,
 				memoryTypeIndex,
 				&memoryRequirements,
-				dedicatedAllocation,
 				size,
 				buffer,
 				VK_NULL_HANDLE,
@@ -4030,7 +4004,7 @@ static VulkanBuffer* VULKAN_INTERNAL_CreateBuffer(
 	uint8_t requireHostVisible,
 	uint8_t preferHostLocal,
 	uint8_t preferDeviceLocal,
-	uint8_t dedicatedAllocation
+	uint8_t preserveContentsOnDefrag
 ) {
 	VulkanBuffer* buffer;
 	VkResult vulkanResult;
@@ -4045,6 +4019,7 @@ static VulkanBuffer* VULKAN_INTERNAL_CreateBuffer(
 	buffer->requireHostVisible = requireHostVisible;
 	buffer->preferHostLocal = preferHostLocal;
 	buffer->preferDeviceLocal = preferDeviceLocal;
+	buffer->preserveContentsOnDefrag = preserveContentsOnDefrag;
 	buffer->markedForDestroy = 0;
 
 	bufferCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -4055,6 +4030,12 @@ static VulkanBuffer* VULKAN_INTERNAL_CreateBuffer(
 	bufferCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 	bufferCreateInfo.queueFamilyIndexCount = 1;
 	bufferCreateInfo.pQueueFamilyIndices = &renderer->queueFamilyIndex;
+
+	/* Set transfer bits so we can defrag */
+	if (preserveContentsOnDefrag)
+	{
+		bufferCreateInfo.usage |= VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+	}
 
 	vulkanResult = renderer->vkCreateBuffer(
 		renderer->logicalDevice,
@@ -4071,7 +4052,6 @@ static VulkanBuffer* VULKAN_INTERNAL_CreateBuffer(
 		buffer->requireHostVisible,
 		buffer->preferHostLocal,
 		buffer->preferDeviceLocal,
-		dedicatedAllocation,
 		&buffer->usedRegion
 	);
 
@@ -4103,13 +4083,11 @@ static VulkanBufferHandle* VULKAN_INTERNAL_CreateBufferHandle(
 	VkBufferUsageFlags usageFlags,
 	uint8_t requireHostVisible,
 	uint8_t preferHostLocal,
-	uint8_t preferDeviceLocal
+	uint8_t preferDeviceLocal,
+	uint8_t preserveContentsOnDefrag
 ) {
 	VulkanBufferHandle* bufferHandle;
 	VulkanBuffer* buffer;
-
-	/* always set transfer bits so we can defrag */
-	usageFlags |= VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 
 	buffer = VULKAN_INTERNAL_CreateBuffer(
 		renderer,
@@ -4119,7 +4097,7 @@ static VulkanBufferHandle* VULKAN_INTERNAL_CreateBufferHandle(
 		requireHostVisible,
 		preferHostLocal,
 		preferDeviceLocal,
-		0
+		preserveContentsOnDefrag
 	);
 
 	if (buffer == NULL)
@@ -4154,7 +4132,8 @@ static VulkanBufferContainer* VULKAN_INTERNAL_CreateBufferContainer(
 		usageFlags,
 		requireHostVisible,
 		preferHostLocal,
-		preferDeviceLocal
+		preferDeviceLocal,
+		0
 	);
 
 	if (bufferHandle == NULL)
@@ -4281,7 +4260,8 @@ static uint8_t VULKAN_INTERNAL_CreateUniformBuffer(
 		VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
 		1,
 		0,
-		1
+		1,
+		0
 	);
 
 	if (uniformBuffer->bufferHandle == NULL)
@@ -5807,7 +5787,8 @@ static void VULKAN_INTERNAL_DiscardActiveBuffer(
 		bufferContainer->activeBufferHandle->vulkanBuffer->usage,
 		bufferContainer->activeBufferHandle->vulkanBuffer->requireHostVisible,
 		bufferContainer->activeBufferHandle->vulkanBuffer->preferHostLocal,
-		bufferContainer->activeBufferHandle->vulkanBuffer->preferDeviceLocal
+		bufferContainer->activeBufferHandle->vulkanBuffer->preferDeviceLocal,
+		bufferContainer->activeBufferHandle->vulkanBuffer->preserveContentsOnDefrag
 	);
 
 	EXPAND_ARRAY_IF_NEEDED(
@@ -10234,7 +10215,7 @@ static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 				currentRegion->vulkanBuffer->requireHostVisible,
 				currentRegion->vulkanBuffer->preferHostLocal,
 				currentRegion->vulkanBuffer->preferDeviceLocal,
-				0
+				currentRegion->vulkanBuffer->preserveContentsOnDefrag
 			);
 
 			if (newBuffer == NULL)
@@ -10244,8 +10225,12 @@ static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 			}
 
 			/* Copy buffer contents if necessary */
-			if (currentRegion->vulkanBuffer->resourceAccessType != RESOURCE_ACCESS_NONE)
-			{
+			if (
+				currentRegion->vulkanBuffer->preserveContentsOnDefrag &&
+				currentRegion->vulkanBuffer->resourceAccessType != RESOURCE_ACCESS_NONE
+			) {
+				VulkanResourceAccessType originalAccessType = currentRegion->vulkanBuffer->resourceAccessType;
+
 				VULKAN_INTERNAL_BufferMemoryBarrier(
 					renderer,
 					commandBuffer->commandBuffer,
@@ -10272,14 +10257,12 @@ static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 					&bufferCopy
 				);
 
-				/*
 				VULKAN_INTERNAL_BufferMemoryBarrier(
 					renderer,
 					commandBuffer->commandBuffer,
-					originalResourceAccessType,
+					originalAccessType,
 					newBuffer
 				);
-				*/
 
 				VULKAN_INTERNAL_TrackBuffer(renderer, commandBuffer, currentRegion->vulkanBuffer);
 				VULKAN_INTERNAL_TrackBuffer(renderer, commandBuffer, newBuffer);
@@ -10326,6 +10309,8 @@ static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 
 				if (srcSlice->resourceAccessType != RESOURCE_ACCESS_NONE)
 				{
+					VulkanResourceAccessType originalAccessType = srcSlice->resourceAccessType;
+
 					VULKAN_INTERNAL_ImageMemoryBarrier(
 						renderer,
 						commandBuffer->commandBuffer,
@@ -10366,6 +10351,13 @@ static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 						AccessMap[dstSlice->resourceAccessType].imageLayout,
 						1,
 						&imageCopy
+					);
+
+					VULKAN_INTERNAL_ImageMemoryBarrier(
+						renderer,
+						commandBuffer->commandBuffer,
+						originalAccessType,
+						srcSlice
 					);
 
 					VULKAN_INTERNAL_TrackTextureSlice(renderer, commandBuffer, srcSlice);
