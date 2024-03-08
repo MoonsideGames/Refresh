@@ -316,11 +316,13 @@ Refresh_GpuBuffer* Refresh_CreateGpuBuffer(
 
 Refresh_TransferBuffer* Refresh_CreateTransferBuffer(
 	Refresh_Device *device,
+	Refresh_TransferUsage usage,
 	uint32_t sizeInBytes
 ) {
 	NULL_RETURN_NULL(device);
 	return device->CreateTransferBuffer(
 		device->driverData,
+		usage,
 		sizeInBytes
 	);
 }

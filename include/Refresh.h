@@ -327,6 +327,12 @@ typedef enum Refresh_BorderColor
 	REFRESH_BORDERCOLOR_INT_OPAQUE_WHITE
 } Refresh_BorderColor;
 
+typedef enum Refresh_TransferUsage
+{
+	REFRESH_TRANSFERUSAGE_BUFFER,
+	REFRESH_TRANSFERUSAGE_TEXTURE
+} Refresh_TransferUsage;
+
 typedef enum Refresh_TransferOptions
 {
 	REFRESH_TRANSFEROPTIONS_CYCLE,
@@ -767,10 +773,15 @@ REFRESHAPI Refresh_GpuBuffer* Refresh_CreateGpuBuffer(
 
 /* Creates a TransferBuffer.
  *
+ * usage:
+ *   Determines what kind of resource the buffer will transfer.
+ *   D3D11's UpdateSubresource is busted when uploading buffers on some drivers,
+ *   so this helps the implementation take an efficient path.
  * sizeInBytes: The length of the buffer.
  */
 REFRESHAPI Refresh_TransferBuffer* Refresh_CreateTransferBuffer(
 	Refresh_Device *device,
+	Refresh_TransferUsage usage,
 	uint32_t sizeInBytes
 );
 

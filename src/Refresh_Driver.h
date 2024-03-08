@@ -272,6 +272,7 @@ struct Refresh_Device
 
 	Refresh_TransferBuffer* (*CreateTransferBuffer)(
 		Refresh_Renderer *driverData,
+		Refresh_TransferUsage usage,
 		uint32_t sizeInBytes
 	);
 

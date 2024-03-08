@@ -7026,6 +7026,7 @@ static Refresh_GpuBuffer* VULKAN_CreateGpuBuffer(
 
 static Refresh_TransferBuffer* VULKAN_CreateTransferBuffer(
 	Refresh_Renderer *driverData,
+	Refresh_TransferUsage usage, /* ignored on Vulkan */
 	uint32_t sizeInBytes
 ) {
 	return (Refresh_TransferBuffer*) VULKAN_INTERNAL_CreateBufferContainer(
