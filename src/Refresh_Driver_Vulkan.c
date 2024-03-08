@@ -4392,6 +4392,12 @@ static VulkanUniformBuffer* VULKAN_INTERNAL_AcquireUniformBufferFromPool(
 	commandBuffer->boundUniformBuffers[commandBuffer->boundUniformBufferCount] = uniformBuffer;
 	commandBuffer->boundUniformBufferCount += 1;
 
+	VULKAN_INTERNAL_TrackBuffer(
+		renderer,
+		commandBuffer,
+		uniformBuffer->bufferHandle->vulkanBuffer
+	);
+
 	return uniformBuffer;
 }
 
