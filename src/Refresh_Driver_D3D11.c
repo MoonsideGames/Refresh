@@ -453,7 +453,7 @@ typedef struct D3D11TransferBufferContainer
 	 */
 	uint32_t bufferCapacity;
 	uint32_t bufferCount;
-	D3D11TransferBuffer *buffers;
+	D3D11TransferBuffer **buffers;
 } D3D11TransferBufferContainer;
 
 typedef struct D3D11UniformBuffer
@@ -1889,14 +1889,17 @@ static void D3D11_INTERNAL_TrackTransferBuffer(
 	commandBuffer->usedTransferBufferCount += 1;
 }
 
-static void D3D11_INTERNAL_InitTransferBuffer(
+static D3D11TransferBuffer* D3D11_INTERNAL_CreateTransferBuffer(
 	D3D11Renderer *renderer,
-	uint32_t sizeInBytes,
-	D3D11TransferBuffer *pTransferBuffer
+	uint32_t sizeInBytes
 ) {
-	pTransferBuffer->data = (uint8_t*) SDL_malloc(sizeInBytes);
-	pTransferBuffer->size = sizeInBytes;
-	SDL_AtomicSet(&pTransferBuffer->referenceCount, 0);
+	D3D11TransferBuffer *transferBuffer = SDL_malloc(sizeof(D3D11TransferBuffer));
+
+	transferBuffer->data = (uint8_t*) SDL_malloc(sizeInBytes);
+	transferBuffer->size = sizeInBytes;
+	SDL_AtomicSet(&transferBuffer->referenceCount, 0);
+
+	return transferBuffer;
 }
 
 /* This actually returns a container handle so we can rotate buffers on Cycle. */
@@ -1912,13 +1915,13 @@ static Refresh_TransferBuffer* D3D11_CreateTransferBuffer(
 	container->buffers = SDL_malloc(
 		container->bufferCapacity * sizeof(D3D11TransferBuffer)
 	);
-	D3D11_INTERNAL_InitTransferBuffer(
+
+	container->buffers[0] = D3D11_INTERNAL_CreateTransferBuffer(
 		renderer,
-		sizeInBytes,
-		&container->buffers[0]
+		sizeInBytes
 	);
 
-	container->activeBuffer = &container->buffers[0];
+	container->activeBuffer = container->buffers[0];
 
 	return (Refresh_TransferBuffer*) container;
 }
@@ -1929,31 +1932,32 @@ static void D3D11_INTERNAL_CycleActiveTransferBuffer(
 	D3D11Renderer *renderer,
 	D3D11TransferBufferContainer *container
 ) {
+	uint32_t size = container->activeBuffer->size;
+
 	for (uint32_t i = 0; i < container->bufferCount; i += 1)
 	{
-		if (SDL_AtomicGet(&container->buffers[i].referenceCount) == 0)
+		if (SDL_AtomicGet(&container->buffers[i]->referenceCount) == 0)
 		{
-			container->activeBuffer = &container->buffers[i];
+			container->activeBuffer = container->buffers[i];
 			return;
 		}
 	}
 
 	EXPAND_ARRAY_IF_NEEDED(
 		container->buffers,
-		D3D11TransferBuffer,
+		D3D11TransferBuffer*,
 		container->bufferCount + 1,
 		container->bufferCapacity,
 		container->bufferCapacity + 1
 	);
 
-	D3D11_INTERNAL_InitTransferBuffer(
+	container->buffers[container->bufferCount] = D3D11_INTERNAL_CreateTransferBuffer(
 		renderer,
-		container->activeBuffer->size,
-		&container->buffers[container->bufferCount]
+		size
 	);
 	container->bufferCount += 1;
 
-	container->activeBuffer = &container->buffers[container->bufferCount - 1];
+	container->activeBuffer = container->buffers[container->bufferCount - 1];
 }
 
 static void D3D11_SetTransferData(
@@ -2092,8 +2096,8 @@ static void D3D11_UploadToBuffer(
 		0,
 		&dstBox,
 		d3d11TransferBuffer->data + copyParams->srcOffset,
-		0,
-		0,
+		copyParams->size,
+		1,
 		writeOption == REFRESH_WRITEOPTIONS_CYCLE ? D3D11_COPY_DISCARD : 0
 	);
 
@@ -2792,7 +2796,8 @@ static void D3D11_INTERNAL_DestroyTransferBufferContainer(
 ) {
 	for (uint32_t i = 0; i < transferBufferContainer->bufferCount; i += 1)
 	{
-		SDL_free(transferBufferContainer->buffers[i].data);
+		SDL_free(transferBufferContainer->buffers[i]->data);
+		SDL_free(transferBufferContainer->buffers[i]);
 	}
 	SDL_free(transferBufferContainer->buffers);
 }
@@ -4028,7 +4033,7 @@ static void D3D11_INTERNAL_PerformPendingDestroys(
 		int32_t referenceCount = 0;
 		for (uint32_t j = 0; j < renderer->transferBufferContainersToDestroy[i]->bufferCount; j += 1)
 		{
-			referenceCount += SDL_AtomicGet(&renderer->transferBufferContainersToDestroy[i]->buffers[j].referenceCount);
+			referenceCount += SDL_AtomicGet(&renderer->transferBufferContainersToDestroy[i]->buffers[j]->referenceCount);
 		}
 
 		if (referenceCount == 0)
