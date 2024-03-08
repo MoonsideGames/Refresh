@@ -1913,7 +1913,7 @@ static Refresh_TransferBuffer* D3D11_CreateTransferBuffer(
 	container->bufferCapacity = 1;
 	container->bufferCount = 1;
 	container->buffers = SDL_malloc(
-		container->bufferCapacity * sizeof(D3D11TransferBuffer)
+		container->bufferCapacity * sizeof(D3D11TransferBuffer*)
 	);
 
 	container->buffers[0] = D3D11_INTERNAL_CreateTransferBuffer(
