@@ -254,10 +254,17 @@ static D3D11_INPUT_CLASSIFICATION RefreshToD3D11_VertexInputRate[] =
 
 static D3D11_TEXTURE_ADDRESS_MODE RefreshToD3D11_SamplerAddressMode[] =
 {
-	D3D11_TEXTURE_ADDRESS_WRAP,	/* REPEAT */
-	D3D11_TEXTURE_ADDRESS_MIRROR,	/* MIRRORED_REPEAT */
-	D3D11_TEXTURE_ADDRESS_CLAMP,	/* CLAMP_TO_EDGE */
-	D3D11_TEXTURE_ADDRESS_BORDER	/* CLAMP_TO_BORDER */
+	D3D11_TEXTURE_ADDRESS_WRAP,     /* REPEAT */
+	D3D11_TEXTURE_ADDRESS_MIRROR,   /* MIRRORED_REPEAT */
+	D3D11_TEXTURE_ADDRESS_CLAMP,    /* CLAMP_TO_EDGE */
+	D3D11_TEXTURE_ADDRESS_BORDER    /* CLAMP_TO_BORDER */
+};
+
+static D3D11_COPY_FLAGS RefreshToD3D11_WriteOption[] =
+{
+	D3D11_COPY_DISCARD,      /* CYCLE */
+	D3D11_COPY_NO_OVERWRITE, /* UNSAFE */
+	0                        /* SAFE */
 };
 
 static void RefreshToD3D11_BorderColor(
@@ -2138,6 +2145,7 @@ static void D3D11_UploadToTexture(
 	D3D11TransferBufferContainer *container = (D3D11TransferBufferContainer*) transferBuffer;
 	D3D11TransferBuffer *d3d11TransferBuffer = container->activeBuffer;
 	D3D11Texture *d3d11Texture = (D3D11Texture*) textureRegion->textureSlice.texture;
+	D3D11_COPY_FLAGS copyFlags = RefreshToD3D11_WriteOption[writeOption];
 	uint32_t bufferStride = copyParams->bufferStride;
 	uint32_t bufferImageHeight = copyParams->bufferImageHeight;
 	int32_t w = textureRegion->w;
@@ -2150,13 +2158,10 @@ static void D3D11_UploadToTexture(
 		h = (h + blockSize - 1) & ~(blockSize - 1);
 	}
 
-	if (bufferStride == 0)
+	if (bufferStride == 0 || bufferImageHeight == 0)
 	{
 		bufferStride = BytesPerRow(w, d3d11Texture->format);
-	}
-	if (bufferImageHeight == 0)
-	{
-		bufferImageHeight = h;
+		bufferImageHeight = h * Texture_GetFormatSize(d3d11Texture->format);
 	}
 
 	D3D11_BOX dstBox;
@@ -2179,7 +2184,7 @@ static void D3D11_UploadToTexture(
 		(uint8_t*) d3d11TransferBuffer->textureTransfer.data + copyParams->bufferOffset,
 		bufferStride,
 		bufferStride * bufferImageHeight,
-		writeOption == REFRESH_WRITEOPTIONS_CYCLE ? D3D11_COPY_DISCARD : 0
+		copyFlags
 	);
 
 	D3D11_INTERNAL_TrackTransferBuffer(d3d11CommandBuffer, d3d11TransferBuffer);
@@ -2198,7 +2203,7 @@ static void D3D11_UploadToBuffer(
 	D3D11TransferBufferContainer *container = (D3D11TransferBufferContainer*) transferBuffer;
 	D3D11TransferBuffer *d3d11TransferBuffer = container->activeBuffer;
 	D3D11Buffer *d3d11Buffer = (D3D11Buffer*) gpuBuffer;
-
+	D3D11_COPY_FLAGS copyFlags = RefreshToD3D11_WriteOption[writeOption];
 	D3D11_BOX srcBox = { copyParams->srcOffset, 0, 0, copyParams->srcOffset + copyParams->size, 1, 1 };
 
 	ID3D11DeviceContext1_CopySubresourceRegion1(
@@ -2211,7 +2216,7 @@ static void D3D11_UploadToBuffer(
 		(ID3D11Resource*) d3d11TransferBuffer->bufferTransfer.stagingBuffer,
 		0,
 		&srcBox,
-		writeOption == REFRESH_WRITEOPTIONS_CYCLE ? D3D11_COPY_DISCARD : 0
+		copyFlags
 	);
 
 	D3D11_INTERNAL_TrackTransferBuffer(d3d11CommandBuffer, d3d11TransferBuffer);
@@ -2236,8 +2241,8 @@ static void D3D11_DownloadFromTexture(
 		d3d11Texture->levelCount
 	);
 	int32_t formatSize = Texture_GetFormatSize(d3d11Texture->format);
-	uint32_t bufferStride = copyParams->bufferStride == 0 ? (textureRegion->w * formatSize) : copyParams->bufferStride;
-	uint32_t bufferImageHeight = copyParams->bufferImageHeight == 0 ? (textureRegion->h * formatSize) : copyParams->bufferImageHeight;
+	uint32_t bufferStride = copyParams->bufferStride;
+	uint32_t bufferImageHeight = copyParams->bufferImageHeight;
 	D3D11_BOX srcBox = {textureRegion->x, textureRegion->y, textureRegion->z, textureRegion->x + textureRegion->w, textureRegion->y + textureRegion->h, 1};
 	D3D11_MAPPED_SUBRESOURCE subresource;
 	HRESULT res;
@@ -2252,6 +2257,12 @@ static void D3D11_DownloadFromTexture(
 			container
 		);
 		d3d11TransferBuffer = container->activeBuffer;
+	}
+
+	if (bufferStride == 0 || bufferImageHeight == 0)
+	{
+		bufferStride = BytesPerRow(textureRegion->w, d3d11Texture->format);
+		bufferImageHeight = textureRegion->h * Texture_GetFormatSize(d3d11Texture->format);
 	}
 
 	stagingDesc.Width = textureRegion->w;
@@ -2385,6 +2396,7 @@ static void D3D11_CopyTextureToTexture(
 		dstTexture->levelCount
 	);
 	D3D11_BOX srcBox = { source->x, source->y, source->z, source->x + source->w, source->y + source->h, 1 };
+	D3D11_COPY_FLAGS copyFlags = RefreshToD3D11_WriteOption[writeOption];
 
 	ID3D11DeviceContext1_CopySubresourceRegion1(
 		d3d11CommandBuffer->context,
@@ -2396,7 +2408,7 @@ static void D3D11_CopyTextureToTexture(
 		srcTexture->handle,
 		srcSubresourceIndex,
 		&srcBox,
-		writeOption == REFRESH_WRITEOPTIONS_CYCLE ? D3D11_COPY_DISCARD : 0
+		copyFlags
 	);
 }
 
@@ -2412,6 +2424,7 @@ static void D3D11_CopyBufferToBuffer(
 	D3D11Buffer *srcBuffer = (D3D11Buffer*) source;
 	D3D11Buffer *dstBuffer = (D3D11Buffer*) destination;
 	D3D11_BOX srcBox = { copyParams->srcOffset, 0, 0, copyParams->srcOffset + copyParams->size, 1, 1 };
+	D3D11_COPY_FLAGS copyFlags = RefreshToD3D11_WriteOption[writeOption];
 
 	ID3D11DeviceContext1_CopySubresourceRegion1(
 		d3d11CommandBuffer->context,
@@ -2423,7 +2436,7 @@ static void D3D11_CopyBufferToBuffer(
 	 	(ID3D11Resource*) srcBuffer->handle,
 		0,
 		&srcBox,
-		writeOption == REFRESH_WRITEOPTIONS_CYCLE ? D3D11_COPY_DISCARD : 0
+		copyFlags
 	);
 }
 
@@ -3138,14 +3151,6 @@ static void D3D11_BeginRenderPass(
 			depthStencilAttachmentInfo->textureSlice.layer,
 			texture->levelCount
 		);
-
-		if (depthStencilAttachmentInfo->writeOption == REFRESH_WRITEOPTIONS_CYCLE)
-		{
-			ID3D11DeviceContext1_DiscardView(
-				d3d11CommandBuffer->context,
-				(ID3D11View*) texture->subresources[subresourceIndex].depthStencilTargetView
-			);
-		}
 
 		dsv = texture->subresources[subresourceIndex].depthStencilTargetView;
 	}

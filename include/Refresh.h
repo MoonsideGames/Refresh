@@ -336,13 +336,14 @@ typedef enum Refresh_TransferUsage
 typedef enum Refresh_TransferOptions
 {
 	REFRESH_TRANSFEROPTIONS_CYCLE,
-	REFRESH_TRANSFEROPTIONS_OVERWRITE
+	REFRESH_TRANSFEROPTIONS_UNSAFE
 } Refresh_TransferOptions;
 
 typedef enum Refresh_WriteOptions
 {
 	REFRESH_WRITEOPTIONS_CYCLE,
-	REFRESH_WRITEOPTIONS_SAFEOVERWRITE
+	REFRESH_WRITEOPTIONS_UNSAFE,
+	REFRESH_WRITEOPTIONS_SAFE
 } Refresh_WriteOptions;
 
 typedef enum Refresh_Backend
@@ -614,7 +615,7 @@ typedef struct Refresh_GraphicsPipelineCreateInfo
  *     This is often a good option for depth/stencil textures.
  *
  *
- * writeOption is ignored if loadOp is LOAD and is implicitly assumed to be SAFEOVERWRITE.
+ * writeOption is ignored if loadOp is LOAD and is implicitly assumed to be SAFE.
  * Interleaving LOAD and CYCLE successively on the same texture (not slice!) is undefined behavior.
  *
  * writeOption:
@@ -624,8 +625,13 @@ typedef struct Refresh_GraphicsPipelineCreateInfo
  *    You may NOT assume that any of the previous texture data is retained.
  *    This may prevent stalls when frequently reusing a texture slice in rendering.
  *
- *  SAFEOVERWRITE:
- *    Overwrites the data safely using a GPU memory barrier.
+ *  UNSAFE:
+ *    Overwrites the data unsafely. You must ensure that data used by earlier draw calls
+ *    is not affected or visual corruption can occur.
+ *
+ *  SAFE:
+ *    Overwrites the data safely. Earlier draw calls will not be affected.
+ *    This is usually the slowest option.
  */
 
 typedef struct Refresh_ColorAttachmentInfo
@@ -1136,11 +1142,11 @@ REFRESHAPI void Refresh_EndComputePass(
  *    If this TransferBuffer has been used in commands that have not completed,
  *    the issued commands will still be valid at the cost of increased memory usage.
  *    You may NOT assume that any of the previous data is retained.
- *    If the TransferBuffer was not in use, this option is equivalent to OVERWRITE.
+ *    If the TransferBuffer was not in use, this option is equivalent to UNSAFE.
  *    This may prevent stalls when frequently updating data.
  *    It is not recommended to use this option with large TransferBuffers.
  *
- *  OVERWRITE:
+ *  UNSAFE:
  *    Overwrites the data regardless of whether a command has been issued.
  *    Use this option with great care, as it can cause data races to occur!
  */
@@ -1182,8 +1188,13 @@ REFRESHAPI void Refresh_BeginCopyPass(
  *    This may prevent stalls on resources with frequent updates.
  *    It is not recommended to use this option with large resources.
  *
- *  SAFEOVERWRITE:
- *    Overwrites the data safely using a GPU memory barrier.
+ *  UNSAFE:
+ *    Overwrites the data unsafely. You must ensure that data used by earlier draw calls
+ *    is not affected or visual corruption can occur.
+ *
+ *  SAFE:
+ *    Overwrites the data safely. Earlier draw calls will not be affected.
+ *    This is usually the slowest option.
  */
 
 /* Uploads data from a TransferBuffer to a texture. */
@@ -1219,8 +1230,13 @@ REFRESHAPI void Refresh_UploadToBuffer(
  *    This may prevent stalls on resources with frequent updates.
  *    It is not recommended to use this option with large resources.
  *
- *  SAFEOVERWRITE:
- *    Overwrites the data safely using a GPU memory barrier.
+ *  UNSAFE:
+ *    Overwrites the data unsafely. You must ensure that data used by earlier draw calls
+ *    is not affected or visual corruption can occur.
+ *
+ *  SAFE:
+ *    Overwrites the data safely. Earlier draw calls will not be affected.
+ *    This is usually the slowest option.
  */
 
 /* Performs a texture-to-texture copy. */
@@ -1390,10 +1406,10 @@ REFRESHAPI void Refresh_ReleaseFence(
  *    If this TransferBuffer has been used in commands that have not completed,
  *    the issued commands will still be valid at the cost of increased memory usage.
  *    You may NOT assume that any of the previous data is retained.
- *    If the TransferBuffer was not in use, this option is equivalent to OVERWRITE.
+ *    If the TransferBuffer was not in use, this option is equivalent to UNSAFE.
  *    It is not recommended to use this option with large TransferBuffers.
  *
- *  OVERWRITE:
+ *  UNSAFE:
  *    Overwrites the data regardless of whether a command has been issued.
  *    Use this option with great care, as it can cause data races to occur!
  */

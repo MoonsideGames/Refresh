@@ -716,6 +716,7 @@ struct VulkanBuffer
 	VulkanBufferHandle *handle;
 
 	uint8_t markedForDestroy; /* so that defrag doesn't double-free */
+	uint8_t defragInProgress;
 };
 
 /* Buffer resources consist of multiple backing buffer handles so that data transfers
@@ -822,6 +823,8 @@ typedef struct VulkanTextureSlice
 
 	VkImageView view;
 	VulkanTexture *msaaTex; /* NULL if parent sample count is 1 or is depth target */
+
+	uint8_t defragInProgress;
 } VulkanTextureSlice;
 
 struct VulkanTexture
@@ -4020,6 +4023,7 @@ static VulkanBuffer* VULKAN_INTERNAL_CreateBuffer(
 	buffer->preferHostLocal = preferHostLocal;
 	buffer->preferDeviceLocal = preferDeviceLocal;
 	buffer->preserveContentsOnDefrag = preserveContentsOnDefrag;
+	buffer->defragInProgress = 0;
 	buffer->markedForDestroy = 0;
 
 	bufferCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -5062,6 +5066,8 @@ static uint8_t VULKAN_INTERNAL_CreateSwapchain(
 		swapchainData->textureContainers[i].activeTextureHandle->vulkanTexture->slices[0].level = 0;
 		swapchainData->textureContainers[i].activeTextureHandle->vulkanTexture->slices[0].resourceAccessType = RESOURCE_ACCESS_NONE;
 		swapchainData->textureContainers[i].activeTextureHandle->vulkanTexture->slices[0].msaaTex = NULL;
+		swapchainData->textureContainers[i].activeTextureHandle->vulkanTexture->slices[0].defragInProgress = 0;
+
 		VULKAN_INTERNAL_CreateSliceView(
 			renderer,
 			swapchainData->textureContainers[i].activeTextureHandle->vulkanTexture,
@@ -5702,6 +5708,7 @@ static VulkanTexture* VULKAN_INTERNAL_CreateTexture(
 			texture->slices[sliceIndex].level = j;
 			texture->slices[sliceIndex].resourceAccessType = RESOURCE_ACCESS_NONE;
 			texture->slices[sliceIndex].msaaTex = NULL;
+			texture->slices[sliceIndex].defragInProgress = 0;
 			SDL_AtomicSet(&texture->slices[sliceIndex].referenceCount, 0);
 
 			if (
@@ -5874,6 +5881,85 @@ static void VULKAN_INTERNAL_CycleActiveTexture(
 		textureContainer->textureCount
 	] = textureContainer->activeTextureHandle;
 	textureContainer->textureCount += 1;
+}
+
+static VulkanBuffer* VULKAN_INTERNAL_PrepareBufferForWrite(
+	VulkanRenderer *renderer,
+	VulkanCommandBuffer *commandBuffer,
+	VulkanBufferContainer *bufferContainer,
+	Refresh_WriteOptions writeOption,
+	VulkanResourceAccessType nextResourceAccessType
+) {
+	if (
+		writeOption == REFRESH_WRITEOPTIONS_SAFE ||
+		bufferContainer->activeBufferHandle->vulkanBuffer->defragInProgress /* barrier on defrag to avoid corruption */
+	) {
+		VULKAN_INTERNAL_BufferMemoryBarrier(
+			renderer,
+			commandBuffer->commandBuffer,
+			nextResourceAccessType,
+			bufferContainer->activeBufferHandle->vulkanBuffer
+		);
+	}
+	else if (
+		writeOption == REFRESH_WRITEOPTIONS_CYCLE &&
+		SDL_AtomicGet(&bufferContainer->activeBufferHandle->vulkanBuffer->referenceCount) > 0
+	) {
+		VULKAN_INTERNAL_CycleActiveBuffer(
+			renderer,
+			bufferContainer
+		);
+	}
+	else /* UNSAFE */
+	{
+		bufferContainer->activeBufferHandle->vulkanBuffer->resourceAccessType = nextResourceAccessType;
+	}
+
+	return bufferContainer->activeBufferHandle->vulkanBuffer;
+}
+
+static VulkanTextureSlice* VULKAN_INTERNAL_PrepareTextureSliceForWrite(
+	VulkanRenderer *renderer,
+	VulkanCommandBuffer *commandBuffer,
+	VulkanTextureContainer *textureContainer,
+	uint32_t layer,
+	uint32_t level,
+	Refresh_WriteOptions writeOption,
+	VulkanResourceAccessType nextResourceAccessType
+) {
+	VulkanTextureSlice *textureSlice = VULKAN_INTERNAL_FetchTextureSlice(
+		textureContainer->activeTextureHandle->vulkanTexture,
+		layer,
+		level
+	);
+
+	if (
+		writeOption == REFRESH_WRITEOPTIONS_CYCLE &&
+		textureContainer->canBeCycled &&
+		!textureSlice->defragInProgress &&
+		SDL_AtomicGet(&textureSlice->referenceCount) > 0
+	) {
+		VULKAN_INTERNAL_CycleActiveTexture(
+			renderer,
+			textureContainer
+		);
+
+		textureSlice = VULKAN_INTERNAL_FetchTextureSlice(
+			textureContainer->activeTextureHandle->vulkanTexture,
+			layer,
+			level
+		);
+	}
+
+	/* always do barrier because of layout transitions */
+	VULKAN_INTERNAL_ImageMemoryBarrier(
+		renderer,
+		commandBuffer->commandBuffer,
+		nextResourceAccessType,
+		textureSlice
+	);
+
+	return textureSlice;
 }
 
 static VkRenderPass VULKAN_INTERNAL_CreateRenderPass(
@@ -7806,23 +7892,9 @@ static void VULKAN_BeginRenderPass(
 	for (i = 0; i < colorAttachmentCount; i += 1)
 	{
 		textureContainer = (VulkanTextureContainer*) colorAttachmentInfos[i].textureSlice.texture;
-		textureSlice = VULKAN_INTERNAL_RefreshToVulkanTextureSlice(&colorAttachmentInfos[i].textureSlice);
 
-		if (
-			colorAttachmentInfos[i].writeOption == REFRESH_WRITEOPTIONS_CYCLE &&
-			colorAttachmentInfos[i].loadOp != REFRESH_LOADOP_LOAD &&
-			textureContainer->canBeCycled &&
-			SDL_AtomicGet(&textureSlice->referenceCount) > 0
-		) {
-			VULKAN_INTERNAL_CycleActiveTexture(
-				renderer,
-				textureContainer
-			);
-			textureSlice = VULKAN_INTERNAL_RefreshToVulkanTextureSlice(&colorAttachmentInfos[i].textureSlice);
-		}
-
-		w = textureSlice->parent->dimensions.width >> colorAttachmentInfos[i].textureSlice.mipLevel;
-		h = textureSlice->parent->dimensions.height >> colorAttachmentInfos[i].textureSlice.mipLevel;
+		w = textureContainer->activeTextureHandle->vulkanTexture->dimensions.width >> colorAttachmentInfos[i].textureSlice.mipLevel;
+		h = textureContainer->activeTextureHandle->vulkanTexture->dimensions.height >> colorAttachmentInfos[i].textureSlice.mipLevel;
 
 		/* The framebuffer cannot be larger than the smallest attachment. */
 
@@ -7836,7 +7908,7 @@ static void VULKAN_BeginRenderPass(
 			framebufferHeight = h;
 		}
 
-		if (!textureSlice->parent->isRenderTarget)
+		if (!textureContainer->activeTextureHandle->vulkanTexture->isRenderTarget)
 		{
 			Refresh_LogError("Color attachment texture was not designated as a target!");
 			return;
@@ -7846,24 +7918,9 @@ static void VULKAN_BeginRenderPass(
 	if (depthStencilAttachmentInfo != NULL)
 	{
 		textureContainer = (VulkanTextureContainer*) depthStencilAttachmentInfo->textureSlice.texture;
-		textureSlice = VULKAN_INTERNAL_RefreshToVulkanTextureSlice(&depthStencilAttachmentInfo->textureSlice);
 
-		if (
-			depthStencilAttachmentInfo->writeOption == REFRESH_WRITEOPTIONS_CYCLE &&
-			depthStencilAttachmentInfo->loadOp != REFRESH_LOADOP_LOAD &&
-			depthStencilAttachmentInfo->stencilLoadOp != REFRESH_LOADOP_LOAD &&
-			textureContainer->canBeCycled &&
-			SDL_AtomicGet(&textureSlice->referenceCount) > 0
-		) {
-			VULKAN_INTERNAL_CycleActiveTexture(
-				renderer,
-				textureContainer
-			);
-			textureSlice = VULKAN_INTERNAL_RefreshToVulkanTextureSlice(&depthStencilAttachmentInfo->textureSlice);
-		}
-
-		w = textureSlice->parent->dimensions.width >> depthStencilAttachmentInfo->textureSlice.mipLevel;
-		h = textureSlice->parent->dimensions.height >> depthStencilAttachmentInfo->textureSlice.mipLevel;
+		w = textureContainer->activeTextureHandle->vulkanTexture->dimensions.width >> depthStencilAttachmentInfo->textureSlice.mipLevel;
+		h = textureContainer->activeTextureHandle->vulkanTexture->dimensions.height >> depthStencilAttachmentInfo->textureSlice.mipLevel;
 
 		/* The framebuffer cannot be larger than the smallest attachment. */
 
@@ -7877,50 +7934,29 @@ static void VULKAN_BeginRenderPass(
 			framebufferHeight = h;
 		}
 
-		if (!textureSlice->parent->isRenderTarget)
+		if (!textureContainer->activeTextureHandle->vulkanTexture->isRenderTarget)
 		{
 			Refresh_LogError("Depth stencil attachment texture was not designated as a target!");
 			return;
 		}
 	}
 
-	/* Fetch required render objects */
-
-	renderPass = VULKAN_INTERNAL_FetchRenderPass(
-		renderer,
-		vulkanCommandBuffer,
-		colorAttachmentInfos,
-		colorAttachmentCount,
-		depthStencilAttachmentInfo
-	);
-
-	framebuffer = VULKAN_INTERNAL_FetchFramebuffer(
-		renderer,
-		renderPass,
-		colorAttachmentInfos,
-		colorAttachmentCount,
-		depthStencilAttachmentInfo,
-		framebufferWidth,
-		framebufferHeight
-	);
-
-	VULKAN_INTERNAL_TrackFramebuffer(renderer, vulkanCommandBuffer, framebuffer);
-
 	/* Layout transitions */
 
 	for (i = 0; i < colorAttachmentCount; i += 1)
 	{
-		textureSlice = VULKAN_INTERNAL_RefreshToVulkanTextureSlice(&colorAttachmentInfos[i].textureSlice);
+		textureContainer = (VulkanTextureContainer*) colorAttachmentInfos[i].textureSlice.texture;
+		textureSlice = VULKAN_INTERNAL_PrepareTextureSliceForWrite(
+			renderer,
+			vulkanCommandBuffer,
+			textureContainer,
+			colorAttachmentInfos[i].textureSlice.layer,
+			colorAttachmentInfos[i].textureSlice.mipLevel,
+			colorAttachmentInfos[i].loadOp != REFRESH_LOADOP_LOAD ? colorAttachmentInfos[i].writeOption : REFRESH_WRITEOPTIONS_SAFE,
+			RESOURCE_ACCESS_COLOR_ATTACHMENT_READ_WRITE
+		);
 
 		vulkanCommandBuffer->renderPassColorTargetTextureSlices[i] = textureSlice;
-
-		/* Transition the attachment */
-		VULKAN_INTERNAL_ImageMemoryBarrier(
-			renderer,
-			vulkanCommandBuffer->commandBuffer,
-			RESOURCE_ACCESS_COLOR_ATTACHMENT_READ_WRITE,
-			textureSlice
-		);
 
 		if (textureSlice->msaaTex != NULL)
 		{
@@ -7945,21 +7981,50 @@ static void VULKAN_BeginRenderPass(
 
 	if (depthStencilAttachmentInfo != NULL)
 	{
-		textureSlice = VULKAN_INTERNAL_RefreshToVulkanTextureSlice(&depthStencilAttachmentInfo->textureSlice);
+		textureContainer = (VulkanTextureContainer*) depthStencilAttachmentInfo->textureSlice.texture;
+		textureSlice = VULKAN_INTERNAL_PrepareTextureSliceForWrite(
+			renderer,
+			vulkanCommandBuffer,
+			textureContainer,
+			depthStencilAttachmentInfo->textureSlice.layer,
+			depthStencilAttachmentInfo->textureSlice.mipLevel,
+			(
+				depthStencilAttachmentInfo->loadOp != REFRESH_LOADOP_LOAD &&
+				depthStencilAttachmentInfo->stencilLoadOp != REFRESH_LOADOP_LOAD ?
+				depthStencilAttachmentInfo->writeOption :
+				REFRESH_WRITEOPTIONS_SAFE
+			),
+			RESOURCE_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_WRITE
+		);
 
 		vulkanCommandBuffer->renderPassDepthTextureSlice = textureSlice;
-
-		VULKAN_INTERNAL_ImageMemoryBarrier(
-			renderer,
-			vulkanCommandBuffer->commandBuffer,
-			RESOURCE_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_WRITE,
-			textureSlice
-		);
 
 		clearCount += 1;
 
 		VULKAN_INTERNAL_TrackTextureSlice(renderer, vulkanCommandBuffer, textureSlice);
 	}
+
+	/* Fetch required render objects */
+
+	renderPass = VULKAN_INTERNAL_FetchRenderPass(
+		renderer,
+		vulkanCommandBuffer,
+		colorAttachmentInfos,
+		colorAttachmentCount,
+		depthStencilAttachmentInfo
+	);
+
+	framebuffer = VULKAN_INTERNAL_FetchFramebuffer(
+		renderer,
+		renderPass,
+		colorAttachmentInfos,
+		colorAttachmentCount,
+		depthStencilAttachmentInfo,
+		framebufferWidth,
+		framebufferHeight
+	);
+
+	VULKAN_INTERNAL_TrackFramebuffer(renderer, vulkanCommandBuffer, framebuffer);
 
 	/* Set clear values */
 
@@ -8381,25 +8446,16 @@ static void VULKAN_BindComputeBuffers(
 	for (i = 0; i < computePipeline->pipelineLayout->bufferDescriptorSetCache->bindingCount; i += 1)
 	{
 		bufferContainer = (VulkanBufferContainer*) pBindings[i].gpuBuffer;
-		currentVulkanBuffer = bufferContainer->activeBufferHandle->vulkanBuffer;
 
-		if (
-			pBindings[i].writeOption == REFRESH_WRITEOPTIONS_CYCLE &&
-			SDL_AtomicGet(&bufferContainer->activeBufferHandle->vulkanBuffer->referenceCount) > 0
-		) {
-			VULKAN_INTERNAL_CycleActiveBuffer(
-				renderer,
-				bufferContainer
-			);
-			currentVulkanBuffer = bufferContainer->activeBufferHandle->vulkanBuffer;
-		}
-
-		VULKAN_INTERNAL_BufferMemoryBarrier(
+		VULKAN_INTERNAL_PrepareBufferForWrite(
 			renderer,
-			vulkanCommandBuffer->commandBuffer,
-			RESOURCE_ACCESS_COMPUTE_SHADER_BUFFER_READ_WRITE,
-			currentVulkanBuffer
+			vulkanCommandBuffer,
+			bufferContainer,
+			pBindings[i].writeOption,
+			RESOURCE_ACCESS_COMPUTE_SHADER_BUFFER_READ_WRITE
 		);
+
+		currentVulkanBuffer = bufferContainer->activeBufferHandle->vulkanBuffer;
 
 		descriptorBufferInfos[i].buffer = currentVulkanBuffer->buffer;
 		descriptorBufferInfos[i].offset = 0;
@@ -8440,24 +8496,15 @@ static void VULKAN_BindComputeTextures(
 	for (i = 0; i < computePipeline->pipelineLayout->imageDescriptorSetCache->bindingCount; i += 1)
 	{
 		currentTextureContainer = (VulkanTextureContainer*) pBindings[i].textureSlice.texture;
-		currentTextureSlice = VULKAN_INTERNAL_RefreshToVulkanTextureSlice(&pBindings[i].textureSlice);
 
-		if (
-			pBindings[i].writeOption == REFRESH_WRITEOPTIONS_CYCLE &&
-			SDL_AtomicGet(&currentTextureSlice->referenceCount) > 0
-		) {
-			VULKAN_INTERNAL_CycleActiveTexture(
-				renderer,
-				currentTextureContainer
-			);
-			currentTextureSlice = VULKAN_INTERNAL_RefreshToVulkanTextureSlice(&pBindings[i].textureSlice);
-		}
-
-		VULKAN_INTERNAL_ImageMemoryBarrier(
+		currentTextureSlice = VULKAN_INTERNAL_PrepareTextureSliceForWrite(
 			renderer,
-			vulkanCommandBuffer->commandBuffer,
-			RESOURCE_ACCESS_COMPUTE_SHADER_STORAGE_IMAGE_READ_WRITE,
-			currentTextureSlice
+			vulkanCommandBuffer,
+			currentTextureContainer,
+			pBindings[i].textureSlice.layer,
+			pBindings[i].textureSlice.mipLevel,
+			pBindings[i].writeOption,
+			RESOURCE_ACCESS_COMPUTE_SHADER_STORAGE_IMAGE_READ_WRITE
 		);
 
 		descriptorImageInfos[i].imageView = currentTextureSlice->view;
@@ -8652,33 +8699,21 @@ static void VULKAN_UploadToTexture(
 	VulkanTextureSlice *vulkanTextureSlice;
 	VkBufferImageCopy imageCopy;
 
-	vulkanTextureSlice = VULKAN_INTERNAL_RefreshToVulkanTextureSlice(&textureRegion->textureSlice);
-
-	if (
-		writeOption == REFRESH_WRITEOPTIONS_CYCLE &&
-		vulkanTextureContainer->canBeCycled &&
-		SDL_AtomicGet(&vulkanTextureSlice->referenceCount) > 0
-	) {
-		VULKAN_INTERNAL_CycleActiveTexture(
-			renderer,
-			vulkanTextureContainer
-		);
-
-		vulkanTextureSlice = VULKAN_INTERNAL_RefreshToVulkanTextureSlice(&textureRegion->textureSlice);
-	}
+	vulkanTextureSlice = VULKAN_INTERNAL_PrepareTextureSliceForWrite(
+		renderer,
+		vulkanCommandBuffer,
+		vulkanTextureContainer,
+		textureRegion->textureSlice.layer,
+		textureRegion->textureSlice.mipLevel,
+		writeOption,
+		RESOURCE_ACCESS_TRANSFER_WRITE
+	);
 
 	VULKAN_INTERNAL_BufferMemoryBarrier(
 		renderer,
 		vulkanCommandBuffer->commandBuffer,
 		RESOURCE_ACCESS_TRANSFER_READ,
 		transferBufferContainer->activeBufferHandle->vulkanBuffer
-	);
-
-	VULKAN_INTERNAL_ImageMemoryBarrier(
-		renderer,
-		vulkanCommandBuffer->commandBuffer,
-		RESOURCE_ACCESS_TRANSFER_WRITE,
-		vulkanTextureSlice
 	);
 
 	imageCopy.imageExtent.width = textureRegion->w;
@@ -8723,28 +8758,19 @@ static void VULKAN_UploadToBuffer(
 	VulkanBufferContainer *gpuBufferContainer = (VulkanBufferContainer*) gpuBuffer;
 	VkBufferCopy bufferCopy;
 
-	if (
-		writeOption == REFRESH_WRITEOPTIONS_CYCLE &&
-		SDL_AtomicGet(&gpuBufferContainer->activeBufferHandle->vulkanBuffer->referenceCount) > 0
-	) {
-		VULKAN_INTERNAL_CycleActiveBuffer(
-			renderer,
-			gpuBufferContainer
-		);
-	}
+	VulkanBuffer *vulkanBuffer = VULKAN_INTERNAL_PrepareBufferForWrite(
+		renderer,
+		vulkanCommandBuffer,
+		gpuBufferContainer,
+		writeOption,
+		RESOURCE_ACCESS_TRANSFER_WRITE
+	);
 
 	VULKAN_INTERNAL_BufferMemoryBarrier(
 		renderer,
 		vulkanCommandBuffer->commandBuffer,
 		RESOURCE_ACCESS_TRANSFER_READ,
 		transferBufferContainer->activeBufferHandle->vulkanBuffer
-	);
-
-	VULKAN_INTERNAL_BufferMemoryBarrier(
-		renderer,
-		vulkanCommandBuffer->commandBuffer,
-		RESOURCE_ACCESS_TRANSFER_WRITE,
-		gpuBufferContainer->activeBufferHandle->vulkanBuffer
 	);
 
 	bufferCopy.srcOffset = copyParams->srcOffset;
@@ -8779,32 +8805,22 @@ static void VULKAN_CopyTextureToTexture(
 	VkImageCopy imageCopy;
 
 	srcSlice = VULKAN_INTERNAL_RefreshToVulkanTextureSlice(&source->textureSlice);
-	dstSlice = VULKAN_INTERNAL_RefreshToVulkanTextureSlice(&destination->textureSlice);
 
-	if (
-		writeOption == REFRESH_WRITEOPTIONS_CYCLE &&
-		dstContainer->canBeCycled &&
-		SDL_AtomicGet(&dstSlice->referenceCount) > 0
-	) {
-		VULKAN_INTERNAL_CycleActiveTexture(
-			renderer,
-			dstContainer
-		);
-		dstSlice = VULKAN_INTERNAL_RefreshToVulkanTextureSlice(&destination->textureSlice);
-	}
+	dstSlice = VULKAN_INTERNAL_PrepareTextureSliceForWrite(
+		renderer,
+		vulkanCommandBuffer,
+		dstContainer,
+		destination->textureSlice.layer,
+		destination->textureSlice.mipLevel,
+		writeOption,
+		RESOURCE_ACCESS_TRANSFER_WRITE
+	);
 
 	VULKAN_INTERNAL_ImageMemoryBarrier(
 		renderer,
 		vulkanCommandBuffer->commandBuffer,
 		RESOURCE_ACCESS_TRANSFER_READ,
 		srcSlice
-	);
-
-	VULKAN_INTERNAL_ImageMemoryBarrier(
-		renderer,
-		vulkanCommandBuffer->commandBuffer,
-		RESOURCE_ACCESS_TRANSFER_WRITE,
-		dstSlice
 	);
 
 	imageCopy.srcOffset.x = source->x;
@@ -8855,28 +8871,19 @@ static void VULKAN_CopyBufferToBuffer(
 	VulkanBufferContainer *dstContainer = (VulkanBufferContainer*) destination;
 	VkBufferCopy bufferCopy;
 
-	if (
-		writeOption == REFRESH_WRITEOPTIONS_CYCLE &&
-		SDL_AtomicGet(&dstContainer->activeBufferHandle->vulkanBuffer->referenceCount) > 0
-	) {
-		VULKAN_INTERNAL_CycleActiveBuffer(
-			renderer,
-			dstContainer
-		);
-	}
+	VulkanBuffer *vulkanBuffer = VULKAN_INTERNAL_PrepareBufferForWrite(
+		renderer,
+		vulkanCommandBuffer,
+		dstContainer,
+		writeOption,
+		RESOURCE_ACCESS_TRANSFER_WRITE
+	);
 
 	VULKAN_INTERNAL_BufferMemoryBarrier(
 		renderer,
 		vulkanCommandBuffer->commandBuffer,
 		RESOURCE_ACCESS_TRANSFER_READ,
 		srcContainer->activeBufferHandle->vulkanBuffer
-	);
-
-	VULKAN_INTERNAL_BufferMemoryBarrier(
-		renderer,
-		vulkanCommandBuffer->commandBuffer,
-		RESOURCE_ACCESS_TRANSFER_WRITE,
-		dstContainer->activeBufferHandle->vulkanBuffer
 	);
 
 	bufferCopy.srcOffset = copyParams->srcOffset;
@@ -9887,12 +9894,20 @@ static void VULKAN_INTERNAL_CleanCommandBuffer(
 	for (i = 0; i < commandBuffer->usedBufferCount; i += 1)
 	{
 		SDL_AtomicDecRef(&commandBuffer->usedBuffers[i]->referenceCount);
+		if (commandBuffer->isDefrag)
+		{
+			commandBuffer->usedBuffers[i]->defragInProgress = 0;
+		}
 	}
 	commandBuffer->usedBufferCount = 0;
 
 	for (i = 0; i < commandBuffer->usedTextureSliceCount; i += 1)
 	{
 		SDL_AtomicDecRef(&commandBuffer->usedTextureSlices[i]->referenceCount);
+		if (commandBuffer->isDefrag)
+		{
+			commandBuffer->usedTextureSlices[i]->defragInProgress = 0;
+		}
 	}
 	commandBuffer->usedTextureSliceCount = 0;
 
@@ -10280,6 +10295,8 @@ static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 					newBuffer
 				);
 
+				newBuffer->defragInProgress = 1;
+
 				VULKAN_INTERNAL_TrackBuffer(renderer, commandBuffer, currentRegion->vulkanBuffer);
 				VULKAN_INTERNAL_TrackBuffer(renderer, commandBuffer, newBuffer);
 			}
@@ -10375,6 +10392,8 @@ static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 						originalAccessType,
 						srcSlice
 					);
+
+					dstSlice->defragInProgress = 1;
 
 					VULKAN_INTERNAL_TrackTextureSlice(renderer, commandBuffer, srcSlice);
 					VULKAN_INTERNAL_TrackTextureSlice(renderer, commandBuffer, dstSlice);
