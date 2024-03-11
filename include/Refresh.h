@@ -797,7 +797,7 @@ REFRESHAPI Refresh_TransferBuffer* Refresh_CreateTransferBuffer(
  * useful for labeling buffers for debugging purposes.
  *
  * buffer: The buffer to attach the name to.
- * text: The string constant to mark as the name of the buffer.
+ * text: The UTF-8 string constant to mark as the name of the buffer.
  */
 REFRESHAPI void Refresh_SetGpuBufferName(
 	Refresh_Device *device,
@@ -809,7 +809,7 @@ REFRESHAPI void Refresh_SetGpuBufferName(
  * useful for labeling textures for debugging purposes.
  *
  * texture: The texture to attach the name to.
- * text: The string constant to mark as the name of the texture.
+ * text: The UTF-8 string constant to mark as the name of the texture.
  */
 REFRESHAPI void Refresh_SetTextureName(
 	Refresh_Device *device,
