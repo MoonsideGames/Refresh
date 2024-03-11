@@ -1977,6 +1977,48 @@ static Refresh_TransferBuffer* D3D11_CreateTransferBuffer(
 	return (Refresh_TransferBuffer*) container;
 }
 
+/* Debug Naming */
+
+static const GUID GUID_D3DDebugObjectName = { 0x429b8c22, 0x9188, 0x4b0c, 0x87, 0x42, 0xac, 0xb0, 0xbf, 0x85, 0xc2, 0x00 };
+
+static void D3D11_SetGpuBufferName(
+	Refresh_Renderer *driverData,
+	Refresh_GpuBuffer *buffer,
+	const char *text
+) {
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	D3D11Texture *d3d11Buffer = (D3D11Texture*) buffer;
+
+	if (renderer->debugMode)
+	{
+		ID3D11DeviceChild_SetPrivateData(
+			d3d11Buffer->handle,
+			&GUID_D3DDebugObjectName,
+			(UINT) SDL_strlen(text),
+			text
+		);
+	}
+}
+
+static void D3D11_SetTextureName(
+	Refresh_Renderer *driverData,
+	Refresh_Texture *texture,
+	const char *text
+) {
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	D3D11Texture *d3d11Texture = (D3D11Texture*) texture;
+
+	if (renderer->debugMode)
+	{
+		ID3D11DeviceChild_SetPrivateData(
+			d3d11Texture->handle,
+			&GUID_D3DDebugObjectName,
+			(UINT) SDL_strlen(text),
+			text
+		);
+	}
+}
+
 /* TransferBuffer Data */
 
 static void D3D11_INTERNAL_CycleActiveTransferBuffer(

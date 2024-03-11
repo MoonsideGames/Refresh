@@ -276,6 +276,20 @@ struct Refresh_Device
 		uint32_t sizeInBytes
 	);
 
+	/* Debug Naming */
+
+	void (*SetGpuBufferName)(
+		Refresh_Renderer *driverData,
+		Refresh_GpuBuffer *buffer,
+		const char *text
+	);
+
+	void (*SetTextureName)(
+		Refresh_Renderer *driverData,
+		Refresh_Texture *texture,
+		const char *text
+	);
+
 	/* Disposal */
 
 	void (*QueueDestroyTexture)(
@@ -633,6 +647,8 @@ struct Refresh_Device
 	ASSIGN_DRIVER_FUNC(CreateTexture, name) \
 	ASSIGN_DRIVER_FUNC(CreateGpuBuffer, name) \
 	ASSIGN_DRIVER_FUNC(CreateTransferBuffer, name) \
+	ASSIGN_DRIVER_FUNC(SetGpuBufferName, name) \
+	ASSIGN_DRIVER_FUNC(SetTextureName, name) \
 	ASSIGN_DRIVER_FUNC(QueueDestroyTexture, name) \
 	ASSIGN_DRIVER_FUNC(QueueDestroySampler, name) \
 	ASSIGN_DRIVER_FUNC(QueueDestroyGpuBuffer, name) \

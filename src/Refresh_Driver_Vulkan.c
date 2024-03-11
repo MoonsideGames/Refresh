@@ -393,7 +393,9 @@ static VkBorderColor RefreshToVK_BorderColor[] =
 
 typedef struct VulkanMemoryAllocation VulkanMemoryAllocation;
 typedef struct VulkanBuffer VulkanBuffer;
+typedef struct VulkanBufferContainer VulkanBufferContainer;
 typedef struct VulkanTexture VulkanTexture;
+typedef struct VulkanTextureContainer VulkanTextureContainer;
 
 typedef struct VulkanMemoryFreeRegion
 {
@@ -696,6 +698,7 @@ static const VulkanResourceAccessInfo AccessMap[RESOURCE_ACCESS_TYPES_COUNT] =
 typedef struct VulkanBufferHandle
 {
 	VulkanBuffer *vulkanBuffer;
+	VulkanBufferContainer *container;
 } VulkanBufferHandle;
 
 struct VulkanBuffer
@@ -724,7 +727,7 @@ struct VulkanBuffer
  *
  * Cast from Refresh_GpuBuffer or Refresh_TransferBuffer.
  */
-typedef struct VulkanBufferContainer
+struct VulkanBufferContainer
 {
 	VulkanBufferHandle *activeBufferHandle;
 
@@ -737,7 +740,8 @@ typedef struct VulkanBufferContainer
 	uint32_t bufferCount;
 	VulkanBufferHandle **bufferHandles;
 
-} VulkanBufferContainer;
+	char *debugName;
+};
 
 typedef enum VulkanUniformBufferType
 {
@@ -807,6 +811,7 @@ typedef struct VulkanShaderModule
 typedef struct VulkanTextureHandle
 {
 	VulkanTexture *vulkanTexture;
+	VulkanTextureContainer *container;
 } VulkanTextureHandle;
 
 /* Textures are made up of individual slices.
@@ -860,7 +865,7 @@ struct VulkanTexture
  *
  * Cast from Refresh_Texture.
  */
-typedef struct VulkanTextureContainer
+struct VulkanTextureContainer
 {
 	VulkanTextureHandle *activeTextureHandle;
 
@@ -875,7 +880,9 @@ typedef struct VulkanTextureContainer
 
 	/* Swapchain images cannot be cycled */
 	uint8_t canBeCycled;
-} VulkanTextureContainer;
+
+	char *debugName;
+};
 
 typedef struct VulkanFramebuffer
 {
@@ -4112,6 +4119,8 @@ static VulkanBufferHandle* VULKAN_INTERNAL_CreateBufferHandle(
 
 	bufferHandle = SDL_malloc(sizeof(VulkanBufferHandle));
 	bufferHandle->vulkanBuffer = buffer;
+	bufferHandle->container = NULL;
+
 	buffer->handle = bufferHandle;
 
 	return bufferHandle;
@@ -4149,6 +4158,7 @@ static VulkanBufferContainer* VULKAN_INTERNAL_CreateBufferContainer(
 	bufferContainer = SDL_malloc(sizeof(VulkanBufferContainer));
 
 	bufferContainer->activeBufferHandle = bufferHandle;
+	bufferHandle->container = bufferContainer;
 
 	bufferContainer->bufferCapacity = 1;
 	bufferContainer->bufferCount = 1;
@@ -4156,6 +4166,7 @@ static VulkanBufferContainer* VULKAN_INTERNAL_CreateBufferContainer(
 		bufferContainer->bufferCapacity * sizeof(VulkanBufferHandle*)
 	);
 	bufferContainer->bufferHandles[0] = bufferContainer->activeBufferHandle;
+	bufferContainer->debugName = NULL;
 
 	return bufferContainer;
 }
@@ -5012,6 +5023,7 @@ static uint8_t VULKAN_INTERNAL_CreateSwapchain(
 		swapchainData->textureContainers[i].textureCapacity = 0;
 		swapchainData->textureContainers[i].textureCount = 0;
 		swapchainData->textureContainers[i].textureHandles = NULL;
+		swapchainData->textureContainers[i].debugName = NULL;
 		swapchainData->textureContainers[i].activeTextureHandle = SDL_malloc(sizeof(VulkanTextureHandle));
 
 		swapchainData->textureContainers[i].activeTextureHandle->vulkanTexture = SDL_malloc(sizeof(VulkanTexture));
@@ -5057,6 +5069,8 @@ static uint8_t VULKAN_INTERNAL_CreateSwapchain(
 			VK_IMAGE_USAGE_TRANSFER_DST_BIT |
 			VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 		swapchainData->textureContainers[i].activeTextureHandle->vulkanTexture->aspectFlags = VK_IMAGE_ASPECT_COLOR_BIT;
+
+		swapchainData->textureContainers[i].activeTextureHandle->container = NULL;
 
 		/* Create slice */
 		swapchainData->textureContainers[i].activeTextureHandle->vulkanTexture->sliceCount = 1;
@@ -5534,6 +5548,116 @@ static void VULKAN_DrawPrimitivesIndirect(
 	VULKAN_INTERNAL_TrackBuffer(renderer, vulkanCommandBuffer, vulkanBuffer);
 }
 
+/* Debug Naming */
+
+static void VULKAN_INTERNAL_SetGpuBufferName(
+	VulkanRenderer *renderer,
+	VulkanBuffer *buffer,
+	const char *text
+) {
+	VkDebugUtilsObjectNameInfoEXT nameInfo;
+
+	if (renderer->debugMode && renderer->supportsDebugUtils)
+	{
+		nameInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT;
+		nameInfo.pNext = NULL;
+		nameInfo.pObjectName = text;
+		nameInfo.objectType = VK_OBJECT_TYPE_BUFFER;
+		nameInfo.objectHandle = (uint64_t) buffer->buffer;
+
+		renderer->vkSetDebugUtilsObjectNameEXT(
+			renderer->logicalDevice,
+			&nameInfo
+		);
+	}
+}
+
+static void VULKAN_SetGpuBufferName(
+	Refresh_Renderer *driverData,
+	Refresh_GpuBuffer *buffer,
+	const char *text
+) {
+	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	VulkanBufferContainer *container = (VulkanBufferContainer*) buffer;
+
+	if (renderer->debugMode && renderer->supportsDebugUtils)
+	{
+		container->debugName = SDL_realloc(
+			container->debugName,
+			SDL_strlen(text) + 1
+		);
+
+		SDL_utf8strlcpy(
+			container->debugName,
+			text,
+			SDL_strlen(text) + 1
+		);
+
+		for (uint32_t i = 0; i < container->bufferCount; i += 1)
+		{
+			VULKAN_INTERNAL_SetGpuBufferName(
+				renderer,
+				container->bufferHandles[i]->vulkanBuffer,
+				text
+			);
+		}
+	}
+}
+
+static void VULKAN_INTERNAL_SetTextureName(
+	VulkanRenderer *renderer,
+	VulkanTexture *texture,
+	const char *text
+) {
+	VkDebugUtilsObjectNameInfoEXT nameInfo;
+
+	if (renderer->debugMode && renderer->supportsDebugUtils)
+	{
+		nameInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT;
+		nameInfo.pNext = NULL;
+		nameInfo.pObjectName = text;
+		nameInfo.objectType = VK_OBJECT_TYPE_IMAGE;
+		nameInfo.objectHandle = (uint64_t) texture->image;
+
+		renderer->vkSetDebugUtilsObjectNameEXT(
+			renderer->logicalDevice,
+			&nameInfo
+		);
+	}
+}
+
+static void VULKAN_SetTextureName(
+	Refresh_Renderer *driverData,
+	Refresh_Texture *texture,
+	const char *text
+) {
+	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	VulkanTextureContainer *container = (VulkanTextureContainer*) texture;
+
+	if (renderer->debugMode && renderer->supportsDebugUtils)
+	{
+		container->debugName = SDL_realloc(
+			container->debugName,
+			SDL_strlen(text) + 1
+		);
+
+		SDL_utf8strlcpy(
+			container->debugName,
+			text,
+			SDL_strlen(text) + 1
+		);
+
+		for (uint32_t i = 0; i < container->textureCount; i += 1)
+		{
+			VULKAN_INTERNAL_SetTextureName(
+				renderer,
+				container->textureHandles[i]->vulkanTexture,
+				text
+			);
+		}
+	}
+}
+
 static VulkanTexture* VULKAN_INTERNAL_CreateTexture(
 	VulkanRenderer *renderer,
 	uint32_t width,
@@ -5778,6 +5902,8 @@ static VulkanTextureHandle* VULKAN_INTERNAL_CreateTextureHandle(
 
 	textureHandle = SDL_malloc(sizeof(VulkanTextureHandle));
 	textureHandle->vulkanTexture = texture;
+	textureHandle->container = NULL;
+
 	texture->handle = textureHandle;
 
 	return textureHandle;
@@ -5813,6 +5939,8 @@ static void VULKAN_INTERNAL_CycleActiveBuffer(
 		bufferContainer->activeBufferHandle->vulkanBuffer->preserveContentsOnDefrag
 	);
 
+	bufferContainer->activeBufferHandle->container = bufferContainer;
+
 	EXPAND_ARRAY_IF_NEEDED(
 		bufferContainer->bufferHandles,
 		VulkanBufferHandle*,
@@ -5825,6 +5953,18 @@ static void VULKAN_INTERNAL_CycleActiveBuffer(
 		bufferContainer->bufferCount
 	] = bufferContainer->activeBufferHandle;
 	bufferContainer->bufferCount += 1;
+
+	if (
+		renderer->debugMode &&
+		renderer->supportsDebugUtils &&
+		bufferContainer->debugName != NULL
+	) {
+		VULKAN_INTERNAL_SetGpuBufferName(
+			renderer,
+			bufferContainer->activeBufferHandle->vulkanBuffer,
+			bufferContainer->debugName
+		);
+	}
 }
 
 static void VULKAN_INTERNAL_CycleActiveTexture(
@@ -5869,6 +6009,8 @@ static void VULKAN_INTERNAL_CycleActiveTexture(
 		0
 	);
 
+	textureContainer->activeTextureHandle->container = textureContainer;
+
 	EXPAND_ARRAY_IF_NEEDED(
 		textureContainer->textureHandles,
 		VulkanTextureHandle*,
@@ -5881,6 +6023,18 @@ static void VULKAN_INTERNAL_CycleActiveTexture(
 		textureContainer->textureCount
 	] = textureContainer->activeTextureHandle;
 	textureContainer->textureCount += 1;
+
+	if (
+		renderer->debugMode &&
+		renderer->supportsDebugUtils &&
+		textureContainer->debugName != NULL
+	) {
+		VULKAN_INTERNAL_SetTextureName(
+			renderer,
+			textureContainer->activeTextureHandle->vulkanTexture,
+			textureContainer->debugName
+		);
+	}
 }
 
 static VulkanBuffer* VULKAN_INTERNAL_PrepareBufferForWrite(
@@ -7057,6 +7211,9 @@ static Refresh_Texture* VULKAN_CreateTexture(
 		container->textureCapacity * sizeof(VulkanTextureHandle*)
 	);
 	container->textureHandles[0] = container->activeTextureHandle;
+	container->debugName = NULL;
+
+	textureHandle->container = container;
 
 	return (Refresh_Texture*) container;
 }
@@ -7410,6 +7567,10 @@ static void VULKAN_QueueDestroyTexture(
 	}
 
 	/* Containers are just client handles, so we can destroy immediately */
+	if (vulkanTextureContainer->debugName != NULL)
+	{
+		SDL_free(vulkanTextureContainer->debugName);
+	}
 	SDL_free(vulkanTextureContainer->textureHandles);
 	SDL_free(vulkanTextureContainer);
 
@@ -7482,6 +7643,10 @@ static void VULKAN_QueueDestroyGpuBuffer(
 	}
 
 	/* Containers are just client handles, so we can free immediately */
+	if (vulkanBufferContainer->debugName != NULL)
+	{
+		SDL_free(vulkanBufferContainer->debugName);
+	}
 	SDL_free(vulkanBufferContainer->bufferHandles);
 	SDL_free(vulkanBufferContainer);
 
@@ -10255,6 +10420,20 @@ static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 				return 0;
 			}
 
+			if (
+				renderer->debugMode &&
+				renderer->supportsDebugUtils &&
+				currentRegion->vulkanBuffer->handle != NULL &&
+				currentRegion->vulkanBuffer->handle->container != NULL &&
+				currentRegion->vulkanBuffer->handle->container->debugName != NULL
+			) {
+				VULKAN_INTERNAL_SetGpuBufferName(
+					renderer,
+					newBuffer,
+					currentRegion->vulkanBuffer->handle->container->debugName
+				);
+			}
+
 			/* Copy buffer contents if necessary */
 			if (
 				currentRegion->vulkanBuffer->preserveContentsOnDefrag &&
@@ -10332,6 +10511,21 @@ static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 			{
 				Refresh_LogError("Failed to create defrag texture!");
 				return 0;
+			}
+
+			/* Set debug name if it exists */
+			if (
+				renderer->debugMode &&
+				renderer->supportsDebugUtils &&
+				srcSlice->parent->handle != NULL &&
+				srcSlice->parent->handle->container != NULL &&
+				srcSlice->parent->handle->container->debugName != NULL
+			) {
+				VULKAN_INTERNAL_SetTextureName(
+					renderer,
+					currentRegion->vulkanTexture,
+					srcSlice->parent->handle->container->debugName
+				);
 			}
 
 			for (sliceIndex = 0; sliceIndex < currentRegion->vulkanTexture->sliceCount; sliceIndex += 1)

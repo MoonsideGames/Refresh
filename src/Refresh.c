@@ -327,6 +327,38 @@ Refresh_TransferBuffer* Refresh_CreateTransferBuffer(
 	);
 }
 
+/* Debug Naming */
+
+void Refresh_SetGpuBufferName(
+	Refresh_Device *device,
+	Refresh_GpuBuffer *buffer,
+	const char *text
+) {
+	NULL_RETURN(device);
+	NULL_RETURN(buffer);
+
+	device->SetGpuBufferName(
+		device->driverData,
+		buffer,
+		text
+	);
+}
+
+void Refresh_SetTextureName(
+	Refresh_Device *device,
+	Refresh_Texture *texture,
+	const char *text
+) {
+	NULL_RETURN(device);
+	NULL_RETURN(texture);
+
+	device->SetTextureName(
+		device->driverData,
+		texture,
+		text
+	);
+}
+
 /* Disposal */
 
 void Refresh_QueueDestroyTexture(

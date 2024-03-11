@@ -791,6 +791,32 @@ REFRESHAPI Refresh_TransferBuffer* Refresh_CreateTransferBuffer(
 	uint32_t sizeInBytes
 );
 
+/* Debug Naming */
+
+/* Sets an arbitrary string constant to be stored in a rendering API trace,
+ * useful for labeling buffers for debugging purposes.
+ *
+ * buffer: The buffer to attach the name to.
+ * text: The string constant to mark as the name of the buffer.
+ */
+REFRESHAPI void Refresh_SetGpuBufferName(
+	Refresh_Device *device,
+	Refresh_GpuBuffer *buffer,
+	const char *text
+);
+
+/* Sets an arbitrary string constant to be stored in a rendering API trace,
+ * useful for labeling textures for debugging purposes.
+ *
+ * texture: The texture to attach the name to.
+ * text: The string constant to mark as the name of the texture.
+ */
+REFRESHAPI void Refresh_SetTextureName(
+	Refresh_Device *device,
+	Refresh_Texture *texture,
+	const char *text
+);
+
 /* Disposal */
 
 /* Sends a texture to be destroyed by the renderer. Note that we call it
