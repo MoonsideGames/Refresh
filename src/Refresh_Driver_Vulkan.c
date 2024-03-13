@@ -10513,6 +10513,12 @@ static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 				return 0;
 			}
 
+			for (sliceIndex = 0; sliceIndex < currentRegion->vulkanTexture->sliceCount; sliceIndex += 1)
+			{
+				/* copy slice if necessary */
+				srcSlice = &currentRegion->vulkanTexture->slices[sliceIndex];
+				dstSlice = &newTexture->slices[sliceIndex];
+
 			/* Set debug name if it exists */
 			if (
 				renderer->debugMode &&
@@ -10527,12 +10533,6 @@ static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 					srcSlice->parent->handle->container->debugName
 				);
 			}
-
-			for (sliceIndex = 0; sliceIndex < currentRegion->vulkanTexture->sliceCount; sliceIndex += 1)
-			{
-				/* copy slice if necessary */
-				srcSlice = &currentRegion->vulkanTexture->slices[sliceIndex];
-				dstSlice = &newTexture->slices[sliceIndex];
 
 				if (srcSlice->resourceAccessType != RESOURCE_ACCESS_NONE)
 				{
@@ -10584,7 +10584,7 @@ static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 						renderer,
 						commandBuffer->commandBuffer,
 						originalAccessType,
-						srcSlice
+						dstSlice
 					);
 
 					dstSlice->defragInProgress = 1;
