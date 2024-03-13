@@ -4146,7 +4146,7 @@ static VulkanBufferContainer* VULKAN_INTERNAL_CreateBufferContainer(
 		requireHostVisible,
 		preferHostLocal,
 		preferDeviceLocal,
-		0
+		1
 	);
 
 	if (bufferHandle == NULL)
