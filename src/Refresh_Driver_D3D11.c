@@ -4681,8 +4681,8 @@ static Refresh_Device* D3D11_CreateDevice(
 	ID3D11Device *d3d11Device;
 tryCreateDevice:
 	res = D3D11CreateDeviceFunc(
-		NULL, // (IDXGIAdapter*) renderer->adapter,
-		D3D_DRIVER_TYPE_WARP, /* Must be UNKNOWN if adapter is non-null according to spec */
+		(IDXGIAdapter*) renderer->adapter,
+		D3D_DRIVER_TYPE_UNKNOWN, /* Must be UNKNOWN if adapter is non-null according to spec */
 		NULL,
 		flags,
 		levels,
