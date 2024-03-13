@@ -10536,8 +10536,6 @@ static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 
 				if (srcSlice->resourceAccessType != RESOURCE_ACCESS_NONE)
 				{
-					VulkanResourceAccessType originalAccessType = srcSlice->resourceAccessType;
-
 					VULKAN_INTERNAL_ImageMemoryBarrier(
 						renderer,
 						commandBuffer->commandBuffer,
@@ -10580,12 +10578,15 @@ static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 						&imageCopy
 					);
 
-					VULKAN_INTERNAL_ImageMemoryBarrier(
-						renderer,
-						commandBuffer->commandBuffer,
-						originalAccessType,
-						dstSlice
-					);
+					if (srcSlice->parent->usageFlags & VK_IMAGE_USAGE_SAMPLED_BIT)
+					{
+						VULKAN_INTERNAL_ImageMemoryBarrier(
+							renderer,
+							commandBuffer->commandBuffer,
+							RESOURCE_ACCESS_ANY_SHADER_READ_SAMPLED_IMAGE,
+							dstSlice
+						);
+					}
 
 					dstSlice->defragInProgress = 1;
 
