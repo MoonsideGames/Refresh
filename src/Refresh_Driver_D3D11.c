@@ -862,23 +862,6 @@ static void D3D11_DrawInstancedPrimitives(
 	);
 }
 
-static void D3D11_DrawIndexedPrimitives(
-	Refresh_Renderer *driverData,
-	Refresh_CommandBuffer *commandBuffer,
-	uint32_t baseVertex,
-	uint32_t startIndex,
-	uint32_t primitiveCount
-) {
-	D3D11_DrawInstancedPrimitives(
-		driverData,
-		commandBuffer,
-		baseVertex,
-		startIndex,
-		primitiveCount,
-		1
-	);
-}
-
 static void D3D11_DrawPrimitives(
 	Refresh_Renderer *driverData,
 	Refresh_CommandBuffer *commandBuffer,

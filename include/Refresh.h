@@ -1032,20 +1032,6 @@ REFRESHAPI void Refresh_DrawInstancedPrimitives(
 	uint32_t instanceCount
 );
 
-/* Draws data from vertex/index buffers.
- *
- * baseVertex:          The starting offset to read from the vertex buffer.
- * startIndex:          The starting offset to read from the index buffer.
- * primitiveCount:      The number of primitives to draw.
- */
-REFRESHAPI void Refresh_DrawIndexedPrimitives(
-	Refresh_Device *device,
-	Refresh_CommandBuffer *commandBuffer,
-	uint32_t baseVertex,
-	uint32_t startIndex,
-	uint32_t primitiveCount
-);
-
 /* Draws data from vertex buffers.
  *
  * vertexStart:			The starting offset to read from the vertex buffer.

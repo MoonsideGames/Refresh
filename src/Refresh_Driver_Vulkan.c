@@ -5483,23 +5483,6 @@ static void VULKAN_DrawInstancedPrimitives(
 	);
 }
 
-static void VULKAN_DrawIndexedPrimitives(
-	Refresh_Renderer *driverData,
-	Refresh_CommandBuffer *commandBuffer,
-	uint32_t baseVertex,
-	uint32_t startIndex,
-	uint32_t primitiveCount
-) {
-	VULKAN_DrawInstancedPrimitives(
-		driverData,
-		commandBuffer,
-		baseVertex,
-		startIndex,
-		primitiveCount,
-		1
-	);
-}
-
 static void VULKAN_DrawPrimitives(
 	Refresh_Renderer *driverData,
 	Refresh_CommandBuffer *commandBuffer,

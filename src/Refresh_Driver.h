@@ -405,14 +405,6 @@ struct Refresh_Device
 		uint32_t instanceCount
 	);
 
-	void (*DrawIndexedPrimitives)(
-		Refresh_Renderer *driverData,
-		Refresh_CommandBuffer *commandBuffer,
-		uint32_t baseVertex,
-		uint32_t startIndex,
-		uint32_t primitiveCount
-	);
-
 	void (*DrawPrimitives)(
 		Refresh_Renderer *driverData,
 		Refresh_CommandBuffer *commandBuffer,
@@ -667,7 +659,6 @@ struct Refresh_Device
 	ASSIGN_DRIVER_FUNC(PushVertexShaderUniforms, name) \
 	ASSIGN_DRIVER_FUNC(PushFragmentShaderUniforms, name) \
 	ASSIGN_DRIVER_FUNC(DrawInstancedPrimitives, name) \
-	ASSIGN_DRIVER_FUNC(DrawIndexedPrimitives, name) \
 	ASSIGN_DRIVER_FUNC(DrawPrimitives, name) \
 	ASSIGN_DRIVER_FUNC(DrawPrimitivesIndirect, name) \
 	ASSIGN_DRIVER_FUNC(EndRenderPass, name) \

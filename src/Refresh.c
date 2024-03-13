@@ -603,23 +603,6 @@ void Refresh_DrawInstancedPrimitives(
 	);
 }
 
-void Refresh_DrawIndexedPrimitives(
-	Refresh_Device *device,
-	Refresh_CommandBuffer *commandBuffer,
-	uint32_t baseVertex,
-	uint32_t startIndex,
-	uint32_t primitiveCount
-) {
-	NULL_RETURN(device);
-	device->DrawIndexedPrimitives(
-		device->driverData,
-		commandBuffer,
-		baseVertex,
-		startIndex,
-		primitiveCount
-	);
-}
-
 void Refresh_DrawPrimitives(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
