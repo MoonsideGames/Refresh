@@ -54,9 +54,9 @@ extern "C" {
 
 /* Version API */
 
-#define REFRESH_MAJOR_VERSION   1
-#define REFRESH_MINOR_VERSION	15
-#define REFRESH_PATCH_VERSION	4
+#define REFRESH_MAJOR_VERSION   2
+#define REFRESH_MINOR_VERSION	0
+#define REFRESH_PATCH_VERSION	0
 
 #define REFRESH_COMPILED_VERSION ( \
 	(REFRESH_MAJOR_VERSION * 100 * 100) + \
@@ -69,7 +69,8 @@ REFRESHAPI uint32_t Refresh_LinkedVersion(void);
 /* Type Declarations */
 
 typedef struct Refresh_Device Refresh_Device;
-typedef struct Refresh_Buffer Refresh_Buffer;
+typedef struct Refresh_GpuBuffer Refresh_GpuBuffer;
+typedef struct Refresh_TransferBuffer Refresh_TransferBuffer;
 typedef struct Refresh_Texture Refresh_Texture;
 typedef struct Refresh_Sampler Refresh_Sampler;
 typedef struct Refresh_ShaderModule Refresh_ShaderModule;
@@ -326,10 +327,29 @@ typedef enum Refresh_BorderColor
 	REFRESH_BORDERCOLOR_INT_OPAQUE_WHITE
 } Refresh_BorderColor;
 
+typedef enum Refresh_TransferUsage
+{
+	REFRESH_TRANSFERUSAGE_BUFFER,
+	REFRESH_TRANSFERUSAGE_TEXTURE
+} Refresh_TransferUsage;
+
+typedef enum Refresh_TransferOptions
+{
+	REFRESH_TRANSFEROPTIONS_CYCLE,
+	REFRESH_TRANSFEROPTIONS_UNSAFE
+} Refresh_TransferOptions;
+
+typedef enum Refresh_WriteOptions
+{
+	REFRESH_WRITEOPTIONS_CYCLE,
+	REFRESH_WRITEOPTIONS_UNSAFE,
+	REFRESH_WRITEOPTIONS_SAFE
+} Refresh_WriteOptions;
+
 typedef enum Refresh_Backend
 {
-	REFRESH_BACKEND_DONTCARE,
 	REFRESH_BACKEND_VULKAN,
+	REFRESH_BACKEND_D3D11,
 	REFRESH_BACKEND_PS5,
 	REFRESH_BACKEND_INVALID
 } Refresh_Backend;
@@ -371,11 +391,34 @@ typedef struct Refresh_Viewport
 typedef struct Refresh_TextureSlice
 {
 	Refresh_Texture *texture;
-	Refresh_Rect rectangle;
-	uint32_t depth; /* 0 unless 3D */
-	uint32_t layer; /* 0 unless cube */
-	uint32_t level;
+	uint32_t mipLevel;
+	uint32_t layer;
 } Refresh_TextureSlice;
+
+typedef struct Refresh_TextureRegion
+{
+	Refresh_TextureSlice textureSlice;
+	uint32_t x;
+	uint32_t y;
+	uint32_t z;
+	uint32_t w;
+	uint32_t h;
+	uint32_t d;
+} Refresh_TextureRegion;
+
+typedef struct Refresh_BufferImageCopy
+{
+	uint32_t bufferOffset;
+	uint32_t bufferStride;
+	uint32_t bufferImageHeight;
+} Refresh_BufferImageCopy;
+
+typedef struct Refresh_BufferCopy
+{
+	uint32_t srcOffset;
+	uint32_t dstOffset;
+	uint32_t size;
+} Refresh_BufferCopy;
 
 typedef struct Refresh_IndirectDrawCommand
 {
@@ -434,9 +477,6 @@ typedef struct Refresh_StencilOpState
 	Refresh_StencilOp passOp;
 	Refresh_StencilOp depthFailOp;
 	Refresh_CompareOp compareOp;
-	uint32_t compareMask;
-	uint32_t writeMask;
-	uint32_t reference;
 } Refresh_StencilOpState;
 
 typedef struct Refresh_ColorAttachmentBlendState
@@ -463,6 +503,7 @@ typedef struct Refresh_TextureCreateInfo
 	uint32_t height;
 	uint32_t depth;
 	uint8_t isCube;
+	uint32_t layerCount;
 	uint32_t levelCount;
 	Refresh_SampleCount sampleCount;
 	Refresh_TextureFormat format;
@@ -475,7 +516,7 @@ typedef struct Refresh_GraphicsShaderInfo
 {
 	Refresh_ShaderModule *shaderModule;
 	const char* entryPointName;
-	uint64_t uniformBufferSize;
+	uint32_t uniformBufferSize;
 	uint32_t samplerBindingCount;
 } Refresh_GraphicsShaderInfo;
 
@@ -483,7 +524,7 @@ typedef struct Refresh_ComputeShaderInfo
 {
 	Refresh_ShaderModule* shaderModule;
 	const char* entryPointName;
-	uint64_t uniformBufferSize;
+	uint32_t uniformBufferSize;
 	uint32_t bufferBindingCount;
 	uint32_t imageBindingCount;
 } Refresh_ComputeShaderInfo;
@@ -512,8 +553,11 @@ typedef struct Refresh_DepthStencilState
 	Refresh_CompareOp compareOp;
 	uint8_t depthBoundsTestEnable;
 	uint8_t stencilTestEnable;
-	Refresh_StencilOpState frontStencilState;
 	Refresh_StencilOpState backStencilState;
+	Refresh_StencilOpState frontStencilState;
+	uint32_t compareMask;
+	uint32_t writeMask;
+	uint32_t reference;
 	float minDepthBounds;
 	float maxDepthBounds;
 } Refresh_DepthStencilState;
@@ -547,29 +591,94 @@ typedef struct Refresh_GraphicsPipelineCreateInfo
 
 /* Render pass structures */
 
+/* These structures define how textures will be read/written in a render pass.
+ *
+ * loadOp: Determines what is done with the texture slice at the beginning of the render pass.
+ *
+ *   LOAD:
+ *     Loads the data currently in the texture slice.
+ *
+ *   CLEAR:
+ *     Clears the texture slice to a single color.
+ *
+ *   DONT_CARE:
+ *     The driver will do whatever it wants with the texture slice memory.
+ *     This is a good option if you know that every single pixel will be touched in the render pass.
+ *
+ * storeOp: Determines what is done with the texture slice at the end of the render pass.
+ *
+ *   STORE:
+ *     Stores the results of the render pass in the texture slice.
+ *
+ *   DONT_CARE:
+ *     The driver will do whatever it wants with the texture slice memory.
+ *     This is often a good option for depth/stencil textures.
+ *
+ *
+ * writeOption is ignored if loadOp is LOAD and is implicitly assumed to be SAFE.
+ * Interleaving LOAD and CYCLE successively on the same texture (not slice!) is undefined behavior.
+ *
+ * writeOption:
+ *  CYCLE:
+ *    If this texture slice has been used in commands that have not completed,
+ *    the implementation may choose to prevent a data dependency at the cost of increased memory usage.
+ *    You may NOT assume that any of the previous texture data is retained.
+ *    This may prevent stalls when frequently reusing a texture slice in rendering.
+ *
+ *  UNSAFE:
+ *    Overwrites the data unsafely. You must ensure that data used by earlier draw calls
+ *    is not affected or visual corruption can occur.
+ *
+ *  SAFE:
+ *    Overwrites the data safely. Earlier draw calls will not be affected.
+ *    This is usually the slowest option.
+ */
+
 typedef struct Refresh_ColorAttachmentInfo
 {
-	Refresh_Texture *texture; /* We can't use TextureSlice because render passes take a single rectangle. */
-	uint32_t depth;
-	uint32_t layer;
-	uint32_t level;
-	Refresh_Vec4 clearColor; /* Can be ignored by RenderPass */
+	Refresh_TextureSlice textureSlice;
+	Refresh_Vec4 clearColor; /* Can be ignored by RenderPass if CLEAR is not used */
 	Refresh_LoadOp loadOp;
 	Refresh_StoreOp storeOp;
+	Refresh_WriteOptions writeOption;
 } Refresh_ColorAttachmentInfo;
 
 typedef struct Refresh_DepthStencilAttachmentInfo
 {
-	Refresh_Texture *texture; /* We can't use TextureSlice because render passes take a single rectangle. */
-	uint32_t depth;
-	uint32_t layer;
-	uint32_t level;
-	Refresh_DepthStencilValue depthStencilClearValue; /* Can be ignored by RenderPass */
+	Refresh_TextureSlice textureSlice;
+	Refresh_DepthStencilValue depthStencilClearValue; /* Can be ignored by RenderPass if CLEAR is not used */
 	Refresh_LoadOp loadOp;
 	Refresh_StoreOp storeOp;
 	Refresh_LoadOp stencilLoadOp;
 	Refresh_StoreOp stencilStoreOp;
+	Refresh_WriteOptions writeOption;
 } Refresh_DepthStencilAttachmentInfo;
+
+/* Binding structs */
+
+typedef struct Refresh_BufferBinding
+{
+	Refresh_GpuBuffer *gpuBuffer;
+	uint32_t offset;
+} Refresh_BufferBinding;
+
+typedef struct Refresh_TextureSamplerBinding
+{
+	Refresh_Texture *texture;
+	Refresh_Sampler *sampler;
+} Refresh_TextureSamplerBinding;
+
+typedef struct Refresh_ComputeBufferBinding
+{
+	Refresh_GpuBuffer *gpuBuffer;
+	Refresh_WriteOptions writeOption;
+} Refresh_ComputeBufferBinding;
+
+typedef struct Refresh_ComputeTextureBinding
+{
+	Refresh_TextureSlice textureSlice;
+	Refresh_WriteOptions writeOption;
+} Refresh_ComputeTextureBinding;
 
 /* Functions */
 
@@ -593,21 +702,26 @@ REFRESHAPI void Refresh_HookLogFunctions(
 
 /* Select the graphics API backend that Refresh should use.
  *
- * Note that Refresh is not required to select your preferred backend
- * if it detects an incompatibility.
+ * You must provide a pointer to an array of Refresh_Backend enums in order of desired selection.
+ * If a backend fails to prepare, Refresh will attempt to select the next one in the array.
  *
  * Returns the backend that will actually be used, and fills in a window flag bitmask.
  * This bitmask should be used to create all windows that the device claims.
  *
- * preferredBackend: The preferred backend that Refresh should select.
+ * If all requested backends fail to prepare, this function returns REFRESH_BACKEND_INVALID.
+ *
  * flags: A pointer to a bitflag value that will be filled in with required SDL_WindowFlags masks.
  */
-REFRESHAPI Refresh_Backend Refresh_SelectBackend(Refresh_Backend preferredBackend, uint32_t *flags);
+REFRESHAPI Refresh_Backend Refresh_SelectBackend(
+	Refresh_Backend *preferredBackends,
+	uint32_t preferredBackendCount,
+	uint32_t *flags
+);
 
 /* Device */
 
 /* Create a rendering context for use on the calling thread.
- * You MUST have called Refresh_SelectDriver prior to calling this function.
+ * You MUST have called Refresh_SelectBackend prior to calling this function.
  *
  * debugMode: Enable debug mode properties.
  */
@@ -617,99 +731,6 @@ REFRESHAPI Refresh_Device* Refresh_CreateDevice(
 
 /* Destroys a rendering context previously returned by Refresh_CreateDevice. */
 REFRESHAPI void Refresh_DestroyDevice(Refresh_Device *device);
-
-/* Drawing */
-
-/* Draws data from vertex/index buffers with instancing enabled.
- *
- * baseVertex:          The starting offset to read from the vertex buffer.
- * startIndex:          The starting offset to read from the index buffer.
- * primitiveCount:      The number of primitives to draw.
- * instanceCount:       The number of instances that will be drawn.
- * vertexParamOffset:   The offset of the vertex shader param data.
- * fragmentParamOffset: The offset of the fragment shader param data.
- */
-REFRESHAPI void Refresh_DrawInstancedPrimitives(
-	Refresh_Device *device,
-	Refresh_CommandBuffer *commandBuffer,
-	uint32_t baseVertex,
-	uint32_t startIndex,
-	uint32_t primitiveCount,
-	uint32_t instanceCount,
-	uint32_t vertexParamOffset,
-	uint32_t fragmentParamOffset
-);
-
-/* Draws data from vertex/index buffers.
- *
- * baseVertex:          The starting offset to read from the vertex buffer.
- * startIndex:          The starting offset to read from the index buffer.
- * primitiveCount:      The number of primitives to draw.
- * vertexParamOffset:   The offset of the vertex shader param data.
- * fragmentParamOffset: The offset of the fragment shader param data.
- */
-REFRESHAPI void Refresh_DrawIndexedPrimitives(
-	Refresh_Device *device,
-	Refresh_CommandBuffer *commandBuffer,
-	uint32_t baseVertex,
-	uint32_t startIndex,
-	uint32_t primitiveCount,
-	uint32_t vertexParamOffset,
-	uint32_t fragmentParamOffset
-);
-
-/* Draws data from vertex buffers.
- *
- * vertexStart:			The starting offset to read from the vertex buffer.
- * primitiveCount:		The number of primitives to draw.
- * vertexParamOffset:	The offset of the vertex shader param data.
- * fragmentParamOffset:	The offset of the fragment shader param data.
- */
-REFRESHAPI void Refresh_DrawPrimitives(
-	Refresh_Device *device,
-	Refresh_CommandBuffer *commandBuffer,
-	uint32_t vertexStart,
-	uint32_t primitiveCount,
-	uint32_t vertexParamOffset,
-	uint32_t fragmentParamOffset
-);
-
-/* Similar to Refresh_DrawPrimitives, but draw parameters are set from a buffer.
- * The buffer layout should match the layout of Refresh_IndirectDrawCommand.
- *
- * buffer:              A buffer containing draw parameters.
- * offsetInBytes:       The offset to start reading from the draw buffer.
- * drawCount:           The number of draw parameter sets that should be read from the draw buffer.
- * stride:              The byte stride between sets of draw parameters.
- * vertexParamOffset:   The offset of the vertex shader param data.
- * fragmentParamOffset:	The offset of the fragment shader param data.
- */
-REFRESHAPI void Refresh_DrawPrimitivesIndirect(
-	Refresh_Device *device,
-	Refresh_CommandBuffer *commandBuffer,
-	Refresh_Buffer *buffer,
-	uint32_t offsetInBytes,
-	uint32_t drawCount,
-	uint32_t stride,
-	uint32_t vertexParamOffset,
-	uint32_t fragmentParamOffset
-);
-
-/* Dispatches work compute items.
- *
- * groupCountX:			Number of local workgroups to dispatch in the X dimension.
- * groupCountY:			Number of local workgroups to dispatch in the Y dimension.
- * groupCountZ:			Number of local workgroups to dispatch in the Z dimension.
- * computeParamOffset:	The offset of the compute shader param data.
- */
-REFRESHAPI void Refresh_DispatchCompute(
-	Refresh_Device *device,
-	Refresh_CommandBuffer *commandBuffer,
-	uint32_t groupCountX,
-	uint32_t groupCountY,
-	uint32_t groupCountZ,
-	uint32_t computeParamOffset
-);
 
 /* State Creation */
 
@@ -745,189 +766,55 @@ REFRESHAPI Refresh_Texture* Refresh_CreateTexture(
 	Refresh_TextureCreateInfo *textureCreateInfo
 );
 
-/* Creates a buffer.
+/* Creates a GpuBuffer.
  *
  * usageFlags:	Specifies how the buffer will be used.
  * sizeInBytes:	The length of the buffer.
  */
-REFRESHAPI Refresh_Buffer* Refresh_CreateBuffer(
+REFRESHAPI Refresh_GpuBuffer* Refresh_CreateGpuBuffer(
 	Refresh_Device *device,
 	Refresh_BufferUsageFlags usageFlags,
 	uint32_t sizeInBytes
 );
 
-/* Setters */
-
-/* Uploads image data to a texture object.
+/* Creates a TransferBuffer.
  *
- * NOTE:
- *	DO NOT expect this to execute in sequence relative to other commands!
- *	Calling SetTextureData in a command buffer that also references the
- *	texture may result in undefined behavior.
- *
- * 	textureSlice:		The texture slice to be updated.
- * 	data:				A pointer to the image data.
- * 	dataLengthInBytes:	The size of the image data.
+ * usage:
+ *   Determines what kind of resource the buffer will transfer.
+ *   D3D11's UpdateSubresource is busted when uploading buffers on some drivers,
+ *   so this helps the implementation take an efficient path.
+ * sizeInBytes: The length of the buffer.
  */
-REFRESHAPI void Refresh_SetTextureData(
-	Refresh_Device *driverData,
-	Refresh_CommandBuffer *commandBuffer,
-	Refresh_TextureSlice *textureSlice,
-	void *data,
-	uint32_t dataLengthInBytes
-);
-
-/* Uploads YUV image data to three R8 texture objects.
- *
- * y:            The texture storing the Y data.
- * u:            The texture storing the U (Cb) data.
- * v:            The texture storing the V (Cr) data.
- * yWidth:       The width of the Y plane.
- * yHeight:      The height of the Y plane.
- * uvWidth:      The width of the U/V planes.
- * uvHeight:     The height of the U/V planes.
- * yData:        A pointer to the raw Y image data.
- * uData:        A pointer to the raw U image data.
- * vData:        A pointer to the raw V image data.
- * yDataLength:  The size of the Y image data in bytes.
- * uvDataLength: The size of the UV image data in bytes.
- * yStride:      The length of a Y image data row in bytes.
- * uvStride:     The length of a UV image data row in bytes.
- */
-REFRESHAPI void Refresh_SetTextureDataYUV(
-	Refresh_Device *driverData,
-	Refresh_CommandBuffer* commandBuffer,
-	Refresh_Texture *y,
-	Refresh_Texture *u,
-	Refresh_Texture *v,
-	uint32_t yWidth,
-	uint32_t yHeight,
-	uint32_t uvWidth,
-	uint32_t uvHeight,
-	void *yDataPtr,
-	void *uDataPtr,
-	void *vDataPtr,
-	uint32_t yDataLength,
-	uint32_t uvDataLength,
-	uint32_t yStride,
-	uint32_t uvStride
-);
-
-/* Performs an asynchronous texture-to-texture copy.
- *
- * sourceTextureSlice:		The texture slice from which to copy.
- * destinationTextureSlice:	The texture slice to copy to.
- * filter:					The filter that will be used if the copy requires scaling.
- */
-REFRESHAPI void Refresh_CopyTextureToTexture(
-	Refresh_Device *driverData,
-	Refresh_CommandBuffer *commandBuffer,
-	Refresh_TextureSlice *sourceTextureSlice,
-	Refresh_TextureSlice *destinationTextureSlice,
-	Refresh_Filter filter
-);
-
-/* Asynchronously copies image data from a texture slice into a buffer.
- *
- * NOTE:
- * 	The buffer will not contain correct data until the command buffer
- * 	is submitted and completed.
- *
- * textureSlice:	The texture object being copied.
- * buffer:			The buffer being filled with the image data.
- */
-REFRESHAPI void Refresh_CopyTextureToBuffer(
+REFRESHAPI Refresh_TransferBuffer* Refresh_CreateTransferBuffer(
 	Refresh_Device *device,
-	Refresh_CommandBuffer *commandBuffer,
-	Refresh_TextureSlice *textureSlice,
-	Refresh_Buffer *buffer
+	Refresh_TransferUsage usage,
+	uint32_t sizeInBytes
 );
 
-/* Sets a region of the buffer with client data.
+/* Debug Naming */
+
+/* Sets an arbitrary string constant to be stored in a rendering API trace,
+ * useful for labeling buffers for debugging purposes.
  *
- * NOTE:
- * 		Calling this function on a buffer after the buffer
- * 		has been bound without calling Submit first is an error.
- *
- * buffer:			The vertex buffer to be updated.
- * offsetInBytes:	The starting offset of the buffer to write into.
- * data:			The client data to write into the buffer.
- * dataLength:		The length of data from the client buffer to write.
+ * buffer: The buffer to attach the name to.
+ * text: The UTF-8 string constant to mark as the name of the buffer.
  */
-REFRESHAPI void Refresh_SetBufferData(
+REFRESHAPI void Refresh_SetGpuBufferName(
 	Refresh_Device *device,
-	Refresh_CommandBuffer *commandBuffer,
-	Refresh_Buffer *buffer,
-	uint32_t offsetInBytes,
-	void* data,
-	uint32_t dataLength
+	Refresh_GpuBuffer *buffer,
+	const char *text
 );
 
-/* Pushes vertex shader params to the device.
- * Returns a starting offset value to be used with draw calls.
+/* Sets an arbitrary string constant to be stored in a rendering API trace,
+ * useful for labeling textures for debugging purposes.
  *
- * NOTE:
- * 		A pipeline must be bound.
- * 		Will use the block size of the currently bound vertex shader.
- *
- * data: 				The client data to write into the buffer.
- * dataLengthInBytes: 	The length of the data to write.
+ * texture: The texture to attach the name to.
+ * text: The UTF-8 string constant to mark as the name of the texture.
  */
-REFRESHAPI uint32_t Refresh_PushVertexShaderUniforms(
+REFRESHAPI void Refresh_SetTextureName(
 	Refresh_Device *device,
-	Refresh_CommandBuffer * commandBuffer,
-	void *data,
-	uint32_t dataLengthInBytes
-);
-
-/* Pushes fragment shader params to the device.
- * Returns a starting offset value to be used with draw calls.
- *
- * NOTE:
- * 		A graphics pipeline must be bound.
- * 		Will use the block size of the currently bound fragment shader.
- *
- * data: 				The client data to write into the buffer.
- * dataLengthInBytes: 	The length of the data to write.
- */
-REFRESHAPI uint32_t Refresh_PushFragmentShaderUniforms(
-	Refresh_Device *device,
-	Refresh_CommandBuffer *commandBuffer,
-	void *data,
-	uint32_t dataLengthInBytes
-);
-
-/* Pushes compute shader params to the device.
- * Returns a starting offset value to be used with draw calls.
- *
- * NOTE:
- * 	A compute pipeline must be bound.
- * 	Will use the block size of the currently bound compute shader.
- *
- * data:				The client data to write into the buffer.
- * dataLengthInBytes:	The length of the data to write.
- */
-REFRESHAPI uint32_t Refresh_PushComputeShaderUniforms(
-	Refresh_Device *device,
-	Refresh_CommandBuffer * commandBuffer,
-	void *data,
-	uint32_t dataLengthInBytes
-);
-
-/* Getters */
-
-/* Synchronously copies data from a buffer to a pointer.
- * You probably want to wait for a sync point to call this.
- *
- * buffer: 				The buffer to copy data from.
- * data:				The pointer to copy data to.
- * dataLengthInBytes:	The length of data to copy.
- */
-REFRESHAPI void Refresh_GetBufferData(
-	Refresh_Device *device,
-	Refresh_Buffer *buffer,
-	void *data,
-	uint32_t dataLengthInBytes
+	Refresh_Texture *texture,
+	const char *text
 );
 
 /* Disposal */
@@ -957,21 +844,27 @@ REFRESHAPI void Refresh_QueueDestroySampler(
 );
 
 /* Sends a buffer to be destroyed by the renderer. Note that we call it
- * "QueueDestroy" because it may not be immediately destroyed by the renderer if
- * this is not called from the main thread (for example, if a garbage collector
- * deletes the resource instead of the programmer).
+ * "QueueDestroy" because it may not be immediately destroyed by the renderer.
  *
- * buffer: The Refresh_Buffer to be destroyed.
+ * buffer: The Refresh_GpuBuffer to be destroyed.
  */
-REFRESHAPI void Refresh_QueueDestroyBuffer(
+REFRESHAPI void Refresh_QueueDestroyGpuBuffer(
 	Refresh_Device *device,
-	Refresh_Buffer *buffer
+	Refresh_GpuBuffer *gpuBuffer
+);
+
+/* Sends a buffer to be destroyed by the renderer. Note that we call it
+ * "QueueDestroy" because it may not be immediately destroyed by the renderer.
+ *
+ * buffer: The Refresh_TransferBuffer to be destroyed.
+ */
+REFRESHAPI void Refresh_QueueDestroyTransferBuffer(
+	Refresh_Device *device,
+	Refresh_TransferBuffer *transferBuffer
 );
 
 /* Sends a shader module to be destroyed by the renderer. Note that we call it
- * "QueueDestroy" because it may not be immediately destroyed by the renderer if
- * this is not called from the main thread (for example, if a garbage collector
- * deletes the resource instead of the programmer).
+ * "QueueDestroy" because it may not be immediately destroyed by the renderer.
  *
  * shaderModule: The Refresh_ShaderModule to be destroyed.
  */
@@ -981,9 +874,7 @@ REFRESHAPI void Refresh_QueueDestroyShaderModule(
 );
 
 /* Sends a compute pipeline to be destroyed by the renderer. Note that we call it
- * "QueueDestroy" because it may not be immediately destroyed by the renderer if
- * this is not called from the main thread (for example, if a garbage collector
- * deletes the resource instead of the programmer).
+ * "QueueDestroy" because it may not be immediately destroyed by the renderer.
  *
  * computePipeline: The Refresh_ComputePipeline to be destroyed.
  */
@@ -993,9 +884,7 @@ REFRESHAPI void Refresh_QueueDestroyComputePipeline(
 );
 
 /* Sends a graphics pipeline to be destroyed by the renderer. Note that we call it
- * "QueueDestroy" because it may not be immediately destroyed by the renderer if
- * this is not called from the main thread (for example, if a garbage collector
- * deletes the resource instead of the programmer).
+ * "QueueDestroy" because it may not be immediately destroyed by the renderer.
  *
  * graphicsPipeline: The Refresh_GraphicsPipeline to be destroyed.
  */
@@ -1021,12 +910,6 @@ REFRESHAPI void Refresh_BeginRenderPass(
 	Refresh_ColorAttachmentInfo *colorAttachmentInfos,
 	uint32_t colorAttachmentCount,
 	Refresh_DepthStencilAttachmentInfo *depthStencilAttachmentInfo
-);
-
-/* Ends the current render pass. */
-REFRESHAPI void Refresh_EndRenderPass(
-	Refresh_Device *device,
-	Refresh_CommandBuffer *commandBuffer
 );
 
 /* Binds a graphics pipeline to the graphics bind point. */
@@ -1058,49 +941,138 @@ REFRESHAPI void Refresh_BindVertexBuffers(
 	Refresh_CommandBuffer *commandBuffer,
 	uint32_t firstBinding,
 	uint32_t bindingCount,
-	Refresh_Buffer **pBuffers,
-	uint64_t *pOffsets
+	Refresh_BufferBinding *pBindings
 );
 
 /* Binds an index buffer for use with subsequent draw calls. */
 REFRESHAPI void Refresh_BindIndexBuffer(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
-	Refresh_Buffer *buffer,
-	uint64_t offset,
+	Refresh_BufferBinding *pBinding,
 	Refresh_IndexElementSize indexElementSize
 );
 
 /* Sets textures/samplers for use with the currently bound vertex shader.
  *
  * NOTE:
- * 		The length of the passed arrays must be equal to the number
+ * 		The length of the bindings array must be equal to the number
  * 		of sampler bindings specified by the pipeline.
  *
- * textures:	A pointer to an array of textures.
- * samplers:	A pointer to an array of samplers.
+ * pBindings:  A pointer to an array of TextureSamplerBindings.
  */
 REFRESHAPI void Refresh_BindVertexSamplers(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
-	Refresh_Texture **pTextures,
-	Refresh_Sampler **pSamplers
+	Refresh_TextureSamplerBinding *pBindings
 );
 
 /* Sets textures/samplers for use with the currently bound fragment shader.
  *
  * NOTE:
- *		The length of the passed arrays must be equal to the number
+ *		The length of the bindings array must be equal to the number
  * 		of sampler bindings specified by the pipeline.
  *
- * textures: 	A pointer to an array of textures.
- * samplers:	A pointer to an array of samplers.
+ * pBindings:  A pointer to an array of TextureSamplerBindings.
  */
 REFRESHAPI void Refresh_BindFragmentSamplers(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
-	Refresh_Texture **pTextures,
-	Refresh_Sampler **pSamplers
+	Refresh_TextureSamplerBinding *pBindings
+);
+
+/* Pushes vertex shader uniforms to the device.
+ * This uniform data will be used with subsequent draw calls.
+ *
+ * NOTE:
+ * 		A graphics pipeline must be bound.
+ * 		Will use the block size of the currently bound vertex shader.
+ *
+ * data: 				The client data to write into the buffer.
+ * dataLengthInBytes: 	The length of the data to write.
+ */
+REFRESHAPI void Refresh_PushVertexShaderUniforms(
+	Refresh_Device *device,
+	Refresh_CommandBuffer * commandBuffer,
+	void *data,
+	uint32_t dataLengthInBytes
+);
+
+/* Pushes fragment shader params to the device.
+ * This uniform data will be used with subsequent draw calls.
+ *
+ * NOTE:
+ * 		A graphics pipeline must be bound.
+ * 		Will use the block size of the currently bound fragment shader.
+ *
+ * data: 				The client data to write into the buffer.
+ * dataLengthInBytes: 	The length of the data to write.
+ */
+REFRESHAPI void Refresh_PushFragmentShaderUniforms(
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer,
+	void *data,
+	uint32_t dataLengthInBytes
+);
+
+/* Drawing */
+
+/* Draws data from vertex/index buffers with instancing enabled.
+ *
+ * baseVertex:          The starting offset to read from the vertex buffer.
+ * startIndex:          The starting offset to read from the index buffer.
+ * primitiveCount:      The number of primitives to draw.
+ * instanceCount:       The number of instances that will be drawn.
+ */
+REFRESHAPI void Refresh_DrawInstancedPrimitives(
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer,
+	uint32_t baseVertex,
+	uint32_t startIndex,
+	uint32_t primitiveCount,
+	uint32_t instanceCount
+);
+
+/* Draws data from vertex buffers.
+ *
+ * vertexStart:			The starting offset to read from the vertex buffer.
+ * primitiveCount:		The number of primitives to draw.
+ */
+REFRESHAPI void Refresh_DrawPrimitives(
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer,
+	uint32_t vertexStart,
+	uint32_t primitiveCount
+);
+
+/* Similar to Refresh_DrawPrimitives, but draw parameters are set from a buffer.
+ * The buffer layout should match the layout of Refresh_IndirectDrawCommand.
+ *
+ * buffer:              A buffer containing draw parameters.
+ * offsetInBytes:       The offset to start reading from the draw buffer.
+ * drawCount:           The number of draw parameter sets that should be read from the draw buffer.
+ * stride:              The byte stride between sets of draw parameters.
+ */
+REFRESHAPI void Refresh_DrawPrimitivesIndirect(
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_GpuBuffer *gpuBuffer,
+	uint32_t offsetInBytes,
+	uint32_t drawCount,
+	uint32_t stride
+);
+
+/* Ends the current render pass. */
+REFRESHAPI void Refresh_EndRenderPass(
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer
+);
+
+/* Compute Pass */
+
+/* Begins a compute pass. */
+REFRESHAPI void Refresh_BeginComputePass(
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer
 );
 
 /* Binds a compute pipeline to the compute bind point. */
@@ -1112,27 +1084,205 @@ REFRESHAPI void Refresh_BindComputePipeline(
 
 /* Binds buffers for use with the currently bound compute pipeline.
  *
- * pBuffers: An array of buffers to bind.
- * 	Length must be equal to the number of buffers
- * 	specified by the compute pipeline.
+ * pBindings:
+ *   An array of ComputeBufferBinding structs.
+ *   Length must be equal to the number of buffers
+ *   specified by the compute pipeline.
  */
 REFRESHAPI void Refresh_BindComputeBuffers(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
-	Refresh_Buffer **pBuffers
+	Refresh_ComputeBufferBinding *pBindings
 );
 
 /* Binds textures for use with the currently bound compute pipeline.
  *
- * pTextures: An array of textures to bind.
- * 	Length must be equal to the number of buffers
- * 	specified by the compute pipeline.
+ * pBindings:
+ *   An array of ComputeTextureBinding structs.
+ *   Length must be equal to the number of textures
+ *   specified by the compute pipeline.
  */
 REFRESHAPI void Refresh_BindComputeTextures(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
-	Refresh_Texture **pTextures
+	Refresh_ComputeTextureBinding *pBindings
 );
+
+/* Pushes compute shader params to the device.
+ * This uniform data will be used with subsequent dispatch calls.
+ *
+ * NOTE:
+ * 	A compute pipeline must be bound.
+ * 	Will use the block size of the currently bound compute shader.
+ *
+ * data:				The client data to write into the buffer.
+ * dataLengthInBytes:	The length of the data to write.
+ */
+REFRESHAPI void Refresh_PushComputeShaderUniforms(
+	Refresh_Device *device,
+	Refresh_CommandBuffer * commandBuffer,
+	void *data,
+	uint32_t dataLengthInBytes
+);
+
+/* Dispatches work compute items.
+ *
+ * groupCountX:			Number of local workgroups to dispatch in the X dimension.
+ * groupCountY:			Number of local workgroups to dispatch in the Y dimension.
+ * groupCountZ:			Number of local workgroups to dispatch in the Z dimension.
+ */
+REFRESHAPI void Refresh_DispatchCompute(
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer,
+	uint32_t groupCountX,
+	uint32_t groupCountY,
+	uint32_t groupCountZ
+);
+
+/* Ends the current compute pass. */
+REFRESHAPI void Refresh_EndComputePass(
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer
+);
+
+/* TransferBuffer Set/Get */
+
+/* Immediately copies data from a pointer into a TransferBuffer.
+ *
+ * transferOption:
+ *  CYCLE:
+ *    If this TransferBuffer has been used in commands that have not completed,
+ *    the issued commands will still be valid at the cost of increased memory usage.
+ *    You may NOT assume that any of the previous data is retained.
+ *    If the TransferBuffer was not in use, this option is equivalent to UNSAFE.
+ *    This may prevent stalls when frequently updating data.
+ *    It is not recommended to use this option with large TransferBuffers.
+ *
+ *  UNSAFE:
+ *    Overwrites the data regardless of whether a command has been issued.
+ *    Use this option with great care, as it can cause data races to occur!
+ */
+REFRESHAPI void Refresh_SetTransferData(
+	Refresh_Device *device,
+	void* data,
+	Refresh_TransferBuffer *transferBuffer,
+	Refresh_BufferCopy *copyParams,
+	Refresh_TransferOptions transferOption
+);
+
+/* Immediately copies data from a TransferBuffer into a pointer. */
+REFRESHAPI void Refresh_GetTransferData(
+	Refresh_Device *device,
+	Refresh_TransferBuffer *transferBuffer,
+	void* data,
+	Refresh_BufferCopy *copyParams
+);
+
+/* Copy Pass */
+
+/* Begins a copy pass. */
+REFRESHAPI void Refresh_BeginCopyPass(
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer
+);
+
+/* CPU-to-GPU copies occur on the GPU timeline.
+ *
+ * You MAY assume that the copy has finished for subsequent commands.
+ */
+
+/*
+ * writeOption:
+ *  CYCLE:
+ *    If the destination resource has been used in commands that have not completed,
+ *    the implementation may choose to prevent a data dependency at the cost of increased memory usage.
+ *    You may NOT assume that any of the previous data is retained.
+ *    This may prevent stalls on resources with frequent updates.
+ *    It is not recommended to use this option with large resources.
+ *
+ *  UNSAFE:
+ *    Overwrites the data unsafely. You must ensure that data used by earlier draw calls
+ *    is not affected or visual corruption can occur.
+ *
+ *  SAFE:
+ *    Overwrites the data safely. Earlier draw calls will not be affected.
+ *    This is usually the slowest option.
+ */
+
+/* Uploads data from a TransferBuffer to a texture. */
+REFRESHAPI void Refresh_UploadToTexture(
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_TransferBuffer *transferBuffer,
+	Refresh_TextureRegion *textureRegion,
+	Refresh_BufferImageCopy *copyParams,
+	Refresh_WriteOptions writeOption
+);
+
+/* Uploads data from a TransferBuffer to a GpuBuffer. */
+REFRESHAPI void Refresh_UploadToBuffer(
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_TransferBuffer *transferBuffer,
+	Refresh_GpuBuffer *gpuBuffer,
+	Refresh_BufferCopy *copyParams,
+	Refresh_WriteOptions writeOption
+);
+
+/* GPU-to-GPU copies occur on the GPU timeline,
+ * and you may assume the copy has finished in subsequent commands.
+ */
+
+/*
+ * writeOption:
+ *  CYCLE:
+ *    If the destination resource has been used in commands that have not completed,
+ *    the implementation may choose to prevent a data dependency at the cost of increased memory usage.
+ *    You may NOT assume that any of the previous data is retained.
+ *    This may prevent stalls on resources with frequent updates.
+ *    It is not recommended to use this option with large resources.
+ *
+ *  UNSAFE:
+ *    Overwrites the data unsafely. You must ensure that data used by earlier draw calls
+ *    is not affected or visual corruption can occur.
+ *
+ *  SAFE:
+ *    Overwrites the data safely. Earlier draw calls will not be affected.
+ *    This is usually the slowest option.
+ */
+
+/* Performs a texture-to-texture copy. */
+REFRESHAPI void Refresh_CopyTextureToTexture(
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_TextureRegion *source,
+	Refresh_TextureRegion *destination,
+	Refresh_WriteOptions writeOption
+);
+
+/* Copies data from a buffer to a buffer. */
+REFRESHAPI void Refresh_CopyBufferToBuffer(
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_GpuBuffer *source,
+	Refresh_GpuBuffer *destination,
+	Refresh_BufferCopy *copyParams,
+	Refresh_WriteOptions writeOption
+);
+
+/* Generate mipmaps for the given texture. */
+REFRESHAPI void Refresh_GenerateMipmaps(
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer,
+	Refresh_Texture *texture
+);
+
+REFRESHAPI void Refresh_EndCopyPass(
+	Refresh_Device *device,
+	Refresh_CommandBuffer *commandBuffer
+);
+
+/* Ends a copy pass. */
 
 /* Submission/Presentation */
 
@@ -1249,6 +1399,49 @@ REFRESHAPI int Refresh_QueryFence(
 REFRESHAPI void Refresh_ReleaseFence(
 	Refresh_Device *device,
 	Refresh_Fence *fence
+);
+
+/* Readback */
+
+/* GPU-to-CPU copies occur immediately on the CPU timeline.
+ *
+ * If you modify data on the GPU and then call these functions without calling Wait or WaitForFences first,
+ * the data will be undefined!
+ *
+ * Readback forces a sync point and is generally a bad thing to do.
+ * Only use these functions if you have exhausted all other options.
+ */
+
+/*
+ * transferOption:
+ *  CYCLE:
+ *    If this TransferBuffer has been used in commands that have not completed,
+ *    the issued commands will still be valid at the cost of increased memory usage.
+ *    You may NOT assume that any of the previous data is retained.
+ *    If the TransferBuffer was not in use, this option is equivalent to UNSAFE.
+ *    It is not recommended to use this option with large TransferBuffers.
+ *
+ *  UNSAFE:
+ *    Overwrites the data regardless of whether a command has been issued.
+ *    Use this option with great care, as it can cause data races to occur!
+ */
+
+/* Downloads data from a texture to a TransferBuffer. */
+REFRESHAPI void Refresh_DownloadFromTexture(
+	Refresh_Device *device,
+	Refresh_TextureRegion *textureRegion,
+	Refresh_TransferBuffer *transferBuffer,
+	Refresh_BufferImageCopy *copyParams,
+	Refresh_TransferOptions transferOption
+);
+
+/* Downloads data from a GpuBuffer object. */
+REFRESHAPI void Refresh_DownloadFromBuffer(
+	Refresh_Device *device,
+	Refresh_GpuBuffer *gpuBuffer,
+	Refresh_TransferBuffer *transferBuffer,
+	Refresh_BufferCopy *copyParams,
+	Refresh_TransferOptions transferOption
 );
 
 #ifdef __cplusplus

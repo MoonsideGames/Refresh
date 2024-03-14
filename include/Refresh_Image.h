@@ -63,6 +63,20 @@ REFRESHAPI uint8_t* Refresh_Image_Load(
 	int32_t *len
 );
 
+/* Get image dimensions without fully decoding the image.
+ *
+ * w:		    Filled with the width of the image.
+ * h:		    Filled with the height of the image.
+ * len:			Filled with the length of pixel data in bytes.
+ */
+REFRESHAPI uint8_t Refresh_Image_Info(
+	uint8_t *bufferPtr,
+	int32_t bufferLength,
+	int32_t *w,
+	int32_t *h,
+	int32_t *len
+);
+
 /* Frees memory returned by Refresh_Image_Load. Do NOT free the memory yourself!
  *
  * mem: A pointer previously returned by Refresh_Image_LoadPNG.

@@ -194,9 +194,26 @@ partial class Program
 				// Magic
 				writer.Write(new char[] { 'R', 'F', 'S', 'H'});
 
+				// Type
+				uint shaderTypeIndex;
+				switch (shaderType)
+				{
+					default:
+					case ".vert": shaderTypeIndex = 0; break;
+					case ".frag": shaderTypeIndex = 1; break;
+					case ".comp": shaderTypeIndex = 2; break;
+				}
+				writer.Write(shaderTypeIndex);
+
 				if (data.vulkan)
 				{
 					string inputPath = Path.Combine(tempDir, $"{shaderName}.spv");
+					WriteShaderBlob(writer, inputPath, 0);
+				}
+
+				if (data.d3d11)
+				{
+					string inputPath = Path.Combine(tempDir, $"{shaderName}.hlsl");
 					WriteShaderBlob(writer, inputPath, 1);
 				}
 
@@ -208,12 +225,6 @@ partial class Program
 					WriteShaderBlob(writer, inputPath, 2);
 				}
 #endif
-
-				if (data.d3d11)
-				{
-					string inputPath = Path.Combine(tempDir, $"{shaderName}.hlsl");
-					WriteShaderBlob(writer, inputPath, 3);
-				}
 			}
 		}
 
@@ -254,7 +265,7 @@ partial class Program
 	{
 		Process spirvcross = Process.Start(
 			"spirv-cross",
-			$"\"{spirvPath}\" --hlsl --shader-model 50 --output \"{outputPath}\""
+			$"\"{spirvPath}\" --hlsl --flip-vert-y --shader-model 50 --output \"{outputPath}\""
 		);
 		spirvcross.WaitForExit();
 		if (spirvcross.ExitCode != 0)
