@@ -4297,26 +4297,6 @@ static uint8_t VULKAN_INTERNAL_InitUniformBufferPool(
 	VulkanUniformBufferType uniformBufferType,
 	VulkanUniformBufferPool *uniformBufferPool
 ) {
-	VulkanResourceAccessType resourceAccessType;
-
-	if (uniformBufferType == UNIFORM_BUFFER_VERTEX)
-	{
-		resourceAccessType = RESOURCE_ACCESS_VERTEX_SHADER_READ_UNIFORM_BUFFER;
-	}
-	else if (uniformBufferType == UNIFORM_BUFFER_FRAGMENT)
-	{
-		resourceAccessType = RESOURCE_ACCESS_FRAGMENT_SHADER_READ_UNIFORM_BUFFER;
-	}
-	else if (uniformBufferType == UNIFORM_BUFFER_COMPUTE)
-	{
-		resourceAccessType = RESOURCE_ACCESS_COMPUTE_SHADER_READ_UNIFORM_BUFFER;
-	}
-	else
-	{
-		Refresh_LogError("Unrecognized uniform buffer type!");
-		return 0;
-	}
-
 	uniformBufferPool->type = uniformBufferType;
 	uniformBufferPool->lock = SDL_CreateMutex();
 
@@ -8928,14 +8908,14 @@ static void VULKAN_UploadToBuffer(
 	renderer->vkCmdCopyBuffer(
 		vulkanCommandBuffer->commandBuffer,
 		transferBufferContainer->activeBufferHandle->vulkanBuffer->buffer,
-		gpuBufferContainer->activeBufferHandle->vulkanBuffer->buffer,
+		vulkanBuffer->buffer,
 		1,
 		&bufferCopy
 	);
 
 	VULKAN_INTERNAL_TrackBuffer(renderer, vulkanCommandBuffer, transferBufferContainer->activeBufferHandle->vulkanBuffer);
-	VULKAN_INTERNAL_TrackBuffer(renderer, vulkanCommandBuffer, gpuBufferContainer->activeBufferHandle->vulkanBuffer);
-	VULKAN_INTERNAL_TrackCopiedBuffer(renderer, vulkanCommandBuffer, gpuBufferContainer->activeBufferHandle->vulkanBuffer);
+	VULKAN_INTERNAL_TrackBuffer(renderer, vulkanCommandBuffer, vulkanBuffer);
+	VULKAN_INTERNAL_TrackCopiedBuffer(renderer, vulkanCommandBuffer, vulkanBuffer);
 }
 
 static void VULKAN_CopyTextureToTexture(
@@ -9019,7 +8999,7 @@ static void VULKAN_CopyBufferToBuffer(
 	VulkanBufferContainer *dstContainer = (VulkanBufferContainer*) destination;
 	VkBufferCopy bufferCopy;
 
-	VulkanBuffer *vulkanBuffer = VULKAN_INTERNAL_PrepareBufferForWrite(
+	VulkanBuffer *dstBuffer = VULKAN_INTERNAL_PrepareBufferForWrite(
 		renderer,
 		vulkanCommandBuffer,
 		dstContainer,
@@ -9041,15 +9021,15 @@ static void VULKAN_CopyBufferToBuffer(
 	renderer->vkCmdCopyBuffer(
 		vulkanCommandBuffer->commandBuffer,
 		srcContainer->activeBufferHandle->vulkanBuffer->buffer,
-		dstContainer->activeBufferHandle->vulkanBuffer->buffer,
+		dstBuffer->buffer,
 		1,
 		&bufferCopy
 	);
 
 	VULKAN_INTERNAL_TrackBuffer(renderer, vulkanCommandBuffer, srcContainer->activeBufferHandle->vulkanBuffer);
-	VULKAN_INTERNAL_TrackBuffer(renderer, vulkanCommandBuffer, dstContainer->activeBufferHandle->vulkanBuffer);
+	VULKAN_INTERNAL_TrackBuffer(renderer, vulkanCommandBuffer, dstBuffer);
 	VULKAN_INTERNAL_TrackCopiedBuffer(renderer, vulkanCommandBuffer, srcContainer->activeBufferHandle->vulkanBuffer);
-	VULKAN_INTERNAL_TrackCopiedBuffer(renderer, vulkanCommandBuffer, dstContainer->activeBufferHandle->vulkanBuffer);
+	VULKAN_INTERNAL_TrackCopiedBuffer(renderer, vulkanCommandBuffer, dstBuffer);
 }
 
 static void VULKAN_GenerateMipmaps(
