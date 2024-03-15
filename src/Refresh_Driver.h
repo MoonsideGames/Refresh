@@ -501,7 +501,7 @@ struct Refresh_Device
 		Refresh_TransferBuffer *transferBuffer,
 		Refresh_TextureRegion *textureSlice,
 		Refresh_BufferImageCopy *copyParams,
-		Refresh_WriteOptions writeOption
+		Refresh_TextureWriteOptions writeOption
 	);
 
 	void (*UploadToBuffer)(
@@ -510,7 +510,7 @@ struct Refresh_Device
 		Refresh_TransferBuffer *transferBuffer,
 		Refresh_GpuBuffer *gpuBuffer,
 		Refresh_BufferCopy *copyParams,
-		Refresh_WriteOptions writeOption
+		Refresh_BufferWriteOptions writeOption
 	);
 
 	void (*CopyTextureToTexture)(
@@ -518,7 +518,7 @@ struct Refresh_Device
 		Refresh_CommandBuffer *commandBuffer,
 		Refresh_TextureRegion *source,
 		Refresh_TextureRegion *destination,
-		Refresh_WriteOptions writeOption
+		Refresh_TextureWriteOptions writeOption
 	);
 
 	void (*CopyBufferToBuffer)(
@@ -527,7 +527,7 @@ struct Refresh_Device
 		Refresh_GpuBuffer *source,
 		Refresh_GpuBuffer *destination,
 		Refresh_BufferCopy *copyParams,
-		Refresh_WriteOptions writeOption
+		Refresh_BufferWriteOptions writeOption
 	);
 
 	void (*GenerateMipmaps)(

@@ -796,7 +796,7 @@ void Refresh_UploadToTexture(
 	Refresh_TransferBuffer *transferBuffer,
 	Refresh_TextureRegion *textureRegion,
 	Refresh_BufferImageCopy *copyParams,
-	Refresh_WriteOptions writeOption
+	Refresh_TextureWriteOptions writeOption
 ) {
 	NULL_RETURN(device);
 	device->UploadToTexture(
@@ -815,7 +815,7 @@ void Refresh_UploadToBuffer(
 	Refresh_TransferBuffer *transferBuffer,
 	Refresh_GpuBuffer *gpuBuffer,
 	Refresh_BufferCopy *copyParams,
-	Refresh_WriteOptions writeOption
+	Refresh_BufferWriteOptions writeOption
 ) {
 	NULL_RETURN(device);
 	device->UploadToBuffer(
@@ -833,7 +833,7 @@ void Refresh_CopyTextureToTexture(
 	Refresh_CommandBuffer *commandBuffer,
 	Refresh_TextureRegion *source,
 	Refresh_TextureRegion *destination,
-	Refresh_WriteOptions writeOption
+	Refresh_TextureWriteOptions writeOption
 ) {
 	NULL_RETURN(device);
 	device->CopyTextureToTexture(
@@ -851,7 +851,7 @@ void Refresh_CopyBufferToBuffer(
 	Refresh_GpuBuffer *source,
 	Refresh_GpuBuffer *destination,
 	Refresh_BufferCopy *copyParams,
-	Refresh_WriteOptions writeOption
+	Refresh_BufferWriteOptions writeOption
 ) {
 	NULL_RETURN(device);
 	device->CopyBufferToBuffer(

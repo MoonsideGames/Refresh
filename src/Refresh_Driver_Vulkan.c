@@ -175,6 +175,13 @@ typedef enum VulkanResourceAccessType
 	RESOURCE_ACCESS_TYPES_COUNT
 } VulkanResourceAccessType;
 
+typedef enum VulkanResourceUpdateOption
+{
+	VULKAN_RESOURCEUPDATEOPTION_CYCLE,
+	VULKAN_RESOURCEUPDATEOPTION_UNSAFE,
+	VULKAN_RESOURCEUPDATEOPTION_SAFE
+} VulkanResourceUpdateOption;
+
 /* Conversions */
 
 static const uint8_t DEVICE_PRIORITY[] =
@@ -6004,27 +6011,25 @@ static VulkanBuffer* VULKAN_INTERNAL_PrepareBufferForWrite(
 	VulkanRenderer *renderer,
 	VulkanCommandBuffer *commandBuffer,
 	VulkanBufferContainer *bufferContainer,
-	Refresh_WriteOptions writeOption,
+	VulkanResourceUpdateOption updateOption,
 	VulkanResourceAccessType nextResourceAccessType
 ) {
 	if (
-		writeOption == REFRESH_WRITEOPTIONS_SAFE ||
-		bufferContainer->activeBufferHandle->vulkanBuffer->defragInProgress /* barrier on defrag to avoid corruption */
-	) {
-		VULKAN_INTERNAL_BufferMemoryBarrier(
-			renderer,
-			commandBuffer->commandBuffer,
-			nextResourceAccessType,
-			bufferContainer->activeBufferHandle->vulkanBuffer
-		);
-	}
-	else if (
-		writeOption == REFRESH_WRITEOPTIONS_CYCLE &&
+		updateOption == VULKAN_RESOURCEUPDATEOPTION_CYCLE &&
 		SDL_AtomicGet(&bufferContainer->activeBufferHandle->vulkanBuffer->referenceCount) > 0
 	) {
 		VULKAN_INTERNAL_CycleActiveBuffer(
 			renderer,
 			bufferContainer
+		);
+	}
+	else if (updateOption == VULKAN_RESOURCEUPDATEOPTION_SAFE)
+	{
+		VULKAN_INTERNAL_BufferMemoryBarrier(
+			renderer,
+			commandBuffer->commandBuffer,
+			nextResourceAccessType,
+			bufferContainer->activeBufferHandle->vulkanBuffer
 		);
 	}
 	else /* UNSAFE */
@@ -6041,7 +6046,7 @@ static VulkanTextureSlice* VULKAN_INTERNAL_PrepareTextureSliceForWrite(
 	VulkanTextureContainer *textureContainer,
 	uint32_t layer,
 	uint32_t level,
-	Refresh_WriteOptions writeOption,
+	VulkanResourceUpdateOption updateOption,
 	VulkanResourceAccessType nextResourceAccessType
 ) {
 	VulkanTextureSlice *textureSlice = VULKAN_INTERNAL_FetchTextureSlice(
@@ -6051,7 +6056,7 @@ static VulkanTextureSlice* VULKAN_INTERNAL_PrepareTextureSliceForWrite(
 	);
 
 	if (
-		writeOption == REFRESH_WRITEOPTIONS_CYCLE &&
+		updateOption == VULKAN_RESOURCEUPDATEOPTION_CYCLE &&
 		textureContainer->canBeCycled &&
 		!textureSlice->defragInProgress &&
 		SDL_AtomicGet(&textureSlice->referenceCount) > 0
@@ -8073,6 +8078,19 @@ static void VULKAN_BeginRenderPass(
 
 	for (i = 0; i < colorAttachmentCount; i += 1)
 	{
+		VulkanResourceUpdateOption updateOption;
+		if (colorAttachmentInfos[i].loadOp)
+		{
+			updateOption = VULKAN_RESOURCEUPDATEOPTION_SAFE;
+		}
+		else
+		{
+			updateOption =
+				colorAttachmentInfos[i].writeOption == REFRESH_TEXTUREWRITEOPTIONS_CYCLE ?
+				VULKAN_RESOURCEUPDATEOPTION_CYCLE :
+				VULKAN_RESOURCEUPDATEOPTION_SAFE;
+		}
+
 		textureContainer = (VulkanTextureContainer*) colorAttachmentInfos[i].textureSlice.texture;
 		textureSlice = VULKAN_INTERNAL_PrepareTextureSliceForWrite(
 			renderer,
@@ -8080,7 +8098,7 @@ static void VULKAN_BeginRenderPass(
 			textureContainer,
 			colorAttachmentInfos[i].textureSlice.layer,
 			colorAttachmentInfos[i].textureSlice.mipLevel,
-			colorAttachmentInfos[i].loadOp != REFRESH_LOADOP_LOAD ? colorAttachmentInfos[i].writeOption : REFRESH_WRITEOPTIONS_SAFE,
+			updateOption,
 			RESOURCE_ACCESS_COLOR_ATTACHMENT_READ_WRITE
 		);
 
@@ -8109,6 +8127,22 @@ static void VULKAN_BeginRenderPass(
 
 	if (depthStencilAttachmentInfo != NULL)
 	{
+		VulkanResourceUpdateOption updateOption;
+
+		if (
+			depthStencilAttachmentInfo->loadOp == REFRESH_LOADOP_LOAD ||
+			depthStencilAttachmentInfo->stencilLoadOp == REFRESH_LOADOP_LOAD
+		) {
+			updateOption = VULKAN_RESOURCEUPDATEOPTION_SAFE;
+		}
+		else
+		{
+			updateOption =
+				depthStencilAttachmentInfo->writeOption == REFRESH_TEXTUREWRITEOPTIONS_CYCLE ?
+				VULKAN_RESOURCEUPDATEOPTION_CYCLE :
+				VULKAN_RESOURCEUPDATEOPTION_SAFE;
+		}
+
 		textureContainer = (VulkanTextureContainer*) depthStencilAttachmentInfo->textureSlice.texture;
 		textureSlice = VULKAN_INTERNAL_PrepareTextureSliceForWrite(
 			renderer,
@@ -8116,12 +8150,7 @@ static void VULKAN_BeginRenderPass(
 			textureContainer,
 			depthStencilAttachmentInfo->textureSlice.layer,
 			depthStencilAttachmentInfo->textureSlice.mipLevel,
-			(
-				depthStencilAttachmentInfo->loadOp != REFRESH_LOADOP_LOAD &&
-				depthStencilAttachmentInfo->stencilLoadOp != REFRESH_LOADOP_LOAD ?
-				depthStencilAttachmentInfo->writeOption :
-				REFRESH_WRITEOPTIONS_SAFE
-			),
+			updateOption,
 			RESOURCE_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_WRITE
 		);
 
@@ -8818,7 +8847,7 @@ static void VULKAN_UploadToTexture(
 	Refresh_TransferBuffer *transferBuffer,
 	Refresh_TextureRegion *textureRegion,
 	Refresh_BufferImageCopy *copyParams,
-	Refresh_WriteOptions writeOption
+	Refresh_TextureWriteOptions writeOption
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
@@ -8833,7 +8862,7 @@ static void VULKAN_UploadToTexture(
 		vulkanTextureContainer,
 		textureRegion->textureSlice.layer,
 		textureRegion->textureSlice.mipLevel,
-		writeOption,
+		writeOption == REFRESH_TEXTUREWRITEOPTIONS_CYCLE ? VULKAN_RESOURCEUPDATEOPTION_CYCLE : VULKAN_RESOURCEUPDATEOPTION_SAFE,
 		RESOURCE_ACCESS_TRANSFER_WRITE
 	);
 
@@ -8878,7 +8907,7 @@ static void VULKAN_UploadToBuffer(
 	Refresh_TransferBuffer *transferBuffer,
 	Refresh_GpuBuffer *gpuBuffer,
 	Refresh_BufferCopy *copyParams,
-	Refresh_WriteOptions writeOption
+	Refresh_BufferWriteOptions writeOption
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
@@ -8890,7 +8919,7 @@ static void VULKAN_UploadToBuffer(
 		renderer,
 		vulkanCommandBuffer,
 		gpuBufferContainer,
-		writeOption,
+		writeOption == REFRESH_TEXTUREWRITEOPTIONS_CYCLE ? VULKAN_RESOURCEUPDATEOPTION_CYCLE : VULKAN_RESOURCEUPDATEOPTION_UNSAFE,
 		RESOURCE_ACCESS_TRANSFER_WRITE
 	);
 
@@ -8923,7 +8952,7 @@ static void VULKAN_CopyTextureToTexture(
 	Refresh_CommandBuffer *commandBuffer,
 	Refresh_TextureRegion *source,
 	Refresh_TextureRegion *destination,
-	Refresh_WriteOptions writeOption
+	Refresh_TextureWriteOptions writeOption
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
@@ -8940,7 +8969,7 @@ static void VULKAN_CopyTextureToTexture(
 		dstContainer,
 		destination->textureSlice.layer,
 		destination->textureSlice.mipLevel,
-		writeOption,
+		writeOption == REFRESH_TEXTUREWRITEOPTIONS_CYCLE ? VULKAN_RESOURCEUPDATEOPTION_CYCLE : VULKAN_RESOURCEUPDATEOPTION_SAFE,
 		RESOURCE_ACCESS_TRANSFER_WRITE
 	);
 
@@ -8991,7 +9020,7 @@ static void VULKAN_CopyBufferToBuffer(
 	Refresh_GpuBuffer *source,
 	Refresh_GpuBuffer *destination,
 	Refresh_BufferCopy *copyParams,
-	Refresh_WriteOptions writeOption
+	Refresh_BufferWriteOptions writeOption
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer*) commandBuffer;
@@ -9003,7 +9032,7 @@ static void VULKAN_CopyBufferToBuffer(
 		renderer,
 		vulkanCommandBuffer,
 		dstContainer,
-		writeOption,
+		writeOption == REFRESH_BUFFEWRITEOPTIONS_CYCLE ? VULKAN_RESOURCEUPDATEOPTION_CYCLE : VULKAN_RESOURCEUPDATEOPTION_UNSAFE,
 		RESOURCE_ACCESS_TRANSFER_WRITE
 	);
 
@@ -9113,6 +9142,9 @@ static void VULKAN_GenerateMipmaps(
 			&blit,
 			VK_FILTER_LINEAR
 		);
+
+		VULKAN_INTERNAL_TrackTextureSlice(renderer, vulkanCommandBuffer, srcTextureSlice);
+		VULKAN_INTERNAL_TrackTextureSlice(renderer, vulkanCommandBuffer, dstTextureSlice);
 	}
 }
 

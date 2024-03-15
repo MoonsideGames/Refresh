@@ -339,12 +339,23 @@ typedef enum Refresh_TransferOptions
 	REFRESH_TRANSFEROPTIONS_UNSAFE
 } Refresh_TransferOptions;
 
-typedef enum Refresh_WriteOptions
+typedef enum Refresh_BufferWriteOptions
 {
-	REFRESH_WRITEOPTIONS_CYCLE,
-	REFRESH_WRITEOPTIONS_UNSAFE,
-	REFRESH_WRITEOPTIONS_SAFE
-} Refresh_WriteOptions;
+	REFRESH_BUFFEWRITEOPTIONS_CYCLE,
+	REFRESH_BUFFERWRITEOPTIONS_UNSAFE
+} Refresh_BufferWriteOptions;
+
+typedef enum Refresh_TextureWriteOptions
+{
+	REFRESH_TEXTUREWRITEOPTIONS_CYCLE,
+	REFRESH_TEXTUREWRITEOPTIONS_SAFE
+} Refresh_TextureWriteOptions;
+
+typedef enum Refresh_ComputeBindOptions
+{
+	REFRESH_COMPUTEBINDOPTIONS_CYCLE,
+	REFRESH_COMPUTEBINDOPTIONS_SAFE
+} Refresh_ComputeBindOptions;
 
 typedef enum Refresh_Backend
 {
@@ -640,7 +651,7 @@ typedef struct Refresh_ColorAttachmentInfo
 	Refresh_Vec4 clearColor; /* Can be ignored by RenderPass if CLEAR is not used */
 	Refresh_LoadOp loadOp;
 	Refresh_StoreOp storeOp;
-	Refresh_WriteOptions writeOption;
+	Refresh_TextureWriteOptions writeOption;
 } Refresh_ColorAttachmentInfo;
 
 typedef struct Refresh_DepthStencilAttachmentInfo
@@ -651,7 +662,7 @@ typedef struct Refresh_DepthStencilAttachmentInfo
 	Refresh_StoreOp storeOp;
 	Refresh_LoadOp stencilLoadOp;
 	Refresh_StoreOp stencilStoreOp;
-	Refresh_WriteOptions writeOption;
+	Refresh_TextureWriteOptions writeOption;
 } Refresh_DepthStencilAttachmentInfo;
 
 /* Binding structs */
@@ -671,13 +682,13 @@ typedef struct Refresh_TextureSamplerBinding
 typedef struct Refresh_ComputeBufferBinding
 {
 	Refresh_GpuBuffer *gpuBuffer;
-	Refresh_WriteOptions writeOption;
+	Refresh_ComputeBindOptions writeOption;
 } Refresh_ComputeBufferBinding;
 
 typedef struct Refresh_ComputeTextureBinding
 {
 	Refresh_TextureSlice textureSlice;
-	Refresh_WriteOptions writeOption;
+	Refresh_ComputeBindOptions writeOption;
 } Refresh_ComputeTextureBinding;
 
 /* Functions */
@@ -1209,14 +1220,13 @@ REFRESHAPI void Refresh_BeginCopyPass(
  *    This is usually the slowest option.
  */
 
-/* Uploads data from a TransferBuffer to a texture. */
 REFRESHAPI void Refresh_UploadToTexture(
 	Refresh_Device *device,
 	Refresh_CommandBuffer *commandBuffer,
 	Refresh_TransferBuffer *transferBuffer,
 	Refresh_TextureRegion *textureRegion,
 	Refresh_BufferImageCopy *copyParams,
-	Refresh_WriteOptions writeOption
+	Refresh_TextureWriteOptions writeOption
 );
 
 /* Uploads data from a TransferBuffer to a GpuBuffer. */
@@ -1226,7 +1236,7 @@ REFRESHAPI void Refresh_UploadToBuffer(
 	Refresh_TransferBuffer *transferBuffer,
 	Refresh_GpuBuffer *gpuBuffer,
 	Refresh_BufferCopy *copyParams,
-	Refresh_WriteOptions writeOption
+	Refresh_BufferWriteOptions uploadOption
 );
 
 /* GPU-to-GPU copies occur on the GPU timeline,
@@ -1257,7 +1267,7 @@ REFRESHAPI void Refresh_CopyTextureToTexture(
 	Refresh_CommandBuffer *commandBuffer,
 	Refresh_TextureRegion *source,
 	Refresh_TextureRegion *destination,
-	Refresh_WriteOptions writeOption
+	Refresh_TextureWriteOptions writeOption
 );
 
 /* Copies data from a buffer to a buffer. */
@@ -1267,7 +1277,7 @@ REFRESHAPI void Refresh_CopyBufferToBuffer(
 	Refresh_GpuBuffer *source,
 	Refresh_GpuBuffer *destination,
 	Refresh_BufferCopy *copyParams,
-	Refresh_WriteOptions writeOption
+	Refresh_BufferWriteOptions writeOption
 );
 
 /* Generate mipmaps for the given texture. */
