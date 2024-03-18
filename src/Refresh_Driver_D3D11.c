@@ -2583,7 +2583,7 @@ static void D3D11_UploadToBuffer(
 	D3D11Buffer *d3d11Buffer = D3D11_INTERNAL_PrepareGpuBufferForWrite(
 		renderer,
 		bufferContainer,
-		writeOption == REFRESH_BUFFEWRITEOPTIONS_CYCLE
+		writeOption == REFRESH_BUFFERWRITEOPTIONS_CYCLE
 	);
 
 	ID3D11DeviceContext1_CopySubresourceRegion1(
@@ -2819,7 +2819,7 @@ static void D3D11_CopyBufferToBuffer(
 	D3D11Buffer *dstBuffer = D3D11_INTERNAL_PrepareGpuBufferForWrite(
 		renderer,
 		dstBufferContainer,
-		writeOption == REFRESH_BUFFEWRITEOPTIONS_CYCLE
+		writeOption == REFRESH_BUFFERWRITEOPTIONS_CYCLE
 	);
 
 	ID3D11DeviceContext1_CopySubresourceRegion1(

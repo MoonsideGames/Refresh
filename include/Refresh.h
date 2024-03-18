@@ -341,7 +341,7 @@ typedef enum Refresh_TransferOptions
 
 typedef enum Refresh_BufferWriteOptions
 {
-	REFRESH_BUFFEWRITEOPTIONS_CYCLE,
+	REFRESH_BUFFERWRITEOPTIONS_CYCLE,
 	REFRESH_BUFFERWRITEOPTIONS_UNSAFE
 } Refresh_BufferWriteOptions;
 
