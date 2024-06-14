@@ -482,15 +482,6 @@ Refresh_TransferBuffer* Refresh_CreateTransferBuffer(
 	);
 }
 
-Refresh_OcclusionQuery* Refresh_CreateOcclusionQuery(
-    Refresh_Device *device
-) {
-    NULL_ASSERT(device)
-    return device->CreateOcclusionQuery(
-        device->driverData
-    );
-}
-
 /* Debug Naming */
 
 void Refresh_SetBufferName(
@@ -611,17 +602,6 @@ void Refresh_ReleaseGraphicsPipeline(
 		device->driverData,
 		graphicsPipeline
 	);
-}
-
-void Refresh_ReleaseOcclusionQuery(
-    Refresh_Device *device,
-    Refresh_OcclusionQuery *query
-) {
-    NULL_ASSERT(device);
-    device->ReleaseOcclusionQuery(
-        device->driverData,
-        query
-    );
 }
 
 /* Render Pass */
@@ -1504,41 +1484,4 @@ void Refresh_ReleaseFence(
 		device->driverData,
 		fence
 	);
-}
-
-void Refresh_OcclusionQueryBegin(
-    Refresh_CommandBuffer *commandBuffer,
-    Refresh_OcclusionQuery *query
-) {
-    NULL_ASSERT(commandBuffer);
-    COMMAND_BUFFER_DEVICE->OcclusionQueryBegin(
-        commandBuffer,
-        query
-    );
-}
-
-void Refresh_OcclusionQueryEnd(
-    Refresh_CommandBuffer *commandBuffer,
-    Refresh_OcclusionQuery *query
-) {
-    NULL_ASSERT(commandBuffer);
-    COMMAND_BUFFER_DEVICE->OcclusionQueryEnd(
-        commandBuffer,
-        query
-    );
-}
-
-SDL_bool Refresh_OcclusionQueryPixelCount(
-    Refresh_Device *device,
-    Refresh_OcclusionQuery *query,
-    Uint32 *pixelCount
-) {
-    if (device == NULL)
-        return SDL_FALSE;
-
-    return device->OcclusionQueryPixelCount(
-        device->driverData,
-        query,
-        pixelCount
-    );
 }

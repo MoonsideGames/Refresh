@@ -66,7 +66,6 @@ typedef struct Refresh_RenderPass Refresh_RenderPass;
 typedef struct Refresh_ComputePass Refresh_ComputePass;
 typedef struct Refresh_CopyPass Refresh_CopyPass;
 typedef struct Refresh_Fence Refresh_Fence;
-typedef struct Refresh_OcclusionQuery Refresh_OcclusionQuery;
 
 typedef enum Refresh_PrimitiveType
 {
@@ -975,21 +974,6 @@ REFRESHAPI Refresh_TransferBuffer* Refresh_CreateTransferBuffer(
 	Uint32 sizeInBytes
 );
 
-/**
- * Creates an occlusion query object.
- *
- * This function is included for compatibility with old render systems.
- * If you are not supporting an old application, do NOT use this.
- *
- * \param device a GPU context
- * \returns an occlusion query object
- *
- * \sa Refresh_ReleaseQuery
- */
-REFRESHAPI Refresh_OcclusionQuery* Refresh_CreateOcclusionQuery(
-    Refresh_Device *device
-);
-
 /* Debug Naming */
 
 /**
@@ -1113,18 +1097,6 @@ REFRESHAPI void Refresh_ReleaseShader(
 REFRESHAPI void Refresh_ReleaseGraphicsPipeline(
 	Refresh_Device *device,
 	Refresh_GraphicsPipeline *graphicsPipeline
-);
-
-/**
- * Frees the given occlusion query as soon as it is safe to do so.
- * You must not reference the occlusion query after calling this function.
- *
- * \param device a GPU context
- * \param query an occlusion query object to be destroyed
- */
-REFRESHAPI void Refresh_ReleaseOcclusionQuery(
-    Refresh_Device *device,
-    Refresh_OcclusionQuery *query
 );
 
 /*
@@ -2080,56 +2052,6 @@ REFRESHAPI Refresh_SampleCount Refresh_GetBestSampleCount(
     Refresh_Device *device,
     Refresh_TextureFormat format,
     Refresh_SampleCount desiredSampleCount
-);
-
-/* Queries */
-
-/**
- * Begins an occlusion query.
- *
- * This function is included for compatibility with old render systems.
- * If you are not supporting an old application, do NOT use this.
- *
- * \param commandBuffer a command buffer
- * \param query an occlusion query object
- */
-REFRESHAPI void Refresh_OcclusionQueryBegin(
-    Refresh_CommandBuffer *commandBuffer,
-    Refresh_OcclusionQuery *query
-);
-
-/**
- * Ends an occlusion query.
- * You must have called Refresh_OcclusionQueryBegin on the query beforehand.
- *
- * This function is included for compatibility with old render systems.
- * If you are not supporting an old application, do NOT use this.
- *
- * \param commandBuffer a commandBuffer
- * \param query an occlusion query object
- *
- * \sa Refresh_BeginQuery
- */
-REFRESHAPI void Refresh_OcclusionQueryEnd(
-    Refresh_CommandBuffer *commandBuffer,
-    Refresh_OcclusionQuery *query
-);
-
-/**
- * Checks if an occlusion query is complete and fills in the pixel count of the query.
- *
- * This function is included for compatibility with old render systems.
- * If you are not supporting an old application, do NOT use this.
- *
- * \param device a GPU context
- * \param query an occlusion query object
- * \param pixelCount a pointer to be filled with the pixel count
- * \returns SDL_TRUE if the occlusion query is complete, SDL_FALSE otherwise
- */
-REFRESHAPI SDL_bool Refresh_OcclusionQueryPixelCount(
-    Refresh_Device *device,
-    Refresh_OcclusionQuery *query,
-    Uint32 *pixelCount
 );
 
 #ifdef __cplusplus

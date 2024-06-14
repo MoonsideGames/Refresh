@@ -255,10 +255,6 @@ struct Refresh_Device
 		Uint32 sizeInBytes
 	);
 
-    Refresh_OcclusionQuery* (*CreateOcclusionQuery)(
-        Refresh_Renderer *driverData
-    );
-
 	/* Debug Naming */
 
 	void (*SetBufferName)(
@@ -314,11 +310,6 @@ struct Refresh_Device
 		Refresh_Renderer *driverData,
 		Refresh_GraphicsPipeline *graphicsPipeline
 	);
-
-    void (*ReleaseOcclusionQuery)(
-        Refresh_Renderer *driverData,
-        Refresh_OcclusionQuery *query
-    );
 
 	/* Render Pass */
 
@@ -669,24 +660,6 @@ struct Refresh_Device
 		Refresh_Fence *fence
 	);
 
-    /* Queries */
-
-    void (*OcclusionQueryBegin)(
-        Refresh_CommandBuffer *commandBuffer,
-        Refresh_OcclusionQuery *query
-    );
-
-    void (*OcclusionQueryEnd)(
-        Refresh_CommandBuffer *commandBuffer,
-        Refresh_OcclusionQuery *query
-    );
-
-    SDL_bool (*OcclusionQueryPixelCount)(
-        Refresh_Renderer *driverData,
-        Refresh_OcclusionQuery *query,
-        Uint32 *pixelCount
-    );
-
     /* Feature Queries */
 
     SDL_bool (*IsTextureFormatSupported)(
@@ -720,7 +693,6 @@ struct Refresh_Device
 	ASSIGN_DRIVER_FUNC(CreateTexture, name) \
 	ASSIGN_DRIVER_FUNC(CreateBuffer, name) \
 	ASSIGN_DRIVER_FUNC(CreateTransferBuffer, name) \
-    ASSIGN_DRIVER_FUNC(CreateOcclusionQuery, name) \
 	ASSIGN_DRIVER_FUNC(SetBufferName, name) \
 	ASSIGN_DRIVER_FUNC(SetTextureName, name) \
     ASSIGN_DRIVER_FUNC(SetStringMarker, name) \
@@ -731,7 +703,6 @@ struct Refresh_Device
 	ASSIGN_DRIVER_FUNC(ReleaseShader, name) \
 	ASSIGN_DRIVER_FUNC(ReleaseComputePipeline, name) \
 	ASSIGN_DRIVER_FUNC(ReleaseGraphicsPipeline, name) \
-    ASSIGN_DRIVER_FUNC(ReleaseOcclusionQuery, name) \
 	ASSIGN_DRIVER_FUNC(BeginRenderPass, name) \
 	ASSIGN_DRIVER_FUNC(BindGraphicsPipeline, name) \
 	ASSIGN_DRIVER_FUNC(SetViewport, name) \
@@ -786,9 +757,6 @@ struct Refresh_Device
 	ASSIGN_DRIVER_FUNC(WaitForFences, name) \
 	ASSIGN_DRIVER_FUNC(QueryFence, name) \
 	ASSIGN_DRIVER_FUNC(ReleaseFence, name) \
-    ASSIGN_DRIVER_FUNC(OcclusionQueryBegin, name) \
-    ASSIGN_DRIVER_FUNC(OcclusionQueryEnd, name) \
-    ASSIGN_DRIVER_FUNC(OcclusionQueryPixelCount, name) \
     ASSIGN_DRIVER_FUNC(IsTextureFormatSupported, name) \
     ASSIGN_DRIVER_FUNC(GetBestSampleCount, name)
 
