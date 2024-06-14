@@ -346,7 +346,7 @@ static MTLColorWriteMask RefreshToMetal_ColorWriteMask(
 typedef struct MetalTexture
 {
     id<MTLTexture> handle;
-    SDL_AtomicInt referenceCount;
+    SDL_atomic_t referenceCount;
 } MetalTexture;
 
 typedef struct MetalTextureContainer
@@ -364,7 +364,7 @@ typedef struct MetalTextureContainer
 
 typedef struct MetalFence
 {
-    SDL_AtomicInt complete;
+    SDL_atomic_t complete;
 } MetalFence;
 
 typedef struct MetalWindowData
@@ -428,7 +428,7 @@ typedef struct MetalComputePipeline
 typedef struct MetalBuffer
 {
     id<MTLBuffer> handle;
-    SDL_AtomicInt referenceCount;
+    SDL_atomic_t referenceCount;
 } MetalBuffer;
 
 typedef struct MetalBufferContainer
@@ -583,11 +583,11 @@ struct MetalRenderer
     Uint32 blitPipelineCapacity;
 
     /* Mutexes */
-    SDL_Mutex *submitLock;
-    SDL_Mutex *acquireCommandBufferLock;
-    SDL_Mutex *disposeLock;
-    SDL_Mutex *fenceLock;
-    SDL_Mutex *windowLock;
+    SDL_mutex *submitLock;
+    SDL_mutex *acquireCommandBufferLock;
+    SDL_mutex *disposeLock;
+    SDL_mutex *fenceLock;
+    SDL_mutex *windowLock;
 };
 
 /* Helper Functions */
