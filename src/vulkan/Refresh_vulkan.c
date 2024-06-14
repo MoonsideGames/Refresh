@@ -4439,7 +4439,7 @@ static VulkanTextureSlice* VULKAN_INTERNAL_FetchTextureSlice(
     ];
 }
 
-static VulkanTextureSlice* VULKAN_INTERNAL_SDLToVulkanTextureSlice(
+static VulkanTextureSlice* VULKAN_INTERNAL_RefreshToVulkanTextureSlice(
     Refresh_TextureSlice *textureSlice
 ) {
     return VULKAN_INTERNAL_FetchTextureSlice(
@@ -7913,7 +7913,7 @@ static VulkanFramebuffer* VULKAN_INTERNAL_FetchFramebuffer(
 
     for (i = 0; i < colorAttachmentCount; i += 1)
     {
-        textureSlice = VULKAN_INTERNAL_SDLToVulkanTextureSlice(&colorAttachmentInfos[i].textureSlice);
+        textureSlice = VULKAN_INTERNAL_RefreshToVulkanTextureSlice(&colorAttachmentInfos[i].textureSlice);
 
         hash.colorAttachmentViews[i] = textureSlice->view;
 
@@ -7929,7 +7929,7 @@ static VulkanFramebuffer* VULKAN_INTERNAL_FetchFramebuffer(
     }
     else
     {
-        textureSlice = VULKAN_INTERNAL_SDLToVulkanTextureSlice(&depthStencilAttachmentInfo->textureSlice);
+        textureSlice = VULKAN_INTERNAL_RefreshToVulkanTextureSlice(&depthStencilAttachmentInfo->textureSlice);
         hash.depthStencilAttachmentView = textureSlice->view;
     }
 
@@ -7958,7 +7958,7 @@ static VulkanFramebuffer* VULKAN_INTERNAL_FetchFramebuffer(
 
     for (i = 0; i < colorAttachmentCount; i += 1)
     {
-        textureSlice = VULKAN_INTERNAL_SDLToVulkanTextureSlice(&colorAttachmentInfos[i].textureSlice);
+        textureSlice = VULKAN_INTERNAL_RefreshToVulkanTextureSlice(&colorAttachmentInfos[i].textureSlice);
 
         imageViewAttachments[attachmentCount] =
             textureSlice->view;
@@ -7976,7 +7976,7 @@ static VulkanFramebuffer* VULKAN_INTERNAL_FetchFramebuffer(
 
     if (depthStencilAttachmentInfo != NULL)
     {
-        textureSlice = VULKAN_INTERNAL_SDLToVulkanTextureSlice(&depthStencilAttachmentInfo->textureSlice);
+        textureSlice = VULKAN_INTERNAL_RefreshToVulkanTextureSlice(&depthStencilAttachmentInfo->textureSlice);
 
         imageViewAttachments[attachmentCount] =
             textureSlice->view;
@@ -8557,7 +8557,7 @@ static void VULKAN_BeginRenderPass(
         clearValues[i].color.float32[2] = colorAttachmentInfos[i].clearColor.b;
         clearValues[i].color.float32[3] = colorAttachmentInfos[i].clearColor.a;
 
-        textureSlice = VULKAN_INTERNAL_SDLToVulkanTextureSlice(&colorAttachmentInfos[i].textureSlice);
+        textureSlice = VULKAN_INTERNAL_RefreshToVulkanTextureSlice(&colorAttachmentInfos[i].textureSlice);
 
         if (textureSlice->parent->sampleCount > VK_SAMPLE_COUNT_1_BIT)
         {
@@ -9625,7 +9625,7 @@ static void VULKAN_DownloadFromTexture(
     VulkanTextureSlice *vulkanTextureSlice;
     VulkanBufferContainer *transferBufferContainer = (VulkanBufferContainer*) transferBuffer;
     VkBufferImageCopy imageCopy;
-    vulkanTextureSlice = VULKAN_INTERNAL_SDLToVulkanTextureSlice(&textureRegion->textureSlice);
+    vulkanTextureSlice = VULKAN_INTERNAL_RefreshToVulkanTextureSlice(&textureRegion->textureSlice);
 
     /* Note that the transfer buffer does not need a barrier, as it is synced by the client */
 
@@ -9727,7 +9727,7 @@ static void VULKAN_CopyTextureToTexture(
     VulkanTextureSlice *dstSlice;
     VkImageCopy imageCopy;
 
-    srcSlice = VULKAN_INTERNAL_SDLToVulkanTextureSlice(&source->textureSlice);
+    srcSlice = VULKAN_INTERNAL_RefreshToVulkanTextureSlice(&source->textureSlice);
 
     dstSlice = VULKAN_INTERNAL_PrepareTextureSliceForWrite(
         renderer,
