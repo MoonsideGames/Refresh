@@ -3231,7 +3231,7 @@ static SDL_bool METAL_ClaimWindow(
         windowData->window = window;
 
         if (METAL_INTERNAL_CreateSwapchain(renderer, windowData, swapchainComposition, presentMode)) {
-            SDL_SetProperty(SDL_GetWindowProperties(window), WINDOW_PROPERTY_DATA, windowData);
+			SDL_SetWindowData(window, WINDOW_PROPERTY_DATA, windowData);
 
             SDL_LockMutex(renderer->windowLock);
 
