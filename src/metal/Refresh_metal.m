@@ -35,7 +35,7 @@
 
 #define METAL_MAX_BUFFER_COUNT 31
 #define WINDOW_PROPERTY_DATA "Refresh_MetalWindowPropertyData"
-#define UBO_BUFFER_SIZE 1048576 /* 1 MiB */
+#define UNIFORM_BUFFER_SIZE 1048576 /* 1 MiB */
 #define REFRESH_SHADERSTAGE_COMPUTE 2
 
 #define EXPAND_ARRAY_IF_NEEDED(arr, elementType, newCount, capacity, newCapacity)    \
