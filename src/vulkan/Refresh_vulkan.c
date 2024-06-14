@@ -141,14 +141,14 @@ static const Uint8 DEVICE_PRIORITY[] =
     1	/* VK_PHYSICAL_DEVICE_TYPE_CPU */
 };
 
-static VkPresentModeKHR SDLToVK_PresentMode[] =
+static VkPresentModeKHR RefreshToVK_PresentMode[] =
 {
     VK_PRESENT_MODE_FIFO_KHR,
     VK_PRESENT_MODE_IMMEDIATE_KHR,
     VK_PRESENT_MODE_MAILBOX_KHR
 };
 
-static VkFormat SDLToVK_SurfaceFormat[] =
+static VkFormat RefreshToVK_SurfaceFormat[] =
 {
     VK_FORMAT_R8G8B8A8_UNORM,			/* R8G8B8A8 */
     VK_FORMAT_B8G8R8A8_UNORM,			/* B8G8R8A8 */
@@ -208,7 +208,7 @@ static VkColorSpaceKHR SwapchainCompositionToColorSpace[] =
     VK_COLOR_SPACE_HDR10_ST2084_EXT
 };
 
-static VkFormat SDLToVK_VertexFormat[] =
+static VkFormat RefreshToVK_VertexFormat[] =
 {
     VK_FORMAT_R32_UINT,				/* UINT */
     VK_FORMAT_R32_SFLOAT,			/* FLOAT */
@@ -225,13 +225,13 @@ static VkFormat SDLToVK_VertexFormat[] =
     VK_FORMAT_R16G16B16A16_SFLOAT	/* HALFVECTOR4 */
 };
 
-static VkIndexType SDLToVK_IndexType[] =
+static VkIndexType RefreshToVK_IndexType[] =
 {
     VK_INDEX_TYPE_UINT16,
     VK_INDEX_TYPE_UINT32
 };
 
-static VkPrimitiveTopology SDLToVK_PrimitiveType[] =
+static VkPrimitiveTopology RefreshToVK_PrimitiveType[] =
 {
     VK_PRIMITIVE_TOPOLOGY_POINT_LIST,
     VK_PRIMITIVE_TOPOLOGY_LINE_LIST,
@@ -240,14 +240,14 @@ static VkPrimitiveTopology SDLToVK_PrimitiveType[] =
     VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP
 };
 
-static VkPolygonMode SDLToVK_PolygonMode[] =
+static VkPolygonMode RefreshToVK_PolygonMode[] =
 {
     VK_POLYGON_MODE_FILL,
     VK_POLYGON_MODE_LINE,
     VK_POLYGON_MODE_POINT
 };
 
-static VkCullModeFlags SDLToVK_CullMode[] =
+static VkCullModeFlags RefreshToVK_CullMode[] =
 {
     VK_CULL_MODE_NONE,
     VK_CULL_MODE_FRONT_BIT,
@@ -255,13 +255,13 @@ static VkCullModeFlags SDLToVK_CullMode[] =
     VK_CULL_MODE_FRONT_AND_BACK
 };
 
-static VkFrontFace SDLToVK_FrontFace[] =
+static VkFrontFace RefreshToVK_FrontFace[] =
 {
     VK_FRONT_FACE_COUNTER_CLOCKWISE,
     VK_FRONT_FACE_CLOCKWISE
 };
 
-static VkBlendFactor SDLToVK_BlendFactor[] =
+static VkBlendFactor RefreshToVK_BlendFactor[] =
 {
     VK_BLEND_FACTOR_ZERO,
     VK_BLEND_FACTOR_ONE,
@@ -280,7 +280,7 @@ static VkBlendFactor SDLToVK_BlendFactor[] =
     VK_BLEND_FACTOR_SRC_ALPHA_SATURATE
 };
 
-static VkBlendOp SDLToVK_BlendOp[] =
+static VkBlendOp RefreshToVK_BlendOp[] =
 {
     VK_BLEND_OP_ADD,
     VK_BLEND_OP_SUBTRACT,
@@ -289,7 +289,7 @@ static VkBlendOp SDLToVK_BlendOp[] =
     VK_BLEND_OP_MAX
 };
 
-static VkCompareOp SDLToVK_CompareOp[] =
+static VkCompareOp RefreshToVK_CompareOp[] =
 {
     VK_COMPARE_OP_NEVER,
     VK_COMPARE_OP_LESS,
@@ -301,7 +301,7 @@ static VkCompareOp SDLToVK_CompareOp[] =
     VK_COMPARE_OP_ALWAYS
 };
 
-static VkStencilOp SDLToVK_StencilOp[] =
+static VkStencilOp RefreshToVK_StencilOp[] =
 {
     VK_STENCIL_OP_KEEP,
     VK_STENCIL_OP_ZERO,
@@ -313,20 +313,20 @@ static VkStencilOp SDLToVK_StencilOp[] =
     VK_STENCIL_OP_DECREMENT_AND_WRAP
 };
 
-static VkAttachmentLoadOp SDLToVK_LoadOp[] =
+static VkAttachmentLoadOp RefreshToVK_LoadOp[] =
 {
     VK_ATTACHMENT_LOAD_OP_LOAD,
     VK_ATTACHMENT_LOAD_OP_CLEAR,
     VK_ATTACHMENT_LOAD_OP_DONT_CARE
 };
 
-static VkAttachmentStoreOp SDLToVK_StoreOp[] =
+static VkAttachmentStoreOp RefreshToVK_StoreOp[] =
 {
     VK_ATTACHMENT_STORE_OP_STORE,
     VK_ATTACHMENT_STORE_OP_DONT_CARE
 };
 
-static VkSampleCountFlagBits SDLToVK_SampleCount[] =
+static VkSampleCountFlagBits RefreshToVK_SampleCount[] =
 {
     VK_SAMPLE_COUNT_1_BIT,
     VK_SAMPLE_COUNT_2_BIT,
@@ -337,25 +337,25 @@ static VkSampleCountFlagBits SDLToVK_SampleCount[] =
     VK_SAMPLE_COUNT_64_BIT
 };
 
-static VkVertexInputRate SDLToVK_VertexInputRate[] =
+static VkVertexInputRate RefreshToVK_VertexInputRate[] =
 {
     VK_VERTEX_INPUT_RATE_VERTEX,
     VK_VERTEX_INPUT_RATE_INSTANCE
 };
 
-static VkFilter SDLToVK_Filter[] =
+static VkFilter RefreshToVK_Filter[] =
 {
     VK_FILTER_NEAREST,
     VK_FILTER_LINEAR
 };
 
-static VkSamplerMipmapMode SDLToVK_SamplerMipmapMode[] =
+static VkSamplerMipmapMode RefreshToVK_SamplerMipmapMode[] =
 {
     VK_SAMPLER_MIPMAP_MODE_NEAREST,
     VK_SAMPLER_MIPMAP_MODE_LINEAR
 };
 
-static VkSamplerAddressMode SDLToVK_SamplerAddressMode[] =
+static VkSamplerAddressMode RefreshToVK_SamplerAddressMode[] =
 {
     VK_SAMPLER_ADDRESS_MODE_REPEAT,
     VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT,
@@ -363,7 +363,7 @@ static VkSamplerAddressMode SDLToVK_SamplerAddressMode[] =
     VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER
 };
 
-static VkBorderColor SDLToVK_BorderColor[] =
+static VkBorderColor RefreshToVK_BorderColor[] =
 {
     VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK,
     VK_BORDER_COLOR_INT_TRANSPARENT_BLACK,
@@ -1440,11 +1440,11 @@ static inline SDL_bool VULKAN_INTERNAL_IsVulkanDepthFormat(VkFormat format)
 {
     /* FIXME: Can we refactor and use the regular IsDepthFormat for this? */
     return (
-        format == SDLToVK_SurfaceFormat[REFRESH_TEXTUREFORMAT_D16_UNORM] ||
-        format == SDLToVK_SurfaceFormat[REFRESH_TEXTUREFORMAT_D24_UNORM] ||
-        format == SDLToVK_SurfaceFormat[REFRESH_TEXTUREFORMAT_D24_UNORM_S8_UINT] ||
-        format == SDLToVK_SurfaceFormat[REFRESH_TEXTUREFORMAT_D32_SFLOAT] ||
-        format == SDLToVK_SurfaceFormat[REFRESH_TEXTUREFORMAT_D32_SFLOAT_S8_UINT]
+        format == RefreshToVK_SurfaceFormat[REFRESH_TEXTUREFORMAT_D16_UNORM] ||
+        format == RefreshToVK_SurfaceFormat[REFRESH_TEXTUREFORMAT_D24_UNORM] ||
+        format == RefreshToVK_SurfaceFormat[REFRESH_TEXTUREFORMAT_D24_UNORM_S8_UINT] ||
+        format == RefreshToVK_SurfaceFormat[REFRESH_TEXTUREFORMAT_D32_SFLOAT] ||
+        format == RefreshToVK_SurfaceFormat[REFRESH_TEXTUREFORMAT_D32_SFLOAT_S8_UINT]
     );
 }
 
@@ -4804,7 +4804,7 @@ static Uint8 VULKAN_INTERNAL_CreateSwapchain(
     }
 
     if (!VULKAN_INTERNAL_VerifySwapPresentMode(
-        SDLToVK_PresentMode[windowData->presentMode],
+        RefreshToVK_PresentMode[windowData->presentMode],
         swapchainSupportDetails.presentModes,
         swapchainSupportDetails.presentModesLength
     )) {
@@ -4829,7 +4829,7 @@ static Uint8 VULKAN_INTERNAL_CreateSwapchain(
         return 0;
     }
 
-    swapchainData->presentMode = SDLToVK_PresentMode[windowData->presentMode];
+    swapchainData->presentMode = RefreshToVK_PresentMode[windowData->presentMode];
 
     /* Should sync now to be sure that our swapchain size is correct */
     /* TODO: how to backport SyncWindow? */
@@ -6468,7 +6468,7 @@ static VkRenderPass VULKAN_INTERNAL_CreateRenderPass(
             attachmentDescriptions[attachmentDescriptionCount].format = texture->format;
             attachmentDescriptions[attachmentDescriptionCount].samples =
                 VK_SAMPLE_COUNT_1_BIT;
-            attachmentDescriptions[attachmentDescriptionCount].loadOp = SDLToVK_LoadOp[
+            attachmentDescriptions[attachmentDescriptionCount].loadOp = RefreshToVK_LoadOp[
                 colorAttachmentInfos[i].loadOp
             ];
             attachmentDescriptions[attachmentDescriptionCount].storeOp =
@@ -6493,10 +6493,10 @@ static VkRenderPass VULKAN_INTERNAL_CreateRenderPass(
             attachmentDescriptions[attachmentDescriptionCount].flags = 0;
             attachmentDescriptions[attachmentDescriptionCount].format = texture->format;
             attachmentDescriptions[attachmentDescriptionCount].samples = texture->sampleCount;
-            attachmentDescriptions[attachmentDescriptionCount].loadOp = SDLToVK_LoadOp[
+            attachmentDescriptions[attachmentDescriptionCount].loadOp = RefreshToVK_LoadOp[
                 colorAttachmentInfos[i].loadOp
             ];
-            attachmentDescriptions[attachmentDescriptionCount].storeOp = SDLToVK_StoreOp[
+            attachmentDescriptions[attachmentDescriptionCount].storeOp = RefreshToVK_StoreOp[
                 colorAttachmentInfos[i].storeOp
             ];
             attachmentDescriptions[attachmentDescriptionCount].stencilLoadOp =
@@ -6522,7 +6522,7 @@ static VkRenderPass VULKAN_INTERNAL_CreateRenderPass(
             attachmentDescriptions[attachmentDescriptionCount].format = texture->format;
             attachmentDescriptions[attachmentDescriptionCount].samples =
                 VK_SAMPLE_COUNT_1_BIT;
-            attachmentDescriptions[attachmentDescriptionCount].loadOp = SDLToVK_LoadOp[
+            attachmentDescriptions[attachmentDescriptionCount].loadOp = RefreshToVK_LoadOp[
                 colorAttachmentInfos[i].loadOp
             ];
             attachmentDescriptions[attachmentDescriptionCount].storeOp =
@@ -6567,16 +6567,16 @@ static VkRenderPass VULKAN_INTERNAL_CreateRenderPass(
         attachmentDescriptions[attachmentDescriptionCount].format = texture->format;
         attachmentDescriptions[attachmentDescriptionCount].samples = texture->sampleCount;
 
-        attachmentDescriptions[attachmentDescriptionCount].loadOp = SDLToVK_LoadOp[
+        attachmentDescriptions[attachmentDescriptionCount].loadOp = RefreshToVK_LoadOp[
             depthStencilAttachmentInfo->loadOp
         ];
-        attachmentDescriptions[attachmentDescriptionCount].storeOp = SDLToVK_StoreOp[
+        attachmentDescriptions[attachmentDescriptionCount].storeOp = RefreshToVK_StoreOp[
             depthStencilAttachmentInfo->storeOp
         ];
-        attachmentDescriptions[attachmentDescriptionCount].stencilLoadOp = SDLToVK_LoadOp[
+        attachmentDescriptions[attachmentDescriptionCount].stencilLoadOp = RefreshToVK_LoadOp[
             depthStencilAttachmentInfo->stencilLoadOp
         ];
-        attachmentDescriptions[attachmentDescriptionCount].stencilStoreOp = SDLToVK_StoreOp[
+        attachmentDescriptions[attachmentDescriptionCount].stencilStoreOp = RefreshToVK_StoreOp[
             depthStencilAttachmentInfo->stencilStoreOp
         ];
         attachmentDescriptions[attachmentDescriptionCount].initialLayout =
@@ -6662,7 +6662,7 @@ static VkRenderPass VULKAN_INTERNAL_CreateTransientRenderPass(
             /* Resolve attachment and multisample attachment */
 
             attachmentDescriptions[attachmentDescriptionCount].flags = 0;
-            attachmentDescriptions[attachmentDescriptionCount].format = SDLToVK_SurfaceFormat[
+            attachmentDescriptions[attachmentDescriptionCount].format = RefreshToVK_SurfaceFormat[
                 attachmentDescription.format
             ];
             attachmentDescriptions[attachmentDescriptionCount].samples = VK_SAMPLE_COUNT_1_BIT;
@@ -6680,7 +6680,7 @@ static VkRenderPass VULKAN_INTERNAL_CreateTransientRenderPass(
             resolveReferenceCount += 1;
 
             attachmentDescriptions[attachmentDescriptionCount].flags = 0;
-            attachmentDescriptions[attachmentDescriptionCount].format = SDLToVK_SurfaceFormat[
+            attachmentDescriptions[attachmentDescriptionCount].format = RefreshToVK_SurfaceFormat[
                 attachmentDescription.format
             ];
             attachmentDescriptions[attachmentDescriptionCount].samples = sampleCount;
@@ -6703,7 +6703,7 @@ static VkRenderPass VULKAN_INTERNAL_CreateTransientRenderPass(
         else
         {
             attachmentDescriptions[attachmentDescriptionCount].flags = 0;
-            attachmentDescriptions[attachmentDescriptionCount].format = SDLToVK_SurfaceFormat[
+            attachmentDescriptions[attachmentDescriptionCount].format = RefreshToVK_SurfaceFormat[
                 attachmentDescription.format
             ];
             attachmentDescriptions[attachmentDescriptionCount].samples =
@@ -6744,7 +6744,7 @@ static VkRenderPass VULKAN_INTERNAL_CreateTransientRenderPass(
     {
         attachmentDescriptions[attachmentDescriptionCount].flags = 0;
         attachmentDescriptions[attachmentDescriptionCount].format =
-            SDLToVK_SurfaceFormat[attachmentInfo.depthStencilFormat];
+            RefreshToVK_SurfaceFormat[attachmentInfo.depthStencilFormat];
         attachmentDescriptions[attachmentDescriptionCount].samples = sampleCount;
 
         attachmentDescriptions[attachmentDescriptionCount].loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
@@ -6857,7 +6857,7 @@ static Refresh_GraphicsPipeline* VULKAN_CreateGraphicsPipeline(
 
     actualSampleCount = VULKAN_INTERNAL_GetMaxMultiSampleCount(
         renderer,
-        SDLToVK_SampleCount[pipelineCreateInfo->multisampleState.multisampleCount]
+        RefreshToVK_SampleCount[pipelineCreateInfo->multisampleState.multisampleCount]
     );
 
     /* Create a "compatible" render pass */
@@ -6905,7 +6905,7 @@ static Refresh_GraphicsPipeline* VULKAN_CreateGraphicsPipeline(
     for (i = 0; i < pipelineCreateInfo->vertexInputState.vertexBindingCount; i += 1)
     {
         vertexInputBindingDescriptions[i].binding = pipelineCreateInfo->vertexInputState.vertexBindings[i].binding;
-        vertexInputBindingDescriptions[i].inputRate = SDLToVK_VertexInputRate[
+        vertexInputBindingDescriptions[i].inputRate = RefreshToVK_VertexInputRate[
             pipelineCreateInfo->vertexInputState.vertexBindings[i].inputRate
         ];
         vertexInputBindingDescriptions[i].stride = pipelineCreateInfo->vertexInputState.vertexBindings[i].stride;
@@ -6919,7 +6919,7 @@ static Refresh_GraphicsPipeline* VULKAN_CreateGraphicsPipeline(
     for (i = 0; i < pipelineCreateInfo->vertexInputState.vertexAttributeCount; i += 1)
     {
         vertexInputAttributeDescriptions[i].binding = pipelineCreateInfo->vertexInputState.vertexAttributes[i].binding;
-        vertexInputAttributeDescriptions[i].format = SDLToVK_VertexFormat[
+        vertexInputAttributeDescriptions[i].format = RefreshToVK_VertexFormat[
             pipelineCreateInfo->vertexInputState.vertexAttributes[i].format
         ];
         vertexInputAttributeDescriptions[i].location = pipelineCreateInfo->vertexInputState.vertexAttributes[i].location;
@@ -6963,7 +6963,7 @@ static Refresh_GraphicsPipeline* VULKAN_CreateGraphicsPipeline(
     inputAssemblyStateCreateInfo.pNext = NULL;
     inputAssemblyStateCreateInfo.flags = 0;
     inputAssemblyStateCreateInfo.primitiveRestartEnable = VK_FALSE;
-    inputAssemblyStateCreateInfo.topology = SDLToVK_PrimitiveType[
+    inputAssemblyStateCreateInfo.topology = RefreshToVK_PrimitiveType[
         pipelineCreateInfo->primitiveType
     ];
 
@@ -6988,13 +6988,13 @@ static Refresh_GraphicsPipeline* VULKAN_CreateGraphicsPipeline(
     rasterizationStateCreateInfo.flags = 0;
     rasterizationStateCreateInfo.depthClampEnable = VK_FALSE;
     rasterizationStateCreateInfo.rasterizerDiscardEnable = VK_FALSE;
-    rasterizationStateCreateInfo.polygonMode = SDLToVK_PolygonMode[
+    rasterizationStateCreateInfo.polygonMode = RefreshToVK_PolygonMode[
         pipelineCreateInfo->rasterizerState.fillMode
     ];
-    rasterizationStateCreateInfo.cullMode = SDLToVK_CullMode[
+    rasterizationStateCreateInfo.cullMode = RefreshToVK_CullMode[
         pipelineCreateInfo->rasterizerState.cullMode
     ];
-    rasterizationStateCreateInfo.frontFace = SDLToVK_FrontFace[
+    rasterizationStateCreateInfo.frontFace = RefreshToVK_FrontFace[
         pipelineCreateInfo->rasterizerState.frontFace
     ];
     rasterizationStateCreateInfo.depthBiasEnable =
@@ -7022,16 +7022,16 @@ static Refresh_GraphicsPipeline* VULKAN_CreateGraphicsPipeline(
 
     /* Depth Stencil State */
 
-    frontStencilState.failOp = SDLToVK_StencilOp[
+    frontStencilState.failOp = RefreshToVK_StencilOp[
         pipelineCreateInfo->depthStencilState.frontStencilState.failOp
     ];
-    frontStencilState.passOp = SDLToVK_StencilOp[
+    frontStencilState.passOp = RefreshToVK_StencilOp[
         pipelineCreateInfo->depthStencilState.frontStencilState.passOp
     ];
-    frontStencilState.depthFailOp = SDLToVK_StencilOp[
+    frontStencilState.depthFailOp = RefreshToVK_StencilOp[
         pipelineCreateInfo->depthStencilState.frontStencilState.depthFailOp
     ];
-    frontStencilState.compareOp = SDLToVK_CompareOp[
+    frontStencilState.compareOp = RefreshToVK_CompareOp[
         pipelineCreateInfo->depthStencilState.frontStencilState.compareOp
     ];
     frontStencilState.compareMask =
@@ -7041,16 +7041,16 @@ static Refresh_GraphicsPipeline* VULKAN_CreateGraphicsPipeline(
     frontStencilState.reference =
         pipelineCreateInfo->depthStencilState.reference;
 
-    backStencilState.failOp = SDLToVK_StencilOp[
+    backStencilState.failOp = RefreshToVK_StencilOp[
         pipelineCreateInfo->depthStencilState.backStencilState.failOp
     ];
-    backStencilState.passOp = SDLToVK_StencilOp[
+    backStencilState.passOp = RefreshToVK_StencilOp[
         pipelineCreateInfo->depthStencilState.backStencilState.passOp
     ];
-    backStencilState.depthFailOp = SDLToVK_StencilOp[
+    backStencilState.depthFailOp = RefreshToVK_StencilOp[
         pipelineCreateInfo->depthStencilState.backStencilState.depthFailOp
     ];
-    backStencilState.compareOp = SDLToVK_CompareOp[
+    backStencilState.compareOp = RefreshToVK_CompareOp[
         pipelineCreateInfo->depthStencilState.backStencilState.compareOp
     ];
     backStencilState.compareMask =
@@ -7068,7 +7068,7 @@ static Refresh_GraphicsPipeline* VULKAN_CreateGraphicsPipeline(
         pipelineCreateInfo->depthStencilState.depthTestEnable;
     depthStencilStateCreateInfo.depthWriteEnable =
         pipelineCreateInfo->depthStencilState.depthWriteEnable;
-    depthStencilStateCreateInfo.depthCompareOp = SDLToVK_CompareOp[
+    depthStencilStateCreateInfo.depthCompareOp = RefreshToVK_CompareOp[
         pipelineCreateInfo->depthStencilState.compareOp
     ];
     depthStencilStateCreateInfo.depthBoundsTestEnable =
@@ -7090,22 +7090,22 @@ static Refresh_GraphicsPipeline* VULKAN_CreateGraphicsPipeline(
 
         colorBlendAttachmentStates[i].blendEnable =
             blendState.blendEnable;
-        colorBlendAttachmentStates[i].srcColorBlendFactor = SDLToVK_BlendFactor[
+        colorBlendAttachmentStates[i].srcColorBlendFactor = RefreshToVK_BlendFactor[
             blendState.srcColorBlendFactor
         ];
-        colorBlendAttachmentStates[i].dstColorBlendFactor = SDLToVK_BlendFactor[
+        colorBlendAttachmentStates[i].dstColorBlendFactor = RefreshToVK_BlendFactor[
             blendState.dstColorBlendFactor
         ];
-        colorBlendAttachmentStates[i].colorBlendOp = SDLToVK_BlendOp[
+        colorBlendAttachmentStates[i].colorBlendOp = RefreshToVK_BlendOp[
             blendState.colorBlendOp
         ];
-        colorBlendAttachmentStates[i].srcAlphaBlendFactor = SDLToVK_BlendFactor[
+        colorBlendAttachmentStates[i].srcAlphaBlendFactor = RefreshToVK_BlendFactor[
             blendState.srcAlphaBlendFactor
         ];
-        colorBlendAttachmentStates[i].dstAlphaBlendFactor = SDLToVK_BlendFactor[
+        colorBlendAttachmentStates[i].dstAlphaBlendFactor = RefreshToVK_BlendFactor[
             blendState.dstAlphaBlendFactor
         ];
-        colorBlendAttachmentStates[i].alphaBlendOp = SDLToVK_BlendOp[
+        colorBlendAttachmentStates[i].alphaBlendOp = RefreshToVK_BlendOp[
             blendState.alphaBlendOp
         ];
         colorBlendAttachmentStates[i].colorWriteMask =
@@ -7324,34 +7324,34 @@ static Refresh_Sampler* VULKAN_CreateSampler(
     vkSamplerCreateInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
     vkSamplerCreateInfo.pNext = NULL;
     vkSamplerCreateInfo.flags = 0;
-    vkSamplerCreateInfo.magFilter = SDLToVK_Filter[
+    vkSamplerCreateInfo.magFilter = RefreshToVK_Filter[
         samplerCreateInfo->magFilter
     ];
-    vkSamplerCreateInfo.minFilter = SDLToVK_Filter[
+    vkSamplerCreateInfo.minFilter = RefreshToVK_Filter[
         samplerCreateInfo->minFilter
     ];
-    vkSamplerCreateInfo.mipmapMode = SDLToVK_SamplerMipmapMode[
+    vkSamplerCreateInfo.mipmapMode = RefreshToVK_SamplerMipmapMode[
         samplerCreateInfo->mipmapMode
     ];
-    vkSamplerCreateInfo.addressModeU = SDLToVK_SamplerAddressMode[
+    vkSamplerCreateInfo.addressModeU = RefreshToVK_SamplerAddressMode[
         samplerCreateInfo->addressModeU
     ];
-    vkSamplerCreateInfo.addressModeV = SDLToVK_SamplerAddressMode[
+    vkSamplerCreateInfo.addressModeV = RefreshToVK_SamplerAddressMode[
         samplerCreateInfo->addressModeV
     ];
-    vkSamplerCreateInfo.addressModeW = SDLToVK_SamplerAddressMode[
+    vkSamplerCreateInfo.addressModeW = RefreshToVK_SamplerAddressMode[
         samplerCreateInfo->addressModeW
     ];
     vkSamplerCreateInfo.mipLodBias = samplerCreateInfo->mipLodBias;
     vkSamplerCreateInfo.anisotropyEnable = samplerCreateInfo->anisotropyEnable;
     vkSamplerCreateInfo.maxAnisotropy = samplerCreateInfo->maxAnisotropy;
     vkSamplerCreateInfo.compareEnable = samplerCreateInfo->compareEnable;
-    vkSamplerCreateInfo.compareOp = SDLToVK_CompareOp[
+    vkSamplerCreateInfo.compareOp = RefreshToVK_CompareOp[
         samplerCreateInfo->compareOp
     ];
     vkSamplerCreateInfo.minLod = samplerCreateInfo->minLod;
     vkSamplerCreateInfo.maxLod = samplerCreateInfo->maxLod;
-    vkSamplerCreateInfo.borderColor = SDLToVK_BorderColor[
+    vkSamplerCreateInfo.borderColor = RefreshToVK_BorderColor[
         samplerCreateInfo->borderColor
     ];
     vkSamplerCreateInfo.unnormalizedCoordinates = VK_FALSE;
@@ -7474,7 +7474,7 @@ static Refresh_Texture* VULKAN_CreateTexture(
         textureCreateInfo->sampleCount
     );
 
-    format = SDLToVK_SurfaceFormat[textureCreateInfo->format];
+    format = RefreshToVK_SurfaceFormat[textureCreateInfo->format];
 
     /* FIXME: We probably need a swizzle table like FNA3D Vulkan does */
     if (textureCreateInfo->format == REFRESH_TEXTUREFORMAT_A8)
@@ -7507,7 +7507,7 @@ static Refresh_Texture* VULKAN_CreateTexture(
         textureCreateInfo->isCube,
         textureCreateInfo->layerCount,
         textureCreateInfo->levelCount,
-        SDLToVK_SampleCount[actualSampleCount],
+        RefreshToVK_SampleCount[actualSampleCount],
         format,
         swizzle,
         imageAspectFlags,
@@ -8741,7 +8741,7 @@ static void VULKAN_BindIndexBuffer(
         vulkanCommandBuffer->commandBuffer,
         vulkanBuffer->buffer,
         (VkDeviceSize) pBinding->offset,
-        SDLToVK_IndexType[indexElementSize]
+        RefreshToVK_IndexType[indexElementSize]
     );
 }
 
@@ -10022,7 +10022,7 @@ static void VULKAN_Blit(
         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
         1,
         &region,
-        SDLToVK_Filter[filterMode]
+        RefreshToVK_Filter[filterMode]
     );
 
     VULKAN_INTERNAL_TextureTransitionToDefaultUsage(
@@ -10545,7 +10545,7 @@ static SDL_bool VULKAN_SupportsPresentMode(
 
     for (i = 0; i < supportDetails.presentModesLength; i += 1)
     {
-        if (supportDetails.presentModes[i] == SDLToVK_PresentMode[presentMode])
+        if (supportDetails.presentModes[i] == RefreshToVK_PresentMode[presentMode])
         {
             result = SDL_TRUE;
             break;
@@ -11783,7 +11783,7 @@ static SDL_bool VULKAN_IsTextureFormatSupported(
     Refresh_TextureUsageFlags usage
 ) {
     VulkanRenderer *renderer = (VulkanRenderer*) driverData;
-    VkFormat vulkanFormat = SDLToVK_SurfaceFormat[format];
+    VkFormat vulkanFormat = RefreshToVK_SurfaceFormat[format];
     VkImageUsageFlags vulkanUsage = 0;
     VkImageCreateFlags createFlags = 0;
     VkImageFormatProperties properties;
