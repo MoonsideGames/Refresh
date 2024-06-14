@@ -3524,7 +3524,7 @@ static SDL_bool METAL_IsTextureFormatSupported(
 
 /* Device Creation */
 
-static Uint8 METAL_PrepareDriver()
+static SDL_bool METAL_PrepareDriver()
 {
     /* FIXME: Add a macOS / iOS version check! Maybe support >= 10.14? */
     return 1;

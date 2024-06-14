@@ -117,6 +117,7 @@ endif()
 # Link Foundation and Metal
 if (APPLE)
 	target_link_libraries(Refresh PRIVATE "-Wl,-framework,Foundation")
+	target_link_libraries(Refresh PRIVATE "-Wl,-framework,CoreGraphics")
 	if(IOS OR TVOS OR VISIONOS OR WATCHOS)
 		target_link_libraries(Refresh PRIVATE "-Wl,-framework,Metal")
 	else()
