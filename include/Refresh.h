@@ -194,13 +194,11 @@ typedef enum Refresh_BufferUsageFlagBits
 
 typedef Uint32 Refresh_BufferUsageFlags;
 
-typedef enum Refresh_TransferBufferMapFlagBits
+typedef enum Refresh_TransferBufferUsage
 {
-    REFRESH_TRANSFER_MAP_READ = 0x00000001,
-    REFRESH_TRANSFER_MAP_WRITE = 0x00000002
-} Refresh_TransferBufferMapFlagBits;
-
-typedef Uint32 Refresh_TransferBufferMapFlags;
+    REFRESH_TRANSFERBUFFERUSAGE_UPLOAD,
+    REFRESH_TRANSFERBUFFERUSAGE_DOWNLOAD
+} Refresh_TransferBufferUsage;
 
 typedef enum Refresh_ShaderStage
 {
@@ -338,26 +336,8 @@ typedef enum Refresh_SamplerAddressMode
 {
     REFRESH_SAMPLERADDRESSMODE_REPEAT,
     REFRESH_SAMPLERADDRESSMODE_MIRRORED_REPEAT,
-    REFRESH_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
-    REFRESH_SAMPLERADDRESSMODE_CLAMP_TO_BORDER
+    REFRESH_SAMPLERADDRESSMODE_CLAMP_TO_EDGE
 } Refresh_SamplerAddressMode;
-
-/* FIXME: we should probably make a library-level decision about color types */
-typedef enum Refresh_BorderColor
-{
-    REFRESH_BORDERCOLOR_FLOAT_TRANSPARENT_BLACK,
-    REFRESH_BORDERCOLOR_INT_TRANSPARENT_BLACK,
-    REFRESH_BORDERCOLOR_FLOAT_OPAQUE_BLACK,
-    REFRESH_BORDERCOLOR_INT_OPAQUE_BLACK,
-    REFRESH_BORDERCOLOR_FLOAT_OPAQUE_WHITE,
-    REFRESH_BORDERCOLOR_INT_OPAQUE_WHITE
-} Refresh_BorderColor;
-
-typedef enum Refresh_TransferUsage
-{
-    REFRESH_TRANSFERUSAGE_BUFFER,
-    REFRESH_TRANSFERUSAGE_TEXTURE
-} Refresh_TransferUsage;
 
 /*
  * VSYNC:
@@ -445,12 +425,41 @@ typedef struct Refresh_Viewport
     float maxDepth;
 } Refresh_Viewport;
 
+typedef struct Refresh_TextureTransferInfo
+{
+    Refresh_TransferBuffer *transferBuffer;
+    Uint32 offset;      /* starting location of the image data */
+    Uint32 imagePitch;  /* number of pixels from one row to the next */
+    Uint32 imageHeight; /* number of rows from one layer/depth-slice to the next */
+} Refresh_TextureTransferInfo;
+
+typedef struct Refresh_TransferBufferLocation
+{
+    Refresh_TransferBuffer *transferBuffer;
+    Uint32 offset;
+} Refresh_TransferBufferLocation;
+
+typedef struct Refresh_TransferBufferRegion
+{
+    Refresh_TransferBuffer *transferBuffer;
+    Uint32 offset;
+    Uint32 size;
+} Refresh_TransferBufferRegion;
+
 typedef struct Refresh_TextureSlice
 {
     Refresh_Texture *texture;
     Uint32 mipLevel;
     Uint32 layer;
 } Refresh_TextureSlice;
+
+typedef struct Refresh_TextureLocation
+{
+    Refresh_TextureSlice textureSlice;
+    Uint32 x;
+    Uint32 y;
+    Uint32 z;
+} Refresh_TextureLocation;
 
 typedef struct Refresh_TextureRegion
 {
@@ -463,19 +472,18 @@ typedef struct Refresh_TextureRegion
     Uint32 d;
 } Refresh_TextureRegion;
 
-typedef struct Refresh_BufferImageCopy
+typedef struct Refresh_BufferLocation
 {
-    Uint32 bufferOffset;
-    Uint32 bufferStride;      /* number of pixels from one row to the next */
-    Uint32 bufferImageHeight; /* number of rows from one layer/depth-slice to the next */
-} Refresh_BufferImageCopy;
+    Refresh_Buffer *buffer;
+    Uint32 offset;
+} Refresh_BufferLocation;
 
-typedef struct Refresh_BufferCopy
+typedef struct Refresh_BufferRegion
 {
-    Uint32 srcOffset;
-    Uint32 dstOffset;
+    Refresh_Buffer *buffer;
+    Uint32 offset;
     Uint32 size;
-} Refresh_BufferCopy;
+} Refresh_BufferRegion;
 
 typedef struct Refresh_IndirectDrawCommand
 {
@@ -511,7 +519,6 @@ typedef struct Refresh_SamplerCreateInfo
     Refresh_CompareOp compareOp;
     float minLod;
     float maxLod;
-    Refresh_BorderColor borderColor;
 } Refresh_SamplerCreateInfo;
 
 typedef struct Refresh_VertexBinding
@@ -608,15 +615,12 @@ typedef struct Refresh_DepthStencilState
     SDL_bool depthTestEnable;
     SDL_bool depthWriteEnable;
     Refresh_CompareOp compareOp;
-    SDL_bool depthBoundsTestEnable;
     SDL_bool stencilTestEnable;
     Refresh_StencilOpState backStencilState;
     Refresh_StencilOpState frontStencilState;
     Uint32 compareMask;
     Uint32 writeMask;
     Uint32 reference;
-    float minDepthBounds;
-    float maxDepthBounds;
 } Refresh_DepthStencilState;
 
 typedef struct Refresh_ColorAttachmentDescription
@@ -806,6 +810,8 @@ typedef struct Refresh_StorageTextureReadWriteBinding
  * \param debugMode enable debug mode properties and validations
  * \returns a GPU context on success or NULL on failure
  *
+ * \since This function is available since Refresh 2.0.0
+ *
  * \sa Refresh_SelectBackend
  * \sa Refresh_DestroyDevice
  */
@@ -818,6 +824,8 @@ REFRESHAPI Refresh_Device *Refresh_CreateDevice(
  *
  * \param device a GPU Context to destroy
  *
+ * \since This function is available since Refresh 2.0.0
+ *
  * \sa Refresh_CreateDevice
  */
 REFRESHAPI void Refresh_DestroyDevice(Refresh_Device *device);
@@ -827,6 +835,8 @@ REFRESHAPI void Refresh_DestroyDevice(Refresh_Device *device);
  *
  * \param device a GPU context to query
  * \returns an Refresh_Backend value, or REFRESH_BACKEND_INVALID on error
+ *
+ * \since This function is available since Refresh 2.0.0
  *
  * \sa Refresh_SelectBackend
  */
@@ -841,6 +851,8 @@ REFRESHAPI Refresh_Backend Refresh_GetBackend(Refresh_Device *device);
  * \param computePipelineCreateInfo a struct describing the state of the requested compute pipeline
  * \returns a compute pipeline object on success, or NULL on failure
  *
+ * \since This function is available since Refresh 2.0.0
+ *
  * \sa Refresh_BindComputePipeline
  * \sa Refresh_ReleaseComputePipeline
  */
@@ -854,6 +866,8 @@ REFRESHAPI Refresh_ComputePipeline *Refresh_CreateComputePipeline(
  * \param device a GPU Context
  * \param pipelineCreateInfo a struct describing the state of the desired graphics pipeline
  * \returns a graphics pipeline object on success, or NULL on failure
+ *
+ * \since This function is available since Refresh 2.0.0
  *
  * \sa Refresh_CreateShader
  * \sa Refresh_BindGraphicsPipeline
@@ -870,6 +884,8 @@ REFRESHAPI Refresh_GraphicsPipeline *Refresh_CreateGraphicsPipeline(
  * \param samplerCreateInfo a struct describing the state of the desired sampler
  * \returns a sampler object on success, or NULL on failure
  *
+ * \since This function is available since Refresh 2.0.0
+ *
  * \sa Refresh_BindVertexSamplers
  * \sa Refresh_BindFragmentSamplers
  * \sa SDL_ReleaseSampler
@@ -884,6 +900,8 @@ REFRESHAPI Refresh_Sampler *Refresh_CreateSampler(
  * \param device a GPU Context
  * \param shaderCreateInfo a struct describing the state of the desired shader
  * \returns a shader object on success, or NULL on failure
+ *
+ * \since This function is available since Refresh 2.0.0
  *
  * \sa Refresh_CreateGraphicsPipeline
  * \sa Refresh_ReleaseShader
@@ -905,6 +923,8 @@ REFRESHAPI Refresh_Shader *Refresh_CreateShader(
  * \param device a GPU Context
  * \param textureCreateInfo a struct describing the state of the texture to create
  * \returns a texture object on success, or NULL on failure
+ *
+ * \since This function is available since Refresh 2.0.0
  *
  * \sa Refresh_UploadToTexture
  * \sa Refresh_DownloadFromTexture
@@ -932,6 +952,8 @@ REFRESHAPI Refresh_Texture *Refresh_CreateTexture(
  * \param sizeInBytes the size of the buffer
  * \returns a buffer object on success, or NULL on failure
  *
+ * \since This function is available since Refresh 2.0.0
+ *
  * \sa Refresh_UploadToBuffer
  * \sa Refresh_BindVertexBuffers
  * \sa Refresh_BindIndexBuffer
@@ -949,10 +971,11 @@ REFRESHAPI Refresh_Buffer *Refresh_CreateBuffer(
  * Creates a transfer buffer to be used when uploading to or downloading from graphics resources.
  *
  * \param device a GPU Context
- * \param usage specifies whether the transfer buffer will transfer buffers or textures
- * \param mapFlags specify read-write options for the transfer buffer
+ * \param usage whether the transfer buffer will be used for uploads or downloads
  * \param sizeInBytes the size of the transfer buffer
  * \returns a transfer buffer on success, or NULL on failure
+ *
+ * \since This function is available since Refresh 2.0.0
  *
  * \sa Refresh_UploadToBuffer
  * \sa Refresh_DownloadFromBuffer
@@ -962,8 +985,7 @@ REFRESHAPI Refresh_Buffer *Refresh_CreateBuffer(
  */
 REFRESHAPI Refresh_TransferBuffer *Refresh_CreateTransferBuffer(
     Refresh_Device *device,
-    Refresh_TransferUsage usage,
-    Refresh_TransferBufferMapFlags mapFlags,
+    Refresh_TransferBufferUsage usage,
     Uint32 sizeInBytes);
 
 /* Debug Naming */
@@ -974,6 +996,8 @@ REFRESHAPI Refresh_TransferBuffer *Refresh_CreateTransferBuffer(
  * \param device a GPU Context
  * \param buffer a buffer to attach the name to
  * \param text a UTF-8 string constant to mark as the name of the buffer
+ *
+ * \since This function is available since Refresh 2.0.0
  */
 REFRESHAPI void Refresh_SetBufferName(
     Refresh_Device *device,
@@ -986,6 +1010,8 @@ REFRESHAPI void Refresh_SetBufferName(
  * \param device a GPU Context
  * \param texture a texture to attach the name to
  * \param text a UTF-8 string constant to mark as the name of the texture
+ *
+ * \since This function is available since Refresh 2.0.0
  */
 REFRESHAPI void Refresh_SetTextureName(
     Refresh_Device *device,
@@ -993,14 +1019,51 @@ REFRESHAPI void Refresh_SetTextureName(
     const char *text);
 
 /**
- * Sets an arbitrary string constant to label a section of a command buffer. Useful for debugging.
+ * Inserts an arbitrary string label into the command buffer callstream.
+ * Useful for debugging.
  *
  * \param commandBuffer a command buffer
- * \param text a UTF-8 string constant to mark as the label
+ * \param text a UTF-8 string constant to insert as the label
+ *
+ * \since This function is available since Refresh 2.0.0
  */
-REFRESHAPI void Refresh_SetStringMarker(
+REFRESHAPI void Refresh_InsertDebugLabel(
     Refresh_CommandBuffer *commandBuffer,
     const char *text);
+
+/**
+ * Begins a debug group with an arbitary name.
+ * Used for denoting groups of calls when viewing the command buffer callstream
+ * in a graphics debugging tool.
+ *
+ * Each call to Refresh_PushDebugGroup must have a corresponding call to Refresh_PopDebugGroup.
+ *
+ * On some backends (e.g. Metal), pushing a debug group during a render/blit/compute pass
+ * will create a group that is scoped to the native pass rather than the command buffer.
+ * For best results, if you push a debug group during a pass, always pop it in the same pass.
+ *
+ * \param commandBuffer a command buffer
+ * \param name a UTF-8 string constant that names the group
+ *
+ * \since This function is available since Refresh 2.0.0
+ *
+ * \sa Refresh_PopDebugGroup
+ */
+REFRESHAPI void Refresh_PushDebugGroup(
+    Refresh_CommandBuffer *commandBuffer,
+    const char *name);
+
+/**
+ * Ends the most-recently pushed debug group.
+ *
+ * \param commandBuffer a command buffer
+ *
+ * \since This function is available since Refresh 2.0.0
+ *
+ * \sa Refresh_PushDebugGroup
+ */
+REFRESHAPI void Refresh_PopDebugGroup(
+    Refresh_CommandBuffer *commandBuffer);
 
 /* Disposal */
 
@@ -1010,6 +1073,8 @@ REFRESHAPI void Refresh_SetStringMarker(
  *
  * \param device a GPU context
  * \param texture a texture to be destroyed
+ *
+ * \since This function is available since Refresh 2.0.0
  */
 REFRESHAPI void Refresh_ReleaseTexture(
     Refresh_Device *device,
@@ -1021,6 +1086,8 @@ REFRESHAPI void Refresh_ReleaseTexture(
  *
  * \param device a GPU context
  * \param sampler a sampler to be destroyed
+ *
+ * \since This function is available since Refresh 2.0.0
  */
 REFRESHAPI void Refresh_ReleaseSampler(
     Refresh_Device *device,
@@ -1032,6 +1099,8 @@ REFRESHAPI void Refresh_ReleaseSampler(
  *
  * \param device a GPU context
  * \param buffer a buffer to be destroyed
+ *
+ * \since This function is available since Refresh 2.0.0
  */
 REFRESHAPI void Refresh_ReleaseBuffer(
     Refresh_Device *device,
@@ -1043,6 +1112,8 @@ REFRESHAPI void Refresh_ReleaseBuffer(
  *
  * \param device a GPU context
  * \param transferBuffer a transfer buffer to be destroyed
+ *
+ * \since This function is available since Refresh 2.0.0
  */
 REFRESHAPI void Refresh_ReleaseTransferBuffer(
     Refresh_Device *device,
@@ -1054,6 +1125,8 @@ REFRESHAPI void Refresh_ReleaseTransferBuffer(
  *
  * \param device a GPU context
  * \param computePipeline a compute pipeline to be destroyed
+ *
+ * \since This function is available since Refresh 2.0.0
  */
 REFRESHAPI void Refresh_ReleaseComputePipeline(
     Refresh_Device *device,
@@ -1065,6 +1138,8 @@ REFRESHAPI void Refresh_ReleaseComputePipeline(
  *
  * \param device a GPU context
  * \param shader a shader to be destroyed
+ *
+ * \since This function is available since Refresh 2.0.0
  */
 REFRESHAPI void Refresh_ReleaseShader(
     Refresh_Device *device,
@@ -1076,6 +1151,8 @@ REFRESHAPI void Refresh_ReleaseShader(
  *
  * \param device a GPU context
  * \param graphicsPipeline a graphics pipeline to be destroyed
+ *
+ * \since This function is available since Refresh 2.0.0
  */
 REFRESHAPI void Refresh_ReleaseGraphicsPipeline(
     Refresh_Device *device,
@@ -1136,6 +1213,8 @@ REFRESHAPI void Refresh_ReleaseGraphicsPipeline(
  * \param depthStencilAttachmentInfo the depth-stencil target and clear value, may be NULL
  * \returns a render pass handle
  *
+ * \since This function is available since Refresh 2.0.0
+ *
  * \sa Refresh_EndRenderPass
  */
 REFRESHAPI Refresh_RenderPass *Refresh_BeginRenderPass(
@@ -1150,6 +1229,8 @@ REFRESHAPI Refresh_RenderPass *Refresh_BeginRenderPass(
  *
  * \param renderPass a render pass handle
  * \param graphicsPipeline the graphics pipeline to bind
+ *
+ * \since This function is available since Refresh 2.0.0
  */
 REFRESHAPI void Refresh_BindGraphicsPipeline(
     Refresh_RenderPass *renderPass,
@@ -1160,6 +1241,8 @@ REFRESHAPI void Refresh_BindGraphicsPipeline(
  *
  * \param renderPass a render pass handle
  * \param viewport the viewport to set
+ *
+ * \since This function is available since Refresh 2.0.0
  */
 REFRESHAPI void Refresh_SetViewport(
     Refresh_RenderPass *renderPass,
@@ -1170,6 +1253,8 @@ REFRESHAPI void Refresh_SetViewport(
  *
  * \param renderPass a render pass handle
  * \param scissor the scissor area to set
+ *
+ * \since This function is available since Refresh 2.0.0
  */
 REFRESHAPI void Refresh_SetScissor(
     Refresh_RenderPass *renderPass,
@@ -1182,6 +1267,8 @@ REFRESHAPI void Refresh_SetScissor(
  * \param firstBinding the starting bind point for the vertex buffers
  * \param pBindings an array of Refresh_BufferBinding structs containing vertex buffers and offset values
  * \param bindingCount the number of bindings in the pBindings array
+ *
+ * \since This function is available since Refresh 2.0.0
  */
 REFRESHAPI void Refresh_BindVertexBuffers(
     Refresh_RenderPass *renderPass,
@@ -1195,6 +1282,8 @@ REFRESHAPI void Refresh_BindVertexBuffers(
  * \param renderPass a render pass handle
  * \param pBinding a pointer to a struct containing an index buffer and offset
  * \param indexElementSize whether the index values in the buffer are 16- or 32-bit
+ *
+ * \since This function is available since Refresh 2.0.0
  */
 REFRESHAPI void Refresh_BindIndexBuffer(
     Refresh_RenderPass *renderPass,
@@ -1209,6 +1298,8 @@ REFRESHAPI void Refresh_BindIndexBuffer(
  * \param firstSlot the vertex sampler slot to begin binding from
  * \param textureSamplerBindings an array of texture-sampler binding structs
  * \param bindingCount the number of texture-sampler pairs to bind from the array
+ *
+ * \since This function is available since Refresh 2.0.0
  */
 REFRESHAPI void Refresh_BindVertexSamplers(
     Refresh_RenderPass *renderPass,
@@ -1224,6 +1315,8 @@ REFRESHAPI void Refresh_BindVertexSamplers(
  * \param firstSlot the vertex storage texture slot to begin binding from
  * \param storageTextureSlices an array of storage texture slices
  * \param bindingCount the number of storage texture slices to bind from the array
+ *
+ * \since This function is available since Refresh 2.0.0
  */
 REFRESHAPI void Refresh_BindVertexStorageTextures(
     Refresh_RenderPass *renderPass,
@@ -1239,6 +1332,8 @@ REFRESHAPI void Refresh_BindVertexStorageTextures(
  * \param firstSlot the vertex storage buffer slot to begin binding from
  * \param storageBuffers an array of buffers
  * \param bindingCount the number of buffers to bind from the array
+ *
+ * \since This function is available since Refresh 2.0.0
  */
 REFRESHAPI void Refresh_BindVertexStorageBuffers(
     Refresh_RenderPass *renderPass,
@@ -1254,6 +1349,8 @@ REFRESHAPI void Refresh_BindVertexStorageBuffers(
  * \param firstSlot the fragment sampler slot to begin binding from
  * \param textureSamplerBindings an array of texture-sampler binding structs
  * \param bindingCount the number of texture-sampler pairs to bind from the array
+ *
+ * \since This function is available since Refresh 2.0.0
  */
 REFRESHAPI void Refresh_BindFragmentSamplers(
     Refresh_RenderPass *renderPass,
@@ -1269,6 +1366,8 @@ REFRESHAPI void Refresh_BindFragmentSamplers(
  * \param firstSlot the fragment storage texture slot to begin binding from
  * \param storageTextureSlices an array of storage texture slices
  * \param bindingCount the number of storage texture slices to bind from the array
+ *
+ * \since This function is available since Refresh 2.0.0
  */
 REFRESHAPI void Refresh_BindFragmentStorageTextures(
     Refresh_RenderPass *renderPass,
@@ -1284,6 +1383,8 @@ REFRESHAPI void Refresh_BindFragmentStorageTextures(
  * \param firstSlot the fragment storage buffer slot to begin binding from
  * \param storageBuffers an array of storage buffers
  * \param bindingCount the number of storage buffers to bind from the array
+ *
+ * \since This function is available since Refresh 2.0.0
  */
 REFRESHAPI void Refresh_BindFragmentStorageBuffers(
     Refresh_RenderPass *renderPass,
@@ -1299,11 +1400,13 @@ REFRESHAPI void Refresh_BindFragmentStorageBuffers(
  * \param slotIndex the vertex uniform slot to push data to
  * \param data client data to write
  * \param dataLengthInBytes the length of the data to write
+ *
+ * \since This function is available since Refresh 2.0.0
  */
 REFRESHAPI void Refresh_PushVertexUniformData(
     Refresh_RenderPass *renderPass,
     Uint32 slotIndex,
-    void *data,
+    const void *data,
     Uint32 dataLengthInBytes);
 
 /**
@@ -1314,11 +1417,13 @@ REFRESHAPI void Refresh_PushVertexUniformData(
  * \param slotIndex the fragment uniform slot to push data to
  * \param data client data to write
  * \param dataLengthInBytes the length of the data to write
+ *
+ * \since This function is available since Refresh 2.0.0
  */
 REFRESHAPI void Refresh_PushFragmentUniformData(
     Refresh_RenderPass *renderPass,
     Uint32 slotIndex,
-    void *data,
+    const void *data,
     Uint32 dataLengthInBytes);
 
 /* Drawing */
@@ -1332,6 +1437,8 @@ REFRESHAPI void Refresh_PushFragmentUniformData(
  * \param startIndex the starting offset to read from the index buffer
  * \param primitiveCount the number of primitives to draw
  * \param instanceCount the number of instances that will be drawn
+ *
+ * \since This function is available since Refresh 2.0.0
  */
 REFRESHAPI void Refresh_DrawIndexedPrimitives(
     Refresh_RenderPass *renderPass,
@@ -1347,6 +1454,8 @@ REFRESHAPI void Refresh_DrawIndexedPrimitives(
  * \param renderPass a render pass handle
  * \param vertexStart The starting offset to read from the vertex buffer
  * \param primitiveCount The number of primitives to draw
+ *
+ * \since This function is available since Refresh 2.0.0
  */
 REFRESHAPI void Refresh_DrawPrimitives(
     Refresh_RenderPass *renderPass,
@@ -1363,6 +1472,8 @@ REFRESHAPI void Refresh_DrawPrimitives(
  * \param offsetInBytes the offset to start reading from the draw buffer
  * \param drawCount the number of draw parameter sets that should be read from the draw buffer
  * \param stride the byte stride between sets of draw parameters
+ *
+ * \since This function is available since Refresh 2.0.0
  */
 REFRESHAPI void Refresh_DrawPrimitivesIndirect(
     Refresh_RenderPass *renderPass,
@@ -1382,6 +1493,8 @@ REFRESHAPI void Refresh_DrawPrimitivesIndirect(
  * \param offsetInBytes the offset to start reading from the draw buffer
  * \param drawCount the number of draw parameter sets that should be read from the draw buffer
  * \param stride the byte stride between sets of draw parameters
+ *
+ * \since This function is available since Refresh 2.0.0
  */
 REFRESHAPI void Refresh_DrawIndexedPrimitivesIndirect(
     Refresh_RenderPass *renderPass,
@@ -1396,6 +1509,8 @@ REFRESHAPI void Refresh_DrawIndexedPrimitivesIndirect(
  * The render pass handle is now invalid.
  *
  * \param renderPass a render pass handle
+ *
+ * \since This function is available since Refresh 2.0.0
  */
 REFRESHAPI void Refresh_EndRenderPass(
     Refresh_RenderPass *renderPass);
@@ -1420,6 +1535,8 @@ REFRESHAPI void Refresh_EndRenderPass(
  *
  * \returns a compute pass handle
  *
+ * \since This function is available since Refresh 2.0.0
+ *
  * \sa Refresh_EndComputePass
  */
 REFRESHAPI Refresh_ComputePass *Refresh_BeginComputePass(
@@ -1434,6 +1551,8 @@ REFRESHAPI Refresh_ComputePass *Refresh_BeginComputePass(
  *
  * \param computePass a compute pass handle
  * \param computePipeline a compute pipeline to bind
+ *
+ * \since This function is available since Refresh 2.0.0
  */
 REFRESHAPI void Refresh_BindComputePipeline(
     Refresh_ComputePass *computePass,
@@ -1447,6 +1566,8 @@ REFRESHAPI void Refresh_BindComputePipeline(
  * \param firstSlot the compute storage texture slot to begin binding from
  * \param storageTextureSlices an array of storage texture binding structs
  * \param bindingCount the number of storage textures to bind from the array
+ *
+ * \since This function is available since Refresh 2.0.0
  */
 REFRESHAPI void Refresh_BindComputeStorageTextures(
     Refresh_ComputePass *computePass,
@@ -1462,6 +1583,8 @@ REFRESHAPI void Refresh_BindComputeStorageTextures(
  * \param firstSlot the compute storage buffer slot to begin binding from
  * \param storageBuffers an array of storage buffer binding structs
  * \param bindingCount the number of storage buffers to bind from the array
+ *
+ * \since This function is available since Refresh 2.0.0
  */
 REFRESHAPI void Refresh_BindComputeStorageBuffers(
     Refresh_ComputePass *computePass,
@@ -1477,11 +1600,13 @@ REFRESHAPI void Refresh_BindComputeStorageBuffers(
  * \param slotIndex the uniform slot to push data to
  * \param data client data to write
  * \param dataLengthInBytes the length of the data to write
+ *
+ * \since This function is available since Refresh 2.0.0
  */
 REFRESHAPI void Refresh_PushComputeUniformData(
     Refresh_ComputePass *computePass,
     Uint32 slotIndex,
-    void *data,
+    const void *data,
     Uint32 dataLengthInBytes);
 
 /**
@@ -1498,6 +1623,8 @@ REFRESHAPI void Refresh_PushComputeUniformData(
  * \param groupCountX number of local workgroups to dispatch in the X dimension
  * \param groupCountY number of local workgroups to dispatch in the Y dimension
  * \param groupCountZ number of local workgroups to dispatch in the Z dimension
+ *
+ * \since This function is available since Refresh 2.0.0
  */
 REFRESHAPI void Refresh_DispatchCompute(
     Refresh_ComputePass *computePass,
@@ -1511,6 +1638,8 @@ REFRESHAPI void Refresh_DispatchCompute(
  * The compute pass handle is now invalid.
  *
  * \param computePass a compute pass handle
+ *
+ * \since This function is available since Refresh 2.0.0
  */
 REFRESHAPI void Refresh_EndComputePass(
     Refresh_ComputePass *computePass);
@@ -1525,6 +1654,8 @@ REFRESHAPI void Refresh_EndComputePass(
  * \param transferBuffer a transfer buffer
  * \param cycle if SDL_TRUE, cycles the transfer buffer if it is bound
  * \param ppData where to store the address of the mapped transfer buffer memory
+ *
+ * \since This function is available since Refresh 2.0.0
  */
 REFRESHAPI void Refresh_MapTransferBuffer(
     Refresh_Device *device,
@@ -1537,6 +1668,8 @@ REFRESHAPI void Refresh_MapTransferBuffer(
  *
  * \param device a GPU context
  * \param transferBuffer a previously mapped transfer buffer
+ *
+ * \since This function is available since Refresh 2.0.0
  */
 REFRESHAPI void Refresh_UnmapTransferBuffer(
     Refresh_Device *device,
@@ -1546,31 +1679,31 @@ REFRESHAPI void Refresh_UnmapTransferBuffer(
  * Immediately copies data from a pointer to a transfer buffer.
  *
  * \param device a GPU context
- * \param data a pointer to data to copy into the transfer buffer
- * \param transferBuffer a transfer buffer
- * \param copyParams a struct containing parameters specifying copy offsets and size
+ * \param source a pointer to data to copy into the transfer buffer
+ * \param destination a transfer buffer with offset and size
  * \param cycle if SDL_TRUE, cycles the transfer buffer if it is bound, otherwise overwrites the data.
+ *
+ * \since This function is available since Refresh 2.0.0
  */
 REFRESHAPI void Refresh_SetTransferData(
     Refresh_Device *device,
-    void *data,
-    Refresh_TransferBuffer *transferBuffer,
-    Refresh_BufferCopy *copyParams,
+    const void *source,
+    Refresh_TransferBufferRegion *destination,
     SDL_bool cycle);
 
 /**
  * Immediately copies data from a transfer buffer to a pointer.
  *
  * \param device a GPU context
- * \param transferBuffer a transfer buffer
- * \param data a data pointer
- * \param copyParams a struct containing parameters specifying copy offsets and size
+ * \param source a transfer buffer with offset and size
+ * \param destination a data pointer
+ *
+ * \since This function is available since Refresh 2.0.0
  */
 REFRESHAPI void Refresh_GetTransferData(
     Refresh_Device *device,
-    Refresh_TransferBuffer *transferBuffer,
-    void *data,
-    Refresh_BufferCopy *copyParams);
+    Refresh_TransferBufferRegion *source,
+    void *destination);
 
 /* Copy Pass */
 
@@ -1582,6 +1715,8 @@ REFRESHAPI void Refresh_GetTransferData(
  *
  * \param commandBuffer a command buffer
  * \returns a copy pass handle
+ *
+ * \since This function is available since Refresh 2.0.0
  */
 REFRESHAPI Refresh_CopyPass *Refresh_BeginCopyPass(
     Refresh_CommandBuffer *commandBuffer);
@@ -1595,16 +1730,16 @@ REFRESHAPI Refresh_CopyPass *Refresh_BeginCopyPass(
  * the texel size of the texture format.
  *
  * \param copyPass a copy pass handle
- * \param transferBuffer a transfer buffer
- * \param textureRegion a struct containing parameters specifying the texture region to upload data to
- * \param copyParams a struct containing parameters specifying buffer offset, stride, and height
+ * \param source the source transfer buffer with image layout information
+ * \param destination the destination texture region
  * \param cycle if SDL_TRUE, cycles the texture if the texture slice is bound, otherwise overwrites the data.
+ *
+ * \since This function is available since Refresh 2.0.0
  */
 REFRESHAPI void Refresh_UploadToTexture(
     Refresh_CopyPass *copyPass,
-    Refresh_TransferBuffer *transferBuffer,
-    Refresh_TextureRegion *textureRegion,
-    Refresh_BufferImageCopy *copyParams,
+    Refresh_TextureTransferInfo *source,
+    Refresh_TextureRegion *destination,
     SDL_bool cycle);
 
 /* Uploads data from a TransferBuffer to a Buffer. */
@@ -1615,16 +1750,16 @@ REFRESHAPI void Refresh_UploadToTexture(
  * You may assume that the upload has finished in subsequent commands.
  *
  * \param copyPass a copy pass handle
- * \param transferBuffer a transfer buffer
- * \param buffer a buffer
- * \param copyParams a struct containing offsets and length
+ * \param source the source transfer buffer with offset
+ * \param destination the destination buffer with offset and size
  * \param cycle if SDL_TRUE, cycles the buffer if it is bound, otherwise overwrites the data.
+ *
+ * \since This function is available since Refresh 2.0.0
  */
 REFRESHAPI void Refresh_UploadToBuffer(
     Refresh_CopyPass *copyPass,
-    Refresh_TransferBuffer *transferBuffer,
-    Refresh_Buffer *buffer,
-    Refresh_BufferCopy *copyParams,
+    Refresh_TransferBufferLocation *source,
+    Refresh_BufferRegion *destination,
     SDL_bool cycle);
 
 /**
@@ -1634,13 +1769,21 @@ REFRESHAPI void Refresh_UploadToBuffer(
  *
  * \param copyPass a copy pass handle
  * \param source a source texture region
- * \param destination must be the same dimensions as the source region
+ * \param destination a destination texture region
+ * \param w the width of the region to copy
+ * \param h the height of the region to copy
+ * \param d the depth of the region to copy
  * \param cycle if SDL_TRUE, cycles the destination texture if the destination texture slice is bound, otherwise overwrites the data.
+ *
+ * \since This function is available since Refresh 2.0.0
  */
 REFRESHAPI void Refresh_CopyTextureToTexture(
     Refresh_CopyPass *copyPass,
-    Refresh_TextureRegion *source,
-    Refresh_TextureRegion *destination,
+    Refresh_TextureLocation *source,
+    Refresh_TextureLocation *destination,
+    Uint32 w,
+    Uint32 h,
+    Uint32 d,
     SDL_bool cycle);
 
 /* Copies data from a buffer to a buffer. */
@@ -1651,16 +1794,18 @@ REFRESHAPI void Refresh_CopyTextureToTexture(
  * You may assume the copy has finished in subsequent commands.
  *
  * \param copyPass a copy pass handle
- * \param source the buffer to copy from
- * \param destination the buffer to copy to
- * \param copyParams a struct containing offset and length data
+ * \param source the buffer and offset to copy from
+ * \param destination the buffer and offset to copy to
+ * \param size the length of the buffer to copy
  * \param cycle if SDL_TRUE, cycles the destination buffer if it is bound, otherwise overwrites the data.
+ *
+ * \since This function is available since Refresh 2.0.0
  */
 REFRESHAPI void Refresh_CopyBufferToBuffer(
     Refresh_CopyPass *copyPass,
-    Refresh_Buffer *source,
-    Refresh_Buffer *destination,
-    Refresh_BufferCopy *copyParams,
+    Refresh_BufferLocation *source,
+    Refresh_BufferLocation *destination,
+    Uint32 size,
     SDL_bool cycle);
 
 /**
@@ -1668,6 +1813,8 @@ REFRESHAPI void Refresh_CopyBufferToBuffer(
  *
  * \param copyPass a copy pass handle
  * \param texture a texture with more than 1 mip level
+ *
+ * \since This function is available since Refresh 2.0.0
  */
 REFRESHAPI void Refresh_GenerateMipmaps(
     Refresh_CopyPass *copyPass,
@@ -1678,35 +1825,37 @@ REFRESHAPI void Refresh_GenerateMipmaps(
  * This data is not guaranteed to be copied until the command buffer fence is signaled.
  *
  * \param copyPass a copy pass handle
- * \param textureRegion the texture region to download
- * \param transferBuffer the transfer buffer to download into
- * \param copyParams a struct containing parameters specifying buffer offset, stride, and height
+ * \param source the source texture region
+ * \param destination the destination transfer buffer with image layout information
+ *
+ * \since This function is available since Refresh 2.0.0
  */
 REFRESHAPI void Refresh_DownloadFromTexture(
     Refresh_CopyPass *copyPass,
-    Refresh_TextureRegion *textureRegion,
-    Refresh_TransferBuffer *transferBuffer,
-    Refresh_BufferImageCopy *copyParams);
+    Refresh_TextureRegion *source,
+    Refresh_TextureTransferInfo *destination);
 
 /**
  * Copies data from a buffer to a transfer buffer on the GPU timeline.
  * This data is not guaranteed to be copied until the command buffer fence is signaled.
  *
  * \param copyPass a copy pass handle
- * \param buffer the buffer to download
- * \param transferBuffer the transfer buffer to download into
- * \param copyParams a struct containing offsets and length
+ * \param source the source buffer with offset and size
+ * \param destination the destination transfer buffer with offset
+ *
+ * \since This function is available since Refresh 2.0.0
  */
 REFRESHAPI void Refresh_DownloadFromBuffer(
     Refresh_CopyPass *copyPass,
-    Refresh_Buffer *buffer,
-    Refresh_TransferBuffer *transferBuffer,
-    Refresh_BufferCopy *copyParams);
+    Refresh_BufferRegion *source,
+    Refresh_TransferBufferLocation *destination);
 
 /**
  * Ends the current copy pass.
  *
  * \param copyPass a copy pass handle
+ *
+ * \since This function is available since Refresh 2.0.0
  */
 REFRESHAPI void Refresh_EndCopyPass(
     Refresh_CopyPass *copyPass);
@@ -1720,6 +1869,9 @@ REFRESHAPI void Refresh_EndCopyPass(
  * \param destination the texture region to copy to
  * \param filterMode the filter mode that will be used when blitting
  * \param cycle if SDL_TRUE, cycles the destination texture if the destination texture slice is bound, otherwise overwrites the data.
+ *
+ *
+ * \since This function is available since Refresh 2.0.0
  */
 REFRESHAPI void Refresh_Blit(
     Refresh_CommandBuffer *commandBuffer,
@@ -1738,6 +1890,8 @@ REFRESHAPI void Refresh_Blit(
  * \param swapchainComposition the swapchain composition to check
  *
  * \returns SDL_TRUE if supported, SDL_FALSE if unsupported (or on error)
+ *
+ * \since This function is available since Refresh 2.0.0
  */
 REFRESHAPI SDL_bool Refresh_SupportsSwapchainComposition(
     Refresh_Device *device,
@@ -1752,6 +1906,8 @@ REFRESHAPI SDL_bool Refresh_SupportsSwapchainComposition(
  * \param presentMode the presentation mode to check
  *
  * \returns SDL_TRUE if supported, SDL_FALSE if unsupported (or on error)
+ *
+ * \since This function is available since Refresh 2.0.0
  */
 REFRESHAPI SDL_bool Refresh_SupportsPresentMode(
     Refresh_Device *device,
@@ -1769,6 +1925,8 @@ REFRESHAPI SDL_bool Refresh_SupportsPresentMode(
  *
  * \returns SDL_TRUE on success, otherwise SDL_FALSE.
  *
+ * \since This function is available since Refresh 2.0.0
+ *
  * \sa Refresh_AcquireSwapchainTexture
  * \sa Refresh_UnclaimWindow
  */
@@ -1784,6 +1942,8 @@ REFRESHAPI SDL_bool Refresh_ClaimWindow(
  * \param device a GPU context
  * \param window an SDL_Window that has been claimed
  *
+ * \since This function is available since Refresh 2.0.0
+ *
  * \sa Refresh_ClaimWindow
  */
 REFRESHAPI void Refresh_UnclaimWindow(
@@ -1797,6 +1957,8 @@ REFRESHAPI void Refresh_UnclaimWindow(
  * \param window an SDL_Window that has been claimed
  * \param swapchainComposition the desired composition of the swapchain
  * \param presentMode the desired present mode for the swapchain
+ *
+ * \since This function is available since Refresh 2.0.0
  */
 REFRESHAPI void Refresh_SetSwapchainParameters(
     Refresh_Device *device,
@@ -1811,6 +1973,8 @@ REFRESHAPI void Refresh_SetSwapchainParameters(
  * \param window an SDL_Window that has been claimed
  *
  * \returns the texture format of the swapchain
+ *
+ * \since This function is available since Refresh 2.0.0
  */
 REFRESHAPI Refresh_TextureFormat Refresh_GetSwapchainTextureFormat(
     Refresh_Device *device,
@@ -1819,10 +1983,13 @@ REFRESHAPI Refresh_TextureFormat Refresh_GetSwapchainTextureFormat(
 /**
  * Acquire a command buffer.
  * This command buffer is managed by the implementation and should not be freed by the user.
- * A command buffer may only be used on the thread it was acquired on.
+ * The command buffer may only be used on the thread it was acquired on.
+ * The command buffer should be submitted on the thread it was acquired on.
  *
  * \param device a GPU context
  * \returns a command buffer
+ *
+ * \since This function is available since Refresh 2.0.0
  *
  * \sa Refresh_Submit
  * \sa Refresh_SubmitAndAcquireFence
@@ -1834,6 +2001,7 @@ REFRESHAPI Refresh_CommandBuffer *Refresh_AcquireCommandBuffer(
  * Acquire a texture to use in presentation.
  * When a swapchain texture is acquired on a command buffer,
  * it will automatically be submitted for presentation when the command buffer is submitted.
+ * The swapchain texture should only be referenced by the command buffer used to acquire it.
  * May return NULL under certain conditions. This is not necessarily an error.
  * This texture is managed by the implementation and must not be freed by the user.
  * You MUST NOT call this function from any thread other than the one that created the window.
@@ -1843,6 +2011,8 @@ REFRESHAPI Refresh_CommandBuffer *Refresh_AcquireCommandBuffer(
  * \param pWidth a pointer filled in with the swapchain width
  * \param pHeight a pointer filled in with the swapchain height
  * \returns a swapchain texture
+ *
+ * \since This function is available since Refresh 2.0.0
  *
  * \sa Refresh_ClaimWindow
  * \sa Refresh_Submit
@@ -1860,6 +2030,8 @@ REFRESHAPI Refresh_Texture *Refresh_AcquireSwapchainTexture(
  *
  * \param commandBuffer a command buffer
  *
+ * \since This function is available since Refresh 2.0.0
+ *
  * \sa Refresh_AcquireCommandBuffer
  * \sa Refresh_AcquireSwapchainTexture
  * \sa Refresh_SubmitAndAcquireFence
@@ -1876,6 +2048,8 @@ REFRESHAPI void Refresh_Submit(
  * \param commandBuffer a command buffer
  * \returns a fence associated with the command buffer
  *
+ * \since This function is available since Refresh 2.0.0
+ *
  * \sa SDL_AcquireCommandBuffer
  * \sa Refresh_AcquireSwapchainTexture
  * \sa Refresh_Submit
@@ -1889,6 +2063,8 @@ REFRESHAPI Refresh_Fence *Refresh_SubmitAndAcquireFence(
  *
  * \param device a GPU context
  *
+ * \since This function is available since Refresh 2.0.0
+ *
  * \sa Refresh_WaitForFences
  */
 REFRESHAPI void Refresh_Wait(
@@ -1899,8 +2075,10 @@ REFRESHAPI void Refresh_Wait(
  *
  * \param device a GPU context
  * \param waitAll if 0, wait for any fence to be signaled, if 1, wait for all fences to be signaled
- * \param fenceCount the number of fences in the pFences array
  * \param pFences an array of fences to wait on
+ * \param fenceCount the number of fences in the pFences array
+ *
+ * \since This function is available since Refresh 2.0.0
  *
  * \sa Refresh_SubmitAndAcquireFence
  * \sa Refresh_Wait
@@ -1918,6 +2096,8 @@ REFRESHAPI void Refresh_WaitForFences(
  * \param fence a fence
  * \returns SDL_TRUE if the fence is signaled, SDL_FALSE if it is not
  *
+ * \since This function is available since Refresh 2.0.0
+ *
  * \sa Refresh_SubmitAndAcquireFence
  */
 REFRESHAPI SDL_bool Refresh_QueryFence(
@@ -1929,6 +2109,8 @@ REFRESHAPI SDL_bool Refresh_QueryFence(
  *
  * \param device a GPU context
  * \param fence a fence
+ *
+ * \since This function is available since Refresh 2.0.0
  *
  * \sa Refresh_SubmitAndAcquireFence
  */
@@ -1944,6 +2126,8 @@ REFRESHAPI void Refresh_ReleaseFence(
  * \param textureFormat the texture format you want to know the texel size of
  * \returns the texel block size of the texture format
  *
+ * \since This function is available since Refresh 2.0.0
+ *
  * \sa Refresh_SetTransferData
  * \sa Refresh_UploadToTexture
  */
@@ -1958,6 +2142,8 @@ REFRESHAPI Uint32 Refresh_TextureFormatTexelBlockSize(
  * \param type the type of texture (2D, 3D, Cube)
  * \param usage a bitmask of all usage scenarios to check
  * \returns whether the texture format is supported for this type and usage
+ *
+ * \since This function is available since Refresh 2.0.0
  */
 REFRESHAPI SDL_bool Refresh_IsTextureFormatSupported(
     Refresh_Device *device,
@@ -1973,6 +2159,8 @@ REFRESHAPI SDL_bool Refresh_IsTextureFormatSupported(
  * \param format the texture format to check
  * \param desiredSampleCount the sample count you want
  * \returns a hardware-specific version of min(preferred, possible)
+ *
+ * \since This function is available since Refresh 2.0.0
  */
 REFRESHAPI Refresh_SampleCount Refresh_GetBestSampleCount(
     Refresh_Device *device,

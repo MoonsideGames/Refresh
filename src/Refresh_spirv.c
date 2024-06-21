@@ -31,9 +31,9 @@
 #if defined(_WIN32)
 #define SPIRV_CROSS_DLL "spirv-cross-c-shared.dll"
 #elif defined(__APPLE__)
-#define SPIRV_CROSS_DLL "libspirv-cross-c-shared.dylib"
+#define SPIRV_CROSS_DLL "libspirv-cross-c-shared.0.dylib"
 #else
-#define SPIRV_CROSS_DLL "libspirv-cross-c-shared.so"
+#define SPIRV_CROSS_DLL "libspirv-cross-c-shared.so.0"
 #endif
 
 #define SPVC_ERROR(func) \
@@ -65,20 +65,20 @@ static pfn_spvc_context_get_last_error_string SDL_spvc_context_get_last_error_st
 static pfn_spvc_compiler_get_execution_model SDL_spvc_compiler_get_execution_model = NULL;
 static pfn_spvc_compiler_get_cleansed_entry_point_name SDL_spvc_compiler_get_cleansed_entry_point_name = NULL;
 
-void *Refresh_CompileFromSPIRV(
+void *SDL_CompileFromSPIRV(
     Refresh_Device *device,
     void *originalCreateInfo,
     SDL_bool isCompute)
 {
     Refresh_ShaderCreateInfo *createInfo;
-    Refresh_ShaderFormat format;
     spvc_result result;
     spvc_backend backend;
+    Refresh_ShaderFormat format;
     spvc_context context = NULL;
     spvc_parsed_ir ir = NULL;
     spvc_compiler compiler = NULL;
     spvc_compiler_options options = NULL;
-    const char *translated_source = NULL;
+    const char *translated_source;
     const char *cleansed_entrypoint;
     void *compiledResult;
 
@@ -199,6 +199,7 @@ void *Refresh_CompileFromSPIRV(
         /* Create the pipeline! */
         compiledResult = Refresh_CreateComputePipeline(device, &newCreateInfo);
     } else {
+
         Refresh_ShaderCreateInfo newCreateInfo;
         newCreateInfo = *createInfo;
         newCreateInfo.format = format;

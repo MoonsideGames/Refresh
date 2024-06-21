@@ -148,7 +148,7 @@ static Refresh_Backend Refresh_SelectBackend(Refresh_Backend preferredBackends)
                 return backends[i]->backendflag;
             }
         }
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "No preferred Refresh backend found!");
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "No preferred Refresh_ backend found!");
     }
 
     /* ... Fallback backends */
@@ -158,7 +158,7 @@ static Refresh_Backend Refresh_SelectBackend(Refresh_Backend preferredBackends)
         }
     }
 
-    SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "No supported Refresh backend found!");
+    SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "No supported Refresh_ backend found!");
     return REFRESH_BACKEND_INVALID;
 }
 
@@ -292,11 +292,10 @@ Refresh_ComputePipeline *Refresh_CreateComputePipeline(
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "All ComputePipeline threadCount dimensions must be at least 1!");
         return NULL;
     }
-
-    if (computePipelineCreateInfo->format == REFRESH_SHADERFORMAT_SPIRV && device->backend != REFRESH_BACKEND_VULKAN) {
-        return Refresh_CompileFromSPIRV(device, computePipelineCreateInfo, SDL_TRUE);
+    if (computePipelineCreateInfo->format == REFRESH_SHADERFORMAT_SPIRV &&
+        device->backend != REFRESH_BACKEND_VULKAN) {
+        return SDL_CompileFromSPIRV(device, computePipelineCreateInfo, SDL_TRUE);
     }
-
     return device->CreateComputePipeline(
         device->driverData,
         computePipelineCreateInfo);
@@ -354,21 +353,22 @@ Refresh_GraphicsPipeline *Refresh_CreateGraphicsPipeline(
 
 Refresh_Sampler *Refresh_CreateSampler(
     Refresh_Device *device,
-    Refresh_SamplerCreateInfo *samplerStateInfo)
+    Refresh_SamplerCreateInfo *samplerCreateInfo)
 {
     NULL_ASSERT(device)
     return device->CreateSampler(
         device->driverData,
-        samplerStateInfo);
+        samplerCreateInfo);
 }
 
 Refresh_Shader *Refresh_CreateShader(
     Refresh_Device *device,
     Refresh_ShaderCreateInfo *shaderCreateInfo)
 {
+    NULL_ASSERT(device)
     if (shaderCreateInfo->format == REFRESH_SHADERFORMAT_SPIRV &&
         device->backend != REFRESH_BACKEND_VULKAN) {
-        return Refresh_CompileFromSPIRV(device, shaderCreateInfo, SDL_FALSE);
+        return SDL_CompileFromSPIRV(device, shaderCreateInfo, SDL_FALSE);
     }
     return device->CreateShader(
         device->driverData,
@@ -443,15 +443,13 @@ Refresh_Buffer *Refresh_CreateBuffer(
 
 Refresh_TransferBuffer *Refresh_CreateTransferBuffer(
     Refresh_Device *device,
-    Refresh_TransferUsage usage,
-    Refresh_TransferBufferMapFlags mapFlags,
+    Refresh_TransferBufferUsage usage,
     Uint32 sizeInBytes)
 {
     NULL_ASSERT(device)
     return device->CreateTransferBuffer(
         device->driverData,
         usage,
-        mapFlags,
         sizeInBytes);
 }
 
@@ -485,14 +483,32 @@ void Refresh_SetTextureName(
         text);
 }
 
-void Refresh_SetStringMarker(
+void Refresh_InsertDebugLabel(
     Refresh_CommandBuffer *commandBuffer,
     const char *text)
 {
     CHECK_COMMAND_BUFFER
-    COMMAND_BUFFER_DEVICE->SetStringMarker(
+    COMMAND_BUFFER_DEVICE->InsertDebugLabel(
         commandBuffer,
         text);
+}
+
+void Refresh_PushDebugGroup(
+    Refresh_CommandBuffer *commandBuffer,
+    const char *name)
+{
+    CHECK_COMMAND_BUFFER
+    COMMAND_BUFFER_DEVICE->PushDebugGroup(
+        commandBuffer,
+        name);
+}
+
+void Refresh_PopDebugGroup(
+    Refresh_CommandBuffer *commandBuffer)
+{
+    CHECK_COMMAND_BUFFER
+    COMMAND_BUFFER_DEVICE->PopDebugGroup(
+        commandBuffer);
 }
 
 /* Disposal */
@@ -756,7 +772,7 @@ void Refresh_BindFragmentStorageBuffers(
 void Refresh_PushVertexUniformData(
     Refresh_RenderPass *renderPass,
     Uint32 slotIndex,
-    void *data,
+    const void *data,
     Uint32 dataLengthInBytes)
 {
     NULL_ASSERT(renderPass)
@@ -772,7 +788,7 @@ void Refresh_PushVertexUniformData(
 void Refresh_PushFragmentUniformData(
     Refresh_RenderPass *renderPass,
     Uint32 slotIndex,
-    void *data,
+    const void *data,
     Uint32 dataLengthInBytes)
 {
     NULL_ASSERT(renderPass)
@@ -944,7 +960,7 @@ void Refresh_BindComputeStorageBuffers(
 void Refresh_PushComputeUniformData(
     Refresh_ComputePass *computePass,
     Uint32 slotIndex,
-    void *data,
+    const void *data,
     Uint32 dataLengthInBytes)
 {
     NULL_ASSERT(computePass)
@@ -1018,32 +1034,28 @@ void Refresh_UnmapTransferBuffer(
 
 void Refresh_SetTransferData(
     Refresh_Device *device,
-    void *data,
-    Refresh_TransferBuffer *transferBuffer,
-    Refresh_BufferCopy *copyParams,
+    const void *source,
+    Refresh_TransferBufferRegion *destination,
     SDL_bool cycle)
 {
     NULL_ASSERT(device)
     device->SetTransferData(
         device->driverData,
-        data,
-        transferBuffer,
-        copyParams,
+        source,
+        destination,
         cycle);
 }
 
 void Refresh_GetTransferData(
     Refresh_Device *device,
-    Refresh_TransferBuffer *transferBuffer,
-    void *data,
-    Refresh_BufferCopy *copyParams)
+    Refresh_TransferBufferRegion *source,
+    void *destination)
 {
     NULL_ASSERT(device)
     device->GetTransferData(
         device->driverData,
-        transferBuffer,
-        data,
-        copyParams);
+        source,
+        destination);
 }
 
 /* Copy Pass */
@@ -1065,41 +1077,40 @@ Refresh_CopyPass *Refresh_BeginCopyPass(
 
 void Refresh_UploadToTexture(
     Refresh_CopyPass *copyPass,
-    Refresh_TransferBuffer *transferBuffer,
-    Refresh_TextureRegion *textureRegion,
-    Refresh_BufferImageCopy *copyParams,
+    Refresh_TextureTransferInfo *source,
+    Refresh_TextureRegion *destination,
     SDL_bool cycle)
 {
     NULL_ASSERT(copyPass)
     CHECK_COPYPASS
     COPYPASS_DEVICE->UploadToTexture(
         COPYPASS_COMMAND_BUFFER,
-        transferBuffer,
-        textureRegion,
-        copyParams,
+        source,
+        destination,
         cycle);
 }
 
 void Refresh_UploadToBuffer(
     Refresh_CopyPass *copyPass,
-    Refresh_TransferBuffer *transferBuffer,
-    Refresh_Buffer *buffer,
-    Refresh_BufferCopy *copyParams,
+    Refresh_TransferBufferLocation *source,
+    Refresh_BufferRegion *destination,
     SDL_bool cycle)
 {
     NULL_ASSERT(copyPass)
     COPYPASS_DEVICE->UploadToBuffer(
         COPYPASS_COMMAND_BUFFER,
-        transferBuffer,
-        buffer,
-        copyParams,
+        source,
+        destination,
         cycle);
 }
 
 void Refresh_CopyTextureToTexture(
     Refresh_CopyPass *copyPass,
-    Refresh_TextureRegion *source,
-    Refresh_TextureRegion *destination,
+    Refresh_TextureLocation *source,
+    Refresh_TextureLocation *destination,
+    Uint32 w,
+    Uint32 h,
+    Uint32 d,
     SDL_bool cycle)
 {
     NULL_ASSERT(copyPass)
@@ -1107,14 +1118,17 @@ void Refresh_CopyTextureToTexture(
         COPYPASS_COMMAND_BUFFER,
         source,
         destination,
+        w,
+        h,
+        d,
         cycle);
 }
 
 void Refresh_CopyBufferToBuffer(
     Refresh_CopyPass *copyPass,
-    Refresh_Buffer *source,
-    Refresh_Buffer *destination,
-    Refresh_BufferCopy *copyParams,
+    Refresh_BufferLocation *source,
+    Refresh_BufferLocation *destination,
+    Uint32 size,
     SDL_bool cycle)
 {
     NULL_ASSERT(copyPass)
@@ -1122,7 +1136,7 @@ void Refresh_CopyBufferToBuffer(
         COPYPASS_COMMAND_BUFFER,
         source,
         destination,
-        copyParams,
+        size,
         cycle);
 }
 
@@ -1138,30 +1152,26 @@ void Refresh_GenerateMipmaps(
 
 void Refresh_DownloadFromTexture(
     Refresh_CopyPass *copyPass,
-    Refresh_TextureRegion *textureRegion,
-    Refresh_TransferBuffer *transferBuffer,
-    Refresh_BufferImageCopy *copyParams)
+    Refresh_TextureRegion *source,
+    Refresh_TextureTransferInfo *destination)
 {
     NULL_ASSERT(copyPass);
     COPYPASS_DEVICE->DownloadFromTexture(
         COPYPASS_COMMAND_BUFFER,
-        textureRegion,
-        transferBuffer,
-        copyParams);
+        source,
+        destination);
 }
 
 void Refresh_DownloadFromBuffer(
     Refresh_CopyPass *copyPass,
-    Refresh_Buffer *buffer,
-    Refresh_TransferBuffer *transferBuffer,
-    Refresh_BufferCopy *copyParams)
+    Refresh_BufferRegion *source,
+    Refresh_TransferBufferLocation *destination)
 {
     NULL_ASSERT(copyPass);
     COPYPASS_DEVICE->DownloadFromBuffer(
         COPYPASS_COMMAND_BUFFER,
-        buffer,
-        transferBuffer,
-        copyParams);
+        source,
+        destination);
 }
 
 void Refresh_EndCopyPass(

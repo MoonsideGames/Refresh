@@ -24,51 +24,47 @@
  *
  */
 
+
+
 #if REFRESH_METAL
 
 #include <Metal/Metal.h>
 #include <QuartzCore/CoreAnimation.h>
 
-#include "Refresh_driver.h"
+#include "../Refresh_driver.h"
 
- /* Defines */
+/* Defines */
 
-#define METAL_MAX_BUFFER_COUNT 31
-#define WINDOW_PROPERTY_DATA "Refresh_MetalWindowPropertyData"
-#define UNIFORM_BUFFER_SIZE 1048576 /* 1 MiB */
+#define METAL_MAX_BUFFER_COUNT      31
+#define WINDOW_PROPERTY_DATA        "Refresh_MetalWindowPropertyData"
+#define UNIFORM_BUFFER_SIZE         1048576 /* 1 MiB */
 #define REFRESH_SHADERSTAGE_COMPUTE 2
 
-#define EXPAND_ARRAY_IF_NEEDED(arr, elementType, newCount, capacity, newCapacity)    \
-    if (newCount >= capacity)                            \
-    {                                        \
-        capacity = newCapacity;                            \
-        arr = (elementType*) SDL_realloc(                    \
-            arr,                                \
-            sizeof(elementType) * capacity                    \
-        );                                    \
+#define EXPAND_ARRAY_IF_NEEDED(arr, elementType, newCount, capacity, newCapacity) \
+    if (newCount >= capacity) {                                                   \
+        capacity = newCapacity;                                                   \
+        arr = (elementType *)SDL_realloc(                                         \
+            arr,                                                                  \
+            sizeof(elementType) * capacity);                                      \
     }
 
 #define TRACK_RESOURCE(resource, type, array, count, capacity) \
-    Uint32 i; \
-    \
-    for (i = 0; i < commandBuffer->count; i += 1) \
-    { \
-        if (commandBuffer->array[i] == resource) \
-        { \
-            return; \
-        } \
-    } \
-    \
-    if (commandBuffer->count == commandBuffer->capacity) \
-    { \
-        commandBuffer->capacity += 1; \
-        commandBuffer->array = SDL_realloc( \
-            commandBuffer->array, \
-            commandBuffer->capacity * sizeof(type) \
-        ); \
-    } \
-    commandBuffer->array[commandBuffer->count] = resource; \
-    commandBuffer->count += 1; \
+    Uint32 i;                                                  \
+                                                               \
+    for (i = 0; i < commandBuffer->count; i += 1) {            \
+        if (commandBuffer->array[i] == resource) {             \
+            return;                                            \
+        }                                                      \
+    }                                                          \
+                                                               \
+    if (commandBuffer->count == commandBuffer->capacity) {     \
+        commandBuffer->capacity += 1;                          \
+        commandBuffer->array = SDL_realloc(                    \
+            commandBuffer->array,                              \
+            commandBuffer->capacity * sizeof(type));           \
+    }                                                          \
+    commandBuffer->array[commandBuffer->count] = resource;     \
+    commandBuffer->count += 1;                                 \
     SDL_AtomicIncRef(&resource->referenceCount);
 
 /* Blit Shaders */
@@ -99,8 +95,7 @@ static const char *BlitFrom2DFragmentShader =
 static void METAL_Wait(Refresh_Renderer *driverData);
 static void METAL_UnclaimWindow(
     Refresh_Renderer *driverData,
-    SDL_Window *window
-);
+    SDL_Window *window);
 static void METAL_INTERNAL_DestroyBlitResources(Refresh_Renderer *driverData);
 
 /* Conversions */
@@ -258,19 +253,9 @@ static MTLStencilOperation RefreshToMetal_StencilOp[] = {
 };
 
 static MTLSamplerAddressMode RefreshToMetal_SamplerAddressMode[] = {
-    MTLSamplerAddressModeRepeat,             /* REPEAT */
-    MTLSamplerAddressModeMirrorRepeat,       /* MIRRORED_REPEAT */
-    MTLSamplerAddressModeClampToEdge,        /* CLAMP_TO_EDGE */
-    MTLSamplerAddressModeClampToBorderColor, /* CLAMP_TO_BORDER */
-};
-
-static MTLSamplerBorderColor RefreshToMetal_BorderColor[] = {
-    MTLSamplerBorderColorTransparentBlack, /* FLOAT_TRANSPARENT_BLACK */
-    MTLSamplerBorderColorTransparentBlack, /* INT_TRANSPARENT_BLACK */
-    MTLSamplerBorderColorOpaqueBlack,      /* FLOAT_OPAQUE_BLACK */
-    MTLSamplerBorderColorOpaqueBlack,      /* INT_OPAQUE_BLACK */
-    MTLSamplerBorderColorOpaqueWhite,      /* FLOAT_OPAQUE_WHITE */
-    MTLSamplerBorderColorOpaqueWhite,      /* INT_OPAQUE_WHITE */
+    MTLSamplerAddressModeRepeat,       /* REPEAT */
+    MTLSamplerAddressModeMirrorRepeat, /* MIRRORED_REPEAT */
+    MTLSamplerAddressModeClampToEdge   /* CLAMP_TO_EDGE */
 };
 
 static MTLSamplerMinMagFilter RefreshToMetal_MinMagFilter[] = {
@@ -440,7 +425,8 @@ typedef struct MetalBufferContainer
     Uint32 bufferCount;
     MetalBuffer **buffers;
 
-    Refresh_TransferBufferMapFlags transferMapFlags;
+    SDL_bool isPrivate;
+    SDL_bool isWriteOnly;
     char *debugName;
 } MetalBufferContainer;
 
@@ -597,7 +583,7 @@ static Uint32 METAL_INTERNAL_GetVertexBufferIndex(Uint32 binding)
     return METAL_MAX_BUFFER_COUNT - 1 - binding;
 }
 
-/* FIXME: This should be moved into SDL_gpu_driver.h */
+/* FIXME: This should be moved into Refresh_driver.h */
 static inline Uint32 METAL_INTERNAL_NextHighestAlignment(
     Uint32 n,
     Uint32 align)
@@ -944,7 +930,6 @@ static Refresh_GraphicsPipeline *METAL_CreateGraphicsPipeline(
 
     /* Depth Stencil */
 
-    /* FIXME: depth min/max? */
     if (pipelineCreateInfo->attachmentInfo.hasDepthStencilAttachment) {
         pipelineDescriptor.depthAttachmentPixelFormat = RefreshToMetal_SurfaceFormat[pipelineCreateInfo->attachmentInfo.depthStencilFormat];
 
@@ -1105,7 +1090,7 @@ static void METAL_SetTextureName(
     }
 }
 
-static void METAL_SetStringMarker(
+static void METAL_InsertDebugLabel(
     Refresh_CommandBuffer *commandBuffer,
     const char *text)
 {
@@ -1119,7 +1104,42 @@ static void METAL_SetStringMarker(
     } else if (metalCommandBuffer->computeEncoder) {
         [metalCommandBuffer->computeEncoder insertDebugSignpost:label];
     } else {
+        /* Metal doesn't have insertDebugSignpost for command buffers... */
         [metalCommandBuffer->handle pushDebugGroup:label];
+        [metalCommandBuffer->handle popDebugGroup];
+    }
+}
+
+static void METAL_PushDebugGroup(
+    Refresh_CommandBuffer *commandBuffer,
+    const char *name)
+{
+    MetalCommandBuffer *metalCommandBuffer = (MetalCommandBuffer *)commandBuffer;
+    NSString *label = @(name);
+
+    if (metalCommandBuffer->renderEncoder) {
+        [metalCommandBuffer->renderEncoder pushDebugGroup:label];
+    } else if (metalCommandBuffer->blitEncoder) {
+        [metalCommandBuffer->blitEncoder pushDebugGroup:label];
+    } else if (metalCommandBuffer->computeEncoder) {
+        [metalCommandBuffer->computeEncoder pushDebugGroup:label];
+    } else {
+        [metalCommandBuffer->handle pushDebugGroup:label];
+    }
+}
+
+static void METAL_PopDebugGroup(
+    Refresh_CommandBuffer *commandBuffer)
+{
+    MetalCommandBuffer *metalCommandBuffer = (MetalCommandBuffer *)commandBuffer;
+
+    if (metalCommandBuffer->renderEncoder) {
+        [metalCommandBuffer->renderEncoder popDebugGroup];
+    } else if (metalCommandBuffer->blitEncoder) {
+        [metalCommandBuffer->blitEncoder popDebugGroup];
+    } else if (metalCommandBuffer->computeEncoder) {
+        [metalCommandBuffer->computeEncoder popDebugGroup];
+    } else {
         [metalCommandBuffer->handle popDebugGroup];
     }
 }
@@ -1138,7 +1158,6 @@ static Refresh_Sampler *METAL_CreateSampler(
     samplerDesc.rAddressMode = RefreshToMetal_SamplerAddressMode[samplerCreateInfo->addressModeU];
     samplerDesc.sAddressMode = RefreshToMetal_SamplerAddressMode[samplerCreateInfo->addressModeV];
     samplerDesc.tAddressMode = RefreshToMetal_SamplerAddressMode[samplerCreateInfo->addressModeW];
-    samplerDesc.borderColor = RefreshToMetal_BorderColor[samplerCreateInfo->borderColor];
     samplerDesc.minFilter = RefreshToMetal_MinMagFilter[samplerCreateInfo->minFilter];
     samplerDesc.magFilter = RefreshToMetal_MinMagFilter[samplerCreateInfo->magFilter];
     samplerDesc.mipFilter = RefreshToMetal_MipFilter[samplerCreateInfo->mipmapMode]; /* FIXME: Is this right with non-mipmapped samplers? */
@@ -1146,6 +1165,7 @@ static Refresh_Sampler *METAL_CreateSampler(
     samplerDesc.lodMaxClamp = samplerCreateInfo->maxLod;
     samplerDesc.maxAnisotropy = (NSUInteger)((samplerCreateInfo->anisotropyEnable) ? samplerCreateInfo->maxAnisotropy : 1);
     samplerDesc.compareFunction = (samplerCreateInfo->compareEnable) ? RefreshToMetal_CompareOp[samplerCreateInfo->compareOp] : MTLCompareFunctionAlways;
+    samplerDesc.borderColor = MTLSamplerBorderColorTransparentBlack; /* arbitrary, unused */
 
     sampler = [renderer->device newSamplerStateWithDescriptor:samplerDesc];
     if (sampler == NULL) {
@@ -1366,7 +1386,8 @@ static MetalBuffer *METAL_INTERNAL_CreateBuffer(
 static MetalBufferContainer *METAL_INTERNAL_CreateBufferContainer(
     MetalRenderer *renderer,
     Uint32 sizeInBytes,
-    Refresh_TransferBufferMapFlags transferMapFlags)
+    SDL_bool isPrivate,
+    SDL_bool isWriteOnly)
 {
     MetalBufferContainer *container = SDL_malloc(sizeof(MetalBufferContainer));
     MTLResourceOptions resourceOptions;
@@ -1376,15 +1397,18 @@ static MetalBufferContainer *METAL_INTERNAL_CreateBufferContainer(
     container->bufferCount = 1;
     container->buffers = SDL_malloc(
         container->bufferCapacity * sizeof(MetalBuffer *));
-    container->transferMapFlags = transferMapFlags;
+    container->isPrivate = isPrivate;
+    container->isWriteOnly = isWriteOnly;
     container->debugName = NULL;
 
-    if (transferMapFlags == 0) {
+    if (isPrivate) {
         resourceOptions = MTLResourceStorageModePrivate;
-    } else if ((transferMapFlags & REFRESH_TRANSFER_MAP_WRITE) && !(transferMapFlags & REFRESH_TRANSFER_MAP_READ)) {
-        resourceOptions = MTLResourceCPUCacheModeWriteCombined;
     } else {
-        resourceOptions = MTLResourceCPUCacheModeDefaultCache;
+        if (isWriteOnly) {
+            resourceOptions = MTLResourceCPUCacheModeWriteCombined;
+        } else {
+            resourceOptions = MTLResourceCPUCacheModeDefaultCache;
+        }
     }
 
     container->buffers[0] = METAL_INTERNAL_CreateBuffer(
@@ -1405,20 +1429,20 @@ static Refresh_Buffer *METAL_CreateBuffer(
     return (Refresh_Buffer *)METAL_INTERNAL_CreateBufferContainer(
         (MetalRenderer *)driverData,
         sizeInBytes,
-        0);
+        SDL_TRUE,
+        SDL_FALSE);
 }
 
 static Refresh_TransferBuffer *METAL_CreateTransferBuffer(
     Refresh_Renderer *driverData,
-    Refresh_TransferUsage usage,
-    Refresh_TransferBufferMapFlags mapFlags,
+    Refresh_TransferBufferUsage usage,
     Uint32 sizeInBytes)
 {
-    (void)usage;
     return (Refresh_TransferBuffer *)METAL_INTERNAL_CreateBufferContainer(
         (MetalRenderer *)driverData,
         sizeInBytes,
-        mapFlags);
+        SDL_FALSE,
+        usage == REFRESH_TRANSFERBUFFERUSAGE_UPLOAD);
 }
 
 static MetalUniformBuffer *METAL_INTERNAL_CreateUniformBuffer(
@@ -1429,7 +1453,8 @@ static MetalUniformBuffer *METAL_INTERNAL_CreateUniformBuffer(
     uniformBuffer->container = METAL_INTERNAL_CreateBufferContainer(
         renderer,
         sizeInBytes,
-        REFRESH_TRANSFER_MAP_WRITE);
+        SDL_FALSE,
+        SDL_TRUE);
     uniformBuffer->offset = 0;
     return uniformBuffer;
 }
@@ -1454,12 +1479,14 @@ static void METAL_INTERNAL_CycleActiveBuffer(
         container->bufferCapacity,
         container->bufferCapacity + 1);
 
-    if (container->transferMapFlags == 0) {
+    if (container->isPrivate) {
         resourceOptions = MTLResourceStorageModePrivate;
-    } else if ((container->transferMapFlags & REFRESH_TRANSFER_MAP_WRITE) && !(container->transferMapFlags & REFRESH_TRANSFER_MAP_READ)) {
-        resourceOptions = MTLResourceCPUCacheModeWriteCombined;
     } else {
-        resourceOptions = MTLResourceCPUCacheModeDefaultCache;
+        if (container->isWriteOnly) {
+            resourceOptions = MTLResourceCPUCacheModeWriteCombined;
+        } else {
+            resourceOptions = MTLResourceCPUCacheModeDefaultCache;
+        }
     }
 
     container->buffers[container->bufferCount] = METAL_INTERNAL_CreateBuffer(
@@ -1532,13 +1559,12 @@ static void METAL_UnmapTransferBuffer(
 
 static void METAL_SetTransferData(
     Refresh_Renderer *driverData,
-    void *data,
-    Refresh_TransferBuffer *transferBuffer,
-    Refresh_BufferCopy *copyParams,
+    const void *source,
+    Refresh_TransferBufferRegion *destination,
     SDL_bool cycle)
 {
     MetalRenderer *renderer = (MetalRenderer *)driverData;
-    MetalBufferContainer *container = (MetalBufferContainer *)transferBuffer;
+    MetalBufferContainer *container = (MetalBufferContainer *)destination->transferBuffer;
     MetalBuffer *buffer = container->activeBuffer;
 
     /* Rotate the transfer buffer if necessary */
@@ -1550,29 +1576,28 @@ static void METAL_SetTransferData(
     }
 
     SDL_memcpy(
-        ((Uint8 *)buffer->handle.contents) + copyParams->dstOffset,
-        ((Uint8 *)data) + copyParams->srcOffset,
-        copyParams->size);
+        ((Uint8 *)buffer->handle.contents) + destination->offset,
+        ((Uint8 *)source),
+        destination->size);
 
 #ifdef SDL_PLATFORM_MACOS
     /* FIXME: Is this necessary? */
     if (buffer->handle.storageMode == MTLStorageModeManaged) {
-        [buffer->handle didModifyRange:NSMakeRange(copyParams->dstOffset, copyParams->size)];
+        [buffer->handle didModifyRange:NSMakeRange(destination->offset, destination->size)];
     }
 #endif
 }
 
 static void METAL_GetTransferData(
     Refresh_Renderer *driverData,
-    Refresh_TransferBuffer *transferBuffer,
-    void *data,
-    Refresh_BufferCopy *copyParams)
+    Refresh_TransferBufferRegion *source,
+    void *destination)
 {
-    MetalBufferContainer *transferBufferContainer = (MetalBufferContainer *)transferBuffer;
+    MetalBufferContainer *transferBufferContainer = (MetalBufferContainer *)source->transferBuffer;
     SDL_memcpy(
-        ((Uint8 *)data) + copyParams->dstOffset,
-        ((Uint8 *)transferBufferContainer->activeBuffer->handle.contents) + copyParams->srcOffset,
-        copyParams->size);
+        ((Uint8 *)destination),
+        ((Uint8 *)transferBufferContainer->activeBuffer->handle.contents) + source->offset,
+        source->size);
 }
 
 /* Copy Pass */
@@ -1586,28 +1611,27 @@ static void METAL_BeginCopyPass(
 
 static void METAL_UploadToTexture(
     Refresh_CommandBuffer *commandBuffer,
-    Refresh_TransferBuffer *transferBuffer,
-    Refresh_TextureRegion *textureRegion,
-    Refresh_BufferImageCopy *copyParams,
+    Refresh_TextureTransferInfo *source,
+    Refresh_TextureRegion *destination,
     SDL_bool cycle)
 {
     MetalCommandBuffer *metalCommandBuffer = (MetalCommandBuffer *)commandBuffer;
     MetalRenderer *renderer = metalCommandBuffer->renderer;
-    MetalBufferContainer *bufferContainer = (MetalBufferContainer *)transferBuffer;
-    MetalTextureContainer *textureContainer = (MetalTextureContainer *)textureRegion->textureSlice.texture;
+    MetalBufferContainer *bufferContainer = (MetalBufferContainer *)source->transferBuffer;
+    MetalTextureContainer *textureContainer = (MetalTextureContainer *)destination->textureSlice.texture;
 
     MetalTexture *metalTexture = METAL_INTERNAL_PrepareTextureForWrite(renderer, textureContainer, cycle);
 
     [metalCommandBuffer->blitEncoder
              copyFromBuffer:bufferContainer->activeBuffer->handle
-               sourceOffset:copyParams->bufferOffset
-          sourceBytesPerRow:BytesPerRow(textureRegion->w, textureContainer->createInfo.format)
-        sourceBytesPerImage:BytesPerImage(textureRegion->w, textureRegion->h, textureContainer->createInfo.format)
-                 sourceSize:MTLSizeMake(textureRegion->w, textureRegion->h, textureRegion->d)
+               sourceOffset:source->offset
+          sourceBytesPerRow:BytesPerRow(destination->w, textureContainer->createInfo.format)
+        sourceBytesPerImage:BytesPerImage(destination->w, destination->h, textureContainer->createInfo.format)
+                 sourceSize:MTLSizeMake(destination->w, destination->h, destination->d)
                   toTexture:metalTexture->handle
-           destinationSlice:textureRegion->textureSlice.layer
-           destinationLevel:textureRegion->textureSlice.mipLevel
-          destinationOrigin:MTLOriginMake(textureRegion->x, textureRegion->y, textureRegion->z)];
+           destinationSlice:destination->textureSlice.layer
+           destinationLevel:destination->textureSlice.mipLevel
+          destinationOrigin:MTLOriginMake(destination->x, destination->y, destination->z)];
 
     METAL_INTERNAL_TrackTexture(metalCommandBuffer, metalTexture);
     METAL_INTERNAL_TrackBuffer(metalCommandBuffer, bufferContainer->activeBuffer);
@@ -1615,15 +1639,14 @@ static void METAL_UploadToTexture(
 
 static void METAL_UploadToBuffer(
     Refresh_CommandBuffer *commandBuffer,
-    Refresh_TransferBuffer *transferBuffer,
-    Refresh_Buffer *buffer,
-    Refresh_BufferCopy *copyParams,
+    Refresh_TransferBufferLocation *source,
+    Refresh_BufferRegion *destination,
     SDL_bool cycle)
 {
     MetalCommandBuffer *metalCommandBuffer = (MetalCommandBuffer *)commandBuffer;
     MetalRenderer *renderer = metalCommandBuffer->renderer;
-    MetalBufferContainer *transferContainer = (MetalBufferContainer *)transferBuffer;
-    MetalBufferContainer *bufferContainer = (MetalBufferContainer *)buffer;
+    MetalBufferContainer *transferContainer = (MetalBufferContainer *)source->transferBuffer;
+    MetalBufferContainer *bufferContainer = (MetalBufferContainer *)destination->buffer;
 
     MetalBuffer *metalBuffer = METAL_INTERNAL_PrepareBufferForWrite(
         renderer,
@@ -1632,10 +1655,10 @@ static void METAL_UploadToBuffer(
 
     [metalCommandBuffer->blitEncoder
            copyFromBuffer:transferContainer->activeBuffer->handle
-             sourceOffset:copyParams->srcOffset
+             sourceOffset:source->offset
                  toBuffer:metalBuffer->handle
-        destinationOffset:copyParams->dstOffset
-                     size:copyParams->size];
+        destinationOffset:destination->offset
+                     size:destination->size];
 
     METAL_INTERNAL_TrackBuffer(metalCommandBuffer, metalBuffer);
     METAL_INTERNAL_TrackBuffer(metalCommandBuffer, transferContainer->activeBuffer);
@@ -1643,8 +1666,11 @@ static void METAL_UploadToBuffer(
 
 static void METAL_CopyTextureToTexture(
     Refresh_CommandBuffer *commandBuffer,
-    Refresh_TextureRegion *source,
-    Refresh_TextureRegion *destination,
+    Refresh_TextureLocation *source,
+    Refresh_TextureLocation *destination,
+    Uint32 w,
+    Uint32 h,
+    Uint32 d,
     SDL_bool cycle)
 {
     MetalCommandBuffer *metalCommandBuffer = (MetalCommandBuffer *)commandBuffer;
@@ -1663,7 +1689,7 @@ static void METAL_CopyTextureToTexture(
               sourceSlice:source->textureSlice.layer
               sourceLevel:source->textureSlice.mipLevel
              sourceOrigin:MTLOriginMake(source->x, source->y, source->z)
-               sourceSize:MTLSizeMake(source->w, source->h, source->d)
+               sourceSize:MTLSizeMake(w, h, d)
                 toTexture:dstTexture->handle
          destinationSlice:destination->textureSlice.layer
          destinationLevel:destination->textureSlice.mipLevel
@@ -1675,9 +1701,9 @@ static void METAL_CopyTextureToTexture(
 
 static void METAL_CopyBufferToBuffer(
     Refresh_CommandBuffer *commandBuffer,
-    Refresh_Buffer *source,
-    Refresh_Buffer *destination,
-    Refresh_BufferCopy *copyParams,
+    Refresh_BufferLocation *source,
+    Refresh_BufferLocation *destination,
+    Uint32 size,
     SDL_bool cycle)
 {
     MetalCommandBuffer *metalCommandBuffer = (MetalCommandBuffer *)commandBuffer;
@@ -1693,10 +1719,10 @@ static void METAL_CopyBufferToBuffer(
 
     [metalCommandBuffer->blitEncoder
            copyFromBuffer:srcBuffer->handle
-             sourceOffset:copyParams->srcOffset
+             sourceOffset:source->offset
                  toBuffer:dstBuffer->handle
-        destinationOffset:copyParams->dstOffset
-                     size:copyParams->size];
+        destinationOffset:destination->offset
+                     size:size];
 
     METAL_INTERNAL_TrackBuffer(metalCommandBuffer, srcBuffer);
     METAL_INTERNAL_TrackBuffer(metalCommandBuffer, dstBuffer);
@@ -1723,18 +1749,17 @@ static void METAL_GenerateMipmaps(
 
 static void METAL_DownloadFromTexture(
     Refresh_CommandBuffer *commandBuffer,
-    Refresh_TextureRegion *textureRegion,
-    Refresh_TransferBuffer *transferBuffer,
-    Refresh_BufferImageCopy *copyParams)
+    Refresh_TextureRegion *source,
+    Refresh_TextureTransferInfo *destination)
 {
     MetalCommandBuffer *metalCommandBuffer = (MetalCommandBuffer *)commandBuffer;
     MetalRenderer *renderer = metalCommandBuffer->renderer;
-    Refresh_TextureSlice *textureSlice = &textureRegion->textureSlice;
+    Refresh_TextureSlice *textureSlice = &source->textureSlice;
     MetalTextureContainer *textureContainer = (MetalTextureContainer *)textureSlice->texture;
     MetalTexture *metalTexture = textureContainer->activeTexture;
-    MetalBufferContainer *bufferContainer = (MetalBufferContainer *)transferBuffer;
-    Uint32 bufferStride = copyParams->bufferStride;
-    Uint32 bufferImageHeight = copyParams->bufferImageHeight;
+    MetalBufferContainer *bufferContainer = (MetalBufferContainer *)destination->transferBuffer;
+    Uint32 bufferStride = destination->imagePitch;
+    Uint32 bufferImageHeight = destination->imageHeight;
     Uint32 bytesPerRow, bytesPerDepthSlice;
 
     MetalBuffer *dstBuffer = METAL_INTERNAL_PrepareBufferForWrite(
@@ -1743,18 +1768,18 @@ static void METAL_DownloadFromTexture(
         SDL_FALSE);
 
     MTLOrigin regionOrigin = MTLOriginMake(
-        textureRegion->x,
-        textureRegion->y,
-        textureRegion->z);
+        source->x,
+        source->y,
+        source->z);
 
     MTLSize regionSize = MTLSizeMake(
-        textureRegion->w,
-        textureRegion->h,
-        textureRegion->d);
+        source->w,
+        source->h,
+        source->d);
 
     if (bufferStride == 0 || bufferImageHeight == 0) {
-        bufferStride = textureRegion->w;
-        bufferImageHeight = textureRegion->h;
+        bufferStride = source->w;
+        bufferImageHeight = source->h;
     }
 
     bytesPerRow = BytesPerRow(bufferStride, textureContainer->createInfo.format);
@@ -1767,7 +1792,7 @@ static void METAL_DownloadFromTexture(
                     sourceOrigin:regionOrigin
                       sourceSize:regionSize
                         toBuffer:dstBuffer->handle
-               destinationOffset:copyParams->bufferOffset
+               destinationOffset:destination->offset
           destinationBytesPerRow:bytesPerRow
         destinationBytesPerImage:bytesPerDepthSlice];
 
@@ -1777,15 +1802,18 @@ static void METAL_DownloadFromTexture(
 
 static void METAL_DownloadFromBuffer(
     Refresh_CommandBuffer *commandBuffer,
-    Refresh_Buffer *buffer,
-    Refresh_TransferBuffer *transferBuffer,
-    Refresh_BufferCopy *copyParams)
+    Refresh_BufferRegion *source,
+    Refresh_TransferBufferLocation *destination)
 {
+    Refresh_BufferLocation sourceLocation;
+    sourceLocation.buffer = source->buffer;
+    sourceLocation.offset = source->offset;
+
     METAL_CopyBufferToBuffer(
         commandBuffer,
-        (Refresh_Buffer *)transferBuffer,
-        buffer,
-        copyParams,
+        &sourceLocation,
+        (Refresh_BufferLocation *)destination,
+        source->size,
         SDL_FALSE);
 }
 
@@ -2531,7 +2559,7 @@ static void METAL_INTERNAL_PushUniformData(
     MetalCommandBuffer *metalCommandBuffer,
     Refresh_ShaderStage shaderStage,
     Uint32 slotIndex,
-    void *data,
+    const void *data,
     Uint32 dataLengthInBytes)
 {
     MetalRenderer *renderer = metalCommandBuffer->renderer;
@@ -2596,7 +2624,7 @@ static void METAL_INTERNAL_PushUniformData(
 static void METAL_PushVertexUniformData(
     Refresh_CommandBuffer *commandBuffer,
     Uint32 slotIndex,
-    void *data,
+    const void *data,
     Uint32 dataLengthInBytes)
 {
     MetalCommandBuffer *metalCommandBuffer = (MetalCommandBuffer *)commandBuffer;
@@ -2617,7 +2645,7 @@ static void METAL_PushVertexUniformData(
 static void METAL_PushFragmentUniformData(
     Refresh_CommandBuffer *commandBuffer,
     Uint32 slotIndex,
-    void *data,
+    const void *data,
     Uint32 dataLengthInBytes)
 {
     MetalCommandBuffer *metalCommandBuffer = (MetalCommandBuffer *)commandBuffer;
@@ -2920,7 +2948,7 @@ static void METAL_BindComputeStorageBuffers(
 static void METAL_PushComputeUniformData(
     Refresh_CommandBuffer *commandBuffer,
     Uint32 slotIndex,
-    void *data,
+    const void *data,
     Uint32 dataLengthInBytes)
 {
     MetalCommandBuffer *metalCommandBuffer = (MetalCommandBuffer *)commandBuffer;
@@ -3231,7 +3259,7 @@ static SDL_bool METAL_ClaimWindow(
         windowData->window = window;
 
         if (METAL_INTERNAL_CreateSwapchain(renderer, windowData, swapchainComposition, presentMode)) {
-			SDL_SetWindowData(window, WINDOW_PROPERTY_DATA, windowData);
+            SDL_SetWindowData(window, WINDOW_PROPERTY_DATA, windowData);
 
             SDL_LockMutex(renderer->windowLock);
 
@@ -3292,7 +3320,8 @@ static void METAL_UnclaimWindow(
     SDL_UnlockMutex(renderer->windowLock);
 
     SDL_free(windowData);
-	SDL_SetWindowData(window, WINDOW_PROPERTY_DATA, NULL);
+
+    SDL_SetWindowData(window, WINDOW_PROPERTY_DATA, NULL);
 }
 
 static Refresh_Texture *METAL_AcquireSwapchainTexture(
@@ -3585,7 +3614,6 @@ static void METAL_INTERNAL_InitBlitResources(
     samplerCreateInfo.mipLodBias = 0.0f;
     samplerCreateInfo.minLod = 0;
     samplerCreateInfo.maxLod = 1000;
-    samplerCreateInfo.borderColor = REFRESH_BORDERCOLOR_FLOAT_TRANSPARENT_BLACK;
 
     renderer->blitNearestSampler = METAL_CreateSampler(
         (Refresh_Renderer *)renderer,

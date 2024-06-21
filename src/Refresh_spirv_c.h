@@ -23,9 +23,8 @@
  * Evan "cosmonaut" Hemsley <evan@moonside.games>
  *
  */
-#include "Refresh_driver.h"
 
-extern void *Refresh_CompileFromSPIRV(
-    Refresh_Device *device,
-    void *createInfo,
-    SDL_bool isCompute);
+
+extern void *SDL_CompileFromSPIRV(Refresh_Device *device,
+                                  void *createInfo,
+                                  SDL_bool isCompute);

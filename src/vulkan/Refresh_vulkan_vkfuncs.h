@@ -62,6 +62,8 @@ VULKAN_INSTANCE_FUNCTION(BaseVK, VkResult, vkGetPhysicalDeviceSurfaceSupportKHR,
 
 /* Optional debug feature, used by SetStringMarker */
 VULKAN_INSTANCE_FUNCTION(VK_EXT_debug_utils, void, vkCmdInsertDebugUtilsLabelEXT, (VkCommandBuffer commandBuffer, const VkDebugUtilsLabelEXT *pMarkerInfo))
+VULKAN_INSTANCE_FUNCTION(VK_EXT_debug_utils, void, vkCmdBeginDebugUtilsLabelEXT, (VkCommandBuffer commandBuffer, const VkDebugUtilsLabelEXT *pMarkerInfo))
+VULKAN_INSTANCE_FUNCTION(VK_EXT_debug_utils, void, vkCmdEndDebugUtilsLabelEXT, (VkCommandBuffer commandBuffer))
 VULKAN_INSTANCE_FUNCTION(VK_EXT_debug_utils, void, vkSetDebugUtilsObjectNameEXT, (VkDevice device, const VkDebugUtilsObjectNameInfoEXT *pNameInfo))
 
 /*

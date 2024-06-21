@@ -236,8 +236,7 @@ struct Refresh_Device
 
     Refresh_TransferBuffer *(*CreateTransferBuffer)(
         Refresh_Renderer *driverData,
-        Refresh_TransferUsage usage,
-        Refresh_TransferBufferMapFlags mapFlags,
+        Refresh_TransferBufferUsage usage,
         Uint32 sizeInBytes);
 
     /* Debug Naming */
@@ -252,9 +251,16 @@ struct Refresh_Device
         Refresh_Texture *texture,
         const char *text);
 
-    void (*SetStringMarker)(
+    void (*InsertDebugLabel)(
         Refresh_CommandBuffer *commandBuffer,
         const char *text);
+
+    void (*PushDebugGroup)(
+        Refresh_CommandBuffer *commandBuffer,
+        const char *name);
+
+    void (*PopDebugGroup)(
+        Refresh_CommandBuffer *commandBuffer);
 
     /* Disposal */
 
@@ -356,13 +362,13 @@ struct Refresh_Device
     void (*PushVertexUniformData)(
         Refresh_CommandBuffer *commandBuffer,
         Uint32 slotIndex,
-        void *data,
+        const void *data,
         Uint32 dataLengthInBytes);
 
     void (*PushFragmentUniformData)(
         Refresh_CommandBuffer *commandBuffer,
         Uint32 slotIndex,
-        void *data,
+        const void *data,
         Uint32 dataLengthInBytes);
 
     void (*DrawIndexedPrimitives)(
@@ -422,7 +428,7 @@ struct Refresh_Device
     void (*PushComputeUniformData)(
         Refresh_CommandBuffer *commandBuffer,
         Uint32 slotIndex,
-        void *data,
+        const void *data,
         Uint32 dataLengthInBytes);
 
     void (*DispatchCompute)(
@@ -448,16 +454,14 @@ struct Refresh_Device
 
     void (*SetTransferData)(
         Refresh_Renderer *driverData,
-        void *data,
-        Refresh_TransferBuffer *transferBuffer,
-        Refresh_BufferCopy *copyParams,
+        const void *source,
+        Refresh_TransferBufferRegion *destination,
         SDL_bool cycle);
 
     void (*GetTransferData)(
         Refresh_Renderer *driverData,
-        Refresh_TransferBuffer *transferBuffer,
-        void *data,
-        Refresh_BufferCopy *copyParams);
+        Refresh_TransferBufferRegion *source,
+        void *destination);
 
     /* Copy Pass */
 
@@ -466,29 +470,30 @@ struct Refresh_Device
 
     void (*UploadToTexture)(
         Refresh_CommandBuffer *commandBuffer,
-        Refresh_TransferBuffer *transferBuffer,
-        Refresh_TextureRegion *textureSlice,
-        Refresh_BufferImageCopy *copyParams,
+        Refresh_TextureTransferInfo *source,
+        Refresh_TextureRegion *destination,
         SDL_bool cycle);
 
     void (*UploadToBuffer)(
         Refresh_CommandBuffer *commandBuffer,
-        Refresh_TransferBuffer *transferBuffer,
-        Refresh_Buffer *buffer,
-        Refresh_BufferCopy *copyParams,
+        Refresh_TransferBufferLocation *source,
+        Refresh_BufferRegion *destination,
         SDL_bool cycle);
 
     void (*CopyTextureToTexture)(
         Refresh_CommandBuffer *commandBuffer,
-        Refresh_TextureRegion *source,
-        Refresh_TextureRegion *destination,
+        Refresh_TextureLocation *source,
+        Refresh_TextureLocation *destination,
+        Uint32 w,
+        Uint32 h,
+        Uint32 d,
         SDL_bool cycle);
 
     void (*CopyBufferToBuffer)(
         Refresh_CommandBuffer *commandBuffer,
-        Refresh_Buffer *source,
-        Refresh_Buffer *destination,
-        Refresh_BufferCopy *copyParams,
+        Refresh_BufferLocation *source,
+        Refresh_BufferLocation *destination,
+        Uint32 size,
         SDL_bool cycle);
 
     void (*GenerateMipmaps)(
@@ -497,15 +502,13 @@ struct Refresh_Device
 
     void (*DownloadFromTexture)(
         Refresh_CommandBuffer *commandBuffer,
-        Refresh_TextureRegion *textureSlice,
-        Refresh_TransferBuffer *transferBuffer,
-        Refresh_BufferImageCopy *copyParams);
+        Refresh_TextureRegion *source,
+        Refresh_TextureTransferInfo *destination);
 
     void (*DownloadFromBuffer)(
         Refresh_CommandBuffer *commandBuffer,
-        Refresh_Buffer *buffer,
-        Refresh_TransferBuffer *transferBuffer,
-        Refresh_BufferCopy *copyParams);
+        Refresh_BufferRegion *source,
+        Refresh_TransferBufferLocation *destination);
 
     void (*EndCopyPass)(
         Refresh_CommandBuffer *commandBuffer);
@@ -614,7 +617,9 @@ struct Refresh_Device
     ASSIGN_DRIVER_FUNC(CreateTransferBuffer, name)          \
     ASSIGN_DRIVER_FUNC(SetBufferName, name)                 \
     ASSIGN_DRIVER_FUNC(SetTextureName, name)                \
-    ASSIGN_DRIVER_FUNC(SetStringMarker, name)               \
+    ASSIGN_DRIVER_FUNC(InsertDebugLabel, name)              \
+    ASSIGN_DRIVER_FUNC(PushDebugGroup, name)                \
+    ASSIGN_DRIVER_FUNC(PopDebugGroup, name)                 \
     ASSIGN_DRIVER_FUNC(ReleaseTexture, name)                \
     ASSIGN_DRIVER_FUNC(ReleaseSampler, name)                \
     ASSIGN_DRIVER_FUNC(ReleaseBuffer, name)                 \
