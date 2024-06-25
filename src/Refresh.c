@@ -110,14 +110,14 @@
 /* Drivers */
 
 static const Refresh_Driver *backends[] = {
+#if REFRESH_METAL
+    &MetalDriver,
+#endif
 #if REFRESH_VULKAN
     &VulkanDriver,
 #endif
 #if REFRESH_D3D11
     &D3D11Driver,
-#endif
-#if REFRESH_METAL
-    &MetalDriver,
 #endif
     NULL
 };
@@ -583,6 +583,81 @@ void Refresh_ReleaseGraphicsPipeline(
         graphicsPipeline);
 }
 
+/* Command Buffer */
+
+Refresh_CommandBuffer *Refresh_AcquireCommandBuffer(
+    Refresh_Device *device)
+{
+    Refresh_CommandBuffer *commandBuffer;
+    CommandBufferCommonHeader *commandBufferHeader;
+    NULL_ASSERT(device);
+
+    commandBuffer = device->AcquireCommandBuffer(
+        device->driverData);
+
+    if (commandBuffer == NULL) {
+        return NULL;
+    }
+
+    commandBufferHeader = (CommandBufferCommonHeader *)commandBuffer;
+    commandBufferHeader->device = device;
+    commandBufferHeader->renderPass.commandBuffer = commandBuffer;
+    commandBufferHeader->renderPass.inProgress = SDL_FALSE;
+    commandBufferHeader->graphicsPipelineBound = SDL_FALSE;
+    commandBufferHeader->computePass.commandBuffer = commandBuffer;
+    commandBufferHeader->computePass.inProgress = SDL_FALSE;
+    commandBufferHeader->computePipelineBound = SDL_FALSE;
+    commandBufferHeader->copyPass.commandBuffer = commandBuffer;
+    commandBufferHeader->copyPass.inProgress = SDL_FALSE;
+    commandBufferHeader->submitted = SDL_FALSE;
+
+    return commandBuffer;
+}
+
+/* Uniforms */
+
+void Refresh_PushVertexUniformData(
+    Refresh_CommandBuffer *commandBuffer,
+    Uint32 slotIndex,
+    const void *data,
+    Uint32 dataLengthInBytes)
+{
+    CHECK_COMMAND_BUFFER
+    COMMAND_BUFFER_DEVICE->PushVertexUniformData(
+        commandBuffer,
+        slotIndex,
+        data,
+        dataLengthInBytes);
+}
+
+void Refresh_PushFragmentUniformData(
+    Refresh_CommandBuffer *commandBuffer,
+    Uint32 slotIndex,
+    const void *data,
+    Uint32 dataLengthInBytes)
+{
+    CHECK_COMMAND_BUFFER
+    COMMAND_BUFFER_DEVICE->PushFragmentUniformData(
+        commandBuffer,
+        slotIndex,
+        data,
+        dataLengthInBytes);
+}
+
+void Refresh_PushComputeUniformData(
+    Refresh_CommandBuffer *commandBuffer,
+    Uint32 slotIndex,
+    const void *data,
+    Uint32 dataLengthInBytes)
+{
+    CHECK_COMMAND_BUFFER
+    COMMAND_BUFFER_DEVICE->PushComputeUniformData(
+        commandBuffer,
+        slotIndex,
+        data,
+        dataLengthInBytes);
+}
+
 /* Render Pass */
 
 Refresh_RenderPass *Refresh_BeginRenderPass(
@@ -769,38 +844,6 @@ void Refresh_BindFragmentStorageBuffers(
         bindingCount);
 }
 
-void Refresh_PushVertexUniformData(
-    Refresh_RenderPass *renderPass,
-    Uint32 slotIndex,
-    const void *data,
-    Uint32 dataLengthInBytes)
-{
-    NULL_ASSERT(renderPass)
-    CHECK_RENDERPASS
-    CHECK_GRAPHICS_PIPELINE_BOUND
-    RENDERPASS_DEVICE->PushVertexUniformData(
-        RENDERPASS_COMMAND_BUFFER,
-        slotIndex,
-        data,
-        dataLengthInBytes);
-}
-
-void Refresh_PushFragmentUniformData(
-    Refresh_RenderPass *renderPass,
-    Uint32 slotIndex,
-    const void *data,
-    Uint32 dataLengthInBytes)
-{
-    NULL_ASSERT(renderPass)
-    CHECK_RENDERPASS
-    CHECK_GRAPHICS_PIPELINE_BOUND
-    RENDERPASS_DEVICE->PushFragmentUniformData(
-        RENDERPASS_COMMAND_BUFFER,
-        slotIndex,
-        data,
-        dataLengthInBytes);
-}
-
 void Refresh_DrawIndexedPrimitives(
     Refresh_RenderPass *renderPass,
     Uint32 baseVertex,
@@ -955,22 +998,6 @@ void Refresh_BindComputeStorageBuffers(
         firstSlot,
         storageBuffers,
         bindingCount);
-}
-
-void Refresh_PushComputeUniformData(
-    Refresh_ComputePass *computePass,
-    Uint32 slotIndex,
-    const void *data,
-    Uint32 dataLengthInBytes)
-{
-    NULL_ASSERT(computePass)
-    CHECK_COMPUTEPASS
-    CHECK_COMPUTE_PIPELINE_BOUND
-    COMPUTEPASS_DEVICE->PushComputeUniformData(
-        COMPUTEPASS_COMMAND_BUFFER,
-        slotIndex,
-        data,
-        dataLengthInBytes);
 }
 
 void Refresh_DispatchCompute(
@@ -1281,35 +1308,6 @@ Refresh_TextureFormat Refresh_GetSwapchainTextureFormat(
     return device->GetSwapchainTextureFormat(
         device->driverData,
         window);
-}
-
-Refresh_CommandBuffer *Refresh_AcquireCommandBuffer(
-    Refresh_Device *device)
-{
-    Refresh_CommandBuffer *commandBuffer;
-    CommandBufferCommonHeader *commandBufferHeader;
-    NULL_ASSERT(device);
-
-    commandBuffer = device->AcquireCommandBuffer(
-        device->driverData);
-
-    if (commandBuffer == NULL) {
-        return NULL;
-    }
-
-    commandBufferHeader = (CommandBufferCommonHeader *)commandBuffer;
-    commandBufferHeader->device = device;
-    commandBufferHeader->renderPass.commandBuffer = commandBuffer;
-    commandBufferHeader->renderPass.inProgress = SDL_FALSE;
-    commandBufferHeader->graphicsPipelineBound = SDL_FALSE;
-    commandBufferHeader->computePass.commandBuffer = commandBuffer;
-    commandBufferHeader->computePass.inProgress = SDL_FALSE;
-    commandBufferHeader->computePipelineBound = SDL_FALSE;
-    commandBufferHeader->copyPass.commandBuffer = commandBuffer;
-    commandBufferHeader->copyPass.inProgress = SDL_FALSE;
-    commandBufferHeader->submitted = SDL_FALSE;
-
-    return commandBuffer;
 }
 
 Refresh_Texture *Refresh_AcquireSwapchainTexture(
