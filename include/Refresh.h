@@ -1968,6 +1968,14 @@ REFRESHAPI SDL_bool Refresh_SupportsPresentMode(
  * Claims a window, creating a swapchain structure for it.
  * This must be called before Refresh_AcquireSwapchainTexture is called using the window.
  *
+ * This function will fail if the requested present mode or swapchain composition
+ * are unsupported by the device. Check if the parameters are supported via
+ * Refresh_SupportsPresentMode / Refresh_SupportsSwapchainComposition prior to
+ * calling this function.
+ *
+ * REFRESH_PRESENTMODE_VSYNC and REFRESH_SWAPCHAINCOMPOSITION_SDR are
+ * always supported.
+ *
  * \param device a GPU context
  * \param window an SDL_Window
  * \param swapchainComposition the desired composition of the swapchain
@@ -1979,6 +1987,8 @@ REFRESHAPI SDL_bool Refresh_SupportsPresentMode(
  *
  * \sa Refresh_AcquireSwapchainTexture
  * \sa Refresh_UnclaimWindow
+ * \sa Refresh_SupportsPresentMode
+ * \sa Refresh_SupportsSwapchainComposition
  */
 REFRESHAPI SDL_bool Refresh_ClaimWindow(
     Refresh_Device *device,
@@ -2003,14 +2013,26 @@ REFRESHAPI void Refresh_UnclaimWindow(
 /**
  * Changes the swapchain parameters for the given claimed window.
  *
+ * This function will fail if the requested present mode or swapchain composition
+ * are unsupported by the device. Check if the parameters are supported via
+ * Refresh_SupportsPresentMode / Refresh_SupportsSwapchainComposition prior to
+ * calling this function.
+ *
+ * REFRESH_PRESENTMODE_VSYNC and REFRESH_SWAPCHAINCOMPOSITION_SDR are
+ * always supported.
+ *
  * \param device a GPU context
  * \param window an SDL_Window that has been claimed
  * \param swapchainComposition the desired composition of the swapchain
  * \param presentMode the desired present mode for the swapchain
+ * \returns SDL_TRUE if successful, SDL_FALSE on error
  *
  * \since This function is available since Refresh 2.0.0
+ *
+ * \sa Refresh_SupportsPresentMode
+ * \sa Refresh_SupportsSwapchainComposition
  */
-REFRESHAPI void Refresh_SetSwapchainParameters(
+REFRESHAPI SDL_bool Refresh_SetSwapchainParameters(
     Refresh_Device *device,
     SDL_Window *window,
     Refresh_SwapchainComposition swapchainComposition,

@@ -543,7 +543,7 @@ struct Refresh_Device
         Refresh_Renderer *driverData,
         SDL_Window *window);
 
-    void (*SetSwapchainParameters)(
+    SDL_bool (*SetSwapchainParameters)(
         Refresh_Renderer *driverData,
         SDL_Window *window,
         Refresh_SwapchainComposition swapchainComposition,

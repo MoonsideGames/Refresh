@@ -1284,14 +1284,14 @@ void Refresh_UnclaimWindow(
         window);
 }
 
-void Refresh_SetSwapchainParameters(
+SDL_bool Refresh_SetSwapchainParameters(
     Refresh_Device *device,
     SDL_Window *window,
     Refresh_SwapchainComposition swapchainFormat,
     Refresh_PresentMode presentMode)
 {
     NULL_ASSERT(device);
-    device->SetSwapchainParameters(
+    return device->SetSwapchainParameters(
         device->driverData,
         window,
         swapchainFormat,
