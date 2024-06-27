@@ -3733,7 +3733,7 @@ static SDL_bool METAL_IsTextureFormatSupported(
 static SDL_bool METAL_PrepareDriver()
 {
     /* FIXME: Add a macOS / iOS version check! Maybe support >= 10.14? */
-    return (->Metal_CreateView != NULL);
+    return SDL_TRUE;
 }
 
 static void METAL_INTERNAL_InitBlitResources(
