@@ -29,6 +29,7 @@
 
 #include "SDL.h"
 #include <SDL_stdinc.h>
+#include <SDL_platform.h>
 
 #ifdef _WIN32
 #define REFRESHAPI  __declspec(dllexport)

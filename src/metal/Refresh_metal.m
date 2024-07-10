@@ -110,7 +110,7 @@ static MTLPixelFormat RefreshToMetal_SurfaceFormat[] = {
     MTLPixelFormatRGBA16Unorm,  /* R16G16B16A16 */
     MTLPixelFormatR8Unorm,      /* R8 */
     MTLPixelFormatA8Unorm,      /* A8 */
-#ifdef SDL_PLATFORM_MACOS
+#ifdef __MACOSX__
     MTLPixelFormatBC1_RGBA,      /* BC1 */
     MTLPixelFormatBC2_RGBA,      /* BC2 */
     MTLPixelFormatBC3_RGBA,      /* BC3 */
@@ -137,7 +137,7 @@ static MTLPixelFormat RefreshToMetal_SurfaceFormat[] = {
     MTLPixelFormatRGBA16Uint,      /* R16G16B16A16_UINT */
     MTLPixelFormatRGBA8Unorm_sRGB, /* R8G8B8A8_SRGB*/
     MTLPixelFormatBGRA8Unorm_sRGB, /* B8G8R8A8_SRGB */
-#ifdef SDL_PLATFORM_MACOS
+#ifdef __MACOSX__
     MTLPixelFormatBC3_RGBA_sRGB,      /* BC3_SRGB */
     MTLPixelFormatBC7_RGBAUnorm_sRGB, /* BC7_SRGB */
 #else
@@ -145,13 +145,13 @@ static MTLPixelFormat RefreshToMetal_SurfaceFormat[] = {
     MTLPixelFormatInvalid, /* BC7_SRGB */
 #endif
     MTLPixelFormatDepth16Unorm, /* D16_UNORM */
-#ifdef SDL_PLATFORM_MACOS
+#ifdef __MACOSX__
     MTLPixelFormatDepth24Unorm_Stencil8, /* D24_UNORM */
 #else
     MTLPixelFormatInvalid, /* D24_UNORM */
 #endif
     MTLPixelFormatDepth32Float, /* D32_SFLOAT */
-#ifdef SDL_PLATFORM_MACOS
+#ifdef __MACOSX__
     MTLPixelFormatDepth24Unorm_Stencil8, /* D24_UNORM_S8_UINT */
 #else
     MTLPixelFormatInvalid, /* D24_UNORM_S8_UINT */
@@ -1637,7 +1637,7 @@ static void METAL_UnmapTransferBuffer(
     Refresh_Renderer *driverData,
     Refresh_TransferBuffer *transferBuffer)
 {
-#ifdef SDL_PLATFORM_MACOS
+#ifdef __MACOSX__
     /* FIXME: Is this necessary? */
     MetalBufferContainer *container = (MetalBufferContainer *)transferBuffer;
     MetalBuffer *buffer = container->activeBuffer;
@@ -1670,7 +1670,7 @@ static void METAL_SetTransferData(
         ((Uint8 *)source),
         destination->size);
 
-#ifdef SDL_PLATFORM_MACOS
+#ifdef __MACOSX__
     /* FIXME: Is this necessary? */
     if (buffer->handle.storageMode == MTLStorageModeManaged) {
         [buffer->handle didModifyRange:NSMakeRange(destination->offset, destination->size)];
@@ -3365,7 +3365,7 @@ static SDL_bool METAL_SupportsSwapchainComposition(
     SDL_Window *window,
     Refresh_SwapchainComposition swapchainComposition)
 {
-#ifndef SDL_PLATFORM_MACOS
+#ifndef __MACOSX__
     if (swapchainComposition == REFRESH_SWAPCHAINCOMPOSITION_HDR10_ST2048) {
         return SDL_FALSE;
     }
@@ -3393,11 +3393,11 @@ static Uint8 METAL_INTERNAL_CreateSwapchain(
     windowData->layer = (__bridge CAMetalLayer *)(SDL_Metal_GetLayer(windowData->view));
     windowData->layer.device = renderer->device;
     windowData->layer.framebufferOnly = false; /* Allow sampling swapchain textures, at the expense of performance */
-#ifdef SDL_PLATFORM_MACOS
+#ifdef __MACOSX__
     windowData->layer.displaySyncEnabled = (presentMode != REFRESH_PRESENTMODE_IMMEDIATE);
 #endif
     windowData->layer.pixelFormat = RefreshToMetal_SurfaceFormat[SwapchainCompositionToFormat[swapchainComposition]];
-#ifndef SDL_PLATFORM_TVOS
+#ifndef __TVOS__
     windowData->layer.wantsExtendedDynamicRangeContent = (swapchainComposition != REFRESH_SWAPCHAINCOMPOSITION_SDR);
 #endif
 
@@ -3432,7 +3432,7 @@ static SDL_bool METAL_SupportsPresentMode(
     Refresh_PresentMode presentMode)
 {
     switch (presentMode) {
-#ifdef SDL_PLATFORM_MACOS
+#ifdef __MACOSX__
     case REFRESH_PRESENTMODE_IMMEDIATE:
 #endif
     case REFRESH_PRESENTMODE_VSYNC:
@@ -3603,11 +3603,11 @@ static SDL_bool METAL_SetSwapchainParameters(
 
     METAL_Wait(driverData);
 
-#ifdef SDL_PLATFORM_MACOS
+#ifdef __MACOSX__
     windowData->layer.displaySyncEnabled = (presentMode != REFRESH_PRESENTMODE_IMMEDIATE);
 #endif
     windowData->layer.pixelFormat = RefreshToMetal_SurfaceFormat[SwapchainCompositionToFormat[swapchainComposition]];
-#ifndef SDL_PLATFORM_TVOS
+#ifndef __TVOS__
     windowData->layer.wantsExtendedDynamicRangeContent = (swapchainComposition != REFRESH_SWAPCHAINCOMPOSITION_SDR);
 #endif
 
@@ -3740,7 +3740,7 @@ static SDL_bool METAL_IsTextureFormatSupported(
     case REFRESH_TEXTUREFORMAT_BC7:
     case REFRESH_TEXTUREFORMAT_BC3_SRGB:
     case REFRESH_TEXTUREFORMAT_BC7_SRGB:
-#ifdef SDL_PLATFORM_MACOS
+#ifdef __MACOSX__
         if (@available(macOS 11.0, *)) {
             return (
                 [renderer->device supportsBCTextureCompression] &&
@@ -3756,7 +3756,7 @@ static SDL_bool METAL_IsTextureFormatSupported(
     /* Requires D24S8 support */
     case REFRESH_TEXTUREFORMAT_D24_UNORM:
     case REFRESH_TEXTUREFORMAT_D24_UNORM_S8_UINT:
-#ifdef SDL_PLATFORM_MACOS
+#ifdef __MACOSX__
         return [renderer->device isDepth24Stencil8PixelFormatSupported];
 #else
         return SDL_FALSE;
@@ -3879,7 +3879,7 @@ static Refresh_Device *METAL_CreateDevice(SDL_bool debugMode, SDL_bool preferLow
     renderer = (MetalRenderer *)SDL_calloc(1, sizeof(MetalRenderer));
 
     /* Create the Metal device and command queue */
-#ifdef SDL_PLATFORM_MACOS
+#ifdef __MACOSX__
     if (preferLowPower) {
         NSArray<id<MTLDevice>> *devices = MTLCopyAllDevices();
         for (id<MTLDevice> device in devices) {

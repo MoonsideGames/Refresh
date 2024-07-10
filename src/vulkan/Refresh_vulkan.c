@@ -10903,7 +10903,7 @@ static Uint8 VULKAN_INTERNAL_CreateInstance(
     instanceExtensionNames[instanceExtensionCount++] =
         VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME;
 
-#ifdef SDL_PLATFORM_APPLE
+#ifdef __APPLE__
     instanceExtensionNames[instanceExtensionCount++] =
         VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME;
     createFlags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
