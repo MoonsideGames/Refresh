@@ -308,12 +308,6 @@ static VkPrimitiveTopology RefreshToVK_PrimitiveType[] = {
     VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP
 };
 
-static VkPolygonMode RefreshToVK_PolygonMode[] = {
-    VK_POLYGON_MODE_FILL,
-    VK_POLYGON_MODE_LINE,
-    VK_POLYGON_MODE_POINT
-};
-
 static VkCullModeFlags RefreshToVK_CullMode[] = {
     VK_CULL_MODE_NONE,
     VK_CULL_MODE_FRONT_BIT,
@@ -1294,12 +1288,15 @@ struct VulkanRenderer
     Uint8 integratedMemoryNotification;
     Uint8 outOfDeviceLocalMemoryWarning;
     Uint8 outofBARMemoryWarning;
+    Uint8 fillModeOnlyWarning;
 
     SDL_bool debugMode;
     SDL_bool preferLowPower;
     VulkanExtensions supports;
     SDL_bool supportsDebugUtils;
     SDL_bool supportsColorspace;
+    SDL_bool supportsFillModeNonSolid;
+    SDL_bool supportsMultiDrawIndirect;
 
     VulkanMemoryAllocator *memoryAllocator;
     VkPhysicalDeviceMemoryProperties memoryProperties;
@@ -1483,6 +1480,25 @@ static inline VkSampleCountFlagBits VULKAN_INTERNAL_GetMaxMultiSampleCount(
     }
 
     return SDL_min(multiSampleCount, maxSupported);
+}
+
+static inline VkPolygonMode RefreshToVK_PolygonMode(
+    VulkanRenderer *renderer,
+    Refresh_FillMode mode)
+{
+    if (mode == REFRESH_FILLMODE_FILL) {
+        return VK_POLYGON_MODE_FILL; /* always available! */
+    }
+
+    if (renderer->supportsFillModeNonSolid && mode == REFRESH_FILLMODE_LINE) {
+        return VK_POLYGON_MODE_LINE;
+    }
+
+    if (!renderer->fillModeOnlyWarning) {
+        SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "Unsupported fill mode requested, using FILL!");
+        renderer->fillModeOnlyWarning = 1;
+    }
+    return VK_POLYGON_MODE_FILL;
 }
 
 /* Memory Management */
@@ -1766,34 +1782,127 @@ static void VULKAN_INTERNAL_RemoveMemoryUsedRegion(
     SDL_UnlockMutex(renderer->allocatorLock);
 }
 
-static Uint8 VULKAN_INTERNAL_FindMemoryType(
-    VulkanRenderer *renderer,
-    Uint32 typeFilter,
-    VkMemoryPropertyFlags requiredProperties,
-    VkMemoryPropertyFlags ignoredProperties,
-    Uint32 *memoryTypeIndex)
-{
-    Uint32 i;
+static SDL_bool VULKAN_INTERNAL_CheckMemoryTypeArrayUnique(
+    Uint32 memoryTypeIndex,
+    Uint32 *memoryTypeIndexArray,
+    Uint32 count
+) {
+    Uint32 i = 0;
 
-    for (i = *memoryTypeIndex; i < renderer->memoryProperties.memoryTypeCount; i += 1) {
-        if ((typeFilter & (1 << i)) &&
-            (renderer->memoryProperties.memoryTypes[i].propertyFlags & requiredProperties) == requiredProperties &&
-            (renderer->memoryProperties.memoryTypes[i].propertyFlags & ignoredProperties) == 0) {
-            *memoryTypeIndex = i;
-            return 1;
+    for (i = 0; i < count; i += 1) {
+        if (memoryTypeIndexArray[i] == memoryTypeIndex) {
+            return SDL_FALSE;
         }
     }
 
-    return 0;
+    return SDL_TRUE;
 }
 
-static Uint8 VULKAN_INTERNAL_FindBufferMemoryRequirements(
+/* Returns an array of memory type indices in order of preference.
+ * Memory types are requested with the following three guidelines:
+ *
+ * Required: Absolutely necessary
+ * Preferred: Nice to have, but not necessary
+ * Tolerable: Can be allowed if there are no other options
+ *
+ * We return memory types in this order:
+ * 1. Required and preferred. This is the best category.
+ * 2. Required only.
+ * 3. Required, preferred, and tolerable.
+ * 4. Required and tolerable. This is the worst category.
+ */
+static Uint32* VULKAN_INTERNAL_FindBestMemoryTypes(
+    VulkanRenderer *renderer,
+    Uint32 typeFilter,
+    VkMemoryPropertyFlags requiredProperties,
+    VkMemoryPropertyFlags preferredProperties,
+    VkMemoryPropertyFlags tolerableProperties,
+    Uint32 *pCount)
+{
+    Uint32 i;
+    Uint32 index = 0;
+    Uint32 *result = SDL_malloc(sizeof(Uint32) * renderer->memoryProperties.memoryTypeCount);
+
+    /* required + preferred + !tolerable */
+    for (i = 0; i < renderer->memoryProperties.memoryTypeCount; i += 1) {
+        if ((typeFilter & (1 << i)) &&
+            (renderer->memoryProperties.memoryTypes[i].propertyFlags & requiredProperties) == requiredProperties &&
+            (renderer->memoryProperties.memoryTypes[i].propertyFlags & preferredProperties) == preferredProperties &&
+            (renderer->memoryProperties.memoryTypes[i].propertyFlags & tolerableProperties) == 0) {
+            if (VULKAN_INTERNAL_CheckMemoryTypeArrayUnique(
+                i,
+                result,
+                index
+            )) {
+                result[index] = i;
+                index += 1;
+            }
+        }
+    }
+
+    /* required + !preferred + !tolerable */
+    for (i = 0; i < renderer->memoryProperties.memoryTypeCount; i += 1) {
+        if ((typeFilter & (1 << i)) &&
+            (renderer->memoryProperties.memoryTypes[i].propertyFlags & requiredProperties) == requiredProperties &&
+            (renderer->memoryProperties.memoryTypes[i].propertyFlags & preferredProperties) == 0 &&
+            (renderer->memoryProperties.memoryTypes[i].propertyFlags & tolerableProperties) == 0) {
+            if (VULKAN_INTERNAL_CheckMemoryTypeArrayUnique(
+                i,
+                result,
+                index
+            )) {
+                result[index] = i;
+                index += 1;
+            }
+        }
+    }
+
+    /* required + preferred + tolerable */
+    for (i = 0; i < renderer->memoryProperties.memoryTypeCount; i += 1) {
+        if ((typeFilter & (1 << i)) &&
+            (renderer->memoryProperties.memoryTypes[i].propertyFlags & requiredProperties) == requiredProperties &&
+            (renderer->memoryProperties.memoryTypes[i].propertyFlags & preferredProperties) == preferredProperties &&
+            (renderer->memoryProperties.memoryTypes[i].propertyFlags & tolerableProperties) == tolerableProperties) {
+            if (VULKAN_INTERNAL_CheckMemoryTypeArrayUnique(
+                i,
+                result,
+                index
+            )) {
+                result[index] = i;
+                index += 1;
+            }
+        }
+    }
+
+    /* required + !preferred + tolerable */
+    for (i = 0; i < renderer->memoryProperties.memoryTypeCount; i += 1) {
+        if ((typeFilter & (1 << i)) &&
+            (renderer->memoryProperties.memoryTypes[i].propertyFlags & requiredProperties) == requiredProperties &&
+            (renderer->memoryProperties.memoryTypes[i].propertyFlags & preferredProperties) == 0 &&
+            (renderer->memoryProperties.memoryTypes[i].propertyFlags & tolerableProperties) == tolerableProperties) {
+            if (VULKAN_INTERNAL_CheckMemoryTypeArrayUnique(
+                i,
+                result,
+                index
+            )) {
+                result[index] = i;
+                index += 1;
+            }
+        }
+    }
+
+    *pCount = index;
+    return result;
+}
+
+static Uint32* VULKAN_INTERNAL_FindBestBufferMemoryTypes(
     VulkanRenderer *renderer,
     VkBuffer buffer,
     VkMemoryPropertyFlags requiredMemoryProperties,
-    VkMemoryPropertyFlags ignoredMemoryProperties,
+    VkMemoryPropertyFlags preferredMemoryProperties,
+    VkMemoryPropertyFlags tolerableMemoryProperties,
     VkMemoryRequirements2KHR *pMemoryRequirements,
-    Uint32 *pMemoryTypeIndex)
+    Uint32 *pCount)
 {
     VkBufferMemoryRequirementsInfo2KHR bufferRequirementsInfo;
     bufferRequirementsInfo.sType =
@@ -1806,20 +1915,21 @@ static Uint8 VULKAN_INTERNAL_FindBufferMemoryRequirements(
         &bufferRequirementsInfo,
         pMemoryRequirements);
 
-    return VULKAN_INTERNAL_FindMemoryType(
+    return VULKAN_INTERNAL_FindBestMemoryTypes(
         renderer,
         pMemoryRequirements->memoryRequirements.memoryTypeBits,
         requiredMemoryProperties,
-        ignoredMemoryProperties,
-        pMemoryTypeIndex);
+        preferredMemoryProperties,
+        tolerableMemoryProperties,
+        pCount);
 }
 
-static Uint8 VULKAN_INTERNAL_FindImageMemoryRequirements(
+static Uint32* VULKAN_INTERNAL_FindBestImageMemoryTypes(
     VulkanRenderer *renderer,
     VkImage image,
-    VkMemoryPropertyFlags requiredMemoryPropertyFlags,
+    VkMemoryPropertyFlags preferredMemoryPropertyFlags,
     VkMemoryRequirements2KHR *pMemoryRequirements,
-    Uint32 *pMemoryTypeIndex)
+    Uint32 *pCount)
 {
     VkImageMemoryRequirementsInfo2KHR imageRequirementsInfo;
     imageRequirementsInfo.sType =
@@ -1832,12 +1942,13 @@ static Uint8 VULKAN_INTERNAL_FindImageMemoryRequirements(
         &imageRequirementsInfo,
         pMemoryRequirements);
 
-    return VULKAN_INTERNAL_FindMemoryType(
+    return VULKAN_INTERNAL_FindBestMemoryTypes(
         renderer,
         pMemoryRequirements->memoryRequirements.memoryTypeBits,
-        requiredMemoryPropertyFlags,
         0,
-        pMemoryTypeIndex);
+        preferredMemoryPropertyFlags,
+        0,
+        pCount);
 }
 
 static void VULKAN_INTERNAL_DeallocateMemory(
@@ -2246,25 +2357,38 @@ static Uint8 VULKAN_INTERNAL_BindMemoryForImage(
     VulkanMemoryUsedRegion **usedRegion)
 {
     Uint8 bindResult = 0;
-    Uint32 memoryTypeIndex = 0;
-    VkMemoryPropertyFlags requiredMemoryPropertyFlags;
+    Uint32 memoryTypeCount = 0;
+    Uint32 *memoryTypesToTry = NULL;
+    Uint32 selectedMemoryTypeIndex = 0;
+    Uint32 i;
+    VkMemoryPropertyFlags preferredMemoryPropertyFlags;
     VkMemoryRequirements2KHR memoryRequirements = {
         VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2_KHR,
         NULL
     };
 
-    /* Prefer GPU allocation for textures */
-    requiredMemoryPropertyFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+    /* Vulkan memory types have several memory properties.
+     *
+     * Unlike buffers, images are always optimally stored device-local,
+     * so that is the only property we prefer here.
+     *
+     * If memory is constrained, it is fine for the texture to not
+     * be device-local.
+     */
+    preferredMemoryPropertyFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
 
-    while (VULKAN_INTERNAL_FindImageMemoryRequirements(
+    memoryTypesToTry = VULKAN_INTERNAL_FindBestImageMemoryTypes(
         renderer,
         image,
-        requiredMemoryPropertyFlags,
+        preferredMemoryPropertyFlags,
         &memoryRequirements,
-        &memoryTypeIndex)) {
+        &memoryTypeCount
+    );
+
+    for (i = 0; i < memoryTypeCount; i += 1) {
         bindResult = VULKAN_INTERNAL_BindResourceMemory(
             renderer,
-            memoryTypeIndex,
+            memoryTypesToTry[i],
             &memoryRequirements,
             memoryRequirements.memoryRequirements.size,
             VK_NULL_HANDLE,
@@ -2272,40 +2396,20 @@ static Uint8 VULKAN_INTERNAL_BindMemoryForImage(
             usedRegion);
 
         if (bindResult == 1) {
+            selectedMemoryTypeIndex = memoryTypesToTry[i];
             break;
-        } else /* Bind failed, try the next device-local heap */
-        {
-            memoryTypeIndex += 1;
         }
     }
 
-    /* Bind _still_ failed, try again without device local */
-    if (bindResult != 1) {
-        memoryTypeIndex = 0;
-        requiredMemoryPropertyFlags = 0;
+    SDL_free(memoryTypesToTry);
 
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Out of device-local memory, allocating textures on host-local memory!");
-
-        while (VULKAN_INTERNAL_FindImageMemoryRequirements(
-            renderer,
-            image,
-            requiredMemoryPropertyFlags,
-            &memoryRequirements,
-            &memoryTypeIndex)) {
-            bindResult = VULKAN_INTERNAL_BindResourceMemory(
-                renderer,
-                memoryTypeIndex,
-                &memoryRequirements,
-                memoryRequirements.memoryRequirements.size,
-                VK_NULL_HANDLE,
-                image,
-                usedRegion);
-
-            if (bindResult == 1) {
-                break;
-            } else /* Bind failed, try the next heap */
-            {
-                memoryTypeIndex += 1;
+    /* Check for warnings on success */
+    if (bindResult == 1)
+    {
+        if (!renderer->outOfDeviceLocalMemoryWarning) {
+            if ((renderer->memoryProperties.memoryTypes[selectedMemoryTypeIndex].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) == 0) {
+                SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "Out of device-local memory, allocating textures on host-local memory!");
+                renderer->outOfDeviceLocalMemoryWarning = 1;
             }
         }
     }
@@ -2321,44 +2425,118 @@ static Uint8 VULKAN_INTERNAL_BindMemoryForBuffer(
     VulkanMemoryUsedRegion **usedRegion)
 {
     Uint8 bindResult = 0;
-    Uint32 memoryTypeIndex = 0;
+    Uint32 memoryTypeCount = 0;
+    Uint32 *memoryTypesToTry = NULL;
+    Uint32 selectedMemoryTypeIndex = 0;
+    Uint32 i;
     VkMemoryPropertyFlags requiredMemoryPropertyFlags = 0;
-    VkMemoryPropertyFlags ignoredMemoryPropertyFlags = 0;
+    VkMemoryPropertyFlags preferredMemoryPropertyFlags = 0;
+    VkMemoryPropertyFlags tolerableMemoryPropertyFlags = 0;
     VkMemoryRequirements2KHR memoryRequirements = {
         VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2_KHR,
         NULL
     };
 
+    /* Buffers need to be optimally bound to a memory type
+     * based on their use case and the architecture of the system.
+     *
+     * It is important to understand the distinction between device and host.
+     *
+     * On a traditional high-performance desktop computer,
+     * the "device" would be the GPU, and the "host" would be the CPU.
+     * Memory being copied between these two must cross the PCI bus.
+     * On these systems we have to be concerned about bandwidth limitations
+     * and causing memory stalls, so we have taken a great deal of care
+     * to structure this API to guide the client towards optimal usage.
+     *
+     * Other kinds of devices do not necessarily have this distinction.
+     * On an iPhone or Nintendo Switch, all memory is accessible both to the
+     * GPU and the CPU at all times. These kinds of systems are known as
+     * UMA, or Unified Memory Architecture. A desktop computer using the
+     * CPU's integrated graphics can also be thought of as UMA.
+     *
+     * Vulkan memory types have several memory properties.
+     * The relevant memory properties are as follows:
+     *
+     * DEVICE_LOCAL:
+     *   This memory is on-device and most efficient for device access.
+     *   On UMA systems all memory is device-local.
+     *   If memory is not device-local, then it is host-local.
+     *
+     * HOST_VISIBLE:
+     *   This memory can be mapped for host access, meaning we can obtain
+     *   a pointer to directly access the memory.
+     *
+     * HOST_COHERENT:
+     *   Host-coherent memory does not require cache management operations
+     *   when mapped, so we always set this alongside HOST_VISIBLE
+     *   to avoid extra record keeping.
+     *
+     * HOST_CACHED:
+     *   Host-cached memory is faster to access than uncached memory
+     *   but memory of this type might not always be available.
+     *
+     * GPU buffers, like vertex buffers, indirect buffers, etc
+     * are optimally stored in device-local memory.
+     * However, if device-local memory is low, these buffers
+     * can be accessed from host-local memory with a performance penalty.
+     *
+     * Uniform buffers must be host-visible and coherent because
+     * the client uses them to quickly push small amounts of data.
+     * We prefer uniform buffers to also be device-local because
+     * they are accessed by shaders, but the amount of memory
+     * that is both device-local and host-visible
+     * is often constrained, particularly on low-end devices.
+     *
+     * Transfer buffers must be host-visible and coherent because
+     * the client uses them to stage data to be transferred
+     * to device-local memory, or to read back data transferred
+     * from the device. We prefer the cache bit for performance
+     * but it isn't strictly necessary. We tolerate device-local
+     * memory in this situation because, as mentioned above,
+     * on certain devices all memory is device-local, and even
+     * though the transfer isn't strictly necessary it is still
+     * useful for correctly timelining data.
+     */
     if (type == VULKAN_BUFFER_TYPE_GPU) {
-        requiredMemoryPropertyFlags |=
+        preferredMemoryPropertyFlags |=
             VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
     } else if (type == VULKAN_BUFFER_TYPE_UNIFORM) {
         requiredMemoryPropertyFlags |=
-            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT |
             VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
             VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+
+        preferredMemoryPropertyFlags |=
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
     } else if (type == VULKAN_BUFFER_TYPE_TRANSFER) {
         requiredMemoryPropertyFlags |=
             VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+            VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+
+        preferredMemoryPropertyFlags |=
             VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
 
-        ignoredMemoryPropertyFlags |=
+        tolerableMemoryPropertyFlags |=
             VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
     } else {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Unrecognized buffer type!");
         return 0;
     }
 
-    while (VULKAN_INTERNAL_FindBufferMemoryRequirements(
+    memoryTypesToTry = VULKAN_INTERNAL_FindBestBufferMemoryTypes(
         renderer,
         buffer,
         requiredMemoryPropertyFlags,
-        ignoredMemoryPropertyFlags,
+        preferredMemoryPropertyFlags,
+        tolerableMemoryPropertyFlags,
         &memoryRequirements,
-        &memoryTypeIndex)) {
+        &memoryTypeCount
+    );
+
+    for (i = 0; i < memoryTypeCount; i += 1) {
         bindResult = VULKAN_INTERNAL_BindResourceMemory(
             renderer,
-            memoryTypeIndex,
+            memoryTypesToTry[i],
             &memoryRequirements,
             size,
             buffer,
@@ -2366,65 +2544,39 @@ static Uint8 VULKAN_INTERNAL_BindMemoryForBuffer(
             usedRegion);
 
         if (bindResult == 1) {
+            selectedMemoryTypeIndex = memoryTypesToTry[i];
             break;
-        } else /* Bind failed, try the next device-local heap */
-        {
-            memoryTypeIndex += 1;
         }
     }
 
-    /* Bind failed, try again without preferred flags */
-    if (bindResult != 1) {
-        memoryTypeIndex = 0;
-        requiredMemoryPropertyFlags = 0;
-        ignoredMemoryPropertyFlags = 0;
+    SDL_free(memoryTypesToTry);
 
-        if (type == VULKAN_BUFFER_TYPE_GPU) {
+    /* Check for warnings on success */
+    if (bindResult == 1)
+    {
+        if (type == VULKAN_BUFFER_TYPE_GPU)
+        {
             if (!renderer->outOfDeviceLocalMemoryWarning) {
-                SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "Out of device-local memory, allocating buffers on host-local memory, expect degraded performance!");
-                renderer->outOfDeviceLocalMemoryWarning = 1;
-            }
-        } else if (type == VULKAN_BUFFER_TYPE_UNIFORM) {
-            requiredMemoryPropertyFlags =
-                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-
-            if (!renderer->outofBARMemoryWarning) {
-                SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "Out of BAR memory, allocating uniform buffers on host-local memory, expect degraded performance!");
-                renderer->outofBARMemoryWarning = 1;
-            }
-        } else if (type == VULKAN_BUFFER_TYPE_TRANSFER) {
-            requiredMemoryPropertyFlags =
-                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
-
-            if (!renderer->integratedMemoryNotification) {
-                SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "Integrated memory detected, allocating TransferBuffers on device-local memory!");
-                renderer->integratedMemoryNotification = 1;
+                if ((renderer->memoryProperties.memoryTypes[selectedMemoryTypeIndex].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) == 0) {
+                    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "Out of device-local memory, allocating buffers on host-local memory, expect degraded performance!");
+                    renderer->outOfDeviceLocalMemoryWarning = 1;
+                }
             }
         }
-
-        while (VULKAN_INTERNAL_FindBufferMemoryRequirements(
-            renderer,
-            buffer,
-            requiredMemoryPropertyFlags,
-            ignoredMemoryPropertyFlags,
-            &memoryRequirements,
-            &memoryTypeIndex)) {
-            bindResult = VULKAN_INTERNAL_BindResourceMemory(
-                renderer,
-                memoryTypeIndex,
-                &memoryRequirements,
-                size,
-                buffer,
-                VK_NULL_HANDLE,
-                usedRegion);
-
-            if (bindResult == 1) {
-                break;
-            } else /* Bind failed, try the next heap */
-            {
-                memoryTypeIndex += 1;
+        else if (type == VULKAN_BUFFER_TYPE_UNIFORM) {
+            if (!renderer->outofBARMemoryWarning) {
+                if ((renderer->memoryProperties.memoryTypes[selectedMemoryTypeIndex].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) == 0) {
+                    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "Out of BAR memory, allocating uniform buffers on host-local memory, expect degraded performance!");
+                    renderer->outofBARMemoryWarning = 1;
+                }
+            }
+        }
+        else if (type == VULKAN_BUFFER_TYPE_TRANSFER) {
+            if (!renderer->integratedMemoryNotification) {
+                if ((renderer->memoryProperties.memoryTypes[selectedMemoryTypeIndex].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) == VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) {
+                    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "Integrated memory detected, allocating TransferBuffers on device-local memory!");
+                    renderer->integratedMemoryNotification = 1;
+                }
             }
         }
     }
@@ -5237,15 +5389,29 @@ static void VULKAN_DrawPrimitivesIndirect(
     VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer *)commandBuffer;
     VulkanRenderer *renderer = (VulkanRenderer *)vulkanCommandBuffer->renderer;
     VulkanBuffer *vulkanBuffer = ((VulkanBufferContainer *)buffer)->activeBufferHandle->vulkanBuffer;
+    Uint32 i;
 
     VULKAN_INTERNAL_BindGraphicsDescriptorSets(renderer, vulkanCommandBuffer);
 
-    renderer->vkCmdDrawIndirect(
-        vulkanCommandBuffer->commandBuffer,
-        vulkanBuffer->buffer,
-        offsetInBytes,
-        drawCount,
-        stride);
+    if (renderer->supportsMultiDrawIndirect) {
+        /* Real multi-draw! */
+        renderer->vkCmdDrawIndirect(
+            vulkanCommandBuffer->commandBuffer,
+            vulkanBuffer->buffer,
+            offsetInBytes,
+            drawCount,
+            stride);
+    } else {
+        /* Fake multi-draw... */
+        for (i = 0; i < drawCount; i += 1) {
+            renderer->vkCmdDrawIndirect(
+                vulkanCommandBuffer->commandBuffer,
+                vulkanBuffer->buffer,
+                offsetInBytes + (stride * i),
+                1,
+                stride);
+        }
+    }
 
     VULKAN_INTERNAL_TrackBuffer(vulkanCommandBuffer, vulkanBuffer);
 }
@@ -5260,15 +5426,29 @@ static void VULKAN_DrawIndexedPrimitivesIndirect(
     VulkanCommandBuffer *vulkanCommandBuffer = (VulkanCommandBuffer *)commandBuffer;
     VulkanRenderer *renderer = (VulkanRenderer *)vulkanCommandBuffer->renderer;
     VulkanBuffer *vulkanBuffer = ((VulkanBufferContainer *)buffer)->activeBufferHandle->vulkanBuffer;
+    Uint32 i;
 
     VULKAN_INTERNAL_BindGraphicsDescriptorSets(renderer, vulkanCommandBuffer);
 
-    renderer->vkCmdDrawIndexedIndirect(
-        vulkanCommandBuffer->commandBuffer,
-        vulkanBuffer->buffer,
-        offsetInBytes,
-        drawCount,
-        stride);
+    if (renderer->supportsMultiDrawIndirect) {
+        /* Real multi-draw! */
+        renderer->vkCmdDrawIndexedIndirect(
+            vulkanCommandBuffer->commandBuffer,
+            vulkanBuffer->buffer,
+            offsetInBytes,
+            drawCount,
+            stride);
+    } else {
+        /* Fake multi-draw... */
+        for (i = 0; i < drawCount; i += 1) {
+            renderer->vkCmdDrawIndexedIndirect(
+                vulkanCommandBuffer->commandBuffer,
+                vulkanBuffer->buffer,
+                offsetInBytes + (stride * i),
+                1,
+                stride);
+        }
+    }
 
     VULKAN_INTERNAL_TrackBuffer(vulkanCommandBuffer, vulkanBuffer);
 }
@@ -6328,7 +6508,9 @@ static Refresh_GraphicsPipeline *VULKAN_CreateGraphicsPipeline(
     rasterizationStateCreateInfo.flags = 0;
     rasterizationStateCreateInfo.depthClampEnable = VK_FALSE;
     rasterizationStateCreateInfo.rasterizerDiscardEnable = VK_FALSE;
-    rasterizationStateCreateInfo.polygonMode = RefreshToVK_PolygonMode[pipelineCreateInfo->rasterizerState.fillMode];
+    rasterizationStateCreateInfo.polygonMode = RefreshToVK_PolygonMode(
+        renderer,
+        pipelineCreateInfo->rasterizerState.fillMode);
     rasterizationStateCreateInfo.cullMode = RefreshToVK_CullMode[pipelineCreateInfo->rasterizerState.cullMode];
     rasterizationStateCreateInfo.frontFace = RefreshToVK_FrontFace[pipelineCreateInfo->rasterizerState.frontFace];
     rasterizationStateCreateInfo.depthBiasEnable =
@@ -11240,7 +11422,8 @@ static Uint8 VULKAN_INTERNAL_CreateLogicalDevice(
 {
     VkResult vulkanResult;
     VkDeviceCreateInfo deviceCreateInfo;
-    VkPhysicalDeviceFeatures deviceFeatures;
+    VkPhysicalDeviceFeatures desiredDeviceFeatures;
+    VkPhysicalDeviceFeatures haveDeviceFeatures;
     VkPhysicalDevicePortabilitySubsetFeaturesKHR portabilityFeatures;
     const char **deviceExtensions;
 
@@ -11255,13 +11438,27 @@ static Uint8 VULKAN_INTERNAL_CreateLogicalDevice(
     queueCreateInfo.queueCount = 1;
     queueCreateInfo.pQueuePriorities = &queuePriority;
 
+    /* check feature support */
+
+    renderer->vkGetPhysicalDeviceFeatures(
+        renderer->physicalDevice,
+        &haveDeviceFeatures);
+
     /* specifying used device features */
 
-    SDL_zero(deviceFeatures);
-    deviceFeatures.fillModeNonSolid = VK_TRUE;
-    deviceFeatures.samplerAnisotropy = VK_TRUE;
-    deviceFeatures.multiDrawIndirect = VK_TRUE;
-    deviceFeatures.independentBlend = VK_TRUE;
+    SDL_zero(desiredDeviceFeatures);
+    desiredDeviceFeatures.independentBlend = VK_TRUE;
+    desiredDeviceFeatures.samplerAnisotropy = VK_TRUE;
+
+    if (haveDeviceFeatures.fillModeNonSolid) {
+        desiredDeviceFeatures.fillModeNonSolid = VK_TRUE;
+        renderer->supportsFillModeNonSolid = SDL_TRUE;
+    }
+
+    if (haveDeviceFeatures.multiDrawIndirect) {
+        desiredDeviceFeatures.multiDrawIndirect = VK_TRUE;
+        renderer->supportsMultiDrawIndirect = SDL_TRUE;
+    }
 
     /* creating the logical device */
 
@@ -11300,7 +11497,7 @@ static Uint8 VULKAN_INTERNAL_CreateLogicalDevice(
         deviceCreateInfo.enabledExtensionCount);
     CreateDeviceExtensionArray(&renderer->supports, deviceExtensions);
     deviceCreateInfo.ppEnabledExtensionNames = deviceExtensions;
-    deviceCreateInfo.pEnabledFeatures = &deviceFeatures;
+    deviceCreateInfo.pEnabledFeatures = &desiredDeviceFeatures;
 
     vulkanResult = renderer->vkCreateDevice(
         renderer->physicalDevice,
@@ -11477,9 +11674,6 @@ static Refresh_Device *VULKAN_CreateDevice(SDL_bool debugMode, SDL_bool preferLo
 
     /* Variables: Image Format Detection */
     VkImageFormatProperties imageFormatProperties;
-
-    /* Variables: Device Feature Checks */
-    VkPhysicalDeviceFeatures physicalDeviceFeatures;
 
     if (SDL_Vulkan_LoadLibrary(NULL) < 0) {
         SDL_assert(!"This should have failed in PrepareDevice first!");
@@ -11703,12 +11897,6 @@ static Refresh_Device *VULKAN_CreateDevice(SDL_bool debugMode, SDL_bool preferLo
     renderer->allocationsToDefragCapacity = 4;
     renderer->allocationsToDefrag = SDL_malloc(
         renderer->allocationsToDefragCapacity * sizeof(VulkanMemoryAllocation *));
-
-    /* Support checks */
-
-    renderer->vkGetPhysicalDeviceFeatures(
-        renderer->physicalDevice,
-        &physicalDeviceFeatures);
 
     return result;
 }
