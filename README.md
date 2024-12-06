@@ -1,5 +1,7 @@
-[![Build Status](https://gitea.drone.moonside.games/api/badges/MoonsideGames/Refresh/status.svg)](https://gitea.drone.moonside.games/MoonsideGames/Refresh)
+Refresh is now obsolete, as all of its functionality has been improved and upstreamed in the new SDL GPU API: https://wiki.libsdl.org/SDL3/CategoryGPU
+The code will be archived for posterity, but it should not be used. Go check out SDL3!
 
+-----
 This is Refresh, an XNA-inspired 3D graphics library with modern capabilities.
 
 License
